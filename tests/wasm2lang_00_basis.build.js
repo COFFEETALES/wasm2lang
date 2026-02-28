@@ -38,12 +38,13 @@
     const body = module.block(
       null,
       [
-        module.local.set(1, module.i32.const(Math.pow(2, 31) - 1)),
-        module.block(null, [
-          module.local.set(2, module.i32.const(Math.pow(2, 31) - 1)),
-          module.block(null, [module.local.set(3, module.i32.add(module.local.get(1, i32), module.local.get(2, i32)))])
-        ]),
-        module.local.get(3, i32)
+        module.i32.const(42)
+        //module.local.set(1, module.i32.const(Math.pow(2, 31) - 1)),
+        //module.block(null, [
+        //  module.local.set(2, module.i32.const(Math.pow(2, 31) - 1)),
+        //  module.block(null, [module.local.set(3, module.i32.add(module.local.get(1, i32), module.local.get(2, i32)))])
+        //]),
+        //module.local.get(3, i32)
       ],
       i32
     );

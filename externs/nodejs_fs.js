@@ -12,7 +12,7 @@ var NodeFileSystem = function () {};
 
 /**
  * @nosideeffects
- * @param {string} filename
+ * @param {(number|string)} filename
  * @param {(!Object<string, string>|string)=} options
  * @return {string}
  */

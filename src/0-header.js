@@ -8,6 +8,11 @@ var Wasm2Lang = {};
 /**
  * @namespace
  */
+Wasm2Lang.Backend = {};
+
+/**
+ * @namespace
+ */
 Wasm2Lang.CLI = {};
 
 /**
@@ -24,3 +29,8 @@ Wasm2Lang.Utilities = {};
  * @namespace
  */
 Wasm2Lang.Wasm = {};
+
+/**
+ * @namespace
+ */
+Wasm2Lang.Wasm.Tree = {};

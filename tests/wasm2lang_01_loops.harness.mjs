@@ -41,7 +41,9 @@ const moduleImports = {
 const runTest = function (buff, out, exports) {
   instanceMemoryBuffer = buff;
   stdoutWrite = out;
+  /* Commented out for now, as the test module is not yet available.
   exports.emitSegmentsToHost();
+  */
 };
 
 const dumpMemory = true;

@@ -65,12 +65,13 @@ Wasm2Lang.CLI.CommandLineParser.processParams = function (params) {
     if (0 !== inputFileParm.length) {
       // prettier-ignore
       var /** @const {!NodeFileSystem} */ fs = /** @const {!NodeFileSystem} */ (require('fs'));
-      var /** @const {string} */ inputFile = inputFileParm[inputFileParm.length - 1];
+      var /** @type {string} */ inputFile = inputFileParm[inputFileParm.length - 1];
       var /** @type {boolean} */ isTextFile = false;
       if (/^(?:was??t:(?!$)|.*?\.was??t$)/i.test(inputFile)) {
+        inputFile = inputFile.replace(/^was??t:/i, '');
         isTextFile = true;
       }
-      options.inputData = fs.readFileSync(inputFile, isTextFile ? {encoding: 'utf8'} : void 0);
+      options.inputData = fs.readFileSync('-' === inputFile ? 0 : inputFile, isTextFile ? {encoding: 'utf8'} : void 0);
     }
   }
 

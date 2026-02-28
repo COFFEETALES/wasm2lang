@@ -46,11 +46,11 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
   }
 
   if (-1 === bundles.indexOf('binaryen:none')) {
-    Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization(wasmModule, -1 !== bundles.indexOf('binaryen:max'));
+    Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_(wasmModule, -1 !== bundles.indexOf('binaryen:max'));
   }
 
   if (-1 !== bundles.indexOf('wasm2lang:codegen')) {
-    Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization(wasmModule, options);
+    Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_(wasmModule, options);
   }
 };
 
@@ -60,8 +60,9 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
  * @return {void}
  */
-Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization = function (wasmModule, options) {
-  // TODO: Internal wasm2lang transforms for backend emission will live here.
+Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_ = function (wasmModule, options) {
+  var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ passes = Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses(options);
+  Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(wasmModule, passes);
 };
 
 /**
@@ -70,7 +71,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization = function (wasmMod
  * @param {boolean} aggressive
  * @return {void}
  */
-Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization = function (wasmModule, aggressive) {
+Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmModule, aggressive) {
   // "flatten" inserts explicit returns at block ends so later codegen sees concrete control flow.
   // "simplify-locals" merges redundant local set patterns to reduce local noise.
   // "reorder-locals" compacts local indices to a tighter layout.
@@ -84,7 +85,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization = function (wasmModu
 //  * @param {!Array<string>} passList
 //  * @return {void}
 //  */
-// Wasm2Lang.Wasm.WasmNormalization.runBinaryenFunctionPasses = function (wasmModule, passList) {
+// Wasm2Lang.Wasm.WasmNormalization.runBinaryenFunctionPasses_ = function (wasmModule, passList) {
 //   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
 //   var /** @const {number} */ functionCount = wasmModule.getNumFunctions();
 //
@@ -107,6 +108,6 @@ Wasm2Lang.Wasm.WasmNormalization.emitNormalizedWasm = function (wasmModule, mode
     return wasmModule.emitText();
   }
 
-  var /** @const {!BinaryenBinary} */ binaryOutput = wasmModule.emitBinary();
+  var /** @const {!Uint8Array} */ binaryOutput = wasmModule.emitBinary();
   return new Uint8Array(binaryOutput.buffer);
 };

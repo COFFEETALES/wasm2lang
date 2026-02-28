@@ -35,47 +35,47 @@ if [ ${#0} -ne ${#prefix} ]; then
       filename="$(basename "$file")"
       filebase="${filename%'.build.js'}"
       mkdir "${filebase}"
-      cp                                      \
-       '../tests/'"${filebase}"'.harness.mjs' \
+      cp                                              \
+       '../tests/'"${filebase}"'.harness.mjs'         \
        './'"${filebase}"'/'
       #
       # Generate original WAST
-      node                                      \
-        "../tests/$filename"                    \
+      node                                            \
+        "../tests/$filename"                          \
         1>"${filebase}"/"${filebase}".orig.wast
       #
       # Generate WASM
-      node                                        \
-        "../tests/$filename"                      \
-      |                                           \
-      node                                        \
-        "../wasm2lang.js"                         \
-        --normalize-wasm=0                        \
-        --emit-wasm                               \
-        wast:-                                    \
+      node                                            \
+        "../tests/$filename"                          \
+      |                                               \
+      node                                            \
+        "../wasmxlang.js"                             \
+        --normalize-wasm binaryen:none                \
+        --emit-web-assembly                           \
+        --input-file wast:-                           \
         1>"${filebase}"/"${filebase}".wasm
       #
       # Generate WAST
-      node                                        \
-        "../tests/$filename"                      \
-      |                                           \
-      node                                        \
-        "../wasm2lang.js"                         \
-        --normalize-wasm=0                        \
-        --emit-wast                               \
-        wast:-                                    \
+      node                                            \
+        "../tests/$filename"                          \
+      |                                               \
+      node                                            \
+        "../wasmxlang.js"                             \
+        --normalize-wasm binaryen:none                \
+        --emit-web-assembly text                      \
+        --input-file wast:-                           \
         1>"${filebase}"/"${filebase}".wast
       #
       # Generate ASMJS
-      node                                        \
-        "../wasm2lang.js"                         \
-        --normalize-wasm=0                        \
-        --simplify-output                         \
-        --language_out=ASMJS                      \
-        -DASMJS_HEAP_SIZE=$((65536 * 8))          \
-        --emit-metadata=memBuffer                 \
-        --emit-code=module                        \
-        "${filebase}"/"${filebase}".wasm          \
+      node                                            \
+        "../wasmxlang.js"                             \
+        --normalize-wasm binaryen:none                \
+        --simplify-output                             \
+        --language_out ASMJS                          \
+        --define DASMJS_HEAP_SIZE=$((65536 * 8))      \
+        --emit-metadata=memBuffer                     \
+        --emit-code=module                            \
+        --input-file "${filebase}"/"${filebase}".wasm \
         1>"${filebase}"/"${filebase}".asm.js
     done
 

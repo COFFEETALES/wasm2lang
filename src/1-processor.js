@@ -67,7 +67,7 @@ Wasm2Lang.Processor.getBabelGenerator = function () {
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
  * @return {!Wasm2Lang.Processor.TranspileResult}
  */
-Wasm2Lang.Processor.transpile = function (options) {
+Wasm2Lang.Processor.transpile_ = function (options) {
   var /** @const {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(options.inputData);
   // prettier-ignore
   var /** @const {!Wasm2Lang.Processor.TranspileResult} */ results =
@@ -80,7 +80,10 @@ Wasm2Lang.Processor.transpile = function (options) {
   }
 
   if ('string' === typeof options.emitCode) {
-    results[Wasm2Lang.Processor.TranspileResultProperty.CODE] = options.emitCode;
+    // prettier-ignore
+    results[Wasm2Lang.Processor.TranspileResultProperty.CODE] = /** @const {string} */ (
+      Wasm2Lang.Backend.AbstractCodegen.emitCode(wasmModule, options)
+    );
   }
 
   if ('string' === typeof options.emitWebAssembly) {
@@ -107,7 +110,7 @@ Wasm2Lang.Processor.transpile = function (options) {
  * @param {!BabelGenerator} babelGeneratorModule
  * @return {void}
  */
-Wasm2Lang.Processor.initializeModules = function (binaryenModule, babelTypesModule, babelGeneratorModule) {
+Wasm2Lang.Processor.initializeModules_ = function (binaryenModule, babelTypesModule, babelGeneratorModule) {
   Wasm2Lang.Processor.binaryen = binaryenModule;
   Wasm2Lang.Processor.babelTypes = babelTypesModule;
   Wasm2Lang.Processor.babelGenerator = babelGeneratorModule;
@@ -124,7 +127,7 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule, babelTypesModul
     throw new Error('Missing required module(s).');
   }
 
-  Wasm2Lang.Processor.initializeModules(binaryenModule, babelTypesModule, babelGeneratorModule);
+  Wasm2Lang.Processor.initializeModules_(binaryenModule, babelTypesModule, babelGeneratorModule);
 
   var params = Wasm2Lang.CLI.CommandLineParser.parseArgv();
 
@@ -161,7 +164,7 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule, babelTypesModul
   var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ options =
       Wasm2Lang.CLI.CommandLineParser.processParams(params);
 
-  var /** @const {!Wasm2Lang.Processor.TranspileResult} */ results = Wasm2Lang.Processor.transpile(options);
+  var /** @const {!Wasm2Lang.Processor.TranspileResult} */ results = Wasm2Lang.Processor.transpile_(options);
 
   for (var /** !Wasm2Lang.Processor.TranspileResultProperty */ resKey in results) {
     Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.isNode()](results[resKey]);

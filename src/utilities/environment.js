@@ -53,6 +53,7 @@ Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.Ou
  */
 Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.OutputTarget.CLI] = function (data) {
   var /** @const {number} */ argCount = arguments.length;
+  var /** boolean */ binaryOnly = true;
   for (var /** number */ i = 0; i !== argCount; ++i) {
     if (0 !== i) {
       process.stdout.write(' ');
@@ -62,9 +63,12 @@ Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.Ou
       process.stdout.write(Buffer.from(chunk));
       continue;
     }
+    binaryOnly = false;
     process.stdout.write(chunk);
   }
-  process.stdout.write('\n');
+  if (!binaryOnly) {
+    process.stdout.write('\n');
+  }
 };
 
 /**
@@ -134,7 +138,7 @@ Wasm2Lang.Utilities.Environment.isNode = function () {
 // * @private
 // * @return {boolean}
 // */
-//Wasm2Lang.Processor.isWorker = function () {
+//Wasm2Lang.Processor.isWorker_ = function () {
 //  return Boolean('function' === typeof importScripts);
 //};
 
@@ -142,6 +146,6 @@ Wasm2Lang.Utilities.Environment.isNode = function () {
 // * @private
 // * @return {boolean}
 // */
-//Wasm2Lang.Processor.isBrowser = function () {
+//Wasm2Lang.Processor.isBrowser_ = function () {
 //  return Boolean(!Wasm2Lang.Processor.isWorker() && 'object' === typeof window && window);
 //};

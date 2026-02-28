@@ -25,9 +25,14 @@
 
     var moduleSpecs = [
       {'sourcePath': 'src/0-header.js', 'exportName': 'Wasm2Lang'},
-      {'sourcePath': 'src/utilities/environment.js'},
+      {'sourcePath': 'src/backend/abstract_codegen.js'},
       {'sourcePath': 'src/cli/command_line_parser.js'},
       {'sourcePath': 'src/options/schema.js'},
+      {'sourcePath': 'src/utilities/environment.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes.js'},
+      {'sourcePath': 'src/wasm/tree/node_schema.js'},
+      {'sourcePath': 'src/wasm/tree/pass_runner.js'},
+      {'sourcePath': 'src/wasm/tree/traversal_kernel.js'},
       {'sourcePath': 'src/wasm/wasm_normalization.js'},
       {'sourcePath': 'src/1-processor.js'},
       {'sourcePath': 'src/2-footer.js'}
