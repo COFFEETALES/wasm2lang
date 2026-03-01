@@ -61,6 +61,106 @@ var BinaryenModule = function () {};
 Binaryen.prototype.getExpressionInfo = function (exprPtr) {};
 
 /**
+ * @record
+ */
+var BinaryenFeatures = function () {};
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.MVP;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.Atomics;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.BulkMemory;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.SIMD128;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.ExceptionHandling;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.TailCall;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.ReferenceTypes;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.Multivalue;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.GC;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.Memory64;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.RelaxedSIMD;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.Strings;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.MultiMemory;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.StackSwitching;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.SharedEverything;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.FP16;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.BulkMemoryOpt;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.All;
+
+/**
+ * @type {!BinaryenFeatures}
+ */
+Binaryen.prototype.Features;
+
+/**
  * @param {number} type
  * @return {!Array<number>}
  */
@@ -180,6 +280,17 @@ BinaryenModule.prototype.optimize = function () {};
 BinaryenModule.prototype.getNumFunctions = function () {};
 
 /**
+ * @return {number}
+ */
+BinaryenModule.prototype.getNumMemorySegments = function () {};
+
+/**
+ * @param {string} index
+ * @return {!BinaryenMemorySegmentInfo}
+ */
+BinaryenModule.prototype.getMemorySegmentInfo = function (index) {};
+
+/**
  * @param {number} index
  * @return {number}
  */
@@ -197,9 +308,103 @@ BinaryenModule.prototype.emitText = function () {};
 BinaryenModule.prototype.emitBinary = function () {};
 
 /**
- * @typedef {!Object<string, *>}
+ * @return {number}
  */
-var BinaryenExpressionInfo;
+BinaryenModule.prototype.getFeatures = function () {};
+
+/**
+ * @param {number} features
+ * @return {void}
+ */
+BinaryenModule.prototype.setFeatures = function (features) {};
+
+/**
+ * @return {number}
+ */
+BinaryenModule.prototype.validate = function () {};
+
+/**
+ * Binaryen expression info shape from getExpressionInfo().
+ * Only fields touched by this codebase are modeled here.
+ *
+ * @record
+ */
+var BinaryenExpressionInfo = function () {};
+
+/**
+ * @type {number}
+ */
+BinaryenExpressionInfo.prototype.id;
+
+/**
+ * @type {number}
+ */
+BinaryenExpressionInfo.prototype.type;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.value;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.index;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.condition;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.ifTrue;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.ifFalse;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.body;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.left;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.right;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.ptr;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.target;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.delta;
+
+/**
+ * @type {(!Array<number>|undefined)}
+ */
+BinaryenExpressionInfo.prototype.children;
+
+/**
+ * @type {(!Array<number>|undefined)}
+ */
+BinaryenExpressionInfo.prototype.operands;
 
 /**
  * @typedef {{
@@ -212,6 +417,15 @@ var BinaryenExpressionInfo;
  * }}
  */
 var BinaryenFunctionInfo;
+
+/**
+ * @typedef {{
+ *   offset: number,
+ *   data: !ArrayBuffer,
+ *   passive: boolean
+ * }}
+ */
+var BinaryenMemorySegmentInfo;
 
 // ---------------------------------------------------------------------------
 // Missing expression-type IDs

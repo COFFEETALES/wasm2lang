@@ -20,8 +20,8 @@ Wasm2Lang.Wasm.Tree.PassMetadata;
 
 /**
  * @typedef {{
- *   key: string,
- *   kind: !Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind
+ *   edgePropertyName: string,
+ *   edgeTraversalKind: !Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind
  * }}
  */
 Wasm2Lang.Wasm.Tree.EdgeSpec;
@@ -37,7 +37,8 @@ Wasm2Lang.Wasm.Tree.EdgeSpecList;
 Wasm2Lang.Wasm.Tree.ExpressionEdgeSpecMap;
 
 /**
- * @typedef {!Array<*>}
+ * Child edge tuple: [key, index, kind, expressionPointer].
+ * @typedef {!Array<(string|number)>}
  */
 Wasm2Lang.Wasm.Tree.ChildEdge;
 
@@ -145,10 +146,16 @@ Wasm2Lang.Wasm.Tree.FunctionPassContext;
 Wasm2Lang.Wasm.Tree.PassFunctionHook;
 
 /**
+ * @typedef {function(!BinaryenModule): void}
+ */
+Wasm2Lang.Wasm.Tree.PassModuleHook;
+
+/**
  * @typedef {{
  *   passName: string,
  *   phase: string,
  *   createVisitor: function(!Wasm2Lang.Wasm.Tree.PassMetadata): !Wasm2Lang.Wasm.Tree.TraversalVisitor,
+ *   validateModule: (!Wasm2Lang.Wasm.Tree.PassModuleHook|undefined),
  *   onFunctionEnter: (!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined),
  *   onFunctionLeave: (!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)
  * }}

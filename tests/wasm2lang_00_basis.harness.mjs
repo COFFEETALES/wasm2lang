@@ -19,7 +19,10 @@ const runTest = function (buff, out, exports) {
 
 const heapBase = 128;
 
+const dumpMemory = true;
+
 export {
+  dumpMemory,
   heapBase,
   memoryInitialPages,
   memoryMaximumPages,

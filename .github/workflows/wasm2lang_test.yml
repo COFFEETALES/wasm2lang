@@ -3,7 +3,7 @@ on:
 
 jobs:
   test:
-    name: "Test 🧪"
+    name: "🧪 Test"
     runs-on: ubuntu-latest
     container:
       image: node:24-alpine
@@ -14,7 +14,7 @@ jobs:
           name: artifacts-tests
           path: ./test_artifacts
 
-      - name: "Install tools 📦"
+      - name: "📦 Install tools"
         run: |
           apk add --no-cache \
             'mozjs~140'      \
@@ -22,8 +22,10 @@ jobs:
             openjdk21-jre    \
             php84-cli
 
-      - name: "Run tests 🧩"
+      - name: "🧩 Run tests"
         working-directory: test_artifacts
         run: |
           chmod +x ./wasm2lang_run_tests.sh
-          SPIDERMONKEY_JS=/usr/bin/js140 ./wasm2lang_run_tests.sh
+          SPIDERMONKEY_JS=/usr/bin/js140 \
+          PHP_CLI=/usr/bin/php           \
+          ./wasm2lang_run_tests.sh

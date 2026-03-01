@@ -52,7 +52,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes) {
       continue;
     }
 
-    var /** @type {number} */ currentBodyPtr = Number(funcInfo.body || 0);
+    var /** @type {number} */ currentBodyPtr = funcInfo.body;
     if (0 === currentBodyPtr) {
       continue;
     }
@@ -77,7 +77,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes) {
       */ (
         pass.createVisitor
       );
-      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor = createVisitorFn(funcMetadata);
+      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor = createVisitorFn.call(pass, funcMetadata);
 
       var /** @const {!Wasm2Lang.Wasm.Tree.TraversalContext} */ traversalContext = {
           treeModule: wasmModule,

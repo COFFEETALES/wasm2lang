@@ -3,15 +3,15 @@ on:
 
 jobs:
   build:
-    name: "Build 🛠️"
+    name: "🛠 Build️"
     runs-on: ubuntu-latest
     container:
       image: node:24-alpine
     steps:
-      - name: "Checkout repo ✅"
+      - name: "✅ Checkout repo"
         uses: actions/checkout@v4
 
-      - name: "Install tools 📦"
+      - name: "📦 Install tools"
         run: |
           #apk update
           apk add --no-cache nodejs openjdk21-jre yarn
@@ -20,18 +20,18 @@ jobs:
           mkdir dist_artifacts
           mkdir test_artifacts
 
-      - name: "Build project 🔧"
+      - name: "🔧 Build project"
         working-directory: dist_artifacts
         run: |
           yarn run closure-make
           NODE_PATH="$(cd "../node_modules" && pwd -P)" node ../wasmxlang.js --help
 
-      - name: "Build tests 🧪"
+      - name: "🧪 Build tests"
         working-directory: test_artifacts
         run: |
           ../scripts/wasm2lang_build_tests.sh
 
-      - name: "Upload artifacts-tests artifact 🧰"
+      - name: "🧰 Upload artifacts-tests artifact"
         uses: actions/upload-artifact@v4
         with:
           name: artifacts-tests

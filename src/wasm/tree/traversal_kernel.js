@@ -135,7 +135,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
 
         for (var /** number */ i = 0, /** @const {number} */ childCount = childEdges.length; i !== childCount; ++i) {
           var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ childEdge = childEdges[i];
-          var /** @const {number} */ childExprPtr = Number(childEdge[3] || 0);
+          var /** @const {number} */ childExprPtr = /** @type {number} */ (childEdge[3]);
           var /** @type {*} */ childWalkResult = walkInner(expression, childEdge, childExprPtr);
           // prettier-ignore
           var /** @const {number} */ effectiveChildPtr = /** @type {number} */ (
@@ -145,7 +145,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
             Wasm2Lang.Wasm.Tree.TraversalKernel.applyChildReplacement_(
               binaryen,
               currentExprPtr,
-              Number(expression['id'] || 0),
+              expression.id,
               childEdge,
               effectiveChildPtr
             );
@@ -356,9 +356,9 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.applyChildReplacement_ = function (
 ) {
   Wasm2Lang.Wasm.Tree.TraversalKernel.ensureSetterTables_();
 
-  var /** @const {string} */ edgeKey = String(edge[0] || '');
-  var /** @const {number} */ edgeIndex = Number(edge[1] || 0);
-  var /** @const {string} */ edgeKind = String(edge[2] || '');
+  var /** @const {string} */ edgeKey = /** @type {string} */ (edge[0]);
+  var /** @const {number} */ edgeIndex = /** @type {number} */ (edge[1]);
+  var /** @const {string} */ edgeKind = /** @type {string} */ (edge[2]);
 
   if (Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind.LIST === edgeKind) {
     var /** @const {(function(number, number, number): void|undefined)} */ listSetter =

@@ -27,39 +27,11 @@ Wasm2Lang.Processor.TranspileResult;
 Wasm2Lang.Processor.binaryen = null;
 
 /**
- * @private
- * @type {?BabelTypes}
- */
-Wasm2Lang.Processor.babelTypes = null;
-
-/**
- * @private
- * @type {?BabelGenerator}
- */
-Wasm2Lang.Processor.babelGenerator = null;
-
-/**
  * @return {!Binaryen}
  */
 Wasm2Lang.Processor.getBinaryen = function () {
   // prettier-ignore
   return /** @const {!Binaryen} */ (Wasm2Lang.Processor.binaryen);
-};
-
-/**
- * @return {!BabelTypes}
- */
-Wasm2Lang.Processor.getBabelTypes = function () {
-  // prettier-ignore
-  return /** @const {!BabelTypes} */ (Wasm2Lang.Processor.babelTypes);
-};
-
-/**
- * @return {!BabelGenerator}
- */
-Wasm2Lang.Processor.getBabelGenerator = function () {
-  // prettier-ignore
-  return /** @const {!BabelGenerator} */ (Wasm2Lang.Processor.babelGenerator);
 };
 
 /**
@@ -69,6 +41,12 @@ Wasm2Lang.Processor.getBabelGenerator = function () {
  */
 Wasm2Lang.Processor.transpile_ = function (options) {
   var /** @const {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(options.inputData);
+  var /** @const {?Wasm2Lang.Backend.AsmjsCodegen} */ asmjsCodegen =
+      'asmjs' === options.languageOut ? new Wasm2Lang.Backend.AsmjsCodegen() : null;
+  var /** @const {?Wasm2Lang.Backend.Php64Codegen} */ php64Codegen =
+      'php64' === options.languageOut ? new Wasm2Lang.Backend.Php64Codegen() : null;
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ codegen =
+      asmjsCodegen || php64Codegen || new Wasm2Lang.Backend.AbstractCodegen();
   // prettier-ignore
   var /** @const {!Wasm2Lang.Processor.TranspileResult} */ results =
     /** @const {!Wasm2Lang.Processor.TranspileResult} */ (Object.create(null));
@@ -76,13 +54,20 @@ Wasm2Lang.Processor.transpile_ = function (options) {
   Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles(wasmModule, options);
 
   if ('string' === typeof options.emitMetadata) {
-    results[Wasm2Lang.Processor.TranspileResultProperty.METADATA] = options.emitMetadata;
+    // prettier-ignore
+    results[Wasm2Lang.Processor.TranspileResultProperty.METADATA] = /** @const {string} */ (
+      asmjsCodegen
+        ? asmjsCodegen.emitMetadata(wasmModule, options)
+        : php64Codegen
+          ? php64Codegen.emitMetadata(wasmModule, options)
+          : /** @type {string} */ (options.emitMetadata)
+    );
   }
 
   if ('string' === typeof options.emitCode) {
     // prettier-ignore
     results[Wasm2Lang.Processor.TranspileResultProperty.CODE] = /** @const {string} */ (
-      Wasm2Lang.Backend.AbstractCodegen.emitCode(wasmModule, options)
+      codegen.emitCode(wasmModule, options)
     );
   }
 
@@ -106,28 +91,22 @@ Wasm2Lang.Processor.transpile_ = function (options) {
 /**
  * @private
  * @param {!Binaryen} binaryenModule
- * @param {!BabelTypes} babelTypesModule
- * @param {!BabelGenerator} babelGeneratorModule
  * @return {void}
  */
-Wasm2Lang.Processor.initializeModules_ = function (binaryenModule, babelTypesModule, babelGeneratorModule) {
+Wasm2Lang.Processor.initializeModules_ = function (binaryenModule) {
   Wasm2Lang.Processor.binaryen = binaryenModule;
-  Wasm2Lang.Processor.babelTypes = babelTypesModule;
-  Wasm2Lang.Processor.babelGenerator = babelGeneratorModule;
 };
 
 /**
  * @param {?Binaryen} binaryenModule
- * @param {?BabelTypes} babelTypesModule
- * @param {?BabelGenerator} babelGeneratorModule
  * @return {!Wasm2Lang.Processor.TranspileResult}
  */
-Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule, babelTypesModule, babelGeneratorModule) {
-  if (!binaryenModule || !babelTypesModule || !babelGeneratorModule) {
+Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
+  if (!binaryenModule) {
     throw new Error('Missing required module(s).');
   }
 
-  Wasm2Lang.Processor.initializeModules_(binaryenModule, babelTypesModule, babelGeneratorModule);
+  Wasm2Lang.Processor.initializeModules_(binaryenModule);
 
   var params = Wasm2Lang.CLI.CommandLineParser.parseArgv();
 

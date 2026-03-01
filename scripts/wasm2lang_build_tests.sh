@@ -28,8 +28,9 @@ if [ ${#0} -ne ${#prefix} ]; then
      ./wasm2lang_*_runner.js   \
      ./wasm2lang_run_tests.sh
 
-    cp '../tests/wasm2lang_wasm_asmjs_runner.js' .
     cp '../scripts/wasm2lang_run_tests.sh' .
+    cp '../tests/wasm2lang_php_runner.php' .
+    cp '../tests/wasm2lang_wasm_asmjs_runner.js' .
 
     for file in '../tests/wasm2lang_'*'.build.js'; do
       filename="$(basename "$file")"
@@ -71,12 +72,24 @@ if [ ${#0} -ne ${#prefix} ]; then
         "../wasmxlang.js"                             \
         --normalize-wasm binaryen:none                \
         --simplify-output                             \
-        --language_out ASMJS                          \
-        --define DASMJS_HEAP_SIZE=$((65536 * 8))      \
+        --language-out ASMJS                          \
+        --define ASMJS_HEAP_SIZE=$((65536 * 8))       \
         --emit-metadata=memBuffer                     \
         --emit-code=module                            \
         --input-file "${filebase}"/"${filebase}".wasm \
         1>"${filebase}"/"${filebase}".asm.js
+      #
+      # Generate PHP64
+      node                                            \
+        "../wasmxlang.js"                             \
+        --normalize-wasm binaryen:none                \
+        --simplify-output                             \
+        --language-out PHP64                          \
+        --define PHP64_HEAP_SIZE=$((65536 * 8))       \
+        --emit-metadata=memBuffer                     \
+        --emit-code=module                            \
+        --input-file "${filebase}"/"${filebase}".wasm \
+        1>"${filebase}"/"${filebase}".php
     done
 
     echo "Build complete."

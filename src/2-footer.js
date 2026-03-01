@@ -11,7 +11,7 @@
   /**
    * @typedef {
    *  {
-   *    runCliEntryPoint: function(!Binaryen, !BabelTypes, !BabelGenerator):
+   *    runCliEntryPoint: function(!Binaryen):
    *      !Wasm2Lang.Processor.TranspileResult
    *  }
    * }

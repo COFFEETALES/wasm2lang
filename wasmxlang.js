@@ -13,9 +13,6 @@
     )
   ).default;
 
-  var babelTypes = await import('@babel/types');
-  var babelGenerator = await import('@babel/generator');
-
   if (
     process.argv.some(function (arg) {
       return '--dev' === arg;
@@ -26,10 +23,16 @@
     var moduleSpecs = [
       {'sourcePath': 'src/0-header.js', 'exportName': 'Wasm2Lang'},
       {'sourcePath': 'src/backend/abstract_codegen.js'},
+      {'sourcePath': 'src/backend/asmjs_codegen.js'},
+      {'sourcePath': 'src/backend/php64_codegen.js'},
       {'sourcePath': 'src/cli/command_line_parser.js'},
       {'sourcePath': 'src/options/schema.js'},
       {'sourcePath': 'src/utilities/environment.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/local_usage_analysis_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/drop_const_elision_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/feature_profile_validation_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/registry.js'},
       {'sourcePath': 'src/wasm/tree/node_schema.js'},
       {'sourcePath': 'src/wasm/tree/pass_runner.js'},
       {'sourcePath': 'src/wasm/tree/traversal_kernel.js'},
@@ -51,5 +54,5 @@
     globalThis['Wasm2Lang'] = require('./dist_artifacts/wasm2lang.js');
   }
 
-  Wasm2Lang.runCliEntryPoint(binaryen, babelTypes, babelGenerator);
+  Wasm2Lang.runCliEntryPoint(binaryen);
 })();

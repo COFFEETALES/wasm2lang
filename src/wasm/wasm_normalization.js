@@ -11,15 +11,39 @@ Wasm2Lang.Wasm.WasmNormalization = {};
  */
 Wasm2Lang.Wasm.WasmNormalization.readWasmModule = function (inputData) {
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @type {?BinaryenModule} */ wasmModule = null;
 
   if ('string' === typeof inputData) {
-    return binaryen.parseText(inputData);
-  }
-  if ('object' === typeof inputData) {
+    wasmModule = binaryen.parseText(inputData);
+  } else if ('object' === typeof inputData) {
     // prettier-ignore
-    return binaryen.readBinary(/** @const {!Uint8Array} */ (inputData));
+    wasmModule = binaryen.readBinary(/** @const {!Uint8Array} */ (inputData));
+  } else {
+    throw new Error('Unsupported input data type for WebAssembly input.');
   }
-  throw new Error('Unsupported input data type for WebAssembly input.');
+
+  Wasm2Lang.Wasm.WasmNormalization.validateInputModule_(/** @type {!BinaryenModule} */ (wasmModule));
+  return /** @const {!BinaryenModule} */ (wasmModule);
+};
+
+/**
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @return {void}
+ */
+Wasm2Lang.Wasm.WasmNormalization.validateInputModule_ = function (wasmModule) {
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ validationPasses =
+    Wasm2Lang.Wasm.Tree.CustomPasses.getInputValidationPasses();
+
+  for (var /** number */ i = 0, /** @const {number} */ passCount = validationPasses.length; i !== passCount; ++i) {
+    var /** @const {!Wasm2Lang.Wasm.Tree.Pass} */ pass = validationPasses[i];
+    if ('function' === typeof pass.validateModule) {
+      /** @type {!Wasm2Lang.Wasm.Tree.PassModuleHook} */ (pass.validateModule)(wasmModule);
+    }
+  }
+
+  Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(wasmModule, validationPasses);
 };
 
 /**
