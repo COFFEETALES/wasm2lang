@@ -22,4 +22,6 @@ const runTest = function (buff, out, exports) {
 
 const heapBase = 128;
 
-export {heapBase, memoryInitialPages, memoryMaximumPages, memoryPageSize, moduleImports, runTest};
+const dumpMemory = true;
+
+export {dumpMemory, heapBase, memoryInitialPages, memoryMaximumPages, memoryPageSize, moduleImports, runTest};

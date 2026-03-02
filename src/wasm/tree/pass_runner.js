@@ -27,10 +27,12 @@ Wasm2Lang.Wasm.Tree.PassRunner.Phase = {
  *
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Wasm.Tree.PassList} passes
+ * @param {!Binaryen=} opt_binaryen  Injected binaryen instance. Falls back to
+ *     Processor.getBinaryen() when omitted (backward compat).
  * @return {!Wasm2Lang.Wasm.Tree.PassRunResult}
  */
-Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes) {
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_binaryen) {
+  var /** @const {!Binaryen} */ binaryen = opt_binaryen || Wasm2Lang.Processor.getBinaryen();
   var /** @const {number} */ funcCount = wasmModule.getNumFunctions();
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.PassRunResult} */ runResult =
@@ -52,7 +54,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes) {
       continue;
     }
 
-    var /** @type {number} */ currentBodyPtr = Number(funcInfo.body || 0);
+    var /** @type {number} */ currentBodyPtr = funcInfo.body;
     if (0 === currentBodyPtr) {
       continue;
     }
@@ -77,9 +79,10 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes) {
       */ (
         pass.createVisitor
       );
-      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor = createVisitorFn(funcMetadata);
+      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor = createVisitorFn.call(pass, funcMetadata);
 
       var /** @const {!Wasm2Lang.Wasm.Tree.TraversalContext} */ traversalContext = {
+          binaryen: binaryen,
           treeModule: wasmModule,
           functionInfo: funcInfo,
           treeMetadata: funcMetadata,

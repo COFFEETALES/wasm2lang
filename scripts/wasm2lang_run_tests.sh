@@ -64,6 +64,18 @@ if [ ${#0} -ne ${#prefix} ]; then
         dos2unix "${filebase}".sm.asmjs.out
       fi
       #
+      if [ -x "${PHP_CLI}" ]; then
+        echo -e "\033[0;33mRunning PHP test...\033[0m"
+        cat "${filebase}".php                   \
+        |                                       \
+        "${PHP_CLI}"                            \
+          "./wasm2lang_php_runner.php"          \
+          --test-name "$filebase"               \
+        |                                       \
+        tee "${filebase}".php.out
+        dos2unix "${filebase}".php.out
+      fi
+      #
       diff -qs                                \
         "${filebase}".v8.wasm.out             \
         "${filebase}".v8.asmjs.out
@@ -75,6 +87,12 @@ if [ ${#0} -ne ${#prefix} ]; then
         diff -qs                                \
           "${filebase}".v8.wasm.out             \
           "${filebase}".sm.asmjs.out
+        [ $? -eq 0 ] || tmpretcode=1
+      fi
+      if [ -x "${PHP_CLI}" ]; then
+        diff -qs                                \
+          "${filebase}".v8.wasm.out             \
+          "${filebase}".php.out
         [ $? -eq 0 ] || tmpretcode=1
       fi
       if [ 1 -eq $tmpretcode ]; then

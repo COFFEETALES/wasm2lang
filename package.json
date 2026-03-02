@@ -1,8 +1,5 @@
 {
   "dependencies": {
-    "@babel/core": "^8.0.0-rc.1",
-    "@babel/generator": "^8.0.0-rc.1",
-    "@babel/types": "^8.0.0-rc.1",
     "binaryen": "^125.0.0"
   },
   "scripts": {

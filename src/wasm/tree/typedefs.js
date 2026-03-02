@@ -20,8 +20,9 @@ Wasm2Lang.Wasm.Tree.PassMetadata;
 
 /**
  * @typedef {{
- *   key: string,
- *   kind: !Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind
+ *   edgePropertyName: string,
+ *   edgeTraversalKind: !Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind,
+ *   setter: (function(number, number, number): void|undefined)
  * }}
  */
 Wasm2Lang.Wasm.Tree.EdgeSpec;
@@ -37,7 +38,11 @@ Wasm2Lang.Wasm.Tree.EdgeSpecList;
 Wasm2Lang.Wasm.Tree.ExpressionEdgeSpecMap;
 
 /**
- * @typedef {!Array<*>}
+ * Child edge tuple: [key, index, kind, expressionPointer, setter].
+ * The setter has signature (parentPtr, listIndex, childPtr) and is carried
+ * from the EdgeSpec so the traversal kernel can apply replacements without
+ * maintaining a parallel dispatch table.
+ * @typedef {!Array<(string|number|function(number, number, number): void)>}
  */
 Wasm2Lang.Wasm.Tree.ChildEdge;
 
@@ -53,6 +58,7 @@ Wasm2Lang.Wasm.Tree.ExpressionAncestorList;
 
 /**
  * @typedef {{
+ *   binaryen: !Binaryen,
  *   treeModule: !BinaryenModule,
  *   functionInfo: (?BinaryenFunctionInfo|undefined),
  *   treeMetadata: (!Wasm2Lang.Wasm.Tree.PassMetadata|undefined),
@@ -63,6 +69,7 @@ Wasm2Lang.Wasm.Tree.TraversalContext;
 
 /**
  * @typedef {{
+ *   binaryen: !Binaryen,
  *   treeModule: !BinaryenModule,
  *   functionInfo: ?BinaryenFunctionInfo,
  *   treeMetadata: !Wasm2Lang.Wasm.Tree.PassMetadata,
@@ -145,10 +152,16 @@ Wasm2Lang.Wasm.Tree.FunctionPassContext;
 Wasm2Lang.Wasm.Tree.PassFunctionHook;
 
 /**
+ * @typedef {function(!BinaryenModule): void}
+ */
+Wasm2Lang.Wasm.Tree.PassModuleHook;
+
+/**
  * @typedef {{
  *   passName: string,
  *   phase: string,
  *   createVisitor: function(!Wasm2Lang.Wasm.Tree.PassMetadata): !Wasm2Lang.Wasm.Tree.TraversalVisitor,
+ *   validateModule: (!Wasm2Lang.Wasm.Tree.PassModuleHook|undefined),
  *   onFunctionEnter: (!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined),
  *   onFunctionLeave: (!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)
  * }}
