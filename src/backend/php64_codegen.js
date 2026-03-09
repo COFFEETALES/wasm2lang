@@ -13,50 +13,17 @@ Wasm2Lang.Backend.Php64Codegen.prototype.constructor = Wasm2Lang.Backend.Php64Co
 Wasm2Lang.Backend.registerBackend('php64', Wasm2Lang.Backend.Php64Codegen);
 
 /**
- * Emits PHP i32-array static-memory initialization lines using the shared
- * {@code collectI32InitOps_} classification:
- *   'fill' → {@code for ($k = W, $kEnd = W+N; $k !== $kEnd; ++$k) $mem[$k] = V;}
- *   'set'  → one {@code $mem[W+j] = v;} line per word.
+ * Emits the static memory block as a PHP snippet declaring a binary string
+ * built in a single concatenation expression.
  *
- * @private
- * @param {!Int32Array} i32
- * @param {number} startWordIndex
- * @param {string} memVar  PHP variable name including '$', e.g. '$memBuffer'.
- * @return {!Array<string>}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.emitStaticI32InitLines_ = function (i32, startWordIndex, memVar) {
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.I32InitOp_>} */ ops = this.collectI32InitOps_(i32, startWordIndex);
-  var /** @const {!Array<string>} */ lines = [];
-
-  for (var /** number */ i = 0, /** @const {number} */ opsLen = ops.length; i !== opsLen; ++i) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.I32InitOp_} */ op = ops[i];
-    var /** @const {string} */ opKind = op.opKind;
-    var /** @const {number} */ wordIndex = op.startWordIndex;
-
-    if ('fill' === opKind) {
-      var /** @const {number} */ value = op.fillValueI32;
-      var /** @const {number} */ count = op.fillCountWords;
-      lines[lines.length] =
-        'for ($k = ' + wordIndex + ', $kEnd = ' + (wordIndex + count) + '; $k !== $kEnd; ++$k) ' +
-        memVar + '[$k] = ' + value + ';';
-    } else {
-      var /** @const {!Array<number>} */ words = op.setWordsI32;
-      for (var /** number */ j = 0, /** @const {number} */ wLen = words.length; j !== wLen; ++j) {
-        lines[lines.length] = memVar + '[' + (wordIndex + j) + '] = ' + words[j] + ';';
-      }
-    }
-  }
-
-  return lines;
-};
-
-/**
- * Emits the static memory block as a PHP snippet declaring a word-indexed
- * integer array and initializing it from the wasm module's data segments.
+ * Instead of allocating a zero buffer and repeatedly copying it via
+ * {@code substr_replace}, the entire heap is constructed as:
+ *   {@code str_repeat("\x00", prefix) . pack('V*', w0, w1, ...) . str_repeat("\x00", suffix)}
  *
- * The backing array maps word index → signed i32, mirroring the asm.js
- * Int32Array layout.  Aligned i32 load/store becomes a single array op;
- * byte-level access uses bit masking.
+ * PHP 8's rope optimisation ({@code ROPE_INIT/ROPE_ADD/ROPE_END}) compiles
+ * the {@code .} chain into a single allocation with one memcpy per piece —
+ * no intermediate string copies.  {@code pack('V*', ...)} serialises all
+ * i32 words in one C-level call.
  *
  * Called when {@code options.emitMetadata} is a string.
  *
@@ -69,21 +36,50 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitMetadata = function (wasmModule, op
   var /** @const {string} */ bufferName = /** @type {string} */ (options.emitMetadata);
   var /** @const {string} */ memVar = '$' + bufferName;
   var /** @const {number} */ heapSize = this.resolveHeapSize_(options, 'PHP64_HEAP_SIZE', 65536);
-  var /** @const {number} */ wordCount = heapSize >>> 2;
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.StaticMemoryInfo_} */ staticMemory = this.collectStaticMemory_(wasmModule);
   var /** @const {number} */ startWordIndex = staticMemory.startWordIndex;
   var /** @const {!Int32Array} */ i32 = staticMemory.words;
   var /** @const {!Array<string>} */ lines = [];
 
   lines[lines.length] = '<?php';
-  lines[lines.length] = memVar + ' = array_fill(0, ' + wordCount + ', 0);';
 
-  if (0 !== i32.length) {
-    var /** @const {!Array<string>} */ initLines = this.emitStaticI32InitLines_(i32, startWordIndex, memVar);
-    for (var /** number */ i = 0, /** @const {number} */ initLinesCount = initLines.length; i !== initLinesCount; ++i) {
-      lines[lines.length] = initLines[i];
+  // Check whether any word in the static data span is non-zero.
+  var /** @type {boolean} */ hasNonZero = false;
+  for (var /** number */ k = 0, /** @const {number} */ i32Len = i32.length; k !== i32Len; ++k) {
+    if (0 !== i32[k]) {
+      hasNonZero = true;
+      break;
     }
   }
+
+  if (!hasNonZero) {
+    // All-zero data — single str_repeat is sufficient.
+    lines[lines.length] = memVar + ' = str_repeat("\\x00", ' + heapSize + ');';
+    return lines.join('\n');
+  }
+
+  // Build a single concatenation expression:
+  //   [str_repeat("\x00", prefixBytes) . ] pack('V*', w0, w1, ...) [ . str_repeat("\x00", suffixBytes)]
+  var /** @const {number} */ startByte = startWordIndex * 4;
+  var /** @const {number} */ dataByteLength = i32.length * 4;
+  var /** @const {number} */ suffixBytes = heapSize - startByte - dataByteLength;
+  var /** @const {!Array<string>} */ concatParts = [];
+
+  if (0 < startByte) {
+    concatParts[concatParts.length] = 'str_repeat("\\x00", ' + startByte + ')';
+  }
+
+  var /** @const {!Array<string>} */ wordStrs = [];
+  for (var /** number */ w = 0, /** @const {number} */ wLen = i32.length; w !== wLen; ++w) {
+    wordStrs[wordStrs.length] = String(i32[w]);
+  }
+  concatParts[concatParts.length] = 'pack(\'V*\', ' + wordStrs.join(', ') + ')';
+
+  if (0 < suffixBytes) {
+    concatParts[concatParts.length] = 'str_repeat("\\x00", ' + suffixBytes + ')';
+  }
+
+  lines[lines.length] = memVar + ' = ' + concatParts.join(' . ') + ';';
 
   return lines.join('\n');
 };
@@ -103,11 +99,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
       this.collectImportedFunctions_(wasmModule);
   var /** @const {!Array<string>} */ lines = [];
 
-  lines[lines.length] = '$' + moduleName + ' = function(array $foreign, array &$buffer): array {';
+  lines[lines.length] = '$' + moduleName + ' = function(array $foreign, string &$buffer): array {';
 
   // Imported function bindings from the foreign array.
   for (var /** number */ i = 0, /** @const {number} */ importCount = imports.length; i !== importCount; ++i) {
-    lines[lines.length] = '  $if_' + imports[i].base + ' = $foreign[\'' + imports[i].base + '\'] ?? null;';
+    lines[lines.length] =
+      '  $if_' + imports[i].importBaseName + ' = $foreign[\'' + imports[i].importBaseName + '\'] ?? null;';
   }
 
   // Exported function stubs — one closure per unique internal name.

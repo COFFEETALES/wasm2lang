@@ -27,12 +27,12 @@ Wasm2Lang.CLI.CommandLineParser.parseArgv = function () {
         parsedParams[optionName] = [];
       }
       if (optionMatch) {
-        parsedParams[optionName].push(optionMatch[2]);
+        parsedParams[optionName][parsedParams[optionName].length] = optionMatch[2];
         continue;
       }
       pendingOptionName = currentArg;
     } else if ('' !== pendingOptionName) {
-      parsedParams[pendingOptionName].push(currentArg);
+      parsedParams[pendingOptionName][parsedParams[pendingOptionName].length] = currentArg;
       pendingOptionName = '';
     } else {
       if ('object' !== typeof parsedParams['--input-file']) {

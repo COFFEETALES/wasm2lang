@@ -25,6 +25,7 @@
       {'sourcePath': 'src/backend/abstract_codegen.js'},
       {'sourcePath': 'src/backend/asmjs_codegen.js'},
       {'sourcePath': 'src/backend/php64_codegen.js'},
+      {'sourcePath': 'src/backend/java_codegen.js'},
       {'sourcePath': 'src/cli/command_line_parser.js'},
       {'sourcePath': 'src/options/schema.js'},
       {'sourcePath': 'src/utilities/environment.js'},

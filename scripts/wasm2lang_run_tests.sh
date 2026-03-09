@@ -9,8 +9,12 @@ if [ ${#0} -ne ${#prefix} ]; then
   EXPECTED_CWD="$(cd "$SH_SOURCE/../test_artifacts" && pwd -P)"
   ACTUAL_CWD="$(pwd -P)"
 
+
+
   fn() {
     local dirbase directory dirname filebase retcode tmpretcode
+    local LF="$(printf '\012+')"
+    LF="${LF%?}"
 
     retcode=0
 
@@ -63,7 +67,6 @@ if [ ${#0} -ne ${#prefix} ]; then
         tee "${filebase}".sm.asmjs.out
         dos2unix "${filebase}".sm.asmjs.out
       fi
-      #
       if [ -x "${PHP_CLI}" ]; then
         echo -e "\033[0;33mRunning PHP test...\033[0m"
         cat "${filebase}".php                   \
@@ -73,9 +76,20 @@ if [ ${#0} -ne ${#prefix} ]; then
           --test-name "$filebase"               \
         |                                       \
         tee "${filebase}".php.out
-        dos2unix "${filebase}".php.out
+      fi
+      if [ -x "${JSHELL_CLI}" ]; then
+        echo -e "\033[0;33mRunning Java test...\033[0m"
+        "$JSHELL_CLI"                             \
+          -J-Dline.separator="$LF"                \
+          --execution local                       \
+          -q                                      \
+          "${filebase}".java                      \
+          "./wasm2lang_java_runner.jsh"           \
+        |                                         \
+        tee "${filebase}".jshell.out
       fi
       #
+      echo ''
       diff -qs                                \
         "${filebase}".v8.wasm.out             \
         "${filebase}".v8.asmjs.out
@@ -95,6 +109,13 @@ if [ ${#0} -ne ${#prefix} ]; then
           "${filebase}".php.out
         [ $? -eq 0 ] || tmpretcode=1
       fi
+      if [ -x "${JSHELL_CLI}" ]; then
+        diff -qs                                \
+          "${filebase}".v8.wasm.out             \
+          "${filebase}".jshell.out
+        [ $? -eq 0 ] || tmpretcode=1
+      fi
+      [ $? -eq 0 ] || tmpretcode=1
       if [ 1 -eq $tmpretcode ]; then
         echo -e "Test $dirname: \033[0;31mFAILED\033[0m"
       else

@@ -26,18 +26,21 @@ if [ ${#0} -ne ${#prefix} ]; then
     rm -f                      \
      ./wasm2lang_*_*/          \
      ./wasm2lang_*_runner.js   \
+     ./wasm2lang_*_runner.jsh  \
+     ./wasm2lang_*_runner.php  \
      ./wasm2lang_run_tests.sh
 
     cp '../scripts/wasm2lang_run_tests.sh' .
-    cp '../tests/wasm2lang_php_runner.php' .
-    cp '../tests/wasm2lang_wasm_asmjs_runner.js' .
+    cp '../scripts/wasm2lang_java_runner.jsh' .
+    cp '../scripts/wasm2lang_php_runner.php' .
+    cp '../scripts/wasm2lang_wasm_asmjs_runner.js' .
 
     for file in '../tests/wasm2lang_'*'.build.js'; do
       filename="$(basename "$file")"
       filebase="${filename%'.build.js'}"
       mkdir "${filebase}"
       cp                                              \
-       '../tests/'"${filebase}"'.harness.mjs'         \
+       '../tests/'"${filebase}"'.harness.'*           \
        './'"${filebase}"'/'
       #
       # Generate original WAST
@@ -90,6 +93,18 @@ if [ ${#0} -ne ${#prefix} ]; then
         --emit-code=module                            \
         --input-file "${filebase}"/"${filebase}".wasm \
         1>"${filebase}"/"${filebase}".php
+      #
+      # Generate JAVA
+      node                                            \
+        "../wasmxlang.js"                             \
+        --normalize-wasm binaryen:none                \
+        --simplify-output                             \
+        --language-out JAVA                           \
+        --define JAVA_HEAP_SIZE=$((65536 * 8))        \
+        --emit-metadata=memBuffer                     \
+        --emit-code=module                            \
+        --input-file "${filebase}"/"${filebase}".wasm \
+        1>"${filebase}"/"${filebase}".java
     done
 
     echo "Build complete."

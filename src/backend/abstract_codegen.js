@@ -283,8 +283,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectStaticMemory_ = function (was
  *
  * @protected
  * @typedef {{
- *   name: string,
- *   base: string,
+ *   wasmFuncName: string,
+ *   importBaseName: string,
  *   importModule: string
  * }}
  */
@@ -311,8 +311,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectImportedFunctions_ = function
 
     if ('' !== funcInfo.base) {
       imports[imports.length] = {
-        name: funcInfo.name,
-        base: funcInfo.base,
+        wasmFuncName: funcInfo.name,
+        importBaseName: funcInfo.base,
         importModule: funcInfo.module
       };
     }

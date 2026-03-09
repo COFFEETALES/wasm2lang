@@ -151,7 +151,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
           }
           var /** @const {!Wasm2Lang.Wasm.Tree.TraversalChildResult} */ childResult = {
               child: childEdge,
-              result: childWalkResult
+              childTraversalResult: childWalkResult
             };
           childResults[childResults.length] = childResult;
         }

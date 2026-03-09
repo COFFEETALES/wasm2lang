@@ -3,9 +3,9 @@
 /**
  * Pass: feature-profile-validation  (phase: analyze)
  *
- * Enforces a conservative legacy wasm profile by rejecting threads / SIMD /
- * GC-family features and by ensuring traversal only sees expression IDs
- * registered in NodeSchema.
+ * Enforces a conservative wasm profile by validating the module against an
+ * explicit allowed-feature mask and by ensuring traversal only sees expression
+ * IDs registered in NodeSchema.
  *
  * @constructor
  */
@@ -34,31 +34,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.validate
     return;
   }
 
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {!BinaryenFeatures} */ features = binaryen.Features;
+  var /** @const {!BinaryenFeatures} */ features = Wasm2Lang.Processor.getBinaryen().Features;
   var /** @const {number} */ previousFeatures = wasmModule.getFeatures();
-  var /** @type {number} */ disallowedMask = 0;
-  var /** @type {number} */ allowedMask = 0;
+  // Binaryen encodes MVP as the zero-feature baseline; only post-MVP
+  // extensions have individual feature bits. Add explicitly supported
+  // post-MVP features one by one here.
+  var /** @const {number} */ allowedMask = 0 | features.NontrappingFPToInt;
   var /** @type {number} */ isValidAllowedProfile = 0;
-
-  disallowedMask |= features.Atomics;
-  disallowedMask |= features.SIMD128;
-  disallowedMask |= features.RelaxedSIMD;
-  disallowedMask |= features.FP16;
-  disallowedMask |= features.GC;
-  disallowedMask |= features.Strings;
-  disallowedMask |= features.ReferenceTypes;
-  disallowedMask |= features.ExceptionHandling;
-  disallowedMask |= features.TailCall;
-  disallowedMask |= features.Memory64;
-  disallowedMask |= features.MultiMemory;
-  disallowedMask |= features.StackSwitching;
-  disallowedMask |= features.SharedEverything;
-  disallowedMask |= features.Multivalue;
-  disallowedMask |= features.BulkMemory;
-  disallowedMask |= features.BulkMemoryOpt;
-
-  allowedMask = features.All & ~disallowedMask;
 
   try {
     wasmModule.setFeatures(allowedMask);
@@ -69,7 +51,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.validate
 
   if (0 === isValidAllowedProfile) {
     throw new Error(
-      'Wasm2Lang feature validation: module uses disallowed modern feature(s) (threads, SIMD, GC/reference, exceptions, memory64, multivalue, bulk-memory family).'
+      'Wasm2Lang feature validation: module uses wasm feature(s) outside the supported allowlist.'
     );
   }
 
@@ -91,7 +73,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.enter_ =
     return null;
   }
 
-  var /** @const {string} */ funcName = funcMetadata.name || '<unknown>';
+  var /** @const {string} */ funcName = funcMetadata.passFuncName || '<unknown>';
   throw new Error(
     'Wasm2Lang feature validation: unsupported expression ID ' +
       expression.id +

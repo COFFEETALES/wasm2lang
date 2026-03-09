@@ -103,7 +103,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
 
   // Imported function bindings from the foreign object.
   for (var /** number */ i = 0, /** @const {number} */ importCount = imports.length; i !== importCount; ++i) {
-    outputParts[outputParts.length] = '  var $if_' + imports[i].base + ' = foreign.' + imports[i].base + ';';
+    outputParts[outputParts.length] =
+      '  var $if_' + imports[i].importBaseName + ' = foreign.' + imports[i].importBaseName + ';';
   }
 
   // Exported function stubs — one declaration per unique internal name.

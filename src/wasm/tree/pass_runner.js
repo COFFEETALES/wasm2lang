@@ -63,7 +63,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_b
     var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ funcMetadata = /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ (
       Object.create(null)
     );
-    funcMetadata.name = funcInfo.name;
+    funcMetadata.passFuncName = funcInfo.name;
     funcMetadata.bodyReplaced = false;
 
     for (var /** number */ p = 0, /** @const {number} */ passCount = passes.length; p !== passCount; ++p) {

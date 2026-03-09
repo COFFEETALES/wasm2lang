@@ -94,6 +94,11 @@ BinaryenFeatures.prototype.BulkMemory;
 /**
  * @type {number}
  */
+BinaryenFeatures.prototype.NontrappingFPToInt;
+
+/**
+ * @type {number}
+ */
 BinaryenFeatures.prototype.SIMD128;
 
 /**

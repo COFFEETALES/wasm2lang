@@ -10,7 +10,7 @@ Wasm2Lang.Wasm.Tree.ExpressionInfo;
 
 /**
  * @typedef {{
- *   name: (string|undefined),
+ *   passFuncName: (string|undefined),
  *   bodyReplaced: (boolean|undefined),
  *   dropConstEliminations: (number|undefined),
  *   localGetCounts: (!Object<string, number>|undefined)
@@ -103,7 +103,7 @@ Wasm2Lang.Wasm.Tree.TraversalDecisionInput;
 /**
  * @typedef {{
  *   child: !Wasm2Lang.Wasm.Tree.ChildEdge,
- *   result: *
+ *   childTraversalResult: *
  * }}
  */
 Wasm2Lang.Wasm.Tree.TraversalChildResult;

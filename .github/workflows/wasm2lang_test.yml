@@ -19,13 +19,15 @@ jobs:
           apk add --no-cache \
             'mozjs~140'      \
             'nodejs~24'      \
-            openjdk21-jre    \
+            openjdk21        \
             php84-cli
 
       - name: "🧩 Run tests"
         working-directory: test_artifacts
         run: |
           chmod +x ./wasm2lang_run_tests.sh
+          which jshell
           SPIDERMONKEY_JS=/usr/bin/js140 \
           PHP_CLI=/usr/bin/php           \
+          JSHELL_CLI=/usr/bin/jshell     \
           ./wasm2lang_run_tests.sh
