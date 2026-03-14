@@ -1,7 +1,8 @@
+/.tmp
 /dist_artifacts
-/test_artifacts
 /node_modules
 /package-lock.json
 /temp
+/test_artifacts
 /yarn.lock
 README.*.txt

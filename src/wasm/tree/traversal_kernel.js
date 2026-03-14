@@ -143,11 +143,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
             'number' === typeof childWalkResult ? childWalkResult : childExprPtr
           );
           if (effectiveChildPtr !== childExprPtr && 0 !== effectiveChildPtr) {
-            Wasm2Lang.Wasm.Tree.TraversalKernel.applyChildReplacement_(
-              currentExprPtr,
-              childEdge,
-              effectiveChildPtr
-            );
+            Wasm2Lang.Wasm.Tree.TraversalKernel.applyChildReplacement_(currentExprPtr, childEdge, effectiveChildPtr);
           }
           var /** @const {!Wasm2Lang.Wasm.Tree.TraversalChildResult} */ childResult = {
               child: childEdge,
@@ -200,13 +196,10 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
  * @param {number} newChildPtr
  * @return {void}
  */
-Wasm2Lang.Wasm.Tree.TraversalKernel.applyChildReplacement_ = function (
-  parentExprPtr,
-  edge,
-  newChildPtr
-) {
+Wasm2Lang.Wasm.Tree.TraversalKernel.applyChildReplacement_ = function (parentExprPtr, edge, newChildPtr) {
   var /** @const {number} */ edgeIndex = /** @type {number} */ (edge[1]);
-  var /** @const {function(number, number, number): void} */ setter =
-      /** @type {function(number, number, number): void} */ (edge[4]);
+  var /** @const {function(number, number, number): void} */ setter = /** @type {function(number, number, number): void} */ (
+      edge[4]
+    );
   setter(parentExprPtr, edgeIndex, newChildPtr);
 };

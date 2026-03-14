@@ -43,13 +43,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitStaticI32InitLines_ = function (i32,
       var /** @const {number} */ value = op.fillValueI32;
       var /** @const {number} */ count = op.fillCountWords;
       lines[lines.length] =
-        'for (int $i = 0; $i < ' + count + '; $i++) ' +
-        ibVar + '.put(' + wordIndex + ' + $i, ' + String(value) + ');';
+        'for (int $i = 0; $i < ' + count + '; $i++) ' + ibVar + '.put(' + wordIndex + ' + $i, ' + String(value) + ');';
     } else {
       var /** @const {!Array<number>} */ words = op.setWordsI32;
       for (var /** number */ j = 0, /** @const {number} */ wLen = words.length; j !== wLen; ++j) {
-        lines[lines.length] =
-          ibVar + '.put(' + (wordIndex + j) + ', ' + String(words[j]) + ');';
+        lines[lines.length] = ibVar + '.put(' + (wordIndex + j) + ', ' + String(words[j]) + ');';
       }
     }
   }
@@ -82,8 +80,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitMetadata = function (wasmModule, opt
   var /** @const {!Int32Array} */ i32 = staticMemory.words;
   var /** @const {!Array<string>} */ lines = [];
 
-  lines[lines.length] = 'java.nio.ByteBuffer ' + bufferName +
-    ' = java.nio.ByteBuffer.allocate(' + heapSize +
+  lines[lines.length] =
+    'java.nio.ByteBuffer ' +
+    bufferName +
+    ' = java.nio.ByteBuffer.allocate(' +
+    heapSize +
     ').order(java.nio.ByteOrder.LITTLE_ENDIAN);';
 
   if (0 !== i32.length) {
@@ -110,8 +111,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitMetadata = function (wasmModule, opt
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options) {
   var /** @const {string} */ moduleName = /** @type {string} */ (options.emitCode);
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} */ imports =
-      this.collectImportedFunctions_(wasmModule);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_} */ moduleInfo =
+      this.collectModuleCodegenInfo_(wasmModule);
   var /** @const {!Array<string>} */ lines = [];
 
   // Class declaration — capitalise first letter for Java convention.
@@ -119,8 +120,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   lines[lines.length] = 'class ' + className + ' {';
 
   // Imported function fields — stored as java.util.function.IntUnaryOperator stubs.
-  for (var /** number */ i = 0, /** @const {number} */ importCount = imports.length; i !== importCount; ++i) {
-    lines[lines.length] = '  java.util.function.IntUnaryOperator $if_' + imports[i].importBaseName + ';';
+  for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.imports.length; i !== importCount; ++i) {
+    lines[lines.length] = '  java.util.function.IntUnaryOperator $if_' + moduleInfo.imports[i].importBaseName + ';';
   }
 
   // Buffer field.
@@ -132,21 +133,18 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   for (var /** number */ ci = 0; ci !== importCount; ++ci) {
     lines[lines.length] =
       '    this.$if_' +
-      imports[ci].importBaseName +
+      moduleInfo.imports[ci].importBaseName +
       ' = (java.util.function.IntUnaryOperator) foreign.get("' +
-      imports[ci].importBaseName +
+      moduleInfo.imports[ci].importBaseName +
       '");';
   }
   lines[lines.length] = '  }';
 
   // Exported function stubs — one method per unique internal name.
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>} */ exports =
-      this.collectExportedFunctions_(wasmModule);
-  var /** @const {!Object<string, boolean>} */ emittedStubs =
-      /** @type {!Object<string, boolean>} */ (Object.create(null));
+  var /** @const {!Object<string, boolean>} */ emittedStubs = /** @type {!Object<string, boolean>} */ (Object.create(null));
 
-  for (var /** number */ e = 0, /** @const {number} */ exportCount = exports.length; e !== exportCount; ++e) {
-    var /** @const {string} */ stubName = exports[e].stubName;
+  for (var /** number */ e = 0, /** @const {number} */ exportCount = moduleInfo.exports.length; e !== exportCount; ++e) {
+    var /** @const {string} */ stubName = moduleInfo.exports[e].stubName;
     if (!emittedStubs[stubName]) {
       emittedStubs[stubName] = true;
       lines[lines.length] = '  int ' + stubName + '() {';
@@ -159,7 +157,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   lines[lines.length] = '  java.util.Map<String, Object> getExports() {';
   lines[lines.length] = '    java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();';
   for (var /** number */ r = 0; r !== exportCount; ++r) {
-    lines[lines.length] = '    m.put("' + exports[r].exportName + '", (java.util.function.IntSupplier) this::' + exports[r].stubName + ');';
+    lines[lines.length] =
+      '    m.put("' +
+      moduleInfo.exports[r].exportName +
+      '", (java.util.function.IntSupplier) this::' +
+      moduleInfo.exports[r].stubName +
+      ');';
   }
   lines[lines.length] = '    return m;';
   lines[lines.length] = '  }';

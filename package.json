@@ -6,6 +6,6 @@
     "closure-make": "java -jar \"./node_modules/google-closure-compiler-java/compiler.jar\" --charset=\"UTF-8\" --warning_level=\"VERBOSE\" --compilation_level=\"ADVANCED_OPTIMIZATIONS\" --language_in ECMASCRIPT5_STRICT --language_out ECMASCRIPT5_STRICT --strict_mode_input --rewrite_polyfills=false --use_types_for_optimization=true --jscomp_error \"*\" --jscomp_off lintVarDeclarations --jscomp_error=reportUnknownTypes --jscomp_error=checkTypes --externs externs/*.js --js \"src/0-header.js\" --js \"src/*/**.js\" --js \"src/1-processor.js\" --js \"src/2-footer.js\" --isolation_mode IIFE --js_output_file dist_artifacts/wasm2lang.js --emit_use_strict --formatting PRETTY_PRINT"
   },
   "devDependencies": {
-    "google-closure-compiler": "^20251215.0.0"
+    "google-closure-compiler": "^20260311.0.0"
   }
 }

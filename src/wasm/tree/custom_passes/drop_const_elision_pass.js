@@ -53,8 +53,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass.prototype.enter_ = functio
   var /** @const {!BinaryenModule} */ mod =
     /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
   var /** @const {number} */ nopPtr = mod.nop();
-  var /** @const {number} */ elim =
-      /** @type {number} */ (funcMetadata.dropConstEliminations || 0) + 1;
+  var /** @const {number} */ elim = /** @type {number} */ (funcMetadata.dropConstEliminations || 0) + 1;
   funcMetadata.dropConstEliminations = elim;
 
   return {

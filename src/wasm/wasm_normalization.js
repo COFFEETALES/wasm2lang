@@ -24,6 +24,7 @@ Wasm2Lang.Wasm.WasmNormalization.readWasmModule = function (inputData, opt_binar
   }
 
   Wasm2Lang.Wasm.WasmNormalization.validateInputModule_(/** @type {!BinaryenModule} */ (wasmModule));
+  // prettier-ignore
   return /** @const {!BinaryenModule} */ (wasmModule);
 };
 
@@ -33,9 +34,8 @@ Wasm2Lang.Wasm.WasmNormalization.readWasmModule = function (inputData, opt_binar
  * @return {void}
  */
 Wasm2Lang.Wasm.WasmNormalization.validateInputModule_ = function (wasmModule) {
-  // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ validationPasses =
-    Wasm2Lang.Wasm.Tree.CustomPasses.getInputValidationPasses();
+      Wasm2Lang.Wasm.Tree.CustomPasses.getInputValidationPasses();
 
   for (var /** number */ i = 0, /** @const {number} */ passCount = validationPasses.length; i !== passCount; ++i) {
     var /** @const {!Wasm2Lang.Wasm.Tree.Pass} */ pass = validationPasses[i];

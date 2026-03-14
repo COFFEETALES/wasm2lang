@@ -43,29 +43,21 @@ $testName = (string) $obj['test-name'];
 
 // ---- Load harness ----
 
-//  $harnessPath = __DIR__ . '/' . $testName . '.harness.php';
-//
-//  if (!is_file($harnessPath)) {
-//      fwrite(STDERR, 'Harness file not found: ' . $harnessPath . PHP_EOL);
-//      exit(1);
-//  }
-//
-//  /*
-//   * The harness PHP file is expected to define:
-//   *   $memoryPageSize     (int)
-//   *   $memoryInitialPages (int)
-//   *   $memoryMaximumPages (int)
-//   *   $moduleImports      (array)     — imported functions keyed by name
-//   *   $runTest            (Closure)   — function(string &$memBuffer, Closure $stdoutWrite, array $exports): void
-//   *   $heapBase           (int)
-//   *   $dumpMemory         (bool)      — optional, default false
-//   */
-//  require $harnessPath;
-//
-//  if (!isset($dumpMemory)) {
-//      $dumpMemory = false;
-//  }
-$dumpMemory = true;
+$harnessPath = __DIR__ . '/' . $testName . '.harness.php';
+
+if (is_file($harnessPath)) {
+    /*
+     * The harness PHP file is expected to define:
+     *   $moduleImports      (array)     — imported functions keyed by name
+     *   $runTest            (Closure)   — function(string &$memBuffer, Closure $stdoutWrite, array $exports): void
+     *   $dumpMemory         (bool)      — optional, default true
+     */
+    require $harnessPath;
+}
+
+if (!isset($dumpMemory)) {
+    $dumpMemory = true;
+}
 
 // ---- Read PHP module code from stdin ----
 
@@ -104,17 +96,19 @@ if (!isset($memBuffer) || !isset($module)) {
 
 /** @var array */
 $exports = $module($moduleImports ?? [], $memBuffer);
-$instanceMemoryBuffer = $memBuffer;
+// Alias — harness callbacks that captured &$instanceMemoryBuffer now see
+// the same string that the module closures mutate via &$buffer.
+$instanceMemoryBuffer = &$memBuffer;
 
 if (isset($runTest)) {
-    $runTest($instanceMemoryBuffer, $stdoutWrite, $exports);
+    $runTest($memBuffer, $stdoutWrite, $exports);
 }
 
 // ---- Memory CRC32 dump ----
 
-if ($dumpMemory && null !== $instanceMemoryBuffer) {
+if ($dumpMemory && null !== $memBuffer) {
     /** Buffer is already a binary string — crc32() operates on it directly. */
-    $crc = crc32($instanceMemoryBuffer) & 0xFFFFFFFF;
+    $crc = crc32($memBuffer) & 0xFFFFFFFF;
 
     $stdoutWrite('Memory CRC32: 0x' . str_pad(dechex($crc), 8, '0', STR_PAD_LEFT) . "\n");
 }

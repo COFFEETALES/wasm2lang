@@ -1,148 +1,245 @@
-coffeetales.net/WASM2LANG
-=========================
+# ☕ wasm2lang
 
-**Note:** This project was originally named **wasm2asm**, but has been renamed to **wasm2lang** to reflect its updated goal: evolving from a WebAssembly → asm.js converter into a broader WebAssembly → *language* transpilation toolkit (with asm.js as one backend among others).
 
-This tool is primarily intended for internal use. At the moment, the README is not designed to provide extensive explanations. However, we welcome contributions, so please feel free to submit a Pull Request if you have any additions or improvements you would like to share.
+<div align="center">
 
-Roadmap
--------
+### Transform WebAssembly into practical target-language output 🚀
 
-**The journey isn't over — wasm2lang still has a bright future ahead!**
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-pink?style=for-the-badge)](https://github.com/sponsors/COFFEETALES)
+[![GitHub stars](https://img.shields.io/github/stars/COFFEETALES/wasm2lang?style=for-the-badge)](../../stargazers)
 
-Planned improvements (revised):
+</div>
 
-1. 🔄 **Swap UglifyJS for `@babel/generator`** ✅
-   * Use modern Babel-based code generation for asm.js output. ✅
-2. 🧹 **Integrate Google Closure Compiler** ⏳
-   * Use Closure for advanced compilation, linting, and minification.
-   * Modularize the codebase (clear passes: parse → transform → generate) and remove legacy utilities.
-   * Add type discipline: JSDoc typedefs compatible with Closure.
-3. 🌐 **Backends** ⏳
-   * **PHP backend** for experimental wasm→PHP transpilation.
-   * **Java backend** added alongside PHP for future multi-target experiments.
-4. ⚙️ **GitHub Actions CI** ⏳
-   * Run tests on push/PR. ✅
-   * Enforce linting and build checks.
-   * Produce artifacts for inspection (e.g., generated asm.js, heap dumps). ✅
-5. 📦 **Publish CLI to npm** ⏳
-   * Provide an installable CLI (`wasm2lang`) with clear command usage.
-6. 🧪 **Deterministic test harness (wasm vs asm.js)** ⏳
-   * Execute identical workloads via the true WebAssembly binary and the produced asm.js. ✅
-   * Compare **HEAP array** contents (and/or slices) to assert bit-for-bit equivalence, enabling near-ISO validation. ✅
-   * Include fixtures and golden outputs for regression testing.
-7. 🛠 **C → asm.js examples with Makefile builds** ⏳
-   * Provide concrete C examples compiled to wasm then to asm.js, with reproducible Makefile targets.
-   * Curated examples showcasing CLI usage and the Makefile-based C build pipeline.
-   * Include small, focused programs (math kernels, string ops, memory ops) to exercise HEAP behavior.
+> 💖 If `wasm2lang` is useful in your workflow, please consider sponsoring the project on GitHub. Sponsorship directly supports refactoring, backend quality, validation, and long-term sustainability.
 
-Browser Compatibility for Optimal Performance
----------------------------------------------
+---
 
-- **Edge (EdgeHTML ≥13)**: Early Microsoft Edge versions (pre-Chromium) could validate asm.js modules, ensuring basic compatibility.
-- **Chromium (≥61)**: The Chromium engine (including Chrome) added an asm.js validator starting at version 61, which allows correct execution of generated asm.js.
-- **Firefox (≥34)**: Mozilla Firefox introduced full asm.js support earlier, including 32-bit floating-point operations from version 34 onward.
+## ✨ What is `wasm2lang`?
 
-⚠️ Note: asm.js is primarily of historical/legacy interest today. This project focuses on toolchains and transpilation pipelines, not on end-user browser performance.
+`wasm2lang` is a command-line tool that transforms **WebAssembly** inputs into other target-language outputs through a controlled and maintainable pipeline.
 
-Usage
------
+It currently focuses on:
 
-``` bash
-$> npm install
+- ⚙️ reliable code generation workflows
+- 🧩 backend emission for **asm.js** and **PHP**
+- 🧭 predictable normalization and traversal behavior
+- ✅ validation through project-specific build and test commands
+- 🔧 ongoing refactoring to make backend support easier to maintain and extend
+
+This project is designed for people who want to work directly with the transformation process, inspect emitted output, and evolve backend support in a disciplined way.
+
+---
+
+## 🌟 Why this project exists
+
+Working with WebAssembly is powerful, but backend-oriented transformation workflows can get messy fast.
+
+`wasm2lang` aims to make that process more:
+
+- **predictable**
+- **inspectable**
+- **maintainable**
+- **practical for real code generation**
+
+The current priority is **useful output generation** and a **cleaner internal architecture**, rather than broad feature coverage.
+
+---
+
+## 👥 Who is this for?
+
+`wasm2lang` may be useful for:
+
+- 🛠️ developers experimenting with WebAssembly transformation pipelines
+- 🔍 people who want to inspect generated output closely
+- 🧪 contributors interested in compiler/codegen backend work
+- 🏗️ maintainers who value explicit validation and predictable internal passes
+- 📚 researchers or hobbyists exploring cross-language backend emission
+
+---
+
+## 🎯 Current scope
+
+At the moment, `wasm2lang` is focused on:
+
+- processing WebAssembly inputs through a controlled transformation pipeline
+- emitting target code for:
+  - **asm.js**
+  - **PHP**
+- supporting development and debugging with stable traversal and codegen flows
+- validating changes with repository-specific checks and generated test artifacts
+
+---
+
+## 🛠️ How it works
+
+A typical `wasm2lang` workflow looks like this:
+
+1. 📥 read a WebAssembly input
+2. 🧹 normalize it through configured passes
+3. 🌲 traverse the internal representation
+4. 🏗️ emit code for a selected backend
+5. ✅ validate the result with build and runtime checks
+
+This keeps the workflow practical for both day-to-day usage and backend experimentation.
+
+---
+
+## 🚀 Usage
+
+Example CLI command:
+
+```bash
+node wasmxlang.js                                 \
+  --dev                                           \
+  --input-file sample.wast                        \
+  --normalize-wasm binaryen:min,wasm2lang:codegen \
+  --emit-code
 ```
 
-### Sample wasm input
+The exact available flags and workflows may evolve as the refactor continues, but the main usage model remains centered on:
 
-``` wat
-(module
-  (export "fib" (func $fib))
+* input normalization
+* backend emission
+* emitted code inspection
+* regression validation
 
-  ;; Semantics: if n < 2 then 1 else iterate up to n (inclusive)
-  (func $fib (param $n i32) (result i32)
-    (local $a i32)
-    (local $b i32)
-    (local $i i32)
+---
 
-    (if
-      (i32.lt_s (local.get $n) (i32.const 2))
-      (then
-        (return (i32.const 1))
-      )
-    )
+## 🧪 Supported backends
 
-    (local.set $a (i32.const 1))
-    (local.set $b (i32.const 1))
-    (local.set $i (i32.const 2))
+### ⚡ asm.js
 
-    (block $exit
-      (loop $loop
-        (br_if $exit
-          (i32.gt_s (local.get $i) (local.get $n))
-        )
+The **asm.js** backend is an actively maintained output target.
 
-        ;; b = a + b; a = old b
-        (local.set $b (i32.add (local.get $a) (local.get $b)))
-        (local.set $a (i32.sub (local.get $b) (local.get $a)))
+It is part of the main validation workflow and remains one of the primary focuses of current development.
 
-        (local.set $i (i32.add (local.get $i) (i32.const 1)))
-        (br $loop)
-      )
-    )
+### 🐘 PHP
 
-    (local.get $b)
-  )
-)
+The **PHP** backend is also under active development and is part of the current backend focus alongside **asm.js**.
+
+### ☕ Java
+
+A **Java** backend remains part of the broader direction of the project.
+
+It is not currently a primary focus, but the ongoing refactoring work is intended to keep the backend architecture extensible enough to support it more cleanly over time.
+
+---
+
+## 🧱 Development status
+
+Recent work has focused on:
+
+* 🔧 active refactoring of the internal pipeline
+* 🏗️ continued progress on backend emission
+* 🧭 keeping traversal behavior reliable for:
+
+  * custom pass execution
+  * MVP-oriented input validation
+  * code emission flows
+
+The current development focus is on making the tool more consistent, easier to evolve, and less prone to codegen regressions.
+
+---
+
+## ✅ Validation
+
+Changes should be validated with project-aware commands.
+
+Core validation commands:
+
+```bash
+yarn closure-make
 ```
 
-``` bash
-$> node wasm2lang.js              \
- --optimize                       \
- --normalize-wasm=2               \
- --language_out=ASMJS             \
- -DASMJS_HEAP_SIZE=$((65536 * 8)) \
- --emit-metadata=memBuf           \
- --emit-code=asmjsModule          \
- wast:sample.wast
+```bash
+node wasmxlang.js --dev --input-file sample.wast --normalize-wasm binaryen:min,wasm2lang:codegen --emit-code
 ```
 
-### Generated javascript
+Validation matters because this project is optimized for **confidence in emitted output**, not just raw experimentation.
 
-``` javascript
-var memBuf = new ArrayBuffer(524288);
-var i32_array = new Int32Array(memBuf);
-i32_array.set([0], 0);
+---
 
-var asmjsModule = function (stdlib, foreign, buffer) {
-  "use asm";
-  function $fib($fib_aa) {
-    $fib_aa = $fib_aa | 0;
-    var $fib_ab = 0,
-      $fib_ac = 0,
-      $fib_ad = 0;
-    if (($fib_aa | 0) < 2) {
-      return 1;
-    }
-    $fib_ac = 1;
-    $fib_ab = 1;
-    $fib_ad = 2;
-    while (($fib_aa | 0) >= ($fib_ad | 0)) {
-      $fib_ab = $fib_ac + $fib_ab | 0;
-      $fib_ac = $fib_ab - $fib_ac | 0;
-      $fib_ad = $fib_ad + 1 | 0;
-    }
-    return $fib_ab | 0;
-  }
-  return {
-    fib: $fib
-  };
-};
-```
+## 🗺️ Roadmap
 
-Credits
--------
+Here's the general direction of the project:
 
-[Babel](https://babeljs.io)
-[Binaryen](https://github.com/WebAssembly/binaryen)
-[UglifyJS](https://github.com/mishoo/UglifyJS)
-[Coffeetales](https://coffeetales.net)
+* [x] Maintain `asm.js` backend support
+* [x] Continue improving `PHP` backend support
+* [x] Strengthen normalization and traversal reliability
+* [x] Improve validation and regression confidence
+* [ ] Make backend internals easier to extend
+* [ ] Reduce friction when adding or reviving additional targets
+* [ ] Improve contributor ergonomics and documentation
+* [ ] Keep Java/backend expansion practical over time
+
+---
+
+## 💡 Example focus areas
+
+Useful areas of ongoing work include:
+
+* backend emission improvements
+* traversal and schema consistency
+* validation fixtures
+* code generation stability
+* documentation and usage clarity
+* internal refactoring for future backend growth
+
+---
+
+## 🤝 Contributing
+
+Bug reports, focused issues, and pull requests are very welcome.
+
+Good contribution areas include:
+
+* 🧩 backend emission improvements
+* 🌲 traversal and schema consistency
+* ✅ validation fixtures and regression coverage
+* ⚙️ code generation stability
+* 📖 documentation and usage clarity
+
+Even small improvements help move the project forward.
+
+---
+
+## 💖 Sponsorship
+
+If this tool is useful to you, GitHub sponsorship is one of the best ways to support continued development.
+
+Sponsorship helps fund work on:
+
+* 🔧 refactoring
+* 🧪 validation coverage
+* 🏗️ backend emission quality
+* 🧭 tooling stability
+* 📚 documentation
+* 🚀 long-term backend expansion
+
+Support is especially meaningful for users who rely on the continued improvement of the **asm.js** and **PHP** backends.
+
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-pink?style=for-the-badge)](https://github.com/sponsors/COFFEETALES)
+
+### Why sponsor?
+
+Because sponsorship makes it easier to spend time on the work that often matters most, but is hardest to fund:
+
+* reducing regressions
+* cleaning up internal architecture
+* improving emitted output quality
+* maintaining backend momentum
+* making the project sustainable over time
+
+> If `wasm2lang` saves you time, helps your experiments, or supports your tooling workflow, sponsoring the project is a practical way to help it grow.
+
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-pink?style=for-the-badge)](https://github.com/sponsors/COFFEETALES)
+
+---
+
+## 📣 A note for users
+
+If you use `wasm2lang` in your workflow, star the repo ⭐, open issues when something breaks 🐛, and consider sponsoring the project 💖
+
+That combination helps a lot.
+
+Every bit of support helps keep `wasm2lang` improving.

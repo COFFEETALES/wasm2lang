@@ -39,7 +39,60 @@ Wasm2Lang.Backend.createBackend = function (languageId) {
 /**
  * @constructor
  */
-Wasm2Lang.Backend.AbstractCodegen = function () {};
+Wasm2Lang.Backend.AbstractCodegen = function () {
+  /** @protected @type {?Object<string, boolean>} */
+  this.usedHelpers_ = null;
+};
+
+/**
+ * Records a helper function name as used.  Concrete backends may override
+ * to add dependency resolution.
+ *
+ * @protected
+ * @param {string} name
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.markHelper_ = function (name) {
+  if (this.usedHelpers_) {
+    this.usedHelpers_[name] = true;
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Expression category constants.
+//
+// Each emitted expression carries a category that tells consumers whether
+// coercion has already been applied.  Consumers call coerceToType_ which
+// skips redundant coercion when the category satisfies the target type.
+//
+// i32 categories (0-4) are defined in I32Coercion and reused here.
+// ---------------------------------------------------------------------------
+
+/** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_VOID = -1;
+/** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_F32 = 5;
+/** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_F64 = 6;
+/** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_RAW = 7;
+
+/**
+ * Returns the expression category that {@code renderCoercionByType_} produces
+ * for the given wasm type.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} wasmType
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.catForCoercedType_ = function (binaryen, wasmType) {
+  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
+    return Wasm2Lang.Backend.I32Coercion.SIGNED;
+  }
+  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
+    return Wasm2Lang.Backend.AbstractCodegen.CAT_F32;
+  }
+  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
+    return Wasm2Lang.Backend.AbstractCodegen.CAT_F64;
+  }
+  return Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+};
 
 /**
  * Default metadata emission — returns the raw option string.  Concrete
@@ -322,6 +375,31 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectImportedFunctions_ = function
 };
 
 /**
+ * Collects the full signature of every wasm function, keyed by internal name.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @return {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionSignatures_ = function (wasmModule) {
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @const {number} */ numFuncs = wasmModule.getNumFunctions();
+  var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ signatures =
+      /** @type {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ (Object.create(null));
+
+  for (var /** number */ f = 0; f !== numFuncs; ++f) {
+    var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(f);
+    var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
+    signatures[funcInfo.name] = {
+      params: binaryen.expandType(funcInfo.params),
+      results: funcInfo.results
+    };
+  }
+
+  return signatures;
+};
+
+/**
  * Descriptor for a single wasm-level function export.
  *
  * {@code stubName} is a safe identifier derived from the internal wasm name —
@@ -338,10 +416,37 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectImportedFunctions_ = function
 Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_;
 
 /**
+ * Signature information for a wasm function.
+ *
+ * @protected
+ * @typedef {{
+ *   params: !Array<number>,
+ *   results: number
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_;
+
+/**
+ * Shared module-level metadata used by concrete backend emitters.
+ *
+ * @protected
+ * @typedef {{
+ *   imports: !Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>,
+ *   importedNames: !Object<string, string>,
+ *   functionSignatures: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>,
+ *   globals: !Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>,
+ *   globalTypes: !Object<string, number>,
+ *   exports: !Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>,
+ *   functions: !Array<!BinaryenFunctionInfo>
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_;
+
+/**
  * Returns a safe identifier for use as a function/variable name.  Names that
  * start with a digit are prefixed with {@code "fn_"}.
  *
- * @private
+ * @protected
  * @param {string} name
  * @return {string}
  */
@@ -353,6 +458,391 @@ Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_ = function (name) {
   }
   return name;
 };
+
+/**
+ * Returns a string of {@code indent} two-space indentation units.
+ *
+ * @protected
+ * @param {number} indent
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.pad_ = function (indent) {
+  var /** @type {string} */ s = '';
+  for (var /** number */ k = 0; k !== indent; ++k) {
+    s += '  ';
+  }
+  return s;
+};
+
+/**
+ * Formats a floating-point literal without introducing target-language
+ * specific coercion syntax.
+ *
+ * Concrete backends decide whether the formatted literal needs additional
+ * wrapping for f32/f64 semantics.
+ *
+ * @protected
+ * @param {number} value
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_ = function (value) {
+  if (!isFinite(value)) {
+    return String(value);
+  }
+  return Math.floor(value) === value ? String(value) + '.0' : String(value);
+};
+
+/**
+ * Appends every non-empty line from {@code text} to {@code parts}.
+ *
+ * @protected
+ * @param {!Array<string>} parts
+ * @param {*} text
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) {
+  if ('string' !== typeof text || '' === text) {
+    return;
+  }
+
+  var /** @const {!Array<string>} */ lines = text.split('\n');
+  for (var /** number */ i = 0, /** @const {number} */ lineCount = lines.length; i !== lineCount; ++i) {
+    if ('' !== lines[i]) {
+      parts[parts.length] = lines[i];
+    }
+  }
+};
+
+/**
+ * Shared textual precedence helper for string-based backend emitters.
+ *
+ * @protected
+ * @typedef {{
+ *   PREC_ASSIGN_: number,
+ *   PREC_CONDITIONAL_: number,
+ *   PREC_BIT_OR_: number,
+ *   PREC_BIT_XOR_: number,
+ *   PREC_BIT_AND_: number,
+ *   PREC_EQUALITY_: number,
+ *   PREC_RELATIONAL_: number,
+ *   PREC_SHIFT_: number,
+ *   PREC_ADDITIVE_: number,
+ *   PREC_MULTIPLICATIVE_: number,
+ *   PREC_UNARY_: number,
+ *   PREC_PRIMARY_: number,
+ *   isUnaryPosition_: function(string, number): boolean,
+ *   isFullyParenthesized: function(string): boolean,
+ *   topLevel: function(string): number,
+ *   wrap: function(string, number, boolean): string,
+ *   renderPrefix: function(string, string): string,
+ *   renderInfix: function(string, string, string, number, boolean=): string,
+ *   formatCondition: function(string): string
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_;
+
+/**
+ * Shared textual precedence helper for string-based backend emitters.
+ *
+ * The helper scans already-rendered expressions and only adds grouping when a
+ * caller requests it for precedence/parse correctness. Concrete backends keep
+ * their own coercion helpers on top of this while reusing the same grouping
+ * rules for infix/prefix rendering and statement conditions.
+ *
+ * @protected
+ * @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_}
+ */
+Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ ({
+  PREC_ASSIGN_: 1,
+  PREC_CONDITIONAL_: 2,
+  PREC_BIT_OR_: 3,
+  PREC_BIT_XOR_: 4,
+  PREC_BIT_AND_: 5,
+  PREC_EQUALITY_: 6,
+  PREC_RELATIONAL_: 7,
+  PREC_SHIFT_: 8,
+  PREC_ADDITIVE_: 9,
+  PREC_MULTIPLICATIVE_: 10,
+  PREC_UNARY_: 11,
+  PREC_PRIMARY_: 12,
+
+  /**
+   * @param {string} expr
+   * @param {number} index
+   * @return {boolean}
+   */
+  isUnaryPosition_: function (expr, index) {
+    var /** @type {number} */ i = index - 1;
+
+    while (0 <= i && /\s/.test(expr.charAt(i))) {
+      --i;
+    }
+    if (0 > i) {
+      return true;
+    }
+
+    return -1 !== '([?:=,+-*/%&|^!<>'.indexOf(expr.charAt(i));
+  },
+
+  /**
+   * @param {string} expr
+   * @return {boolean}
+   */
+  isFullyParenthesized: function (expr) {
+    var /** @type {number} */ start = 0;
+    var /** @type {number} */ end = expr.length - 1;
+    var /** @type {number} */ depth = 0;
+    var /** @type {number} */ i = 0;
+
+    while (start <= end && /\s/.test(expr.charAt(start))) {
+      start++;
+    }
+    while (end >= start && /\s/.test(expr.charAt(end))) {
+      end--;
+    }
+    if (start >= end || '(' !== expr.charAt(start) || ')' !== expr.charAt(end)) {
+      return false;
+    }
+
+    for (i = start; i <= end; ++i) {
+      var /** @const {string} */ ch = expr.charAt(i);
+      if ('(' === ch) {
+        depth++;
+      } else if (')' === ch) {
+        depth--;
+        if (0 === depth && i !== end) {
+          return false;
+        }
+        if (0 > depth) {
+          return false;
+        }
+      }
+    }
+
+    return 0 === depth;
+  },
+
+  /**
+   * @param {string} expr
+   * @return {number}
+   */
+  topLevel: function (expr) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    var /** @const {string} */ s = expr.replace(/^\s+|\s+$/g, '');
+    var /** @type {number} */ depthParen = 0;
+    var /** @type {number} */ depthBracket = 0;
+    var /** @type {boolean} */ inSingle = false;
+    var /** @type {boolean} */ inDouble = false;
+    var /** @type {boolean} */ escaped = false;
+    var /** @type {number} */ lowest = P.PREC_PRIMARY_;
+    var /** @type {number} */ i = 0;
+
+    if ('' === s || P.isFullyParenthesized(s)) {
+      return P.PREC_PRIMARY_;
+    }
+
+    for (i = 0; i < s.length; ++i) {
+      var /** @const {string} */ ch = s.charAt(i);
+      var /** @const {string} */ next = s.charAt(i + 1);
+
+      if (inSingle) {
+        if (escaped) {
+          escaped = false;
+        } else if ('\\' === ch) {
+          escaped = true;
+        } else if ("'" === ch) {
+          inSingle = false;
+        }
+        continue;
+      }
+      if (inDouble) {
+        if (escaped) {
+          escaped = false;
+        } else if ('\\' === ch) {
+          escaped = true;
+        } else if ('"' === ch) {
+          inDouble = false;
+        }
+        continue;
+      }
+      if ("'" === ch) {
+        inSingle = true;
+        continue;
+      }
+      if ('"' === ch) {
+        inDouble = true;
+        continue;
+      }
+      if ('(' === ch) {
+        ++depthParen;
+        continue;
+      }
+      if (')' === ch) {
+        --depthParen;
+        continue;
+      }
+      if ('[' === ch) {
+        ++depthBracket;
+        continue;
+      }
+      if (']' === ch) {
+        --depthBracket;
+        continue;
+      }
+      if (0 !== depthParen || 0 !== depthBracket) {
+        continue;
+      }
+
+      if ('?' === ch) {
+        lowest = Math.min(lowest, P.PREC_CONDITIONAL_);
+        continue;
+      }
+      if ('|' === ch) {
+        if ('|' !== next) {
+          lowest = Math.min(lowest, P.PREC_BIT_OR_);
+        }
+        continue;
+      }
+      if ('^' === ch) {
+        lowest = Math.min(lowest, P.PREC_BIT_XOR_);
+        continue;
+      }
+      if ('&' === ch) {
+        if ('&' !== next) {
+          lowest = Math.min(lowest, P.PREC_BIT_AND_);
+        }
+        continue;
+      }
+      if ('=' === ch) {
+        if ('=' === next) {
+          lowest = Math.min(lowest, P.PREC_EQUALITY_);
+          if ('=' === s.charAt(i + 2)) {
+            i += 2;
+          } else {
+            i += 1;
+          }
+          continue;
+        }
+        if ('!' !== s.charAt(i - 1) && '<' !== s.charAt(i - 1) && '>' !== s.charAt(i - 1)) {
+          lowest = Math.min(lowest, P.PREC_ASSIGN_);
+        }
+        continue;
+      }
+      if ('!' === ch) {
+        if ('=' === next) {
+          lowest = Math.min(lowest, P.PREC_EQUALITY_);
+          if ('=' === s.charAt(i + 2)) {
+            i += 2;
+          } else {
+            i += 1;
+          }
+          continue;
+        }
+        if (P.isUnaryPosition_(s, i)) {
+          lowest = Math.min(lowest, P.PREC_UNARY_);
+        }
+        continue;
+      }
+      if ('<' === ch) {
+        if ('<' === next) {
+          lowest = Math.min(lowest, P.PREC_SHIFT_);
+          i += 1;
+        } else {
+          lowest = Math.min(lowest, P.PREC_RELATIONAL_);
+          if ('=' === next) {
+            i += 1;
+          }
+        }
+        continue;
+      }
+      if ('>' === ch) {
+        if ('>' === next) {
+          lowest = Math.min(lowest, P.PREC_SHIFT_);
+          if ('>' === s.charAt(i + 2)) {
+            i += 2;
+          } else {
+            i += 1;
+          }
+        } else {
+          lowest = Math.min(lowest, P.PREC_RELATIONAL_);
+          if ('=' === next) {
+            i += 1;
+          }
+        }
+        continue;
+      }
+      if ('+' === ch || '-' === ch) {
+        if (!P.isUnaryPosition_(s, i)) {
+          lowest = Math.min(lowest, P.PREC_ADDITIVE_);
+        }
+        continue;
+      }
+      if ('*' === ch || '/' === ch || '%' === ch) {
+        lowest = Math.min(lowest, P.PREC_MULTIPLICATIVE_);
+      }
+    }
+
+    return lowest;
+  },
+
+  /**
+   * @param {string} expr
+   * @param {number} requiredPrecedence
+   * @param {boolean} allowEqual
+   * @return {string}
+   */
+  wrap: function (expr, requiredPrecedence, allowEqual) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    var /** @const {number} */ actualPrecedence = P.topLevel(expr);
+
+    if (
+      P.isFullyParenthesized(expr) ||
+      actualPrecedence > requiredPrecedence ||
+      (allowEqual && actualPrecedence === requiredPrecedence)
+    ) {
+      return expr;
+    }
+    return '(' + expr + ')';
+  },
+
+  /**
+   * @param {string} op
+   * @param {string} expr
+   * @return {string}
+   */
+  renderPrefix: function (op, expr) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    return op + P.wrap(expr, P.PREC_UNARY_, true);
+  },
+
+  /**
+   * @param {string} L
+   * @param {string} op
+   * @param {string} R
+   * @param {number} precedence
+   * @param {boolean=} opt_allowRightEqual
+   * @return {string}
+   */
+  renderInfix: function (L, op, R, precedence, opt_allowRightEqual) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    return P.wrap(L, precedence, true) + ' ' + op + ' ' + P.wrap(R, precedence, !!opt_allowRightEqual);
+  },
+
+  /**
+   * @param {string} expr
+   * @return {string}
+   */
+  formatCondition: function (expr) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    if ('' === expr) {
+      return '(0)';
+    }
+    if (P.isFullyParenthesized(expr)) {
+      return expr;
+    }
+    return '(' + expr + ')';
+  }
+});
 
 /**
  * Collects every function export from the wasm module.  Non-function exports
@@ -387,6 +877,400 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectExportedFunctions_ = function
   }
 
   return exports;
+};
+
+/**
+ * Collects every non-imported function from the wasm module in module index
+ * order.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @return {!Array<!BinaryenFunctionInfo>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.collectDefinedFunctions_ = function (wasmModule) {
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @const {number} */ numFuncs = wasmModule.getNumFunctions();
+  var /** @const {!Array<!BinaryenFunctionInfo>} */ functions = [];
+
+  for (var /** number */ f = 0; f !== numFuncs; ++f) {
+    var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(f);
+    var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
+
+    if ('' === funcInfo.base) {
+      functions[functions.length] = funcInfo;
+    }
+  }
+
+  return functions;
+};
+
+/**
+ * Descriptor for a single wasm-level module global variable.
+ *
+ * @protected
+ * @typedef {{
+ *   globalName: string,
+ *   globalType: number,
+ *   globalMutable: boolean,
+ *   globalInitValue: number
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_;
+
+/**
+ * Collects every non-imported global variable from the wasm module.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @return {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.collectGlobals_ = function (wasmModule) {
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @const {number} */ numGlobals = wasmModule.getNumGlobals();
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = [];
+
+  for (var /** number */ i = 0; i !== numGlobals; ++i) {
+    var /** @const {number} */ globalPtr = wasmModule.getGlobalByIndex(i);
+    var /** @const {!BinaryenGlobalInfo} */ globalInfo = binaryen.getGlobalInfo(globalPtr);
+    if ('' !== globalInfo.base) {
+      continue;
+    }
+    var /** @const {!BinaryenExpressionInfo} */ initExpr = binaryen.getExpressionInfo(globalInfo.init);
+    globals[globals.length] = {
+      globalName: globalInfo.name,
+      globalType: globalInfo.type,
+      globalMutable: !!globalInfo.mutable,
+      globalInitValue: /** @type {number} */ (initExpr.value) || 0
+    };
+  }
+
+  return globals;
+};
+
+/**
+ * Builds a lookup table from internal wasm function name to import base name.
+ *
+ * @protected
+ * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} imports
+ * @return {!Object<string, string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.collectImportedNameMap_ = function (imports) {
+  var /** @const {!Object<string, string>} */ importedNames = /** @type {!Object<string, string>} */ (Object.create(null));
+
+  for (var /** number */ i = 0, /** @const {number} */ importCount = imports.length; i !== importCount; ++i) {
+    importedNames[imports[i].wasmFuncName] = imports[i].importBaseName;
+  }
+
+  return importedNames;
+};
+
+/**
+ * Builds a lookup table from global name to wasm value type.
+ *
+ * @protected
+ * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} globals
+ * @return {!Object<string, number>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.collectGlobalTypeMap_ = function (globals) {
+  var /** @const {!Object<string, number>} */ globalTypes = /** @type {!Object<string, number>} */ (Object.create(null));
+
+  for (var /** number */ i = 0, /** @const {number} */ globalCount = globals.length; i !== globalCount; ++i) {
+    globalTypes[globals[i].globalName] = globals[i].globalType;
+  }
+
+  return globalTypes;
+};
+
+/**
+ * Collects the module-level metadata shared by concrete emitters.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function (wasmModule) {
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} */ imports =
+      this.collectImportedFunctions_(wasmModule);
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = this.collectGlobals_(wasmModule);
+
+  return {
+    imports: imports,
+    importedNames: this.collectImportedNameMap_(imports),
+    functionSignatures: this.collectFunctionSignatures_(wasmModule),
+    globals: globals,
+    globalTypes: this.collectGlobalTypeMap_(globals),
+    exports: this.collectExportedFunctions_(wasmModule),
+    functions: this.collectDefinedFunctions_(wasmModule)
+  };
+};
+
+/**
+ * Backend hook for wasm-type coercion used by the shared typed-string helpers.
+ *
+ * Concrete backends override this with target-language coercion rules.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} expr
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderCoercionByType_ = function (binaryen, expr, wasmType) {
+  void binaryen;
+  void wasmType;
+  return expr;
+};
+
+/**
+ * Coerces {@code expr} to {@code wasmType}, skipping the coercion when
+ * {@code cat} indicates the expression already satisfies the target type.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} expr
+ * @param {number} cat  Expression category (I32Coercion constant or CAT_*).
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_ = function (binaryen, expr, cat, wasmType) {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
+    if (C.SIGNED === cat || C.FIXNUM === cat) return expr;
+  } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
+    if (A.CAT_F32 === cat) return expr;
+  } else if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
+    if (A.CAT_F64 === cat) return expr;
+  }
+  return this.renderCoercionByType_(binaryen, expr, wasmType);
+};
+
+/**
+ * Shared typed helper-call rendering for string-expression backends.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} helperName
+ * @param {!Array<string>} args
+ * @param {number} resultType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderHelperCall_ = function (binaryen, helperName, args, resultType) {
+  this.markHelper_(helperName);
+  return this.renderCoercionByType_(binaryen, helperName + '(' + args.join(', ') + ')', resultType);
+};
+
+/**
+ * Backend hook returning the runtime helper prefix (for example {@code "$w2l_"}
+ * in asm.js and {@code "_w2l_"} in PHP).
+ *
+ * @protected
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getRuntimeHelperPrefix_ = function () {
+  return '';
+};
+
+/**
+ * Backend hook turning a relational-condition expression into an i32 result.
+ *
+ * @protected
+ * @param {string} conditionExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
+  return conditionExpr;
+};
+
+/**
+ * Shared rendering for non-i32 numeric binary operations.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Wasm2Lang.Backend.NumericOps.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @type {number} */ precedence = P.PREC_ADDITIVE_;
+
+  if (info.isComparison) {
+    return this.renderNumericComparisonResult_(P.renderInfix(L, info.operator, R, P.PREC_RELATIONAL_));
+  }
+
+  if ('mul' === info.name || 'div' === info.name) {
+    precedence = P.PREC_MULTIPLICATIVE_;
+  }
+
+  if ('min' === info.name || 'max' === info.name || 'copysign' === info.name) {
+    return this.renderHelperCall_(
+      binaryen,
+      this.getRuntimeHelperPrefix_() + info.name + '_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, info.resultType),
+      [L, R],
+      info.resultType
+    );
+  }
+
+  return this.renderCoercionByType_(binaryen, P.renderInfix(L, info.operator, R, precedence), info.resultType);
+};
+
+/**
+ * Shared rendering for non-i32 numeric unary operations and conversions.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Wasm2Lang.Backend.NumericOps.UnaryOpInfo} info
+ * @param {string} valueExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @type {string} */ helperName = this.getRuntimeHelperPrefix_() + info.name;
+
+  if ('neg' === info.name) {
+    return this.renderCoercionByType_(binaryen, P.renderPrefix('-', valueExpr), info.resultType);
+  }
+
+  if (
+    'abs' === info.name ||
+    'ceil' === info.name ||
+    'floor' === info.name ||
+    'trunc' === info.name ||
+    'nearest' === info.name ||
+    'sqrt' === info.name
+  ) {
+    helperName += '_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, info.operandType);
+  }
+
+  return this.renderHelperCall_(binaryen, helperName, [valueExpr], info.resultType);
+};
+
+/**
+ * Builds the coerced argument list for a direct wasm call expression.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Object<string, *>} expr
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
+  binaryen,
+  expr,
+  childResults,
+  functionSignatures
+) {
+  var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ callSig = functionSignatures[callTarget] || {
+      params: [],
+      results: /** @type {number} */ (expr['type'])
+    };
+  var /** @const {!Array<number>} */ operands = /** @type {!Array<number>} */ (expr['operands']) || [];
+  var /** @const {!Array<string>} */ callArgs = [];
+
+  for (var /** number */ ai = 0, /** @const {number} */ alen = childResults.length; ai !== alen; ++ai) {
+    var /** @const {*} */ argValue = childResults[ai].childTraversalResult;
+    var /** @type {string} */ argStr;
+    var /** @type {number} */ argCat;
+    if ('string' === typeof argValue) {
+      argStr = argValue;
+      argCat = Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+    } else if (argValue && 'string' === typeof argValue['s']) {
+      argStr = /** @type {string} */ (argValue['s']);
+      argCat =
+        'number' === typeof argValue['c'] ? /** @type {number} */ (argValue['c']) : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+    } else {
+      argStr = '0';
+      argCat = Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+    }
+    var /** @const {number} */ argType =
+        ai < callSig.params.length ? callSig.params[ai] : binaryen.getExpressionInfo(operands[ai]).type;
+    callArgs[callArgs.length] = this.coerceToType_(binaryen, argStr, argCat, argType);
+  }
+
+  return callArgs;
+};
+
+/**
+ * Backend-provided renderers for i32 binary-op categories.
+ *
+ * Concrete backends supply target-language syntax for each category while the
+ * shared dispatcher keeps the {@code I32Coercion.OP_*} switch in one place.
+ *
+ * @protected
+ * @typedef {{
+ *   renderArithmetic: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
+ *   renderMultiply: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
+ *   renderDivision: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
+ *   renderBitwise: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
+ *   renderRotate: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
+ *   renderComparison: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
+ *   renderUnknown: (function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string|undefined)
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.BinaryOpRenderer_;
+
+/**
+ * Dispatches a classified i32 binary operation to backend-specific renderers.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.BinaryOpRenderer_} renderer
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOpByCategory_ = function (info, L, R, renderer) {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+
+  if (C.OP_ARITHMETIC === info.category) {
+    return renderer.renderArithmetic.call(this, info, L, R);
+  } else if (C.OP_MULTIPLY === info.category) {
+    return renderer.renderMultiply.call(this, info, L, R);
+  } else if (C.OP_DIVISION === info.category) {
+    return renderer.renderDivision.call(this, info, L, R);
+  } else if (C.OP_BITWISE === info.category) {
+    return renderer.renderBitwise.call(this, info, L, R);
+  } else if (C.OP_ROTATE === info.category) {
+    return renderer.renderRotate.call(this, info, L, R);
+  } else if (C.OP_COMPARISON === info.category) {
+    return renderer.renderComparison.call(this, info, L, R);
+  }
+
+  if ('function' === typeof renderer.renderUnknown) {
+    return renderer.renderUnknown.call(this, info, L, R);
+  }
+  return '(__unknown_binop(' + L + ', ' + R + '))';
+};
+
+/**
+ * Walks a single function body with the provided visitor.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} visitor
+ * @return {*}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.walkFunctionBody_ = function (wasmModule, binaryen, funcInfo, visitor) {
+  var /** @const {number} */ bodyPtr = funcInfo.body;
+  if (0 === bodyPtr) {
+    return '';
+  }
+
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalContext} */ ctx = {
+      binaryen: binaryen,
+      treeModule: wasmModule,
+      functionInfo: funcInfo,
+      treeMetadata: /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata} */ (Object.create(null)),
+      ancestors: []
+    };
+
+  return Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression(bodyPtr, ctx, visitor);
 };
 
 /**
@@ -487,7 +1371,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.traversalEnter_ = function (state, n
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitCode = function (wasmModule, options) {
   void options;
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {number} */ numFuncs = wasmModule.getNumFunctions();
+  var /** @const {!Array<!BinaryenFunctionInfo>} */ functions = this.collectDefinedFunctions_(wasmModule);
   var /** @const {!Array<string>} */ outputParts = [];
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TraversalState_} */ traversalState = {
       nodeCount: 0,
@@ -502,29 +1386,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitCode = function (wasmModule, opt
       enter: this.traversalEnter_.bind(this, traversalState)
     });
 
-  for (var /** number */ f = 0; f !== numFuncs; ++f) {
-    var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(f);
-    var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
-
-    // Skip imported functions — they have a non-empty import base name.
-    if ('' !== funcInfo.base) {
-      continue;
-    }
-
+  for (var /** number */ f = 0, /** @const {number} */ funcCount = functions.length; f !== funcCount; ++f) {
+    var /** @const {!BinaryenFunctionInfo} */ funcInfo = functions[f];
     traversalState.nodeCount = 0;
-    var /** @const {number} */ bodyPtr = funcInfo.body;
-
-    if (0 !== bodyPtr) {
-      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalContext} */ ctx = {
-          binaryen: binaryen,
-          treeModule: wasmModule,
-          functionInfo: funcInfo,
-          treeMetadata: /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata} */ (Object.create(null)),
-          ancestors: []
-        };
-
-      Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression(bodyPtr, ctx, visitor);
-    }
+    this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
 
     outputParts[outputParts.length] = '// ' + funcInfo.name + ' [nodes:' + traversalState.nodeCount + ']';
   }

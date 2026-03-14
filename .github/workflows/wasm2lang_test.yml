@@ -26,7 +26,6 @@ jobs:
         working-directory: test_artifacts
         run: |
           chmod +x ./wasm2lang_run_tests.sh
-          which jshell
           SPIDERMONKEY_JS=/usr/bin/js140 \
           PHP_CLI=/usr/bin/php           \
           JSHELL_CLI=/usr/bin/jshell     \

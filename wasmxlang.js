@@ -23,6 +23,9 @@
     var moduleSpecs = [
       {'sourcePath': 'src/0-header.js', 'exportName': 'Wasm2Lang'},
       {'sourcePath': 'src/backend/abstract_codegen.js'},
+      {'sourcePath': 'src/backend/i32_coercion.js'},
+      {'sourcePath': 'src/backend/value_types.js'},
+      {'sourcePath': 'src/backend/numeric_ops.js'},
       {'sourcePath': 'src/backend/asmjs_codegen.js'},
       {'sourcePath': 'src/backend/php64_codegen.js'},
       {'sourcePath': 'src/backend/java_codegen.js'},
@@ -32,6 +35,7 @@
       {'sourcePath': 'src/wasm/tree/custom_passes.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/local_usage_analysis_pass.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/drop_const_elision_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/label_prefixing_pass.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/feature_profile_validation_pass.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/registry.js'},
       {'sourcePath': 'src/wasm/tree/node_schema.js'},

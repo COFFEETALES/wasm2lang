@@ -50,9 +50,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.validate
   }
 
   if (0 === isValidAllowedProfile) {
-    throw new Error(
-      'Wasm2Lang feature validation: module uses wasm feature(s) outside the supported allowlist.'
-    );
+    throw new Error('Wasm2Lang feature validation: module uses wasm feature(s) outside the supported allowlist.');
   }
 
   this.moduleValidated_ = true;
@@ -75,11 +73,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.enter_ =
 
   var /** @const {string} */ funcName = funcMetadata.passFuncName || '<unknown>';
   throw new Error(
-    'Wasm2Lang feature validation: unsupported expression ID ' +
-      expression.id +
-      ' in function "' +
-      funcName +
-      '".'
+    'Wasm2Lang feature validation: unsupported expression ID ' + expression.id + ' in function "' + funcName + '".'
   );
 };
 

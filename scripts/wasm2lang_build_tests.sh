@@ -39,71 +39,71 @@ if [ ${#0} -ne ${#prefix} ]; then
       filename="$(basename "$file")"
       filebase="${filename%'.build.js'}"
       mkdir "${filebase}"
-      cp                                              \
-       '../tests/'"${filebase}"'.harness.'*           \
+      cp                                                 \
+       '../tests/'"${filebase}"'.harness.'*              \
        './'"${filebase}"'/'
       #
       # Generate original WAST
-      node                                            \
-        "../tests/$filename"                          \
+      node                                               \
+        "../tests/$filename"                             \
         1>"${filebase}"/"${filebase}".orig.wast
       #
       # Generate WASM
-      node                                            \
-        "../tests/$filename"                          \
-      |                                               \
-      node                                            \
-        "../wasmxlang.js"                             \
-        --normalize-wasm binaryen:none                \
-        --emit-web-assembly                           \
-        --input-file wast:-                           \
+      node                                               \
+        "../tests/$filename"                             \
+      |                                                  \
+      node                                               \
+        "../wasmxlang.js"                                \
+        --normalize-wasm binaryen:none                   \
+        --emit-web-assembly                              \
+        --input-file wast:-                              \
         1>"${filebase}"/"${filebase}".wasm
       #
       # Generate WAST
-      node                                            \
-        "../tests/$filename"                          \
-      |                                               \
-      node                                            \
-        "../wasmxlang.js"                             \
-        --normalize-wasm binaryen:none                \
-        --emit-web-assembly text                      \
-        --input-file wast:-                           \
+      node                                               \
+        "../tests/$filename"                             \
+      |                                                  \
+      node                                               \
+        "../wasmxlang.js"                                \
+        --normalize-wasm binaryen:none                   \
+        --emit-web-assembly text                         \
+        --input-file wast:-                              \
         1>"${filebase}"/"${filebase}".wast
       #
       # Generate ASMJS
-      node                                            \
-        "../wasmxlang.js"                             \
-        --normalize-wasm binaryen:none                \
-        --simplify-output                             \
-        --language-out ASMJS                          \
-        --define ASMJS_HEAP_SIZE=$((65536 * 8))       \
-        --emit-metadata=memBuffer                     \
-        --emit-code=module                            \
-        --input-file "${filebase}"/"${filebase}".wasm \
+      node                                               \
+        "../wasmxlang.js"                                \
+        --normalize-wasm binaryen:none,wasm2lang:codegen \
+        --simplify-output                                \
+        --language-out ASMJS                             \
+        --define ASMJS_HEAP_SIZE=$((65536 * 8))          \
+        --emit-metadata=memBuffer                        \
+        --emit-code=module                               \
+        --input-file "${filebase}"/"${filebase}".wasm    \
         1>"${filebase}"/"${filebase}".asm.js
       #
       # Generate PHP64
-      node                                            \
-        "../wasmxlang.js"                             \
-        --normalize-wasm binaryen:none                \
-        --simplify-output                             \
-        --language-out PHP64                          \
-        --define PHP64_HEAP_SIZE=$((65536 * 8))       \
-        --emit-metadata=memBuffer                     \
-        --emit-code=module                            \
-        --input-file "${filebase}"/"${filebase}".wasm \
+      node                                               \
+        "../wasmxlang.js"                                \
+        --normalize-wasm binaryen:none,wasm2lang:codegen \
+        --simplify-output                                \
+        --language-out PHP64                             \
+        --define PHP64_HEAP_SIZE=$((65536 * 8))          \
+        --emit-metadata=memBuffer                        \
+        --emit-code=module                               \
+        --input-file "${filebase}"/"${filebase}".wasm    \
         1>"${filebase}"/"${filebase}".php
       #
       # Generate JAVA
-      node                                            \
-        "../wasmxlang.js"                             \
-        --normalize-wasm binaryen:none                \
-        --simplify-output                             \
-        --language-out JAVA                           \
-        --define JAVA_HEAP_SIZE=$((65536 * 8))        \
-        --emit-metadata=memBuffer                     \
-        --emit-code=module                            \
-        --input-file "${filebase}"/"${filebase}".wasm \
+      node                                               \
+        "../wasmxlang.js"                                \
+        --normalize-wasm binaryen:none,wasm2lang:codegen \
+        --simplify-output                                \
+        --language-out JAVA                              \
+        --define JAVA_HEAP_SIZE=$((65536 * 8))           \
+        --emit-metadata=memBuffer                        \
+        --emit-code=module                               \
+        --input-file "${filebase}"/"${filebase}".wasm    \
         1>"${filebase}"/"${filebase}".java
     done
 

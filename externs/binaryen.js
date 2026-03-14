@@ -195,6 +195,16 @@ Binaryen.prototype.i32;
 /**
  * @type {number}
  */
+Binaryen.prototype.f32;
+
+/**
+ * @type {number}
+ */
+Binaryen.prototype.f64;
+
+/**
+ * @type {number}
+ */
 Binaryen.prototype.BlockId;
 
 /**
@@ -376,6 +386,11 @@ BinaryenExpressionInfo.prototype.value;
 /**
  * @type {(number|undefined)}
  */
+BinaryenExpressionInfo.prototype.valueType;
+
+/**
+ * @type {(number|undefined)}
+ */
 BinaryenExpressionInfo.prototype.index;
 
 /**
@@ -432,6 +447,61 @@ BinaryenExpressionInfo.prototype.children;
  * @type {(!Array<number>|undefined)}
  */
 BinaryenExpressionInfo.prototype.operands;
+
+/**
+ * @type {(string|undefined)}
+ */
+BinaryenExpressionInfo.prototype.name;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.numNames;
+
+/**
+ * @type {(!Array<string>|undefined)}
+ */
+BinaryenExpressionInfo.prototype.names;
+
+/**
+ * @type {(string|undefined)}
+ */
+BinaryenExpressionInfo.prototype.defaultName;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.op;
+
+/**
+ * @type {(boolean|undefined)}
+ */
+BinaryenExpressionInfo.prototype.isSigned;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.offset;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.bytes;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.align;
+
+/**
+ * @type {(boolean|undefined)}
+ */
+BinaryenExpressionInfo.prototype.isTee;
+
+/**
+ * @type {(boolean|undefined)}
+ */
+BinaryenExpressionInfo.prototype.isReturn;
 
 /**
  * @typedef {{
@@ -506,6 +576,38 @@ Binaryen.prototype.MemoryGrowId;
 // ---------------------------------------------------------------------------
 // BinaryenModule expression-builder methods
 // ---------------------------------------------------------------------------
+
+/**
+ * @param {?string} name
+ * @param {!Array<number>} children
+ * @param {number=} type
+ * @return {number}
+ */
+BinaryenModule.prototype.block = function (name, children, type) {};
+
+/**
+ * @param {string} name
+ * @param {number} body
+ * @return {number}
+ */
+BinaryenModule.prototype.loop = function (name, body) {};
+
+/**
+ * @param {string} name
+ * @param {number=} condition
+ * @param {number=} value
+ * @return {number}
+ */
+BinaryenModule.prototype.break = function (name, condition, value) {};
+
+/**
+ * @param {!Array<string>} names
+ * @param {string} defaultName
+ * @param {number} condition
+ * @param {number=} value
+ * @return {number}
+ */
+BinaryenModule.prototype.switch = function (names, defaultName, condition, value) {};
 
 /**
  * @return {number}
@@ -938,3 +1040,136 @@ BinaryenFunctionApi.prototype.setBody = function (ptr, body) {};
  * @type {!BinaryenFunctionApi}
  */
 Binaryen.prototype.Function;
+
+// ---------------------------------------------------------------------------
+// Global variable APIs
+// ---------------------------------------------------------------------------
+
+/**
+ * @return {number}
+ */
+BinaryenModule.prototype.getNumGlobals = function () {};
+
+/**
+ * @param {number} index
+ * @return {number}
+ */
+BinaryenModule.prototype.getGlobalByIndex = function (index) {};
+
+/**
+ * @param {number} globalPtr
+ * @return {!BinaryenGlobalInfo}
+ */
+Binaryen.prototype.getGlobalInfo = function (globalPtr) {};
+
+/**
+ * @typedef {{
+ *   name: string,
+ *   module: string,
+ *   base: string,
+ *   type: number,
+ *   mutable: boolean,
+ *   init: number
+ * }}
+ */
+var BinaryenGlobalInfo;
+
+// ---------------------------------------------------------------------------
+// Binary operation constants (i32)
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.AddInt32;
+/** @type {number} */ Binaryen.prototype.SubInt32;
+/** @type {number} */ Binaryen.prototype.MulInt32;
+/** @type {number} */ Binaryen.prototype.DivSInt32;
+/** @type {number} */ Binaryen.prototype.DivUInt32;
+/** @type {number} */ Binaryen.prototype.RemSInt32;
+/** @type {number} */ Binaryen.prototype.RemUInt32;
+/** @type {number} */ Binaryen.prototype.AndInt32;
+/** @type {number} */ Binaryen.prototype.OrInt32;
+/** @type {number} */ Binaryen.prototype.XorInt32;
+/** @type {number} */ Binaryen.prototype.ShlInt32;
+/** @type {number} */ Binaryen.prototype.ShrSInt32;
+/** @type {number} */ Binaryen.prototype.ShrUInt32;
+/** @type {number} */ Binaryen.prototype.RotLInt32;
+/** @type {number} */ Binaryen.prototype.RotRInt32;
+/** @type {number} */ Binaryen.prototype.EqInt32;
+/** @type {number} */ Binaryen.prototype.NeInt32;
+/** @type {number} */ Binaryen.prototype.LtSInt32;
+/** @type {number} */ Binaryen.prototype.LtUInt32;
+/** @type {number} */ Binaryen.prototype.LeSInt32;
+/** @type {number} */ Binaryen.prototype.LeUInt32;
+/** @type {number} */ Binaryen.prototype.GtSInt32;
+/** @type {number} */ Binaryen.prototype.GtUInt32;
+/** @type {number} */ Binaryen.prototype.GeSInt32;
+/** @type {number} */ Binaryen.prototype.GeUInt32;
+
+// ---------------------------------------------------------------------------
+// Unary operation constants (i32)
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.EqZInt32;
+/** @type {number} */ Binaryen.prototype.ClzInt32;
+/** @type {number} */ Binaryen.prototype.CtzInt32;
+/** @type {number} */ Binaryen.prototype.PopcntInt32;
+
+// ---------------------------------------------------------------------------
+// Floating-point unary/binary operation constants (MVP subset used here)
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.AbsFloat32;
+/** @type {number} */ Binaryen.prototype.AbsFloat64;
+/** @type {number} */ Binaryen.prototype.NegFloat32;
+/** @type {number} */ Binaryen.prototype.NegFloat64;
+/** @type {number} */ Binaryen.prototype.CeilFloat32;
+/** @type {number} */ Binaryen.prototype.CeilFloat64;
+/** @type {number} */ Binaryen.prototype.FloorFloat32;
+/** @type {number} */ Binaryen.prototype.FloorFloat64;
+/** @type {number} */ Binaryen.prototype.TruncFloat32;
+/** @type {number} */ Binaryen.prototype.TruncFloat64;
+/** @type {number} */ Binaryen.prototype.NearestFloat32;
+/** @type {number} */ Binaryen.prototype.NearestFloat64;
+/** @type {number} */ Binaryen.prototype.SqrtFloat32;
+/** @type {number} */ Binaryen.prototype.SqrtFloat64;
+/** @type {number} */ Binaryen.prototype.TruncSFloat32ToInt32;
+/** @type {number} */ Binaryen.prototype.TruncUFloat32ToInt32;
+/** @type {number} */ Binaryen.prototype.TruncSFloat64ToInt32;
+/** @type {number} */ Binaryen.prototype.TruncUFloat64ToInt32;
+/** @type {number} */ Binaryen.prototype.TruncSatSFloat32ToInt32;
+/** @type {number} */ Binaryen.prototype.TruncSatUFloat32ToInt32;
+/** @type {number} */ Binaryen.prototype.TruncSatSFloat64ToInt32;
+/** @type {number} */ Binaryen.prototype.TruncSatUFloat64ToInt32;
+/** @type {number} */ Binaryen.prototype.ConvertSInt32ToFloat32;
+/** @type {number} */ Binaryen.prototype.ConvertUInt32ToFloat32;
+/** @type {number} */ Binaryen.prototype.ConvertSInt32ToFloat64;
+/** @type {number} */ Binaryen.prototype.ConvertUInt32ToFloat64;
+/** @type {number} */ Binaryen.prototype.DemoteFloat64;
+/** @type {number} */ Binaryen.prototype.PromoteFloat32;
+/** @type {number} */ Binaryen.prototype.ReinterpretFloat32;
+/** @type {number} */ Binaryen.prototype.ReinterpretInt32;
+/** @type {number} */ Binaryen.prototype.AddFloat32;
+/** @type {number} */ Binaryen.prototype.SubFloat32;
+/** @type {number} */ Binaryen.prototype.MulFloat32;
+/** @type {number} */ Binaryen.prototype.DivFloat32;
+/** @type {number} */ Binaryen.prototype.MinFloat32;
+/** @type {number} */ Binaryen.prototype.MaxFloat32;
+/** @type {number} */ Binaryen.prototype.CopySignFloat32;
+/** @type {number} */ Binaryen.prototype.EqFloat32;
+/** @type {number} */ Binaryen.prototype.NeFloat32;
+/** @type {number} */ Binaryen.prototype.LtFloat32;
+/** @type {number} */ Binaryen.prototype.GtFloat32;
+/** @type {number} */ Binaryen.prototype.LeFloat32;
+/** @type {number} */ Binaryen.prototype.GeFloat32;
+/** @type {number} */ Binaryen.prototype.AddFloat64;
+/** @type {number} */ Binaryen.prototype.SubFloat64;
+/** @type {number} */ Binaryen.prototype.MulFloat64;
+/** @type {number} */ Binaryen.prototype.DivFloat64;
+/** @type {number} */ Binaryen.prototype.MinFloat64;
+/** @type {number} */ Binaryen.prototype.MaxFloat64;
+/** @type {number} */ Binaryen.prototype.CopySignFloat64;
+/** @type {number} */ Binaryen.prototype.EqFloat64;
+/** @type {number} */ Binaryen.prototype.NeFloat64;
+/** @type {number} */ Binaryen.prototype.LtFloat64;
+/** @type {number} */ Binaryen.prototype.GtFloat64;
+/** @type {number} */ Binaryen.prototype.LeFloat64;
+/** @type {number} */ Binaryen.prototype.GeFloat64;
