@@ -79,11 +79,16 @@ if [ ${#0} -ne ${#prefix} ]; then
       fi
       if [ -x "${JSHELL_CLI}" ]; then
         echo -e "\033[0;33mRunning Java test...\033[0m"
+        local jshell_harness=""
+        if [ -f "${filebase}".harness.java ]; then
+          jshell_harness="${filebase}".harness.java
+        fi
         "$JSHELL_CLI"                             \
           -J-Dline.separator="$LF"                \
           --execution local                       \
           -q                                      \
           "${filebase}".java                      \
+          ${jshell_harness}                       \
           "./wasm2lang_java_runner.jsh"           \
         |                                         \
         tee "${filebase}".jshell.out

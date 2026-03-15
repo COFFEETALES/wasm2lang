@@ -389,7 +389,7 @@ BinaryenExpressionInfo.prototype.value;
 BinaryenExpressionInfo.prototype.valueType;
 
 /**
- * @type {(number|undefined)}
+ * @type {(number|void)}
  */
 BinaryenExpressionInfo.prototype.index;
 

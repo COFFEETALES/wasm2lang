@@ -10,16 +10,11 @@
  * @constructor
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass = function () {
-  /** @type {string} */
-  this.passName = 'label-prefixing';
-  /** @type {string} */
-  this.phase = Wasm2Lang.Wasm.Tree.PassRunner.Phase.CODEGEN_PREP;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassModuleHook|undefined)} */
-  this.validateModule = void 0;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)} */
-  this.onFunctionEnter = void 0;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)} */
-  this.onFunctionLeave = void 0;
+  Wasm2Lang.Wasm.Tree.CustomPasses.initializePass(
+    /** @type {!Wasm2Lang.Wasm.Tree.Pass} */ (this),
+    'label-prefixing',
+    Wasm2Lang.Wasm.Tree.PassRunner.Phase.CODEGEN_PREP
+  );
 };
 
 /**
@@ -67,7 +62,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.prefixLabelName_ =
  * @return {void}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.pushLabel_ = function (state, oldName) {
-  var /** @type {!Array<string>|undefined} */ stack = state.labelStacks[oldName];
+  var /** @type {!Array<string>|void} */ stack = state.labelStacks[oldName];
   if (!stack) {
     stack = [];
     state.labelStacks[oldName] = stack;
@@ -77,7 +72,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.pushLabel_ = funct
   stack[stack.length] = newName;
 
   if (newName !== oldName) {
-    state.prefixedDefinitionCount++;
+    ++state.prefixedDefinitionCount;
   }
 };
 
@@ -88,7 +83,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.pushLabel_ = funct
  * @return {void}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.popLabel_ = function (state, oldName) {
-  var /** @type {!Array<string>|undefined} */ stack = state.labelStacks[oldName];
+  var /** @type {!Array<string>|void} */ stack = state.labelStacks[oldName];
   if (!stack || 0 === stack.length) {
     return;
   }
@@ -106,7 +101,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.popLabel_ = functi
  * @return {string}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.resolveLabel_ = function (state, name) {
-  var /** @type {!Array<string>|undefined} */ stack = state.labelStacks[name];
+  var /** @type {!Array<string>|void} */ stack = state.labelStacks[name];
   if (!stack || 0 === stack.length) {
     return name;
   }
@@ -195,7 +190,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.leave_ = function 
       return null;
     }
 
-    state.remappedTargetCount++;
+    ++state.remappedTargetCount;
     return this.replaceWith_(
       module.break(
         remappedName,
@@ -216,7 +211,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.leave_ = function 
       if (remappedName !== names[i]) {
         names[i] = remappedName;
         hasChanges = true;
-        state.remappedTargetCount++;
+        ++state.remappedTargetCount;
       }
     }
 
@@ -226,7 +221,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass.prototype.leave_ = function 
       remappedDefaultName = this.resolveLabel_(state, defaultName);
       if (remappedDefaultName !== defaultName) {
         hasChanges = true;
-        state.remappedTargetCount++;
+        ++state.remappedTargetCount;
       }
     }
 

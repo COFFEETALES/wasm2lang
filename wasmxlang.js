@@ -26,12 +26,14 @@
       {'sourcePath': 'src/backend/i32_coercion.js'},
       {'sourcePath': 'src/backend/value_types.js'},
       {'sourcePath': 'src/backend/numeric_ops.js'},
+      {'sourcePath': 'src/backend/identifier_mangler.js'},
       {'sourcePath': 'src/backend/asmjs_codegen.js'},
       {'sourcePath': 'src/backend/php64_codegen.js'},
       {'sourcePath': 'src/backend/java_codegen.js'},
       {'sourcePath': 'src/cli/command_line_parser.js'},
       {'sourcePath': 'src/options/schema.js'},
       {'sourcePath': 'src/utilities/environment.js'},
+      {'sourcePath': 'src/utilities/output_sink.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/local_usage_analysis_pass.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/drop_const_elision_pass.js'},
@@ -59,5 +61,8 @@
     globalThis['Wasm2Lang'] = require('./dist_artifacts/wasm2lang.js');
   }
 
-  Wasm2Lang.runCliEntryPoint(binaryen);
+  var result = Wasm2Lang.runCliEntryPoint(binaryen);
+  if (result && 'function' === typeof result['then']) {
+    await result;
+  }
 })();

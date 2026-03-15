@@ -10,16 +10,11 @@
  * @constructor
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass = function () {
-  /** @type {string} */
-  this.passName = 'drop-const-elision';
-  /** @type {string} */
-  this.phase = Wasm2Lang.Wasm.Tree.PassRunner.Phase.OPTIMIZE;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassModuleHook|undefined)} */
-  this.validateModule = void 0;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)} */
-  this.onFunctionEnter = void 0;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)} */
-  this.onFunctionLeave = void 0;
+  Wasm2Lang.Wasm.Tree.CustomPasses.initializePass(
+    /** @type {!Wasm2Lang.Wasm.Tree.Pass} */ (this),
+    'drop-const-elision',
+    Wasm2Lang.Wasm.Tree.PassRunner.Phase.OPTIMIZE
+  );
 };
 
 /**
@@ -67,8 +62,5 @@ Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass.prototype.enter_ = functio
  * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass.prototype.createVisitor = function (funcMetadata) {
-  // prettier-ignore
-  return /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-    enter: this.enter_.bind(this, funcMetadata)
-  });
+  return Wasm2Lang.Wasm.Tree.CustomPasses.createEnterVisitor(this, this.enter_, funcMetadata);
 };

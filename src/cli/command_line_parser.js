@@ -6,6 +6,74 @@
 Wasm2Lang.CLI.CommandLineParser = {};
 
 /**
+ * @private
+ * @param {!Object<string, !Array<string>>} parsedParams
+ * @param {string} optionName
+ * @return {!Array<string>}
+ */
+Wasm2Lang.CLI.CommandLineParser.ensureParamList_ = function (parsedParams, optionName) {
+  if ('object' !== typeof parsedParams[optionName]) {
+    parsedParams[optionName] = [];
+  }
+  return parsedParams[optionName];
+};
+
+/**
+ * @private
+ * @param {string} key
+ * @return {string}
+ */
+Wasm2Lang.CLI.CommandLineParser.optionKeyToCliKey_ = function (key) {
+  return '--' + key.replace(/([A-Z])/g, '-$1').toLowerCase();
+};
+
+/**
+ * @private
+ * @param {string} inputFile
+ * @return {(string|!Uint8Array)}
+ */
+Wasm2Lang.CLI.CommandLineParser.readInputFile_ = function (inputFile) {
+  // prettier-ignore
+  var /** @const {!NodeFileSystem} */ fs = /** @const {!NodeFileSystem} */ (require('fs'));
+  var /** @type {boolean} */ isTextFile = false;
+  var /** @type {string|number} */ readTarget = inputFile;
+  if (/^(?:was??t:(?!$)|.*?\.was??t$)/i.test(inputFile)) {
+    readTarget = inputFile.replace(/^was??t:/i, '');
+    isTextFile = true;
+  }
+  if ('-' === readTarget) {
+    readTarget = 0;
+  }
+  return fs.readFileSync(readTarget, isTextFile ? {encoding: 'utf8'} : void 0);
+};
+
+/**
+ * @private
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @param {!Object<string, !Array<string>>} params
+ * @return {void}
+ */
+Wasm2Lang.CLI.CommandLineParser.assignInputData_ = function (options, params) {
+  if ('object' === typeof params['--input-data']) {
+    var /** @const {!Array<string>} */ inputDataParam = params['--input-data'];
+    if (0 !== inputDataParam.length) {
+      options.inputData = inputDataParam.join('\n');
+    }
+    return;
+  }
+
+  if ('object' !== typeof params['--input-file']) {
+    return;
+  }
+
+  var /** @const {!Array<string>} */ inputFileParam = params['--input-file'];
+  if (0 === inputFileParam.length) {
+    return;
+  }
+  options.inputData = Wasm2Lang.CLI.CommandLineParser.readInputFile_(inputFileParam[inputFileParam.length - 1]);
+};
+
+/**
  * @return {!Object<string, !Array<string>>}
  */
 Wasm2Lang.CLI.CommandLineParser.parseArgv = function () {
@@ -23,11 +91,12 @@ Wasm2Lang.CLI.CommandLineParser.parseArgv = function () {
       pendingOptionName = '';
       var /** @const {?RegExpResult} */ optionMatch = currentArg.match(optionWithValuePattern);
       var /** @const {string} */ optionName = optionMatch ? optionMatch[1] : currentArg;
-      if ('object' !== typeof parsedParams[optionName]) {
-        parsedParams[optionName] = [];
-      }
+      var /** @const {!Array<string>} */ optionValues = Wasm2Lang.CLI.CommandLineParser.ensureParamList_(
+          parsedParams,
+          optionName
+        );
       if (optionMatch) {
-        parsedParams[optionName][parsedParams[optionName].length] = optionMatch[2];
+        optionValues[optionValues.length] = optionMatch[2];
         continue;
       }
       pendingOptionName = currentArg;
@@ -35,7 +104,8 @@ Wasm2Lang.CLI.CommandLineParser.parseArgv = function () {
       parsedParams[pendingOptionName][parsedParams[pendingOptionName].length] = currentArg;
       pendingOptionName = '';
     } else {
-      if ('object' !== typeof parsedParams['--input-file']) {
+      var /** @type {!Array<string>|void} */ inputFiles = parsedParams['--input-file'];
+      if ('object' !== typeof inputFiles) {
         parsedParams['--input-file'] = [currentArg];
         continue;
       }
@@ -54,26 +124,9 @@ Wasm2Lang.CLI.CommandLineParser.processParams = function (params) {
   var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ options = /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ (
     Object.assign({}, Wasm2Lang.Options.Schema.defaultOptions)
   );
+  var /** @const {!Wasm2Lang.Utilities.Environment.OutputTarget} */ outputTarget = Wasm2Lang.Utilities.Environment.isNode();
 
-  if ('object' === typeof params['--input-data']) {
-    var /** @const {!Array<string>} */ inputDataParm = params['--input-data'];
-    if (0 !== inputDataParm.length) {
-      options.inputData = inputDataParm.join('\n');
-    }
-  } else if ('object' === typeof params['--input-file']) {
-    var /** @const {!Array<string>} */ inputFileParm = params['--input-file'];
-    if (0 !== inputFileParm.length) {
-      // prettier-ignore
-      var /** @const {!NodeFileSystem} */ fs = /** @const {!NodeFileSystem} */ (require('fs'));
-      var /** @type {string} */ inputFile = inputFileParm[inputFileParm.length - 1];
-      var /** @type {boolean} */ isTextFile = false;
-      if (/^(?:was??t:(?!$)|.*?\.was??t$)/i.test(inputFile)) {
-        inputFile = inputFile.replace(/^was??t:/i, '');
-        isTextFile = true;
-      }
-      options.inputData = fs.readFileSync('-' === inputFile ? 0 : inputFile, isTextFile ? {encoding: 'utf8'} : void 0);
-    }
-  }
+  Wasm2Lang.CLI.CommandLineParser.assignInputData_(options, params);
 
   if (!options.inputData) {
     throw new Error('No input data provided. Use --input-data or --input-file to specify input.');
@@ -84,10 +137,11 @@ Wasm2Lang.CLI.CommandLineParser.processParams = function (params) {
 
   for (var /** number */ i = 0, /** @const {number} */ len = props.length; i !== len; ++i) {
     var /** @const {!Wasm2Lang.Options.Schema.OptionKey} */ key = props[i];
-    var /** @const {string} */ cliKey = '--' + key.replace(/([A-Z])/g, '-$1').toLowerCase();
-    if ('object' === typeof params[cliKey]) {
-      Wasm2Lang.Options.Schema.optionParsers[key](options, params[cliKey]);
-      Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.isNode()](
+    var /** @const {string} */ cliKey = Wasm2Lang.CLI.CommandLineParser.optionKeyToCliKey_(key);
+    var /** @type {!Array<string>|void} */ optionValues = params[cliKey];
+    if ('object' === typeof optionValues) {
+      Wasm2Lang.Options.Schema.optionParsers[key](options, optionValues);
+      Wasm2Lang.Utilities.Environment.stderrWriters[outputTarget](
         Wasm2Lang.Utilities.Environment.LogLevel.INFO,
         'Processing CLI option:',
         cliKey,
@@ -95,7 +149,7 @@ Wasm2Lang.CLI.CommandLineParser.processParams = function (params) {
         key,
         ') ',
         'with value:',
-        params[cliKey].join(' ')
+        optionValues.join(' ')
       );
     }
   }

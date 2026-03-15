@@ -75,6 +75,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         "../wasmxlang.js"                                \
         --normalize-wasm binaryen:none,wasm2lang:codegen \
         --simplify-output                                \
+        --mangler wasm2lang-test                         \
         --language-out ASMJS                             \
         --define ASMJS_HEAP_SIZE=$((65536 * 8))          \
         --emit-metadata=memBuffer                        \
@@ -87,6 +88,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         "../wasmxlang.js"                                \
         --normalize-wasm binaryen:none,wasm2lang:codegen \
         --simplify-output                                \
+        --mangler wasm2lang-test                         \
         --language-out PHP64                             \
         --define PHP64_HEAP_SIZE=$((65536 * 8))          \
         --emit-metadata=memBuffer                        \
@@ -99,6 +101,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         "../wasmxlang.js"                                \
         --normalize-wasm binaryen:none,wasm2lang:codegen \
         --simplify-output                                \
+        --mangler wasm2lang-test                         \
         --language-out JAVA                              \
         --define JAVA_HEAP_SIZE=$((65536 * 8))           \
         --emit-metadata=memBuffer                        \

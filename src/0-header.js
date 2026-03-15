@@ -48,6 +48,11 @@ Wasm2Lang.Options = {};
 Wasm2Lang.Utilities = {};
 
 /**
+ * @const
+ */
+Wasm2Lang.OutputSink = {};
+
+/**
  * @namespace
  */
 Wasm2Lang.Wasm = {};

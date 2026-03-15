@@ -10,14 +10,11 @@
  * @constructor
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass = function () {
-  /** @type {string} */
-  this.passName = 'feature-profile-validation';
-  /** @type {string} */
-  this.phase = Wasm2Lang.Wasm.Tree.PassRunner.Phase.ANALYZE;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)} */
-  this.onFunctionEnter = void 0;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)} */
-  this.onFunctionLeave = void 0;
+  Wasm2Lang.Wasm.Tree.CustomPasses.initializePass(
+    /** @type {!Wasm2Lang.Wasm.Tree.Pass} */ (this),
+    'feature-profile-validation',
+    Wasm2Lang.Wasm.Tree.PassRunner.Phase.ANALYZE
+  );
   /** @private @type {boolean} */
   this.moduleValidated_ = false;
   /** @type {!Wasm2Lang.Wasm.Tree.PassModuleHook} */
@@ -82,8 +79,5 @@ Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.enter_ =
  * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.createVisitor = function (funcMetadata) {
-  // prettier-ignore
-  return /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-    enter: this.enter_.bind(this, funcMetadata)
-  });
+  return Wasm2Lang.Wasm.Tree.CustomPasses.createEnterVisitor(this, this.enter_, funcMetadata);
 };

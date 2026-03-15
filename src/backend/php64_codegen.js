@@ -12,6 +12,126 @@ Wasm2Lang.Backend.Php64Codegen.prototype = Object.create(Wasm2Lang.Backend.Abstr
 Wasm2Lang.Backend.Php64Codegen.prototype.constructor = Wasm2Lang.Backend.Php64Codegen;
 Wasm2Lang.Backend.registerBackend('php64', Wasm2Lang.Backend.Php64Codegen);
 
+// ---------------------------------------------------------------------------
+// Mangler integration.
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a PHP variable name (with {@code $} sigil) for a module-scope
+ * identifier.  When unmangled, the key may already start with {@code $}
+ * (e.g. {@code "$g_foo"}).  When mangled, the result never starts with
+ * {@code $}.  This helper ensures exactly one leading {@code $}.
+ *
+ * @private
+ * @param {string} key  Module-scope identifier key.
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.phpVar_ = function (key) {
+  var /** @const {string} */ name = this.n_(key);
+  return '$' === name.charAt(0) ? name : '$' + name;
+};
+
+/**
+ * @override
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.getFixedModuleBindings_ = function (options) {
+  void options;
+  return ['buffer', '_w2l_i', '_w2l_f32'];
+};
+
+/** @private @const {number} */
+Wasm2Lang.Backend.Php64Codegen.TEMP_P_ = 0;
+
+/** @private @const {number} */
+Wasm2Lang.Backend.Php64Codegen.TEMP_S_ = 1;
+
+/** @private @const {number} */
+Wasm2Lang.Backend.Php64Codegen.TEMP_V_ = 2;
+
+/**
+ * @override
+ * @return {number}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.getInlineTempCount_ = function () {
+  return 3;
+};
+
+/**
+ * @override
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.getAllHelperNames_ = function () {
+  return [
+    '_w2l_clz',
+    '_w2l_copysign_f32',
+    '_w2l_copysign_f64',
+    '_w2l_convert_u_i32_to_f32',
+    '_w2l_convert_u_i32_to_f64',
+    '_w2l_ctz',
+    '_w2l_imul',
+    '_w2l_nearest_f32',
+    '_w2l_nearest_f64',
+    '_w2l_popcnt',
+    '_w2l_reinterpret_f32_to_i32',
+    '_w2l_reinterpret_i32_to_f32',
+    '_w2l_trunc_f32',
+    '_w2l_trunc_f64',
+    '_w2l_trunc_s_f32_to_i32',
+    '_w2l_trunc_s_f64_to_i32',
+    '_w2l_trunc_sat_s_f32_to_i32',
+    '_w2l_trunc_sat_s_f64_to_i32',
+    '_w2l_trunc_sat_u_f32_to_i32',
+    '_w2l_trunc_sat_u_f64_to_i32',
+    '_w2l_trunc_u_f32_to_i32',
+    '_w2l_trunc_u_f64_to_i32'
+  ];
+};
+
+/**
+ * Returns a local variable name with PHP {@code $} sigil.  When the mangler
+ * is active the mangled name is prefixed with {@code $}; otherwise the
+ * default {@code $l{index}} form already starts with {@code $}.
+ *
+ * @override
+ * @param {number} index
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.localN_ = function (index) {
+  if (this.mangler_) {
+    return '$' + this.mangler_.ln(index);
+  }
+  return '$l' + index;
+};
+
+/**
+ * @override
+ * @param {string} globalName
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.buildGlobalIdentifier_ = function (globalName) {
+  return '$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globalName);
+};
+
+/**
+ * @override
+ * @param {string} importBaseName
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.buildImportIdentifier_ = function (importBaseName) {
+  return '$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(importBaseName);
+};
+
+/**
+ * @override
+ * @param {string} funcName
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.buildFunctionIdentifier_ = function (funcName) {
+  return Wasm2Lang.Backend.Php64Codegen.phpSafeName_(funcName);
+};
+
 /**
  * Inter-helper dependencies (opcode-specific helpers only).
  * Core helpers (_w2l_i, _w2l_f32) are always emitted and omitted here.
@@ -56,7 +176,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.markHelper_ = function (name) {
     return;
   }
   this.usedHelpers_[name] = true;
-  var /** @const {!Array<string>|undefined} */ deps = Wasm2Lang.Backend.Php64Codegen.HELPER_DEPS_[name];
+  var /** @const {!Array<string>|void} */ deps = Wasm2Lang.Backend.Php64Codegen.HELPER_DEPS_[name];
   if (deps) {
     for (var /** number */ i = 0, /** @const {number} */ len = deps.length; i !== len; ++i) {
       this.markHelper_(deps[i]);
@@ -157,7 +277,7 @@ Wasm2Lang.Backend.Php64Codegen.renderShiftMask_ = function (expr) {
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderArithmeticBinaryOp_ = function (info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return '_w2l_i(' + P.renderInfix(L, info.operator, R, P.PREC_ADDITIVE_) + ')';
+  return this.n_('_w2l_i') + '(' + P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_) + ')';
 };
 
 /**
@@ -170,7 +290,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderArithmeticBinaryOp_ = function (i
 Wasm2Lang.Backend.Php64Codegen.prototype.renderMultiplyBinaryOp_ = function (info, L, R) {
   void info;
   this.markHelper_('_w2l_imul');
-  return '_w2l_imul(' + L + ', ' + R + ')';
+  return this.n_('_w2l_imul') + '(' + L + ', ' + R + ')';
 };
 
 /**
@@ -182,22 +302,25 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderMultiplyBinaryOp_ = function (inf
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderDivisionBinaryOp_ = function (info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if ('/' === info.operator) {
+  var /** @const {string} */ nI = this.n_('_w2l_i');
+  if ('/' === info.opStr) {
     if (info.unsigned) {
       return (
-        '_w2l_i(intdiv(' +
+        nI +
+        '(intdiv(' +
         Wasm2Lang.Backend.Php64Codegen.renderMask32_(L) +
         ', ' +
         Wasm2Lang.Backend.Php64Codegen.renderMask32_(R) +
         '))'
       );
     }
-    return '_w2l_i(intdiv(' + L + ', ' + R + '))';
+    return nI + '(intdiv(' + L + ', ' + R + '))';
   }
   // Remainder (%).
   if (info.unsigned) {
     return (
-      '_w2l_i(' +
+      nI +
+      '(' +
       P.renderInfix(
         Wasm2Lang.Backend.Php64Codegen.renderMask32_(L),
         '%',
@@ -207,7 +330,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderDivisionBinaryOp_ = function (inf
       ')'
     );
   }
-  return '_w2l_i(' + P.renderInfix(L, '%', R, P.PREC_MULTIPLICATIVE_) + ')';
+  return nI + '(' + P.renderInfix(L, '%', R, P.PREC_MULTIPLICATIVE_) + ')';
 };
 
 /**
@@ -219,10 +342,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderDivisionBinaryOp_ = function (inf
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderBitwiseBinaryOp_ = function (info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if ('>>>' === info.operator) {
+  var /** @const {string} */ nI = this.n_('_w2l_i');
+  if ('>>>' === info.opStr) {
     // Unsigned right shift (not native in PHP).
     return (
-      '_w2l_i(' +
+      nI +
+      '(' +
       P.renderInfix(
         Wasm2Lang.Backend.Php64Codegen.renderMask32_(L),
         '>>',
@@ -232,18 +357,18 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderBitwiseBinaryOp_ = function (info
       ')'
     );
   }
-  if ('<<' === info.operator) {
-    return '_w2l_i(' + P.renderInfix(L, '<<', Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R), P.PREC_SHIFT_) + ')';
+  if ('<<' === info.opStr) {
+    return nI + '(' + P.renderInfix(L, '<<', Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R), P.PREC_SHIFT_) + ')';
   }
-  if ('>>' === info.operator) {
-    return '_w2l_i(' + P.renderInfix(L, '>>', Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R), P.PREC_SHIFT_) + ')';
+  if ('>>' === info.opStr) {
+    return nI + '(' + P.renderInfix(L, '>>', Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R), P.PREC_SHIFT_) + ')';
   }
   // &, |, ^
   return P.renderInfix(
     L,
-    info.operator,
+    info.opStr,
     R,
-    '&' === info.operator ? P.PREC_BIT_AND_ : '^' === info.operator ? P.PREC_BIT_XOR_ : P.PREC_BIT_OR_,
+    '&' === info.opStr ? P.PREC_BIT_AND_ : '^' === info.opStr ? P.PREC_BIT_XOR_ : P.PREC_BIT_OR_,
     true
   );
 };
@@ -257,12 +382,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderBitwiseBinaryOp_ = function (info
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderRotateBinaryOp_ = function (info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @const {string} */ nI = this.n_('_w2l_i');
   var /** @const {string} */ shiftMask = Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R);
   var /** @const {string} */ reverseShift = P.renderInfix('32', '-', shiftMask, P.PREC_ADDITIVE_);
 
   if (info.rotateLeft) {
     return (
-      '_w2l_i(' +
+      nI +
+      '(' +
       P.renderInfix(
         P.renderInfix(L, '<<', shiftMask, P.PREC_SHIFT_),
         '|',
@@ -274,7 +401,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderRotateBinaryOp_ = function (info,
     );
   }
   return (
-    '_w2l_i(' +
+    nI +
+    '(' +
     P.renderInfix(
       P.renderInfix(Wasm2Lang.Backend.Php64Codegen.renderMask32_(L), '>>', shiftMask, P.PREC_SHIFT_),
       '|',
@@ -302,7 +430,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderComparisonBinaryOp_ = function (i
     leftExpr = P.wrap(Wasm2Lang.Backend.Php64Codegen.renderMask32_(L), P.PREC_RELATIONAL_, false);
     rightExpr = P.wrap(Wasm2Lang.Backend.Php64Codegen.renderMask32_(R), P.PREC_RELATIONAL_, false);
   }
-  return '(' + P.renderInfix(leftExpr, info.operator, rightExpr, P.PREC_RELATIONAL_) + ' ? 1 : 0)';
+  return '(' + P.renderInfix(leftExpr, info.opStr, rightExpr, P.PREC_RELATIONAL_) + ' ? 1 : 0)';
 };
 
 /**
@@ -336,8 +464,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderBinaryOp_ = function (info, L, R)
 /**
  * @private
  * @typedef {{
- *   name: string,
- *   kind: string
+ *   lbl: string,
+ *   lk: string
  * }}
  */
 Wasm2Lang.Backend.Php64Codegen.LabelEntry_;
@@ -349,6 +477,7 @@ Wasm2Lang.Backend.Php64Codegen.LabelEntry_;
  *   functionInfo: !BinaryenFunctionInfo,
  *   functionSignatures: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>,
  *   globalTypes: !Object<string, number>,
+ *   inlineTempOffset: number,
  *   labelStack: !Array<!Wasm2Lang.Backend.Php64Codegen.LabelEntry_>,
  *   importedNames: !Object<string, string>,
  *   indent: number
@@ -371,31 +500,38 @@ Wasm2Lang.Backend.Php64Codegen.EmitState_;
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.phpSafeName_ = function (name) {
-  return Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name.replace(/[^a-zA-Z0-9_]/g, '_'));
+  return Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_(
+    Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name.replace(/[^a-zA-Z0-9_]/g, '_')),
+    Wasm2Lang.Backend.IdentifierMangler.PHP_RESERVED_,
+    true
+  );
 };
 
 /**
- * Wraps an expression string with {@code _w2l_i()} unless it is a numeric
- * constant that already fits in the i32 range.
+ * Wraps an expression string with the i32 coercion helper unless it is a
+ * numeric constant that already fits in the i32 range.
  *
  * @private
  * @param {string} expr
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.wrapI32_ = function (expr) {
+Wasm2Lang.Backend.Php64Codegen.prototype.wrapI32_ = function (expr) {
   if (Wasm2Lang.Backend.I32Coercion.isConstant(expr)) return expr;
-  // Avoid double-wrapping _w2l_i(_w2l_i(...)): if the expression is
-  // already a _w2l_i() call, it is already i32-truncated.
+  var /** @const {string} */ helperName = this.n_('_w2l_i');
+  var /** @const {string} */ prefix = helperName + '(';
+  // Avoid double-wrapping: if the expression is already a helper call,
+  // it is already i32-truncated.
   var /** @const {number} */ len = expr.length;
+  var /** @const {number} */ prefixLen = prefix.length;
   if (
-    len > 7 &&
-    '_w2l_i(' === expr.slice(0, 7) &&
+    len > prefixLen &&
+    prefix === expr.slice(0, prefixLen) &&
     ')' === expr.charAt(len - 1) &&
-    Wasm2Lang.Backend.AbstractCodegen.Precedence_.isFullyParenthesized(expr.slice(6))
+    Wasm2Lang.Backend.AbstractCodegen.Precedence_.isFullyParenthesized(expr.slice(prefixLen - 1))
   ) {
     return expr;
   }
-  return '_w2l_i(' + expr + ')';
+  return prefix + expr + ')';
 };
 
 /**
@@ -408,10 +544,10 @@ Wasm2Lang.Backend.Php64Codegen.wrapI32_ = function (expr) {
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderCoercionByType_ = function (binaryen, expr, wasmType) {
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.Php64Codegen.wrapI32_(expr);
+    return this.wrapI32_(expr);
   }
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return '_w2l_f32(' + expr + ')';
+    return this.n_('_w2l_f32') + '(' + expr + ')';
   }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     return '(float)(' + expr + ')';
@@ -451,28 +587,30 @@ Wasm2Lang.Backend.Php64Codegen.prototype.getRuntimeHelperPrefix_ = function () {
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr) {
-  var /** @const {string} */ name = info.name;
+  var /** @const {string} */ name = info.opName;
   var /** @const {boolean} */ isF32 = Wasm2Lang.Backend.ValueType.isF32(binaryen, info.operandType);
+  var /** @const {string} */ nI = this.n_('_w2l_i');
+  var /** @const {string} */ nF32 = this.n_('_w2l_f32');
 
   if ('abs' === name || 'ceil' === name || 'floor' === name || 'sqrt' === name) {
     if (isF32) {
-      return '_w2l_f32(' + name + '((float)(' + valueExpr + ')))';
+      return nF32 + '(' + name + '((float)(' + valueExpr + ')))';
     }
     return name + '((float)(' + valueExpr + '))';
   }
 
   if ('convert_s_i32_to_f32' === name) {
-    return '_w2l_f32(_w2l_i(' + valueExpr + '))';
+    return nF32 + '(' + nI + '(' + valueExpr + '))';
   }
   if ('convert_s_i32_to_f64' === name) {
-    return '(float)_w2l_i(' + valueExpr + ')';
+    return '(float)' + nI + '(' + valueExpr + ')';
   }
 
   if ('demote_f64_to_f32' === name) {
-    return '_w2l_f32((float)(' + valueExpr + '))';
+    return nF32 + '((float)(' + valueExpr + '))';
   }
   if ('promote_f32_to_f64' === name) {
-    return '(float)_w2l_f32(' + valueExpr + ')';
+    return '(float)' + nF32 + '(' + valueExpr + ')';
   }
 
   return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_.call(this, binaryen, info, valueExpr);
@@ -488,10 +626,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R) {
-  if ('min' === info.name || 'max' === info.name) {
-    var /** @const {string} */ fn = info.name;
-    if (Wasm2Lang.Backend.ValueType.isF32(binaryen, info.resultType)) {
-      return '_w2l_f32(' + fn + '((float)(' + L + '), (float)(' + R + ')))';
+  if ('min' === info.opName || 'max' === info.opName) {
+    var /** @const {string} */ fn = info.opName;
+    if (Wasm2Lang.Backend.ValueType.isF32(binaryen, info.retType)) {
+      return this.n_('_w2l_f32') + '(' + fn + '((float)(' + L + '), (float)(' + R + ')))';
     }
     return fn + '((float)(' + L + '), (float)(' + R + '))';
   }
@@ -532,10 +670,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderLocalInit_ = function (binaryen, 
  * @param {number} offset
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.renderPtrWithOffset_ = function (baseExpr, offset) {
+Wasm2Lang.Backend.Php64Codegen.prototype.renderPtrWithOffset_ = function (baseExpr, offset) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (0 === offset) return baseExpr;
-  return '_w2l_i(' + P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_) + ')';
+  return this.n_('_w2l_i') + '(' + P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_) + ')';
 };
 
 /**
@@ -568,310 +706,456 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @type {number} */ resultCat = A.CAT_VOID;
+  var /** @const */ self = this;
+  /** @param {number} tempIndex @return {string} */
+  var inlineTemp = function (tempIndex) {
+    return self.localN_(state.inlineTempOffset + tempIndex);
+  };
 
-  // Helper: get child result string by index in childResults.
+  var /** @const {function(number): !Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ childResultAt = function (i) {
+      return A.getChildResultInfo_(childResults, i);
+    };
+
   var /** @const {function(number): string} */ cr = function (i) {
-      if (i >= childResults.length) return '0';
-      var /** @const {*} */ v = childResults[i].childTraversalResult;
-      if ('string' === typeof v) return v;
-      if (v && 'string' === typeof v['s']) return v['s'];
-      return '0';
+      return childResultAt(i).expressionString;
     };
 
-  // Helper: get child result category by index.
   var /** @const {function(number): number} */ cc = function (i) {
-      if (i >= childResults.length) return A.CAT_VOID;
-      var /** @const {*} */ v = childResults[i].childTraversalResult;
-      return v && 'number' === typeof v['c'] ? /** @type {number} */ (v['c']) : A.CAT_VOID;
+      return childResultAt(i).expressionCategory;
     };
 
-  if (binaryen.ConstId === id) {
-    var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
-    result = this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType);
-    resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, constType)
-      ? C.FIXNUM
-      : Wasm2Lang.Backend.ValueType.isF32(binaryen, constType)
-        ? A.CAT_F32
-        : A.CAT_RAW;
-  } else if (binaryen.LocalGetId === id) {
-    result = '$l' + String(/** @type {number} */ (expr['index']));
-    resultCat = A.CAT_RAW;
-  } else if (binaryen.GlobalGetId === id) {
-    result = '$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(/** @type {string} */ (expr['name']));
-    resultCat = A.CAT_RAW;
-  } else if (binaryen.BinaryId === id) {
-    var /** @const {number} */ binaryOp = /** @type {number} */ (expr['op']);
-    var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = Wasm2Lang.Backend.I32Coercion.classifyBinaryOp(
-        binaryen,
-        binaryOp
-      );
-    if (binInfo) {
-      result = this.renderBinaryOp_(binInfo, cr(0), cr(1));
-      resultCat = C.SIGNED;
-    } else {
-      var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numericBinInfo =
-          Wasm2Lang.Backend.NumericOps.classifyBinaryOp(binaryen, binaryOp);
-      if (numericBinInfo) {
-        result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1));
-        resultCat = A.catForCoercedType_(binaryen, numericBinInfo.resultType);
-      } else {
-        result = '0 /* unknown binop ' + expr['op'] + ' */';
-        resultCat = A.CAT_RAW;
-      }
+  switch (id) {
+    case binaryen.ConstId: {
+      var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
+      result = this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType);
+      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, constType)
+        ? C.FIXNUM
+        : Wasm2Lang.Backend.ValueType.isF32(binaryen, constType)
+          ? A.CAT_F32
+          : A.CAT_RAW;
+      break;
     }
-  } else if (binaryen.UnaryId === id) {
-    var /** @const {number} */ unCat = Wasm2Lang.Backend.I32Coercion.classifyUnaryOp(
-        binaryen,
-        /** @type {number} */ (expr['op'])
-      );
-    if (C.UNARY_EQZ === unCat) {
-      var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-      result = '(' + P.renderInfix('0', '===', cr(0), P.PREC_EQUALITY_) + ' ? 1 : 0)';
-      resultCat = C.SIGNED;
-    } else if (C.UNARY_CLZ === unCat) {
-      this.markHelper_('_w2l_clz');
-      result = '_w2l_clz(' + cr(0) + ')';
-      resultCat = C.SIGNED;
-    } else if (C.UNARY_CTZ === unCat) {
-      this.markHelper_('_w2l_ctz');
-      result = '_w2l_ctz(' + cr(0) + ')';
-      resultCat = C.SIGNED;
-    } else if (C.UNARY_POPCNT === unCat) {
-      this.markHelper_('_w2l_popcnt');
-      result = '_w2l_popcnt(' + cr(0) + ')';
-      resultCat = C.SIGNED;
-    } else {
-      var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numericUnInfo =
-          Wasm2Lang.Backend.NumericOps.classifyUnaryOp(binaryen, /** @type {number} */ (expr['op']));
-      if (numericUnInfo) {
-        result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0));
-        resultCat = A.catForCoercedType_(binaryen, numericUnInfo.resultType);
-      } else {
-        result = '0 /* unknown unop ' + expr['op'] + ' */';
-        resultCat = A.CAT_RAW;
-      }
-    }
-  } else if (binaryen.LoadId === id) {
-    var /** @const {string} */ loadPtr = Wasm2Lang.Backend.Php64Codegen.renderPtrWithOffset_(
-        cr(0),
-        /** @type {number} */ (expr['offset'])
-      );
-    var /** @const {number} */ loadBytes = /** @type {number} */ (expr['bytes']);
-    var /** @const {boolean} */ loadSigned = !!expr['isSigned'];
-    var /** @const {number} */ loadType = /** @type {number} */ (expr['type']);
+    case binaryen.LocalGetId:
+      result = this.localN_(/** @type {number} */ (expr['index']));
+      resultCat = A.CAT_RAW;
+      break;
 
-    if (Wasm2Lang.Backend.ValueType.isF64(binaryen, loadType)) {
-      result = "(float)(unpack('e', $buffer, " + loadPtr + ')[1])';
-    } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, loadType)) {
-      result = "_w2l_f32(unpack('g', $buffer, " + loadPtr + ')[1])';
-    } else if (4 === loadBytes) {
-      result = "_w2l_i(unpack('V', $buffer, " + loadPtr + ')[1])';
-    } else if (2 === loadBytes) {
-      if (loadSigned) {
-        result = "(($__v = unpack('v', $buffer, " + loadPtr + ')[1]) > 32767 ? $__v - 65536 : $__v)';
-      } else {
-        result = "unpack('v', $buffer, " + loadPtr + ')[1]';
-      }
-    } else {
-      if (loadSigned) {
-        result = '(($__v = ord($buffer[' + loadPtr + '])) > 127 ? $__v - 256 : $__v)';
-      } else {
-        result = 'ord($buffer[' + loadPtr + '])';
-      }
-    }
-    resultCat = A.catForCoercedType_(binaryen, loadType);
-  } else if (binaryen.StoreId === id) {
-    var /** @const {string} */ storePtr = Wasm2Lang.Backend.Php64Codegen.renderPtrWithOffset_(
-        cr(0),
-        /** @type {number} */ (expr['offset'])
-      );
-    var /** @const {number} */ storeBytes = /** @type {number} */ (expr['bytes']);
-    var /** @const {number} */ storeType = /** @type {number} */ (expr['valueType']) || binaryen.i32;
+    case binaryen.GlobalGetId:
+      result = this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(/** @type {string} */ (expr['name'])));
+      resultCat = A.CAT_RAW;
+      break;
 
-    if (Wasm2Lang.Backend.ValueType.isF64(binaryen, storeType)) {
-      result =
-        pad(ind) +
-        '$__p = ' +
-        storePtr +
-        "; $__s = pack('e', (float)(" +
-        cr(1) +
-        ')); ' +
-        '$buffer[$__p] = $__s[0]; ' +
-        '$buffer[$__p + 1] = $__s[1]; ' +
-        '$buffer[$__p + 2] = $__s[2]; ' +
-        '$buffer[$__p + 3] = $__s[3]; ' +
-        '$buffer[$__p + 4] = $__s[4]; ' +
-        '$buffer[$__p + 5] = $__s[5]; ' +
-        '$buffer[$__p + 6] = $__s[6]; ' +
-        '$buffer[$__p + 7] = $__s[7];\n';
-    } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, storeType)) {
-      result =
-        pad(ind) +
-        '$__p = ' +
-        storePtr +
-        "; $__s = pack('g', _w2l_f32(" +
-        cr(1) +
-        ')); ' +
-        '$buffer[$__p] = $__s[0]; ' +
-        '$buffer[$__p + 1] = $__s[1]; ' +
-        '$buffer[$__p + 2] = $__s[2]; ' +
-        '$buffer[$__p + 3] = $__s[3];\n';
-    } else if (4 === storeBytes) {
-      result =
-        pad(ind) +
-        '$__p = ' +
-        storePtr +
-        "; $__s = pack('V', " +
-        this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
-        '); ' +
-        '$buffer[$__p] = $__s[0]; ' +
-        '$buffer[$__p + 1] = $__s[1]; ' +
-        '$buffer[$__p + 2] = $__s[2]; ' +
-        '$buffer[$__p + 3] = $__s[3];\n';
-    } else if (2 === storeBytes) {
-      result =
-        pad(ind) +
-        '$__p = ' +
-        storePtr +
-        "; $__s = pack('v', " +
-        this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
-        ' & 0xFFFF); ' +
-        '$buffer[$__p] = $__s[0]; ' +
-        '$buffer[$__p + 1] = $__s[1];\n';
-    } else {
-      result =
-        pad(ind) +
-        '$buffer[' +
-        storePtr +
-        '] = chr(' +
-        this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
-        ' & 0xFF);\n';
-    }
-  } else if (binaryen.LocalSetId === id) {
-    var /** @const {boolean} */ isTee = !!expr['isTee'];
-    var /** @const {number} */ setIdx = /** @type {number} */ (expr['index']);
-    var /** @const {number} */ localType = Wasm2Lang.Backend.ValueType.getLocalType(binaryen, state.functionInfo, setIdx);
-    var /** @const {string} */ setValue = this.coerceToType_(binaryen, cr(0), cc(0), localType);
-    if (isTee) {
-      result = '($l' + setIdx + ' = ' + setValue + ')';
-      resultCat = A.catForCoercedType_(binaryen, localType);
-    } else {
-      result = pad(ind) + '$l' + setIdx + ' = ' + setValue + ';\n';
-    }
-  } else if (binaryen.GlobalSetId === id) {
-    var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
-    var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
-    result =
-      pad(ind) +
-      '$g_' +
-      Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globalName) +
-      ' = ' +
-      this.coerceToType_(binaryen, cr(0), cc(0), globalType) +
-      ';\n';
-  } else if (binaryen.CallId === id) {
-    var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
-    var /** @const {string} */ importBase = state.importedNames[callTarget] || '';
-    var /** @type {string} */ callName =
-        '' !== importBase
-          ? '$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(importBase)
-          : '$' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(callTarget);
-    var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
-        binaryen,
-        expr,
-        childResults,
-        state.functionSignatures
-      );
-    var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
-    var /** @const {number} */ callType = /** @type {number} */ (expr['type']);
-    if (callType === binaryen.none || 0 === callType) {
-      result = pad(ind) + callExpr + ';\n';
-    } else {
-      result = this.renderCoercionByType_(binaryen, callExpr, callType);
-      resultCat = A.catForCoercedType_(binaryen, callType);
-    }
-  } else if (binaryen.ReturnId === id) {
-    var /** @const {*} */ retVal = 0 < childResults.length ? childResults[0].childTraversalResult : null;
-    if (null != retVal && ('string' === typeof retVal || (retVal && 'undefined' !== typeof retVal['s']))) {
-      result = pad(ind) + 'return ' + this.coerceToType_(binaryen, cr(0), cc(0), state.functionInfo.results) + ';\n';
-    } else {
-      result = pad(ind) + 'return;\n';
-    }
-  } else if (binaryen.DropId === id) {
-    result = pad(ind) + cr(0) + ';\n';
-  } else if (binaryen.NopId === id) {
-    result = '';
-  } else if (binaryen.UnreachableId === id) {
-    result = '';
-  } else if (binaryen.SelectId === id) {
-    var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
-    result = this.renderCoercionByType_(binaryen, '(' + cr(0) + ' ? ' + cr(1) + ' : ' + cr(2) + ')', selectType);
-    resultCat = A.catForCoercedType_(binaryen, selectType);
-  } else if (binaryen.MemorySizeId === id) {
-    result = '0';
-    resultCat = C.FIXNUM;
-  } else if (binaryen.MemoryGrowId === id) {
-    result = pad(ind) + cr(0) + ';\n';
-  } else if (binaryen.BlockId === id) {
-    var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
-    var /** @const {number} */ childInd = blockName ? ind + 1 : ind;
-    var /** @const {!Array<string>} */ blockLines = [];
-    for (var /** number */ bi = 0, /** @const {number} */ bLen = childResults.length; bi !== bLen; ++bi) {
-      var /** @const {string} */ childCode = cr(bi);
-      if ('' !== childCode) {
-        if (-1 === childCode.indexOf('\n')) {
-          blockLines[blockLines.length] = pad(childInd) + childCode + ';\n';
+    case binaryen.BinaryId: {
+      var /** @const {number} */ binaryOp = /** @type {number} */ (expr['op']);
+      var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = Wasm2Lang.Backend.I32Coercion.classifyBinaryOp(
+          binaryen,
+          binaryOp
+        );
+      if (binInfo) {
+        result = this.renderBinaryOp_(binInfo, cr(0), cr(1));
+        resultCat = C.SIGNED;
+      } else {
+        var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numericBinInfo =
+            Wasm2Lang.Backend.NumericOps.classifyBinaryOp(binaryen, binaryOp);
+        if (numericBinInfo) {
+          result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1));
+          resultCat = A.catForCoercedType_(binaryen, numericBinInfo.retType);
         } else {
-          blockLines[blockLines.length] = childCode;
+          result = '0 /* unknown binop ' + expr['op'] + ' */';
+          resultCat = A.CAT_RAW;
         }
       }
+      break;
     }
-    if (blockName) {
-      result = pad(ind) + 'do {\n' + blockLines.join('') + pad(ind) + '} while (false);\n';
-    } else {
-      result = blockLines.join('');
-    }
-  } else if (binaryen.LoopId === id) {
-    result = pad(ind) + 'while (true) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
-  } else if (binaryen.IfId === id) {
-    var /** @const {number} */ ifFalsePtr = /** @type {number} */ (expr['ifFalse']);
-    var /** @type {string} */ condExpr = Wasm2Lang.Backend.Php64Codegen.formatCondition_(cr(0));
-    var /** @type {string} */ trueCode = cr(1);
-    if (0 !== ifFalsePtr && 2 < childResults.length) {
-      var /** @type {string} */ falseCode = cr(2);
-      result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '} else {\n' + falseCode + pad(ind) + '}\n';
-    } else {
-      result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '}\n';
-    }
-  } else if (binaryen.BreakId === id) {
-    var /** @const {string} */ brName = /** @type {string} */ (expr['name']);
-    var /** @const {number} */ brCondPtr = /** @type {number} */ (expr['condition']);
-    // Compute depth by scanning label stack from top.
-    var /** @type {number} */ depth = 0;
-    var /** @type {string} */ brKind = 'block';
-    for (var /** number */ si = state.labelStack.length - 1; 0 <= si; --si) {
-      depth++;
-      if (state.labelStack[si].name === brName) {
-        brKind = state.labelStack[si].kind;
-        break;
+    case binaryen.UnaryId: {
+      var /** @const {number} */ unCat = Wasm2Lang.Backend.I32Coercion.classifyUnaryOp(
+          binaryen,
+          /** @type {number} */ (expr['op'])
+        );
+      if (C.UNARY_EQZ === unCat) {
+        var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+        result = '(' + P.renderInfix('0', '===', cr(0), P.PREC_EQUALITY_) + ' ? 1 : 0)';
+        resultCat = C.SIGNED;
+      } else if (C.UNARY_CLZ === unCat) {
+        this.markHelper_('_w2l_clz');
+        result = this.n_('_w2l_clz') + '(' + cr(0) + ')';
+        resultCat = C.SIGNED;
+      } else if (C.UNARY_CTZ === unCat) {
+        this.markHelper_('_w2l_ctz');
+        result = this.n_('_w2l_ctz') + '(' + cr(0) + ')';
+        resultCat = C.SIGNED;
+      } else if (C.UNARY_POPCNT === unCat) {
+        this.markHelper_('_w2l_popcnt');
+        result = this.n_('_w2l_popcnt') + '(' + cr(0) + ')';
+        resultCat = C.SIGNED;
+      } else {
+        var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numericUnInfo =
+            Wasm2Lang.Backend.NumericOps.classifyUnaryOp(binaryen, /** @type {number} */ (expr['op']));
+        if (numericUnInfo) {
+          result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0));
+          resultCat = A.catForCoercedType_(binaryen, numericUnInfo.retType);
+        } else {
+          result = '0 /* unknown unop ' + expr['op'] + ' */';
+          resultCat = A.CAT_RAW;
+        }
       }
+      break;
     }
+    case binaryen.LoadId: {
+      var /** @const {string} */ loadPtr = this.renderPtrWithOffset_(cr(0), /** @type {number} */ (expr['offset']));
+      var /** @const {number} */ loadBytes = /** @type {number} */ (expr['bytes']);
+      var /** @const {boolean} */ loadSigned = !!expr['isSigned'];
+      var /** @const {number} */ loadType = /** @type {number} */ (expr['type']);
+      var /** @const {string} */ nBuf = this.phpVar_('buffer');
 
-    var /** @const {string} */ brStmt = ('loop' === brKind ? 'continue' : 'break') + ' ' + depth + ';\n';
-    if (0 !== brCondPtr) {
+      if (Wasm2Lang.Backend.ValueType.isF64(binaryen, loadType)) {
+        result = "(float)(unpack('e', " + nBuf + ', ' + loadPtr + ')[1])';
+      } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, loadType)) {
+        result = this.n_('_w2l_f32') + "(unpack('g', " + nBuf + ', ' + loadPtr + ')[1])';
+      } else if (4 === loadBytes) {
+        result = this.n_('_w2l_i') + "(unpack('V', " + nBuf + ', ' + loadPtr + ')[1])';
+      } else if (2 === loadBytes) {
+        if (loadSigned) {
+          var /** @const {string} */ tV16 = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_V_);
+          result =
+            '((' + tV16 + " = unpack('v', " + nBuf + ', ' + loadPtr + ')[1]) > 32767 ? ' + tV16 + ' - 65536 : ' + tV16 + ')';
+        } else {
+          result = "unpack('v', " + nBuf + ', ' + loadPtr + ')[1]';
+        }
+      } else {
+        if (loadSigned) {
+          var /** @const {string} */ tV8 = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_V_);
+          result = '((' + tV8 + ' = ord(' + nBuf + '[' + loadPtr + '])) > 127 ? ' + tV8 + ' - 256 : ' + tV8 + ')';
+        } else {
+          result = 'ord(' + nBuf + '[' + loadPtr + '])';
+        }
+      }
+      resultCat = A.catForCoercedType_(binaryen, loadType);
+      break;
+    }
+    case binaryen.StoreId: {
+      var /** @const {string} */ storePtr = this.renderPtrWithOffset_(cr(0), /** @type {number} */ (expr['offset']));
+      var /** @const {number} */ storeBytes = /** @type {number} */ (expr['bytes']);
+      var /** @const {number} */ storeType = /** @type {number} */ (expr['valueType']) || binaryen.i32;
+      var /** @const {string} */ sBuf = this.phpVar_('buffer');
+
+      var /** @const {string} */ tP = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_P_);
+      var /** @const {string} */ tS = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_S_);
+      if (Wasm2Lang.Backend.ValueType.isF64(binaryen, storeType)) {
+        result =
+          pad(ind) +
+          tP +
+          ' = ' +
+          storePtr +
+          '; ' +
+          tS +
+          " = pack('e', (float)(" +
+          cr(1) +
+          ')); ' +
+          sBuf +
+          '[' +
+          tP +
+          '] = ' +
+          tS +
+          '[0]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 1] = ' +
+          tS +
+          '[1]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 2] = ' +
+          tS +
+          '[2]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 3] = ' +
+          tS +
+          '[3]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 4] = ' +
+          tS +
+          '[4]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 5] = ' +
+          tS +
+          '[5]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 6] = ' +
+          tS +
+          '[6]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 7] = ' +
+          tS +
+          '[7];\n';
+      } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, storeType)) {
+        result =
+          pad(ind) +
+          tP +
+          ' = ' +
+          storePtr +
+          '; ' +
+          tS +
+          " = pack('g', " +
+          this.n_('_w2l_f32') +
+          '(' +
+          cr(1) +
+          ')); ' +
+          sBuf +
+          '[' +
+          tP +
+          '] = ' +
+          tS +
+          '[0]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 1] = ' +
+          tS +
+          '[1]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 2] = ' +
+          tS +
+          '[2]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 3] = ' +
+          tS +
+          '[3];\n';
+      } else if (4 === storeBytes) {
+        result =
+          pad(ind) +
+          tP +
+          ' = ' +
+          storePtr +
+          '; ' +
+          tS +
+          " = pack('V', " +
+          this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
+          '); ' +
+          sBuf +
+          '[' +
+          tP +
+          '] = ' +
+          tS +
+          '[0]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 1] = ' +
+          tS +
+          '[1]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 2] = ' +
+          tS +
+          '[2]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 3] = ' +
+          tS +
+          '[3];\n';
+      } else if (2 === storeBytes) {
+        result =
+          pad(ind) +
+          tP +
+          ' = ' +
+          storePtr +
+          '; ' +
+          tS +
+          " = pack('v', " +
+          this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
+          ' & 0xFFFF); ' +
+          sBuf +
+          '[' +
+          tP +
+          '] = ' +
+          tS +
+          '[0]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 1] = ' +
+          tS +
+          '[1];\n';
+      } else {
+        result =
+          pad(ind) +
+          sBuf +
+          '[' +
+          storePtr +
+          '] = chr(' +
+          this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
+          ' & 0xFF);\n';
+      }
+      break;
+    }
+    case binaryen.LocalSetId: {
+      var /** @const {boolean} */ isTee = !!expr['isTee'];
+      var /** @const {number} */ setIdx = /** @type {number} */ (expr['index']);
+      var /** @const {number} */ localType = Wasm2Lang.Backend.ValueType.getLocalType(binaryen, state.functionInfo, setIdx);
+      var /** @const {string} */ setValue = this.coerceToType_(binaryen, cr(0), cc(0), localType);
+      var /** @const {string} */ setLocalName = this.localN_(setIdx);
+      if (isTee) {
+        result = '(' + setLocalName + ' = ' + setValue + ')';
+        resultCat = A.catForCoercedType_(binaryen, localType);
+      } else {
+        result = pad(ind) + setLocalName + ' = ' + setValue + ';\n';
+      }
+      break;
+    }
+    case binaryen.GlobalSetId: {
+      var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
+      var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
       result =
         pad(ind) +
-        'if ' +
-        Wasm2Lang.Backend.Php64Codegen.formatCondition_(cr(0)) +
-        ' {\n' +
-        pad(ind + 1) +
-        brStmt +
-        pad(ind) +
-        '}\n';
-    } else {
-      result = pad(ind) + brStmt;
+        this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globalName)) +
+        ' = ' +
+        this.coerceToType_(binaryen, cr(0), cc(0), globalType) +
+        ';\n';
+      break;
     }
-  } else {
-    result = '/* unknown expr id=' + id + ' */';
+    case binaryen.CallId: {
+      var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
+      var /** @const {string} */ importBase = state.importedNames[callTarget] || '';
+      var /** @type {string} */ callName =
+          '' !== importBase
+            ? this.phpVar_('$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(importBase))
+            : this.phpVar_(Wasm2Lang.Backend.Php64Codegen.phpSafeName_(callTarget));
+      var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
+          binaryen,
+          expr,
+          childResults,
+          state.functionSignatures
+        );
+      var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
+      var /** @const {number} */ callType = /** @type {number} */ (expr['type']);
+      if (callType === binaryen.none || 0 === callType) {
+        result = pad(ind) + callExpr + ';\n';
+      } else {
+        result = this.renderCoercionByType_(binaryen, callExpr, callType);
+        resultCat = A.catForCoercedType_(binaryen, callType);
+      }
+      break;
+    }
+    case binaryen.ReturnId:
+      if (childResultAt(0).hasExpression) {
+        result = pad(ind) + 'return ' + this.coerceToType_(binaryen, cr(0), cc(0), state.functionInfo.results) + ';\n';
+      } else {
+        result = pad(ind) + 'return;\n';
+      }
+      break;
+
+    case binaryen.DropId:
+      result = pad(ind) + cr(0) + ';\n';
+      break;
+
+    case binaryen.NopId:
+    case binaryen.UnreachableId:
+      break;
+
+    case binaryen.SelectId: {
+      var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
+      result = this.renderCoercionByType_(binaryen, '(' + cr(0) + ' ? ' + cr(1) + ' : ' + cr(2) + ')', selectType);
+      resultCat = A.catForCoercedType_(binaryen, selectType);
+      break;
+    }
+    case binaryen.MemorySizeId:
+      result = '0';
+      resultCat = C.FIXNUM;
+      break;
+
+    case binaryen.MemoryGrowId:
+      result = pad(ind) + cr(0) + ';\n';
+      break;
+
+    case binaryen.BlockId: {
+      var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
+      var /** @const {number} */ childInd = blockName ? ind + 1 : ind;
+      var /** @const {!Array<string>} */ blockLines = [];
+      for (var /** number */ bi = 0, /** @const {number} */ bLen = childResults.length; bi !== bLen; ++bi) {
+        var /** @const {string} */ childCode = cr(bi);
+        if ('' !== childCode) {
+          if (-1 === childCode.indexOf('\n')) {
+            blockLines[blockLines.length] = pad(childInd) + childCode + ';\n';
+          } else {
+            blockLines[blockLines.length] = childCode;
+          }
+        }
+      }
+      if (blockName) {
+        result = pad(ind) + 'do {\n' + blockLines.join('') + pad(ind) + '} while (false);\n';
+      } else {
+        result = blockLines.join('');
+      }
+      break;
+    }
+    case binaryen.LoopId:
+      result = pad(ind) + 'while (true) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
+      break;
+
+    case binaryen.IfId: {
+      var /** @const {number} */ ifFalsePtr = /** @type {number} */ (expr['ifFalse']);
+      var /** @type {string} */ condExpr = Wasm2Lang.Backend.Php64Codegen.formatCondition_(cr(0));
+      var /** @type {string} */ trueCode = cr(1);
+      if (0 !== ifFalsePtr && 2 < childResults.length) {
+        var /** @type {string} */ falseCode = cr(2);
+        result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '} else {\n' + falseCode + pad(ind) + '}\n';
+      } else {
+        result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '}\n';
+      }
+      break;
+    }
+    case binaryen.BreakId: {
+      var /** @const {string} */ brName = /** @type {string} */ (expr['name']);
+      var /** @const {number} */ brCondPtr = /** @type {number} */ (expr['condition']);
+      // Compute depth by scanning label stack from top.
+      var /** @type {number} */ depth = 0;
+      var /** @type {string} */ brKind = 'block';
+      for (var /** number */ si = state.labelStack.length - 1; 0 <= si; --si) {
+        ++depth;
+        if (state.labelStack[si].lbl === brName) {
+          brKind = state.labelStack[si].lk;
+          break;
+        }
+      }
+
+      var /** @const {string} */ brStmt = ('loop' === brKind ? 'continue' : 'break') + ' ' + depth + ';\n';
+      if (0 !== brCondPtr) {
+        result =
+          pad(ind) +
+          'if ' +
+          Wasm2Lang.Backend.Php64Codegen.formatCondition_(cr(0)) +
+          ' {\n' +
+          pad(ind + 1) +
+          brStmt +
+          pad(ind) +
+          '}\n';
+      } else {
+        result = pad(ind) + brStmt;
+      }
+      break;
+    }
+    default:
+      result = '/* unknown expr id=' + id + ' */';
+      break;
   }
 
   if (resultCat !== A.CAT_VOID) {
@@ -894,14 +1178,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
   if (binaryen.BlockId === id) {
     var /** @const {?string} */ bName = /** @type {?string} */ (expr['name']);
     if (bName) {
-      state.labelStack[state.labelStack.length] = {name: bName, kind: 'block'};
-      state.indent++;
+      state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
+      ++state.indent;
     }
   } else if (binaryen.LoopId === id) {
-    state.labelStack[state.labelStack.length] = {name: /** @type {string} */ (expr['name']), kind: 'loop'};
-    state.indent++;
+    state.labelStack[state.labelStack.length] = {lbl: /** @type {string} */ (expr['name']), lk: 'loop'};
+    ++state.indent;
   } else if (binaryen.IfId === id) {
-    state.indent++;
+    ++state.indent;
   }
 
   return null;
@@ -922,15 +1206,16 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.buildUseClause_ = function (globals, imports, internalFuncNames) {
   var /** @const {!Array<string>} */ entries = [];
-  entries[entries.length] = '&$buffer';
+  entries[entries.length] = '&' + this.phpVar_('buffer');
   for (var /** number */ gi = 0, /** @const {number} */ gLen = globals.length; gi !== gLen; ++gi) {
-    entries[entries.length] = '&$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globals[gi].globalName);
+    entries[entries.length] = '&' + this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globals[gi].globalName));
   }
   for (var /** number */ ii = 0, /** @const {number} */ iLen = imports.length; ii !== iLen; ++ii) {
-    entries[entries.length] = '&$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(imports[ii].importBaseName);
+    entries[entries.length] =
+      '&' + this.phpVar_('$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(imports[ii].importBaseName));
   }
   for (var /** number */ fi = 0, /** @const {number} */ fLen = internalFuncNames.length; fi !== fLen; ++fi) {
-    entries[entries.length] = '&$' + internalFuncNames[fi];
+    entries[entries.length] = '&' + this.phpVar_(internalFuncNames[fi]);
   }
   return entries.join(', ');
 };
@@ -962,7 +1247,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   globalTypes
 ) {
   var /** @const {!Array<string>} */ parts = [];
-  var /** @const {string} */ fnName = Wasm2Lang.Backend.Php64Codegen.phpSafeName_(funcInfo.name);
+  var /** @const {string} */ fnName = this.phpVar_(Wasm2Lang.Backend.Php64Codegen.phpSafeName_(funcInfo.name));
   var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(funcInfo.params);
   var /** @const {number} */ numParams = paramTypes.length;
   var /** @const {!Array<number>} */ varTypes = /** @type {!Array<number>} */ (funcInfo.vars) || [];
@@ -974,13 +1259,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   // Parameter list.
   var /** @const {!Array<string>} */ paramNames = [];
   for (var /** number */ pi = 0; pi !== numParams; ++pi) {
-    paramNames[paramNames.length] = '$l' + pi;
+    paramNames[paramNames.length] = this.localN_(pi);
   }
-  parts[parts.length] = '  $' + fnName + ' = function(' + paramNames.join(', ') + ') use (' + useClause + ') {';
+  parts[parts.length] = '  ' + fnName + ' = function(' + paramNames.join(', ') + ') use (' + useClause + ') {';
 
   // Coerce parameters to their wasm types.
   for (var /** number */ pa = 0; pa !== numParams; ++pa) {
-    parts[parts.length] = '    $l' + pa + ' = ' + this.renderCoercionByType_(binaryen, '$l' + pa, paramTypes[pa]) + ';';
+    var /** @const {string} */ pName = this.localN_(pa);
+    parts[parts.length] = '    ' + pName + ' = ' + this.renderCoercionByType_(binaryen, pName, paramTypes[pa]) + ';';
   }
 
   // Local variable declarations.
@@ -988,7 +1274,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
     var /** @const {!Array<string>} */ varDecls = [];
     for (var /** number */ vi = 0; vi !== numVars; ++vi) {
       var /** @const {number} */ localType = varTypes[vi];
-      varDecls[varDecls.length] = '$l' + (numParams + vi) + ' = ' + this.renderLocalInit_(binaryen, localType);
+      varDecls[varDecls.length] = this.localN_(numParams + vi) + ' = ' + this.renderLocalInit_(binaryen, localType);
     }
     parts[parts.length] = '    ' + varDecls.join('; ') + ';';
   }
@@ -1000,6 +1286,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
         functionInfo: funcInfo,
         functionSignatures: functionSignatures,
         globalTypes: globalTypes,
+        inlineTempOffset: numParams + numVars,
         labelStack: [],
         importedNames: importedNames,
         indent: 2
@@ -1014,9 +1301,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
           var /** @const {!Object<string, *>} */ e = /** @type {!Object<string, *>} */ (nc.expression);
           var /** @const {number} */ eId = /** @type {number} */ (e['id']);
           if (binaryen.LoopId === eId || binaryen.IfId === eId) {
-            emitState.indent--;
+            --emitState.indent;
           } else if (binaryen.BlockId === eId && e['name']) {
-            emitState.indent--;
+            --emitState.indent;
           }
           // Pop label stack for blocks/loops after adjusting indent.
           if (binaryen.LoopId === eId) {
@@ -1039,7 +1326,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
  * @override
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @return {string}
+ * @return {!Array<!Wasm2Lang.OutputSink.ChunkEntry>}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, options) {
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
@@ -1048,7 +1335,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
       this.collectModuleCodegenInfo_(wasmModule);
   var /** @const {!Array<string>} */ outputParts = [];
 
-  // Collect internal function names (safe identifiers).
+  // Collect internal function names (safe identifiers, unmangled keys).
   var /** @const {!Array<string>} */ internalFuncNames = [];
   for (var /** number */ fn = 0, /** @const {number} */ fnCount = moduleInfo.functions.length; fn !== fnCount; ++fn) {
     internalFuncNames[internalFuncNames.length] = Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.functions[fn].name);
@@ -1065,7 +1352,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
       funcInfo,
       moduleInfo.importedNames,
       moduleInfo.globals,
-      moduleInfo.imports,
+      moduleInfo.impFuncs,
       internalFuncNames,
       moduleInfo.functionSignatures,
       moduleInfo.globalTypes
@@ -1074,117 +1361,238 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   var /** @const {!Object<string, boolean>} */ used = this.usedHelpers_;
   this.usedHelpers_ = null;
 
+  // Pre-resolve mangled helper names used across multiple definitions.
+  var /** @const {string} */ nI = this.n_('_w2l_i');
+  var /** @const {string} */ nF32 = this.n_('_w2l_f32');
+
   // Core coercion helpers (always emitted).
   outputParts[outputParts.length] =
-    'function _w2l_i($v): int { $v = (int)$v; $v &= 0xFFFFFFFF; return ($v > 2147483647) ? ($v - 4294967296) : $v; }';
-  outputParts[outputParts.length] = "function _w2l_f32($v): float { return unpack('g', pack('g', (float)$v))[1]; }";
+    'function ' + nI + '($v): int { $v = (int)$v; $v &= 0xFFFFFFFF; return ($v > 2147483647) ? ($v - 4294967296) : $v; }';
+  outputParts[outputParts.length] = 'function ' + nF32 + "($v): float { return unpack('g', pack('g', (float)$v))[1]; }";
 
   // Opcode-specific helpers (only when referenced).
   if (used['_w2l_clz']) {
     outputParts[outputParts.length] =
-      'function _w2l_clz(int $v): int { $v = _w2l_i($v) & 0xFFFFFFFF; if (0 === $v) return 32; $n = 0; while (0 === ($v & 0x80000000)) { ++$n; $v = ($v << 1) & 0xFFFFFFFF; } return $n; }';
+      'function ' +
+      this.n_('_w2l_clz') +
+      '(int $v): int { $v = ' +
+      nI +
+      '($v) & 0xFFFFFFFF; if (0 === $v) return 32; $n = 0; while (0 === ($v & 0x80000000)) { ++$n; $v = ($v << 1) & 0xFFFFFFFF; } return $n; }';
   }
   if (used['_w2l_ctz']) {
     outputParts[outputParts.length] =
-      'function _w2l_ctz(int $v): int { $v = _w2l_i($v) & 0xFFFFFFFF; if (0 === $v) return 32; $n = 0; while (0 === ($v & 1)) { ++$n; $v >>= 1; } return $n; }';
+      'function ' +
+      this.n_('_w2l_ctz') +
+      '(int $v): int { $v = ' +
+      nI +
+      '($v) & 0xFFFFFFFF; if (0 === $v) return 32; $n = 0; while (0 === ($v & 1)) { ++$n; $v >>= 1; } return $n; }';
   }
   if (used['_w2l_popcnt']) {
     outputParts[outputParts.length] =
-      'function _w2l_popcnt(int $v): int { $v = _w2l_i($v) & 0xFFFFFFFF; $n = 0; while (0 !== $v) { $n += $v & 1; $v >>= 1; } return $n; }';
+      'function ' +
+      this.n_('_w2l_popcnt') +
+      '(int $v): int { $v = ' +
+      nI +
+      '($v) & 0xFFFFFFFF; $n = 0; while (0 !== $v) { $n += $v & 1; $v >>= 1; } return $n; }';
   }
   if (used['_w2l_imul']) {
     outputParts[outputParts.length] =
-      'function _w2l_imul(int $a, int $b): int { $al = $a & 0xFFFF; $ah = ($a >> 16) & 0xFFFF; return _w2l_i($al * ($b & 0xFFFF) + (($ah * ($b & 0xFFFF) + $al * (($b >> 16) & 0xFFFF)) << 16)); }';
+      'function ' +
+      this.n_('_w2l_imul') +
+      '(int $a, int $b): int { $al = $a & 0xFFFF; $ah = ($a >> 16) & 0xFFFF; return ' +
+      nI +
+      '($al * ($b & 0xFFFF) + (($ah * ($b & 0xFFFF) + $al * (($b >> 16) & 0xFFFF)) << 16)); }';
   }
   if (used['_w2l_copysign_f64']) {
     outputParts[outputParts.length] =
-      'function _w2l_copysign_f64($x, $y): float { $x = abs((float)$x); return ((float)$y < 0.0) ? -$x : $x; }';
+      'function ' +
+      this.n_('_w2l_copysign_f64') +
+      '($x, $y): float { $x = abs((float)$x); return (ord(pack("E", (float)$y)[0]) & 128) ? -$x : $x; }';
   }
   if (used['_w2l_copysign_f32']) {
     outputParts[outputParts.length] =
-      'function _w2l_copysign_f32($x, $y): float { return _w2l_f32(_w2l_copysign_f64($x, $y)); }';
+      'function ' +
+      this.n_('_w2l_copysign_f32') +
+      '($x, $y): float { return ' +
+      nF32 +
+      '(' +
+      this.n_('_w2l_copysign_f64') +
+      '($x, $y)); }';
   }
   if (used['_w2l_trunc_f64']) {
     outputParts[outputParts.length] =
-      'function _w2l_trunc_f64($x): float { $x = (float)$x; return $x < 0.0 ? ceil($x) : floor($x); }';
+      'function ' + this.n_('_w2l_trunc_f64') + '($x): float { $x = (float)$x; return $x < 0.0 ? ceil($x) : floor($x); }';
   }
   if (used['_w2l_trunc_f32']) {
-    outputParts[outputParts.length] = 'function _w2l_trunc_f32($x): float { return _w2l_f32(_w2l_trunc_f64($x)); }';
+    outputParts[outputParts.length] =
+      'function ' + this.n_('_w2l_trunc_f32') + '($x): float { return ' + nF32 + '(' + this.n_('_w2l_trunc_f64') + '($x)); }';
   }
   if (used['_w2l_nearest_f64']) {
     outputParts[outputParts.length] =
-      'function _w2l_nearest_f64($x): float { return round((float)$x, 0, PHP_ROUND_HALF_EVEN); }';
+      'function ' + this.n_('_w2l_nearest_f64') + '($x): float { return round((float)$x, 0, PHP_ROUND_HALF_EVEN); }';
   }
   if (used['_w2l_nearest_f32']) {
-    outputParts[outputParts.length] = 'function _w2l_nearest_f32($x): float { return _w2l_f32(_w2l_nearest_f64($x)); }';
+    outputParts[outputParts.length] =
+      'function ' +
+      this.n_('_w2l_nearest_f32') +
+      '($x): float { return ' +
+      nF32 +
+      '(' +
+      this.n_('_w2l_nearest_f64') +
+      '($x)); }';
   }
   if (used['_w2l_trunc_s_f32_to_i32']) {
     outputParts[outputParts.length] =
-      'function _w2l_trunc_s_f32_to_i32($x): int { return _w2l_i((int)_w2l_trunc_f64(_w2l_f32($x))); }';
+      'function ' +
+      this.n_('_w2l_trunc_s_f32_to_i32') +
+      '($x): int { return ' +
+      nI +
+      '((int)' +
+      this.n_('_w2l_trunc_f64') +
+      '(' +
+      nF32 +
+      '($x))); }';
   }
   if (used['_w2l_trunc_u_f32_to_i32']) {
     outputParts[outputParts.length] =
-      'function _w2l_trunc_u_f32_to_i32($x): int { return _w2l_trunc_u_f64_to_i32(_w2l_f32($x)); }';
+      'function ' +
+      this.n_('_w2l_trunc_u_f32_to_i32') +
+      '($x): int { return ' +
+      this.n_('_w2l_trunc_u_f64_to_i32') +
+      '(' +
+      nF32 +
+      '($x)); }';
   }
   if (used['_w2l_trunc_s_f64_to_i32']) {
     outputParts[outputParts.length] =
-      'function _w2l_trunc_s_f64_to_i32($x): int { return _w2l_i((int)_w2l_trunc_f64((float)$x)); }';
+      'function ' +
+      this.n_('_w2l_trunc_s_f64_to_i32') +
+      '($x): int { return ' +
+      nI +
+      '((int)' +
+      this.n_('_w2l_trunc_f64') +
+      '((float)$x)); }';
   }
   if (used['_w2l_trunc_u_f64_to_i32']) {
     outputParts[outputParts.length] =
-      'function _w2l_trunc_u_f64_to_i32($x): int { $x = _w2l_trunc_f64((float)$x); return $x >= 2147483648.0 ? _w2l_i((int)($x - 2147483648.0) + -2147483648) : _w2l_i((int)$x); }';
+      'function ' +
+      this.n_('_w2l_trunc_u_f64_to_i32') +
+      '($x): int { $x = ' +
+      this.n_('_w2l_trunc_f64') +
+      '((float)$x); return $x >= 2147483648.0 ? ' +
+      nI +
+      '((int)($x - 2147483648.0) + -2147483648) : ' +
+      nI +
+      '((int)$x); }';
   }
   if (used['_w2l_trunc_sat_s_f32_to_i32']) {
     outputParts[outputParts.length] =
-      'function _w2l_trunc_sat_s_f32_to_i32($x): int { return _w2l_trunc_sat_s_f64_to_i32(_w2l_f32($x)); }';
+      'function ' +
+      this.n_('_w2l_trunc_sat_s_f32_to_i32') +
+      '($x): int { return ' +
+      this.n_('_w2l_trunc_sat_s_f64_to_i32') +
+      '(' +
+      nF32 +
+      '($x)); }';
   }
   if (used['_w2l_trunc_sat_u_f32_to_i32']) {
     outputParts[outputParts.length] =
-      'function _w2l_trunc_sat_u_f32_to_i32($x): int { return _w2l_trunc_sat_u_f64_to_i32(_w2l_f32($x)); }';
+      'function ' +
+      this.n_('_w2l_trunc_sat_u_f32_to_i32') +
+      '($x): int { return ' +
+      this.n_('_w2l_trunc_sat_u_f64_to_i32') +
+      '(' +
+      nF32 +
+      '($x)); }';
   }
   if (used['_w2l_trunc_sat_s_f64_to_i32']) {
+    var /** @const {string} */ nTruncF64 = this.n_('_w2l_trunc_f64');
     outputParts[outputParts.length] =
-      'function _w2l_trunc_sat_s_f64_to_i32($x): int { $x = _w2l_trunc_f64((float)$x); return is_nan($x) ? 0 : ($x >= 2147483648.0 ? _w2l_i(2147483647) : ($x <= -2147483649.0 ? _w2l_i(-2147483648) : _w2l_i((int)$x))); }';
+      'function ' +
+      this.n_('_w2l_trunc_sat_s_f64_to_i32') +
+      '($x): int { $x = ' +
+      nTruncF64 +
+      '((float)$x); return is_nan($x) ? 0 : ($x >= 2147483648.0 ? ' +
+      nI +
+      '(2147483647) : ($x <= -2147483649.0 ? ' +
+      nI +
+      '(-2147483648) : ' +
+      nI +
+      '((int)$x))); }';
   }
   if (used['_w2l_trunc_sat_u_f64_to_i32']) {
+    var /** @const {string} */ nTruncF64u = this.n_('_w2l_trunc_f64');
     outputParts[outputParts.length] =
-      'function _w2l_trunc_sat_u_f64_to_i32($x): int { $x = _w2l_trunc_f64((float)$x); if (is_nan($x) || $x < 0.0) return 0; if ($x >= 4294967296.0) return _w2l_i(-1); return $x >= 2147483648.0 ? _w2l_i((int)($x - 2147483648.0) + -2147483648) : _w2l_i((int)$x); }';
+      'function ' +
+      this.n_('_w2l_trunc_sat_u_f64_to_i32') +
+      '($x): int { $x = ' +
+      nTruncF64u +
+      '((float)$x); if (is_nan($x) || $x < 0.0) return 0; if ($x >= 4294967296.0) return ' +
+      nI +
+      '(-1); return $x >= 2147483648.0 ? ' +
+      nI +
+      '((int)($x - 2147483648.0) + -2147483648) : ' +
+      nI +
+      '((int)$x); }';
   }
   if (used['_w2l_convert_u_i32_to_f32']) {
     outputParts[outputParts.length] =
-      'function _w2l_convert_u_i32_to_f32($x): float { $x = _w2l_i($x); return _w2l_f32($x < 0 ? $x + 4294967296.0 : $x); }';
+      'function ' +
+      this.n_('_w2l_convert_u_i32_to_f32') +
+      '($x): float { $x = ' +
+      nI +
+      '($x); return ' +
+      nF32 +
+      '($x < 0 ? $x + 4294967296.0 : $x); }';
   }
   if (used['_w2l_convert_u_i32_to_f64']) {
     outputParts[outputParts.length] =
-      'function _w2l_convert_u_i32_to_f64($x): float { $x = _w2l_i($x); return $x < 0 ? $x + 4294967296.0 : (float)$x; }';
+      'function ' +
+      this.n_('_w2l_convert_u_i32_to_f64') +
+      '($x): float { $x = ' +
+      nI +
+      '($x); return $x < 0 ? $x + 4294967296.0 : (float)$x; }';
   }
   if (used['_w2l_reinterpret_f32_to_i32']) {
     outputParts[outputParts.length] =
-      "function _w2l_reinterpret_f32_to_i32($x): int { return _w2l_i(unpack('V', pack('g', _w2l_f32($x)))[1]); }";
+      'function ' +
+      this.n_('_w2l_reinterpret_f32_to_i32') +
+      '($x): int { return ' +
+      nI +
+      "(unpack('V', pack('g', " +
+      nF32 +
+      '($x)))[1]); }';
   }
   if (used['_w2l_reinterpret_i32_to_f32']) {
     outputParts[outputParts.length] =
-      "function _w2l_reinterpret_i32_to_f32($x): float { return _w2l_f32(unpack('g', pack('V', _w2l_i($x)))[1]); }";
+      'function ' +
+      this.n_('_w2l_reinterpret_i32_to_f32') +
+      '($x): float { return ' +
+      nF32 +
+      "(unpack('g', pack('V', " +
+      nI +
+      '($x)))[1]); }';
   }
 
   // Module header.
-  outputParts[outputParts.length] = '$' + moduleName + ' = function(array $foreign, string &$buffer): array {';
+  var /** @const {string} */ nBuf = this.phpVar_('buffer');
+  outputParts[outputParts.length] = '$' + moduleName + ' = function(array $foreign, string &' + nBuf + '): array {';
 
   // Imported function bindings.
-  for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.imports.length; i !== importCount; ++i) {
+  for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
     outputParts[outputParts.length] =
-      '  $if_' +
-      Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.imports[i].importBaseName) +
+      '  ' +
+      this.phpVar_('$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.impFuncs[i].importBaseName)) +
       " = $foreign['" +
-      moduleInfo.imports[i].importBaseName +
+      moduleInfo.impFuncs[i].importBaseName +
       "'] ?? null;";
   }
 
   // Module-level globals.
   for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
     outputParts[outputParts.length] =
-      '  $g_' +
-      Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.globals[gi].globalName) +
+      '  ' +
+      this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.globals[gi].globalName)) +
       ' = ' +
       moduleInfo.globals[gi].globalInitValue +
       ';';
@@ -1192,7 +1600,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
 
   // Forward declarations for internal functions.
   for (var /** number */ fi = 0, /** @const {number} */ fNameLen = internalFuncNames.length; fi !== fNameLen; ++fi) {
-    outputParts[outputParts.length] = '  $' + internalFuncNames[fi] + ' = null;';
+    outputParts[outputParts.length] = '  ' + this.phpVar_(internalFuncNames[fi]) + ' = null;';
   }
 
   // Append function bodies.
@@ -1202,18 +1610,19 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
 
   // Return array.
   var /** @const {!Array<string>} */ returnEntries = [];
-  for (var /** number */ r = 0, /** @const {number} */ exportCount = moduleInfo.exports.length; r !== exportCount; ++r) {
+  for (var /** number */ r = 0, /** @const {number} */ exportCount = moduleInfo.expFuncs.length; r !== exportCount; ++r) {
     returnEntries[returnEntries.length] =
       "'" +
-      moduleInfo.exports[r].exportName +
-      "' => $" +
-      Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.exports[r].internalName);
+      moduleInfo.expFuncs[r].exportName +
+      "' => " +
+      this.phpVar_(Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.expFuncs[r].internalName));
   }
   outputParts[outputParts.length] = '  return [' + returnEntries.join(', ') + '];';
   outputParts[outputParts.length] = '};';
 
   // Traversal summary.
-  outputParts[outputParts.length] = Wasm2Lang.Backend.AbstractCodegen.prototype.emitCode.call(this, wasmModule, options);
+  // prettier-ignore
+  outputParts[outputParts.length] = /** @type {string} */ (Wasm2Lang.Backend.AbstractCodegen.prototype.emitCode.call(this, wasmModule, options));
 
-  return outputParts.join('\n');
+  return Wasm2Lang.OutputSink.interleaveNewlines(outputParts);
 };

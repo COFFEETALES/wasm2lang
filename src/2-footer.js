@@ -12,7 +12,7 @@
    * @typedef {
    *  {
    *    runCliEntryPoint: function(!Binaryen):
-   *      !Wasm2Lang.Processor.TranspileResult
+   *      (!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>)
    *  }
    * }
    */

@@ -6,6 +6,41 @@
 Wasm2Lang.Utilities.Environment = {};
 
 /**
+ * @private
+ * @param {!IArrayLike<*>} args
+ * @param {number} startIndex
+ * @return {!Array<*>}
+ */
+Wasm2Lang.Utilities.Environment.sliceArgs_ = function (args, startIndex) {
+  return Array.prototype.slice.call(args, startIndex);
+};
+
+/**
+ * @private
+ * @param {!NodeWritableStream} stream
+ * @param {!IArrayLike<(string|!Uint8Array)>} args
+ * @param {number} startIndex
+ * @param {function((string|!Uint8Array)): boolean} isBinaryChunk
+ * @return {boolean}
+ */
+Wasm2Lang.Utilities.Environment.writeCliChunks_ = function (stream, args, startIndex, isBinaryChunk) {
+  var /** @type {boolean} */ binaryOnly = true;
+  for (var /** number */ i = startIndex, /** @const {number} */ argCount = args.length; i !== argCount; ++i) {
+    if (i !== startIndex) {
+      stream.write(' ');
+    }
+    var /** @const {(string|!Uint8Array)} */ chunk = args[i];
+    if (isBinaryChunk(chunk)) {
+      stream.write(Buffer.from(/** @type {!Uint8Array} */ (chunk)));
+      continue;
+    }
+    binaryOnly = false;
+    stream.write(/** @type {string} */ (chunk));
+  }
+  return binaryOnly;
+};
+
+/**
  * @enum {number}
  */
 Wasm2Lang.Utilities.Environment.OutputTarget = {
@@ -42,7 +77,7 @@ Wasm2Lang.Utilities.Environment.stdoutWriters = Object.create(null);
 Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.OutputTarget.WEB] = function (data) {
   // prettier-ignore
   var dataArgs = /** @const {!Array<(string|!Uint8Array)>} */ (
-    Array.prototype.slice.call(arguments, 0)
+    Wasm2Lang.Utilities.Environment.sliceArgs_(arguments, 0)
   );
   console.log.apply(console, dataArgs);
 };
@@ -52,20 +87,18 @@ Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.Ou
  * @return {void}
  */
 Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.OutputTarget.CLI] = function (data) {
-  var /** @const {number} */ argCount = arguments.length;
-  var /** boolean */ binaryOnly = true;
-  for (var /** number */ i = 0; i !== argCount; ++i) {
-    if (0 !== i) {
-      process.stdout.write(' ');
-    }
-    var /** @const {(string|!Uint8Array)} */ chunk = arguments[i];
-    if ('object' === typeof chunk) {
-      process.stdout.write(Buffer.from(chunk));
-      continue;
-    }
-    binaryOnly = false;
-    process.stdout.write(chunk);
-  }
+  var /** @const {boolean} */ binaryOnly = Wasm2Lang.Utilities.Environment.writeCliChunks_(
+      process.stdout,
+      arguments,
+      0,
+      /**
+       * @param {(string|!Uint8Array)} chunk
+       * @return {boolean}
+       */
+      function (chunk) {
+        return 'object' === typeof chunk;
+      }
+    );
   if (!binaryOnly) {
     process.stdout.write('\n');
   }
@@ -89,7 +122,7 @@ Wasm2Lang.Utilities.Environment.stderrWriters = Object.create(null);
 Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.OutputTarget.WEB] = function (level, data) {
   // prettier-ignore
   var dataArgs = /** @const {!Array<(string|!Uint8Array)>} */ (
-    Array.prototype.slice.call(arguments, 1)
+    Wasm2Lang.Utilities.Environment.sliceArgs_(arguments, 1)
   );
   console.error.apply(console, [level, ':'].concat(dataArgs));
 };
@@ -100,18 +133,18 @@ Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.Ou
  * @return {void}
  */
 Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.OutputTarget.CLI] = function (level, data) {
-  var /** @const {number} */ argCount = arguments.length;
-  for (var /** number */ i = 1; i !== argCount; ++i) {
-    if (1 !== i) {
-      process.stderr.write(' ');
+  Wasm2Lang.Utilities.Environment.writeCliChunks_(
+    process.stderr,
+    arguments,
+    1,
+    /**
+     * @param {(string|!Uint8Array)} chunk
+     * @return {boolean}
+     */
+    function (chunk) {
+      return chunk instanceof Uint8Array;
     }
-    var /** @const {(string|!Uint8Array)} */ chunk = arguments[i];
-    if (chunk instanceof Uint8Array) {
-      process.stderr.write(Buffer.from(chunk));
-      continue;
-    }
-    process.stderr.write(chunk);
-  }
+  );
   process.stderr.write('\n');
 };
 

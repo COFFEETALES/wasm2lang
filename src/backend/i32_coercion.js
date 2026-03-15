@@ -70,7 +70,7 @@ Wasm2Lang.Backend.I32Coercion.isConstant = function (str) {
  *
  * @typedef {{
  *   category: number,
- *   operator: string,
+ *   opStr: string,
  *   unsigned: boolean,
  *   rotateLeft: boolean
  * }}
@@ -84,6 +84,41 @@ Wasm2Lang.Backend.I32Coercion.BinaryOpInfo;
  * @type {?Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>}
  */
 Wasm2Lang.Backend.I32Coercion.binaryOpMap_ = null;
+
+/**
+ * @private
+ * @param {number} category
+ * @param {string} operator
+ * @param {boolean} unsigned
+ * @param {boolean} rotateLeft
+ * @return {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo}
+ */
+Wasm2Lang.Backend.I32Coercion.createBinaryOpInfo_ = function (category, operator, unsigned, rotateLeft) {
+  return {
+    category: category,
+    opStr: operator,
+    unsigned: unsigned,
+    rotateLeft: rotateLeft
+  };
+};
+
+/**
+ * @private
+ * @param {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>} map
+ * @param {number} category
+ * @param {boolean} unsigned
+ * @param {boolean} rotateLeft
+ * @param {!Array<!Array<*>>} entries
+ * @return {void}
+ */
+Wasm2Lang.Backend.I32Coercion.registerBinaryOps_ = function (map, category, unsigned, rotateLeft, entries) {
+  for (var /** number */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
+    var /** @const {!Array<*>} */ entry = entries[i];
+    var /** @const {number} */ op = /** @type {number} */ (entry[0]);
+    var /** @const {string} */ operator = /** @type {string} */ (entry[1]);
+    map[op] = Wasm2Lang.Backend.I32Coercion.createBinaryOpInfo_(category, operator, unsigned, rotateLeft);
+  }
+};
 
 /**
  * Classifies a binaryen i32 binary operation.
@@ -102,33 +137,43 @@ Wasm2Lang.Backend.I32Coercion.classifyBinaryOp = function (binaryen, op) {
     var /** @const {number} */ C = Wasm2Lang.Backend.I32Coercion.OP_COMPARISON;
     var /** @const {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>} */
       m = /** @type {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>} */ (Object.create(null));
-    // @formatter:off
-    m[binaryen.AddInt32] = {category: A, operator: '+', unsigned: false, rotateLeft: false};
-    m[binaryen.SubInt32] = {category: A, operator: '-', unsigned: false, rotateLeft: false};
-    m[binaryen.MulInt32] = {category: M, operator: '*', unsigned: false, rotateLeft: false};
-    m[binaryen.DivSInt32] = {category: D, operator: '/', unsigned: false, rotateLeft: false};
-    m[binaryen.DivUInt32] = {category: D, operator: '/', unsigned: true, rotateLeft: false};
-    m[binaryen.RemSInt32] = {category: D, operator: '%', unsigned: false, rotateLeft: false};
-    m[binaryen.RemUInt32] = {category: D, operator: '%', unsigned: true, rotateLeft: false};
-    m[binaryen.AndInt32] = {category: B, operator: '&', unsigned: false, rotateLeft: false};
-    m[binaryen.OrInt32] = {category: B, operator: '|', unsigned: false, rotateLeft: false};
-    m[binaryen.XorInt32] = {category: B, operator: '^', unsigned: false, rotateLeft: false};
-    m[binaryen.ShlInt32] = {category: B, operator: '<<', unsigned: false, rotateLeft: false};
-    m[binaryen.ShrSInt32] = {category: B, operator: '>>', unsigned: false, rotateLeft: false};
-    m[binaryen.ShrUInt32] = {category: B, operator: '>>>', unsigned: true, rotateLeft: false};
-    m[binaryen.RotLInt32] = {category: R, operator: '', unsigned: false, rotateLeft: true};
-    m[binaryen.RotRInt32] = {category: R, operator: '', unsigned: false, rotateLeft: false};
-    m[binaryen.EqInt32] = {category: C, operator: '==', unsigned: false, rotateLeft: false};
-    m[binaryen.NeInt32] = {category: C, operator: '!=', unsigned: false, rotateLeft: false};
-    m[binaryen.LtSInt32] = {category: C, operator: '<', unsigned: false, rotateLeft: false};
-    m[binaryen.LtUInt32] = {category: C, operator: '<', unsigned: true, rotateLeft: false};
-    m[binaryen.LeSInt32] = {category: C, operator: '<=', unsigned: false, rotateLeft: false};
-    m[binaryen.LeUInt32] = {category: C, operator: '<=', unsigned: true, rotateLeft: false};
-    m[binaryen.GtSInt32] = {category: C, operator: '>', unsigned: false, rotateLeft: false};
-    m[binaryen.GtUInt32] = {category: C, operator: '>', unsigned: true, rotateLeft: false};
-    m[binaryen.GeSInt32] = {category: C, operator: '>=', unsigned: false, rotateLeft: false};
-    m[binaryen.GeUInt32] = {category: C, operator: '>=', unsigned: true, rotateLeft: false};
-    // @formatter:on
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, A, false, false, [
+      [binaryen.AddInt32, '+'],
+      [binaryen.SubInt32, '-']
+    ]);
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, M, false, false, [[binaryen.MulInt32, '*']]);
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, D, false, false, [
+      [binaryen.DivSInt32, '/'],
+      [binaryen.RemSInt32, '%']
+    ]);
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, D, true, false, [
+      [binaryen.DivUInt32, '/'],
+      [binaryen.RemUInt32, '%']
+    ]);
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, B, false, false, [
+      [binaryen.AndInt32, '&'],
+      [binaryen.OrInt32, '|'],
+      [binaryen.XorInt32, '^'],
+      [binaryen.ShlInt32, '<<'],
+      [binaryen.ShrSInt32, '>>']
+    ]);
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, B, true, false, [[binaryen.ShrUInt32, '>>>']]);
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, R, false, true, [[binaryen.RotLInt32, '']]);
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, R, false, false, [[binaryen.RotRInt32, '']]);
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, C, false, false, [
+      [binaryen.EqInt32, '=='],
+      [binaryen.NeInt32, '!='],
+      [binaryen.LtSInt32, '<'],
+      [binaryen.LeSInt32, '<='],
+      [binaryen.GtSInt32, '>'],
+      [binaryen.GeSInt32, '>=']
+    ]);
+    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(m, C, true, false, [
+      [binaryen.LtUInt32, '<'],
+      [binaryen.LeUInt32, '<='],
+      [binaryen.GtUInt32, '>'],
+      [binaryen.GeUInt32, '>=']
+    ]);
     Wasm2Lang.Backend.I32Coercion.binaryOpMap_ = m;
   }
   return Wasm2Lang.Backend.I32Coercion.binaryOpMap_[op] || null;

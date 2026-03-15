@@ -112,7 +112,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_b
     }
 
     funcsArray[funcsArray.length] = funcMetadata;
-    runResult.processedCount++;
+    ++runResult.processedCount;
   }
 
   return runResult;

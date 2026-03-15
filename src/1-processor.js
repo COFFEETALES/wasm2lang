@@ -16,7 +16,7 @@ Wasm2Lang.Processor.TranspileResultProperty = {
 };
 
 /**
- * @typedef {!Object<!Wasm2Lang.Processor.TranspileResultProperty, (string|!Uint8Array)>}
+ * @typedef {!Object<!Wasm2Lang.Processor.TranspileResultProperty, (string|!Uint8Array|!Array<!Wasm2Lang.OutputSink.ChunkEntry>)>}
  */
 Wasm2Lang.Processor.TranspileResult;
 
@@ -38,18 +38,18 @@ Wasm2Lang.Processor.getBinaryen = function () {
 };
 
 /**
+ * Emits all requested output artifacts from a prepared module/codegen pair.
+ *
  * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} codegen
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
  * @return {!Wasm2Lang.Processor.TranspileResult}
  */
-Wasm2Lang.Processor.transpile_ = function (options) {
-  var /** @const {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(options.inputData);
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ codegen = Wasm2Lang.Backend.createBackend(options.languageOut);
+Wasm2Lang.Processor.emitResults_ = function (wasmModule, codegen, options) {
   // prettier-ignore
   var /** @const {!Wasm2Lang.Processor.TranspileResult} */ results =
     /** @const {!Wasm2Lang.Processor.TranspileResult} */ (Object.create(null));
-
-  Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles(wasmModule, options);
 
   if ('string' === typeof options.emitMetadata) {
     // prettier-ignore
@@ -59,10 +59,8 @@ Wasm2Lang.Processor.transpile_ = function (options) {
   }
 
   if ('string' === typeof options.emitCode) {
-    // prettier-ignore
-    results[Wasm2Lang.Processor.TranspileResultProperty.CODE] = /** @const {string} */ (
-      codegen.emitCode(wasmModule, options)
-    );
+    var /** @const {string|!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */ codeResult = codegen.emitCode(wasmModule, options);
+    results[Wasm2Lang.Processor.TranspileResultProperty.CODE] = codeResult;
   }
 
   if ('string' === typeof options.emitWebAssembly) {
@@ -84,6 +82,74 @@ Wasm2Lang.Processor.transpile_ = function (options) {
 
 /**
  * @private
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>}
+ */
+Wasm2Lang.Processor.transpile_ = function (options) {
+  var /** @const {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(options.inputData);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ codegen = Wasm2Lang.Backend.createBackend(options.languageOut);
+
+  Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles(wasmModule, options);
+
+  if (options.mangler) {
+    return codegen.precomputeMangledNames_(wasmModule, options).then(function () {
+      return Wasm2Lang.Processor.emitResults_(wasmModule, codegen, options);
+    });
+  }
+
+  return Wasm2Lang.Processor.emitResults_(wasmModule, codegen, options);
+};
+
+/**
+ * Drains every entry of a {@code TranspileResult} through a write function
+ * in a fixed key order, resolving any pending chunks serially.
+ *
+ * String and Uint8Array results are written directly as single chunks.
+ * Array results (from backends that return chunk arrays) are drained with
+ * {@code OutputSink.drainChunks}.  A trailing newline is appended after
+ * each string-typed result to match the previous stdout output convention.
+ *
+ * @private
+ * @param {!Wasm2Lang.Processor.TranspileResult} results
+ * @param {!Wasm2Lang.OutputSink.WriteFn} writeFn
+ * @return {!Promise<void>|void}
+ */
+Wasm2Lang.Processor.drainResults_ = function (results, writeFn) {
+  /** @const {!Array<!Wasm2Lang.Processor.TranspileResultProperty>} */
+  var keyOrder = [
+    Wasm2Lang.Processor.TranspileResultProperty.METADATA,
+    Wasm2Lang.Processor.TranspileResultProperty.CODE,
+    Wasm2Lang.Processor.TranspileResultProperty.WAST,
+    Wasm2Lang.Processor.TranspileResultProperty.WASM
+  ];
+
+  /** @type {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */
+  var allChunks = [];
+
+  for (var /** number */ i = 0, /** @const {number} */ len = keyOrder.length; i !== len; ++i) {
+    var /** @const {!Wasm2Lang.Processor.TranspileResultProperty} */ key = keyOrder[i];
+    if (!(key in results)) {
+      continue;
+    }
+    var /** @const {*} */ value = results[key];
+    if (Array.isArray(value)) {
+      for (var /** number */ j = 0, /** @const {number} */ cLen = value.length; j !== cLen; ++j) {
+        allChunks[allChunks.length] = value[j];
+      }
+      allChunks[allChunks.length] = '\n';
+    } else if ('string' === typeof value) {
+      allChunks[allChunks.length] = /** @type {string} */ (value);
+      allChunks[allChunks.length] = '\n';
+    } else {
+      allChunks[allChunks.length] = /** @type {!Uint8Array} */ (value);
+    }
+  }
+
+  return Wasm2Lang.OutputSink.drainChunks(allChunks, writeFn);
+};
+
+/**
+ * @private
  * @param {!Binaryen} binaryenModule
  * @return {void}
  */
@@ -93,7 +159,7 @@ Wasm2Lang.Processor.initializeModules_ = function (binaryenModule) {
 
 /**
  * @param {?Binaryen} binaryenModule
- * @return {!Wasm2Lang.Processor.TranspileResult}
+ * @return {!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>}
  */
 Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
   if (!binaryenModule) {
@@ -137,11 +203,25 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
   var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ options =
       Wasm2Lang.CLI.CommandLineParser.processParams(params);
 
-  var /** @const {!Wasm2Lang.Processor.TranspileResult} */ results = Wasm2Lang.Processor.transpile_(options);
-
-  for (var /** !Wasm2Lang.Processor.TranspileResultProperty */ resKey in results) {
-    Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.isNode()](results[resKey]);
+  /**
+   * @param {!Wasm2Lang.Processor.TranspileResult} results
+   * @return {!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>}
+   */
+  function drainAndReturn(results) {
+    var /** @const {!Wasm2Lang.OutputSink.WriteFn} */ sink = Wasm2Lang.OutputSink.createStdoutSink();
+    var /** @const {(!Promise<void>|void)} */ drainResult = Wasm2Lang.Processor.drainResults_(results, sink);
+    if (drainResult) {
+      return drainResult.then(function () {
+        return results;
+      });
+    }
+    return results;
   }
 
-  return results;
+  var /** @const {*} */ transpileResult = Wasm2Lang.Processor.transpile_(options);
+  if (transpileResult && 'function' === typeof transpileResult['then']) {
+    return /** @type {!Promise<!Wasm2Lang.Processor.TranspileResult>} */ (transpileResult).then(drainAndReturn);
+  }
+
+  return drainAndReturn(/** @type {!Wasm2Lang.Processor.TranspileResult} */ (transpileResult));
 };

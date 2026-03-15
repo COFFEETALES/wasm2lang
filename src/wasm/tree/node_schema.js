@@ -40,6 +40,65 @@ Wasm2Lang.Wasm.Tree.NodeSchema.registerEdgeSpecs_ = function (expressionId, edge
 
 /**
  * @private
+ * @param {string} edgePropertyName
+ * @param {!Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind} edgeTraversalKind
+ * @param {function(number, number, number): void} setter
+ * @return {!Wasm2Lang.Wasm.Tree.EdgeSpec}
+ */
+Wasm2Lang.Wasm.Tree.NodeSchema.createEdgeSpec_ = function (edgePropertyName, edgeTraversalKind, setter) {
+  return {
+    edgePropertyName: edgePropertyName,
+    edgeTraversalKind: edgeTraversalKind,
+    setter: setter
+  };
+};
+
+/**
+ * @private
+ * @param {string} edgePropertyName
+ * @param {!Object<string, !Function>} setterOwner
+ * @param {string} setterName
+ * @return {!Wasm2Lang.Wasm.Tree.EdgeSpec}
+ */
+Wasm2Lang.Wasm.Tree.NodeSchema.createSingleEdgeSpec_ = function (edgePropertyName, setterOwner, setterName) {
+  return Wasm2Lang.Wasm.Tree.NodeSchema.createEdgeSpec_(
+    edgePropertyName,
+    Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind.SINGLE,
+    /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
+      void i;
+      setterOwner[setterName](p, c);
+    }
+  );
+};
+
+/**
+ * @private
+ * @param {string} edgePropertyName
+ * @param {!Object<string, !Function>} setterOwner
+ * @param {string} setterName
+ * @return {!Wasm2Lang.Wasm.Tree.EdgeSpec}
+ */
+Wasm2Lang.Wasm.Tree.NodeSchema.createListEdgeSpec_ = function (edgePropertyName, setterOwner, setterName) {
+  return Wasm2Lang.Wasm.Tree.NodeSchema.createEdgeSpec_(
+    edgePropertyName,
+    Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind.LIST,
+    /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
+      setterOwner[setterName](p, i, c);
+    }
+  );
+};
+
+/**
+ * @private
+ * @param {number} expressionId
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.NodeSchema.registerLeafExpression_ = function (expressionId) {
+  Wasm2Lang.Wasm.Tree.NodeSchema.registerEdgeSpecs_(expressionId, []);
+};
+
+/**
+ * @private
  * @param {!Binaryen=} opt_binaryen  Injected binaryen instance. Falls back to
  *     Processor.getBinaryen() when omitted.
  * @return {void}
@@ -50,256 +109,53 @@ Wasm2Lang.Wasm.Tree.NodeSchema.ensureDefaultSchema_ = function (opt_binaryen) {
   }
 
   var /** @const {!Binaryen} */ binaryen = opt_binaryen || Wasm2Lang.Processor.getBinaryen();
-  var edgeKind = Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind;
   var register = Wasm2Lang.Wasm.Tree.NodeSchema.registerEdgeSpecs_;
+  var single = Wasm2Lang.Wasm.Tree.NodeSchema.createSingleEdgeSpec_;
+  var list = Wasm2Lang.Wasm.Tree.NodeSchema.createListEdgeSpec_;
+  var registerLeaf = Wasm2Lang.Wasm.Tree.NodeSchema.registerLeafExpression_;
 
-  register(binaryen.BlockId, [
-    {
-      edgePropertyName: 'children',
-      edgeTraversalKind: edgeKind.LIST,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        binaryen.Block.setChildAt(p, i, c);
-      }
-    }
-  ]);
+  register(binaryen.BlockId, [list('children', binaryen.Block, 'setChildAt')]);
   register(binaryen.IfId, [
-    {
-      edgePropertyName: 'condition',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.If.setCondition(p, c);
-      }
-    },
-    {
-      edgePropertyName: 'ifTrue',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.If.setIfTrue(p, c);
-      }
-    },
-    {
-      edgePropertyName: 'ifFalse',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.If.setIfFalse(p, c);
-      }
-    }
+    single('condition', binaryen.If, 'setCondition'),
+    single('ifTrue', binaryen.If, 'setIfTrue'),
+    single('ifFalse', binaryen.If, 'setIfFalse')
   ]);
-  register(binaryen.LoopId, [
-    {
-      edgePropertyName: 'body',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Loop.setBody(p, c);
-      }
-    }
-  ]);
+  register(binaryen.LoopId, [single('body', binaryen.Loop, 'setBody')]);
   register(binaryen.BreakId, [
-    {
-      edgePropertyName: 'condition',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Break.setCondition(p, c);
-      }
-    },
-    {
-      edgePropertyName: 'value',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Break.setValue(p, c);
-      }
-    }
+    single('condition', binaryen.Break, 'setCondition'),
+    single('value', binaryen.Break, 'setValue')
   ]);
   register(binaryen.SwitchId, [
-    {
-      edgePropertyName: 'condition',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Switch.setCondition(p, c);
-      }
-    },
-    {
-      edgePropertyName: 'value',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Switch.setValue(p, c);
-      }
-    }
+    single('condition', binaryen.Switch, 'setCondition'),
+    single('value', binaryen.Switch, 'setValue')
   ]);
-  register(binaryen.LocalSetId, [
-    {
-      edgePropertyName: 'value',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.LocalSet.setValue(p, c);
-      }
-    }
-  ]);
-  register(binaryen.GlobalSetId, [
-    {
-      edgePropertyName: 'value',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.GlobalSet.setValue(p, c);
-      }
-    }
-  ]);
-  register(binaryen.UnaryId, [
-    {
-      edgePropertyName: 'value',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Unary.setValue(p, c);
-      }
-    }
-  ]);
-  register(binaryen.BinaryId, [
-    {
-      edgePropertyName: 'left',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Binary.setLeft(p, c);
-      }
-    },
-    {
-      edgePropertyName: 'right',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Binary.setRight(p, c);
-      }
-    }
-  ]);
-  register(binaryen.CallId, [
-    {
-      edgePropertyName: 'operands',
-      edgeTraversalKind: edgeKind.LIST,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        binaryen.Call.setOperandAt(p, i, c);
-      }
-    }
-  ]);
+  register(binaryen.LocalSetId, [single('value', binaryen.LocalSet, 'setValue')]);
+  register(binaryen.GlobalSetId, [single('value', binaryen.GlobalSet, 'setValue')]);
+  register(binaryen.UnaryId, [single('value', binaryen.Unary, 'setValue')]);
+  register(binaryen.BinaryId, [single('left', binaryen.Binary, 'setLeft'), single('right', binaryen.Binary, 'setRight')]);
+  register(binaryen.CallId, [list('operands', binaryen.Call, 'setOperandAt')]);
   register(binaryen.CallIndirectId, [
-    {
-      edgePropertyName: 'target',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.CallIndirect.setTarget(p, c);
-      }
-    },
-    {
-      edgePropertyName: 'operands',
-      edgeTraversalKind: edgeKind.LIST,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        binaryen.CallIndirect.setOperandAt(p, i, c);
-      }
-    }
+    single('target', binaryen.CallIndirect, 'setTarget'),
+    list('operands', binaryen.CallIndirect, 'setOperandAt')
   ]);
-  register(binaryen.LoadId, [
-    {
-      edgePropertyName: 'ptr',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Load.setPtr(p, c);
-      }
-    }
-  ]);
-  register(binaryen.StoreId, [
-    {
-      edgePropertyName: 'ptr',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Store.setPtr(p, c);
-      }
-    },
-    {
-      edgePropertyName: 'value',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Store.setValue(p, c);
-      }
-    }
-  ]);
-  register(binaryen.ReturnId, [
-    {
-      edgePropertyName: 'value',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Return.setValue(p, c);
-      }
-    }
-  ]);
-  register(binaryen.DropId, [
-    {
-      edgePropertyName: 'value',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Drop.setValue(p, c);
-      }
-    }
-  ]);
+  register(binaryen.LoadId, [single('ptr', binaryen.Load, 'setPtr')]);
+  register(binaryen.StoreId, [single('ptr', binaryen.Store, 'setPtr'), single('value', binaryen.Store, 'setValue')]);
+  register(binaryen.ReturnId, [single('value', binaryen.Return, 'setValue')]);
+  register(binaryen.DropId, [single('value', binaryen.Drop, 'setValue')]);
   register(binaryen.SelectId, [
-    {
-      edgePropertyName: 'condition',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Select.setCondition(p, c);
-      }
-    },
-    {
-      edgePropertyName: 'ifTrue',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Select.setIfTrue(p, c);
-      }
-    },
-    {
-      edgePropertyName: 'ifFalse',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.Select.setIfFalse(p, c);
-      }
-    }
+    single('condition', binaryen.Select, 'setCondition'),
+    single('ifTrue', binaryen.Select, 'setIfTrue'),
+    single('ifFalse', binaryen.Select, 'setIfFalse')
   ]);
-  register(binaryen.MemoryGrowId, [
-    {
-      edgePropertyName: 'delta',
-      edgeTraversalKind: edgeKind.SINGLE,
-      setter: /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-        void i;
-        binaryen.MemoryGrow.setDelta(p, c);
-      }
-    }
-  ]);
+  register(binaryen.MemoryGrowId, [single('delta', binaryen.MemoryGrow, 'setDelta')]);
 
   // Leaf nodes: no expression-pointer children.
-  register(binaryen.NopId, []);
-  register(binaryen.UnreachableId, []);
-  register(binaryen.ConstId, []);
-  register(binaryen.LocalGetId, []);
-  register(binaryen.GlobalGetId, []);
-  register(binaryen.MemorySizeId, []);
+  registerLeaf(binaryen.NopId);
+  registerLeaf(binaryen.UnreachableId);
+  registerLeaf(binaryen.ConstId);
+  registerLeaf(binaryen.LocalGetId);
+  registerLeaf(binaryen.GlobalGetId);
+  registerLeaf(binaryen.MemorySizeId);
 
   Wasm2Lang.Wasm.Tree.NodeSchema.defaultSchemaInitialized_ = true;
 };

@@ -3,18 +3,18 @@ on:
 
 jobs:
   test:
-    name: "🧪 Test"
+    name: '🧪 Test'
     runs-on: ubuntu-latest
     container:
       image: node:24-alpine
     steps:
-      - name: "Download build-tests artifact"
+      - name: 'Download build-tests artifact'
         uses: actions/download-artifact@v4
         with:
           name: artifacts-tests
           path: ./test_artifacts
 
-      - name: "📦 Install tools"
+      - name: '📦 Install tools'
         run: |
           apk add --no-cache \
             'mozjs~140'      \
@@ -22,7 +22,7 @@ jobs:
             openjdk21        \
             php84-cli
 
-      - name: "🧩 Run tests"
+      - name: '🧩 Run tests'
         working-directory: test_artifacts
         run: |
           chmod +x ./wasm2lang_run_tests.sh

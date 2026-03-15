@@ -28,8 +28,7 @@ Wasm2Lang.Backend.registerBackend = function (languageId, ctor) {
  * @return {!Wasm2Lang.Backend.AbstractCodegen}
  */
 Wasm2Lang.Backend.createBackend = function (languageId) {
-  var /** @const {(function(new: Wasm2Lang.Backend.AbstractCodegen)|undefined)} */ ctor =
-      Wasm2Lang.Backend.registry_[languageId];
+  var /** @const {(function(new: Wasm2Lang.Backend.AbstractCodegen)|void)} */ ctor = Wasm2Lang.Backend.registry_[languageId];
   if (ctor) {
     return new ctor();
   }
@@ -42,6 +41,9 @@ Wasm2Lang.Backend.createBackend = function (languageId) {
 Wasm2Lang.Backend.AbstractCodegen = function () {
   /** @protected @type {?Object<string, boolean>} */
   this.usedHelpers_ = null;
+
+  /** @protected @type {?Wasm2Lang.Backend.IdentifierMangler} */
+  this.mangler_ = null;
 };
 
 /**
@@ -119,9 +121,9 @@ Wasm2Lang.Backend.AbstractCodegen.idNames_ = null;
 /**
  * @private
  * @typedef {{
- *   byteOffset: number,
- *   buffer: !ArrayBuffer,
- *   byteLength: number
+ *   segmentByteOffset_: number,
+ *   segmentBuffer_: !ArrayBuffer,
+ *   segmentByteLength_: number
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.StaticMemorySegment_;
@@ -295,38 +297,38 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectStaticMemory_ = function (was
   for (var /** number */ i = 0; i !== numSegments; ++i) {
     var /** @const {!BinaryenMemorySegmentInfo} */ segInfo = wasmModule.getMemorySegmentInfo(String(i));
     segments[segments.length] = {
-      byteOffset: segInfo.offset,
-      buffer: segInfo.data,
-      byteLength: segInfo.data.byteLength
+      segmentByteOffset_: segInfo.offset,
+      segmentBuffer_: segInfo.data,
+      segmentByteLength_: segInfo.data.byteLength
     };
   }
 
   segments.sort(function (a, b) {
-    return a.byteOffset - b.byteOffset;
+    return a.segmentByteOffset_ - b.segmentByteOffset_;
   });
 
   if (0 === segments.length) {
     // No data segments present — insert a minimal 4-byte placeholder so the
     // bounds computation below always has at least one entry to work from.
     segments[0] = {
-      byteOffset: 0,
-      buffer: new ArrayBuffer(4),
-      byteLength: 4
+      segmentByteOffset_: 0,
+      segmentBuffer_: new ArrayBuffer(4),
+      segmentByteLength_: 4
     };
   }
 
-  var /** @const {number} */ startOffset = segments[0].byteOffset & ~3;
+  var /** @const {number} */ startOffset = segments[0].segmentByteOffset_ & ~3;
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.StaticMemorySegment_} */ lastSeg = segments[segments.length - 1];
-  var /** @const {number} */ totalLen = (lastSeg.byteOffset + lastSeg.byteLength - startOffset + 3) & ~3;
+  var /** @const {number} */ totalLen = (lastSeg.segmentByteOffset_ + lastSeg.segmentByteLength_ - startOffset + 3) & ~3;
 
   var /** @const {!Uint8Array} */ byteArray = new Uint8Array(totalLen);
 
   for (var /** number */ j = 0, /** @const {number} */ segmentCount = segments.length; j !== segmentCount; ++j) {
-    byteArray.set(new Uint8Array(segments[j].buffer), segments[j].byteOffset - startOffset);
+    byteArray.set(new Uint8Array(segments[j].segmentBuffer_), segments[j].segmentByteOffset_ - startOffset);
   }
 
   return {
-    startWordIndex: Math.trunc(segments[0].byteOffset / 4),
+    startWordIndex: Math.trunc(segments[0].segmentByteOffset_ / 4),
     words: new Int32Array(byteArray.buffer)
   };
 };
@@ -391,8 +393,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionSignatures_ = functio
     var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(f);
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
     signatures[funcInfo.name] = {
-      params: binaryen.expandType(funcInfo.params),
-      results: funcInfo.results
+      sigParams: binaryen.expandType(funcInfo.params),
+      sigRetType: funcInfo.results
     };
   }
 
@@ -420,8 +422,8 @@ Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_;
  *
  * @protected
  * @typedef {{
- *   params: !Array<number>,
- *   results: number
+ *   sigParams: !Array<number>,
+ *   sigRetType: number
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_;
@@ -431,12 +433,12 @@ Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_;
  *
  * @protected
  * @typedef {{
- *   imports: !Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>,
+ *   impFuncs: !Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>,
  *   importedNames: !Object<string, string>,
  *   functionSignatures: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>,
  *   globals: !Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>,
  *   globalTypes: !Object<string, number>,
- *   exports: !Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>,
+ *   expFuncs: !Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>,
  *   functions: !Array<!BinaryenFunctionInfo>
  * }}
  */
@@ -460,6 +462,27 @@ Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_ = function (name) {
 };
 
 /**
+ * Resolves a candidate identifier against a reserved-word set.  If the name
+ * collides, appends {@code "_"} until it is no longer reserved.
+ *
+ * @protected
+ * @param {string} name
+ * @param {!Object<string, boolean>} reservedWords  Lookup table (keys are
+ *     reserved words, all lowercase for case-insensitive languages).
+ * @param {boolean=} opt_caseInsensitive  When true, the check lowercases
+ *     the candidate before testing (for PHP-style case-insensitive keywords).
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_ = function (name, reservedWords, opt_caseInsensitive) {
+  var /** @type {string} */ check = opt_caseInsensitive ? name.toLowerCase() : name;
+  while (reservedWords[check]) {
+    name = name + '_';
+    check = opt_caseInsensitive ? name.toLowerCase() : name;
+  }
+  return name;
+};
+
+/**
  * Returns a string of {@code indent} two-space indentation units.
  *
  * @protected
@@ -469,7 +492,7 @@ Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_ = function (name) {
 Wasm2Lang.Backend.AbstractCodegen.pad_ = function (indent) {
   var /** @type {string} */ s = '';
   for (var /** number */ k = 0; k !== indent; ++k) {
-    s += '  ';
+    s += '      ';
   }
   return s;
 };
@@ -489,7 +512,14 @@ Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_ = function (value) {
   if (!isFinite(value)) {
     return String(value);
   }
-  return Math.floor(value) === value ? String(value) + '.0' : String(value);
+  if (0 === value && 1 / value < 0) {
+    return '-0.0';
+  }
+  var /** @const {string} */ s = String(value);
+  if (Math.floor(value) === value && -1 === s.indexOf('e') && -1 === s.indexOf('E')) {
+    return s + '.0';
+  }
+  return s;
 };
 
 /**
@@ -511,6 +541,58 @@ Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) 
       parts[parts.length] = lines[i];
     }
   }
+};
+
+/**
+ * @private
+ * @typedef {{
+ *   hasExpression: boolean,
+ *   expressionString: string,
+ *   expressionCategory: number
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_;
+
+/**
+ * Normalizes one traversal child result into the string/category shape used
+ * by string-emitting backends.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {number} index
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_}
+ */
+Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, index) {
+  if (index >= childResults.length) {
+    return {
+      hasExpression: false,
+      expressionString: '0',
+      expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+    };
+  }
+
+  var /** @const {*} */ value = childResults[index].childTraversalResult;
+  if ('string' === typeof value) {
+    return {
+      hasExpression: true,
+      expressionString: value,
+      expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+    };
+  }
+  if (value && 'string' === typeof value['s']) {
+    return {
+      hasExpression: true,
+      expressionString: /** @type {string} */ (value['s']),
+      expressionCategory:
+        'number' === typeof value['c'] ? /** @type {number} */ (value['c']) : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+    };
+  }
+
+  return {
+    hasExpression: false,
+    expressionString: '0',
+    expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+  };
 };
 
 /**
@@ -595,10 +677,10 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
     var /** @type {number} */ i = 0;
 
     while (start <= end && /\s/.test(expr.charAt(start))) {
-      start++;
+      ++start;
     }
     while (end >= start && /\s/.test(expr.charAt(end))) {
-      end--;
+      --end;
     }
     if (start >= end || '(' !== expr.charAt(start) || ')' !== expr.charAt(end)) {
       return false;
@@ -607,9 +689,9 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
     for (i = start; i <= end; ++i) {
       var /** @const {string} */ ch = expr.charAt(i);
       if ('(' === ch) {
-        depth++;
+        ++depth;
       } else if (')' === ch) {
-        depth--;
+        --depth;
         if (0 === depth && i !== end) {
           return false;
         }
@@ -636,6 +718,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
     var /** @type {boolean} */ escaped = false;
     var /** @type {number} */ lowest = P.PREC_PRIMARY_;
     var /** @type {number} */ i = 0;
+    var /** @type {string} */ next = '';
 
     if ('' === s || P.isFullyParenthesized(s)) {
       return P.PREC_PRIMARY_;
@@ -643,8 +726,8 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
 
     for (i = 0; i < s.length; ++i) {
       var /** @const {string} */ ch = s.charAt(i);
-      var /** @const {string} */ next = s.charAt(i + 1);
 
+      // --- string literal pass-through ---
       if (inSingle) {
         if (escaped) {
           escaped = false;
@@ -665,120 +748,105 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
         }
         continue;
       }
-      if ("'" === ch) {
-        inSingle = true;
-        continue;
+
+      // --- structural / nesting characters ---
+      switch (ch) {
+        case "'":
+          inSingle = true;
+          continue;
+        case '"':
+          inDouble = true;
+          continue;
+        case '(':
+          ++depthParen;
+          continue;
+        case ')':
+          --depthParen;
+          continue;
+        case '[':
+          ++depthBracket;
+          continue;
+        case ']':
+          --depthBracket;
+          continue;
+        default:
+          break;
       }
-      if ('"' === ch) {
-        inDouble = true;
-        continue;
-      }
-      if ('(' === ch) {
-        ++depthParen;
-        continue;
-      }
-      if (')' === ch) {
-        --depthParen;
-        continue;
-      }
-      if ('[' === ch) {
-        ++depthBracket;
-        continue;
-      }
-      if (']' === ch) {
-        --depthBracket;
-        continue;
-      }
+
       if (0 !== depthParen || 0 !== depthBracket) {
         continue;
       }
 
-      if ('?' === ch) {
-        lowest = Math.min(lowest, P.PREC_CONDITIONAL_);
-        continue;
-      }
-      if ('|' === ch) {
-        if ('|' !== next) {
-          lowest = Math.min(lowest, P.PREC_BIT_OR_);
-        }
-        continue;
-      }
-      if ('^' === ch) {
-        lowest = Math.min(lowest, P.PREC_BIT_XOR_);
-        continue;
-      }
-      if ('&' === ch) {
-        if ('&' !== next) {
-          lowest = Math.min(lowest, P.PREC_BIT_AND_);
-        }
-        continue;
-      }
-      if ('=' === ch) {
-        if ('=' === next) {
-          lowest = Math.min(lowest, P.PREC_EQUALITY_);
-          if ('=' === s.charAt(i + 2)) {
-            i += 2;
-          } else {
-            i += 1;
+      // --- operator precedence detection (top-level only) ---
+      next = s.charAt(i + 1);
+      switch (ch) {
+        case '?':
+          lowest = Math.min(lowest, P.PREC_CONDITIONAL_);
+          break;
+        case '|':
+          if ('|' !== next) {
+            lowest = Math.min(lowest, P.PREC_BIT_OR_);
           }
-          continue;
-        }
-        if ('!' !== s.charAt(i - 1) && '<' !== s.charAt(i - 1) && '>' !== s.charAt(i - 1)) {
-          lowest = Math.min(lowest, P.PREC_ASSIGN_);
-        }
-        continue;
-      }
-      if ('!' === ch) {
-        if ('=' === next) {
-          lowest = Math.min(lowest, P.PREC_EQUALITY_);
-          if ('=' === s.charAt(i + 2)) {
-            i += 2;
-          } else {
-            i += 1;
+          break;
+        case '^':
+          lowest = Math.min(lowest, P.PREC_BIT_XOR_);
+          break;
+        case '&':
+          if ('&' !== next) {
+            lowest = Math.min(lowest, P.PREC_BIT_AND_);
           }
-          continue;
-        }
-        if (P.isUnaryPosition_(s, i)) {
-          lowest = Math.min(lowest, P.PREC_UNARY_);
-        }
-        continue;
-      }
-      if ('<' === ch) {
-        if ('<' === next) {
-          lowest = Math.min(lowest, P.PREC_SHIFT_);
-          i += 1;
-        } else {
-          lowest = Math.min(lowest, P.PREC_RELATIONAL_);
+          break;
+        case '=':
           if ('=' === next) {
-            i += 1;
+            lowest = Math.min(lowest, P.PREC_EQUALITY_);
+            i += '=' === s.charAt(i + 2) ? 2 : 1;
+          } else if ('!' !== s.charAt(i - 1) && '<' !== s.charAt(i - 1) && '>' !== s.charAt(i - 1)) {
+            lowest = Math.min(lowest, P.PREC_ASSIGN_);
           }
-        }
-        continue;
-      }
-      if ('>' === ch) {
-        if ('>' === next) {
-          lowest = Math.min(lowest, P.PREC_SHIFT_);
-          if ('>' === s.charAt(i + 2)) {
-            i += 2;
-          } else {
-            i += 1;
-          }
-        } else {
-          lowest = Math.min(lowest, P.PREC_RELATIONAL_);
+          break;
+        case '!':
           if ('=' === next) {
-            i += 1;
+            lowest = Math.min(lowest, P.PREC_EQUALITY_);
+            i += '=' === s.charAt(i + 2) ? 2 : 1;
+          } else if (P.isUnaryPosition_(s, i)) {
+            lowest = Math.min(lowest, P.PREC_UNARY_);
           }
-        }
-        continue;
-      }
-      if ('+' === ch || '-' === ch) {
-        if (!P.isUnaryPosition_(s, i)) {
-          lowest = Math.min(lowest, P.PREC_ADDITIVE_);
-        }
-        continue;
-      }
-      if ('*' === ch || '/' === ch || '%' === ch) {
-        lowest = Math.min(lowest, P.PREC_MULTIPLICATIVE_);
+          break;
+        case '<':
+          if ('<' === next) {
+            lowest = Math.min(lowest, P.PREC_SHIFT_);
+            i += 1;
+          } else {
+            lowest = Math.min(lowest, P.PREC_RELATIONAL_);
+            if ('=' === next) {
+              i += 1;
+            }
+          }
+          break;
+        case '>':
+          if ('>' === next) {
+            lowest = Math.min(lowest, P.PREC_SHIFT_);
+            i += '>' === s.charAt(i + 2) ? 2 : 1;
+          } else {
+            lowest = Math.min(lowest, P.PREC_RELATIONAL_);
+            if ('=' === next) {
+              i += 1;
+            }
+          }
+          break;
+        case '+':
+        case '-':
+          if (!P.isUnaryPosition_(s, i)) {
+            lowest = Math.min(lowest, P.PREC_ADDITIVE_);
+          }
+          break;
+        case '*':
+        case '/':
+        case '%':
+          lowest = Math.min(lowest, P.PREC_MULTIPLICATIVE_);
+          break;
+        default:
+          break;
       }
     }
 
@@ -994,12 +1062,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = this.collectGlobals_(wasmModule);
 
   return {
-    imports: imports,
+    impFuncs: imports,
     importedNames: this.collectImportedNameMap_(imports),
     functionSignatures: this.collectFunctionSignatures_(wasmModule),
     globals: globals,
     globalTypes: this.collectGlobalTypeMap_(globals),
-    exports: this.collectExportedFunctions_(wasmModule),
+    expFuncs: this.collectExportedFunctions_(wasmModule),
     functions: this.collectDefinedFunctions_(wasmModule)
   };
 };
@@ -1057,7 +1125,240 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_ = function (binaryen, 
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderHelperCall_ = function (binaryen, helperName, args, resultType) {
   this.markHelper_(helperName);
-  return this.renderCoercionByType_(binaryen, helperName + '(' + args.join(', ') + ')', resultType);
+  var /** @const {string} */ callName = this.n_(helperName);
+  return this.renderCoercionByType_(binaryen, callName + '(' + args.join(', ') + ')', resultType);
+};
+
+// ---------------------------------------------------------------------------
+// Shared identifier mangling infrastructure.
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a mangled module-scope name when the mangler is active, or the
+ * original identifier unchanged.  Concrete backends may override this to
+ * add sigil logic (e.g. PHP adds {@code $} prefix).
+ *
+ * @protected
+ * @param {string} originalName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.n_ = function (originalName) {
+  return this.mangler_ ? this.mangler_.mn(originalName) : originalName;
+};
+
+/**
+ * Returns a mangled local-scope name when the mangler is active, or the
+ * default {@code $l{index}} identifier.
+ *
+ * @protected
+ * @param {number} index
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.localN_ = function (index) {
+  return this.mangler_ ? this.mangler_.ln(index) : '$l' + index;
+};
+
+/**
+ * Returns a mangled label name for a binaryen block/loop label.
+ *
+ * When the mangler is active, the label's pool index ({@code labelOffset +
+ * sequenceNumber}) is resolved via the local pool.  When inactive, the
+ * original binaryen name is returned with a {@code $} prefix.
+ *
+ * @protected
+ * @param {!Object<string, number>} labelMap  Per-function map of binaryen
+ *     label name → sequence number (mutated on first encounter).
+ * @param {string} binaryenName  Raw label name from binaryen.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.labelN_ = function (labelMap, binaryenName) {
+  if (!this.mangler_) {
+    return '$' + binaryenName;
+  }
+  var /** @type {number|void} */ seq = labelMap[binaryenName];
+  if ('number' !== typeof seq) {
+    seq = Object.keys(labelMap).length;
+    labelMap[binaryenName] = seq;
+  }
+  return this.localN_(seq);
+};
+
+/**
+ * Counts the number of named block/loop labels in a function body.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.countFunctionLabels_ = function (wasmModule, binaryen, funcInfo) {
+  if (0 === funcInfo.body) {
+    return 0;
+  }
+  var /** @const {!Object<string, boolean>} */ seen = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  var /** @type {number} */ count = 0;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor =
+    /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
+      enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) {
+        var /** @const {!Object<string, *>} */ e = /** @type {!Object<string, *>} */ (nc.expression);
+        var /** @const {number} */ eId = /** @type {number} */ (e['id']);
+        if ((binaryen.BlockId === eId || binaryen.LoopId === eId) && e['name']) {
+          var /** @const {string} */ n = /** @type {string} */ (e['name']);
+          if (!seen[n]) {
+            seen[n] = true;
+            ++count;
+          }
+        }
+        return null;
+      },
+      leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) { void nc; void cr; return null; }
+    });
+  this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
+  return count;
+};
+
+/**
+ * Backend hook: number of inline temporary variables injected into function
+ * bodies (e.g. store/load scratch vars).  These occupy local-pool indices
+ * after numParams + numVars and must not collide with wasm locals.
+ *
+ * @protected
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getInlineTempCount_ = function () {
+  return 0;
+};
+
+/**
+ * Backend hook: returns all fixed module-scope identifiers that should be
+ * registered with the mangler.  Concrete backends override this.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getFixedModuleBindings_ = function (options) {
+  void options;
+  return [];
+};
+
+/**
+ * Backend hook: returns all possible helper function names that could be
+ * emitted.  Concrete backends override this.
+ *
+ * @protected
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getAllHelperNames_ = function () {
+  return [];
+};
+
+/**
+ * Precomputes mangled names for all identifiers in the module.
+ *
+ * Collects module-scope identifiers from: backend fixed bindings, all
+ * possible helpers, globals, imports, and internal functions.  Then
+ * precomputes the local pool to cover the largest function scope.
+ *
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Promise<void>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (wasmModule, options) {
+  this.mangler_ = new Wasm2Lang.Backend.IdentifierMangler(/** @type {string} */ (options.mangler), options.languageOut);
+
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_} */ moduleInfo =
+      this.collectModuleCodegenInfo_(wasmModule);
+
+  // Register all module-scope identifiers in deterministic order.
+  var /** @const {!Array<string>} */ keys = [];
+
+  // 1. Backend-specific fixed bindings (sorted for determinism).
+  var /** @const {!Array<string>} */ fixed = this.getFixedModuleBindings_(options);
+  for (var /** number */ fi = 0, /** @const {number} */ fLen = fixed.length; fi !== fLen; ++fi) {
+    keys[keys.length] = fixed[fi];
+  }
+
+  // 2. All possible helper function names (sorted for determinism).
+  var /** @const {!Array<string>} */ helpers = this.getAllHelperNames_();
+  for (var /** number */ hi = 0, /** @const {number} */ hLen = helpers.length; hi !== hLen; ++hi) {
+    keys[keys.length] = helpers[hi];
+  }
+
+  // 3. Globals (module order).
+  for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
+    keys[keys.length] = this.buildGlobalIdentifier_(moduleInfo.globals[gi].globalName);
+  }
+
+  // 4. Import bindings (module order).
+  for (var /** number */ ii = 0, /** @const {number} */ iLen = moduleInfo.impFuncs.length; ii !== iLen; ++ii) {
+    keys[keys.length] = this.buildImportIdentifier_(moduleInfo.impFuncs[ii].importBaseName);
+  }
+
+  // 5. Internal function names (module order).
+  for (var /** number */ fn = 0, /** @const {number} */ fnLen = moduleInfo.functions.length; fn !== fnLen; ++fn) {
+    keys[keys.length] = this.buildFunctionIdentifier_(moduleInfo.functions[fn].name);
+  }
+
+  this.mangler_.registerModuleBindings(keys);
+
+  // Compute local pool size: max(params + vars + labels) across all
+  // functions, with a minimum of 5 for helper function locals.
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @type {number} */ maxLocals = 5;
+  for (var /** number */ f = 0, /** @const {number} */ fCount = moduleInfo.functions.length; f !== fCount; ++f) {
+    var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
+    var /** @const {number} */ numParams = binaryen.expandType(funcInfo.params).length;
+    var /** @const {number} */ numVars = /** @type {!Array<number>} */ (funcInfo.vars || []).length;
+    var /** @const {number} */ numLabels = this.countFunctionLabels_(wasmModule, binaryen, funcInfo);
+    var /** @const {number} */ numInlineTemps = this.getInlineTempCount_();
+    if (numParams + numVars + numInlineTemps > maxLocals) {
+      maxLocals = numParams + numVars + numInlineTemps;
+    }
+    if (numLabels > maxLocals) {
+      maxLocals = numLabels;
+    }
+  }
+
+  return this.mangler_.precompute(maxLocals);
+};
+
+/**
+ * Backend hook: builds the global-variable identifier as it appears in
+ * unmangled output.  Default is {@code "$g_" + name}.
+ *
+ * @protected
+ * @param {string} globalName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.buildGlobalIdentifier_ = function (globalName) {
+  return '$g_' + globalName;
+};
+
+/**
+ * Backend hook: builds the import-binding identifier as it appears in
+ * unmangled output.  Default is {@code "$if_" + baseName}.
+ *
+ * @protected
+ * @param {string} importBaseName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.buildImportIdentifier_ = function (importBaseName) {
+  return '$if_' + importBaseName;
+};
+
+/**
+ * Backend hook: builds the function identifier as it appears in unmangled
+ * output.  Default delegates to {@code safeIdentifier_}.
+ *
+ * @protected
+ * @param {string} funcName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.buildFunctionIdentifier_ = function (funcName) {
+  return Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(funcName);
 };
 
 /**
@@ -1097,23 +1398,23 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_ = function (b
   var /** @type {number} */ precedence = P.PREC_ADDITIVE_;
 
   if (info.isComparison) {
-    return this.renderNumericComparisonResult_(P.renderInfix(L, info.operator, R, P.PREC_RELATIONAL_));
+    return this.renderNumericComparisonResult_(P.renderInfix(L, info.opStr, R, P.PREC_RELATIONAL_));
   }
 
-  if ('mul' === info.name || 'div' === info.name) {
+  if ('mul' === info.opName || 'div' === info.opName) {
     precedence = P.PREC_MULTIPLICATIVE_;
   }
 
-  if ('min' === info.name || 'max' === info.name || 'copysign' === info.name) {
+  if ('min' === info.opName || 'max' === info.opName || 'copysign' === info.opName) {
     return this.renderHelperCall_(
       binaryen,
-      this.getRuntimeHelperPrefix_() + info.name + '_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, info.resultType),
+      this.getRuntimeHelperPrefix_() + info.opName + '_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, info.retType),
       [L, R],
-      info.resultType
+      info.retType
     );
   }
 
-  return this.renderCoercionByType_(binaryen, P.renderInfix(L, info.operator, R, precedence), info.resultType);
+  return this.renderCoercionByType_(binaryen, P.renderInfix(L, info.opStr, R, precedence), info.retType);
 };
 
 /**
@@ -1127,24 +1428,24 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_ = function (b
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @type {string} */ helperName = this.getRuntimeHelperPrefix_() + info.name;
+  var /** @type {string} */ helperName = this.getRuntimeHelperPrefix_() + info.opName;
 
-  if ('neg' === info.name) {
-    return this.renderCoercionByType_(binaryen, P.renderPrefix('-', valueExpr), info.resultType);
+  if ('neg' === info.opName) {
+    return this.renderCoercionByType_(binaryen, P.renderPrefix('-', valueExpr), info.retType);
   }
 
   if (
-    'abs' === info.name ||
-    'ceil' === info.name ||
-    'floor' === info.name ||
-    'trunc' === info.name ||
-    'nearest' === info.name ||
-    'sqrt' === info.name
+    'abs' === info.opName ||
+    'ceil' === info.opName ||
+    'floor' === info.opName ||
+    'trunc' === info.opName ||
+    'nearest' === info.opName ||
+    'sqrt' === info.opName
   ) {
     helperName += '_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, info.operandType);
   }
 
-  return this.renderHelperCall_(binaryen, helperName, [valueExpr], info.resultType);
+  return this.renderHelperCall_(binaryen, helperName, [valueExpr], info.retType);
 };
 
 /**
@@ -1165,30 +1466,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
 ) {
   var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ callSig = functionSignatures[callTarget] || {
-      params: [],
-      results: /** @type {number} */ (expr['type'])
+      sigParams: [],
+      sigRetType: /** @type {number} */ (expr['type'])
     };
   var /** @const {!Array<number>} */ operands = /** @type {!Array<number>} */ (expr['operands']) || [];
   var /** @const {!Array<string>} */ callArgs = [];
 
   for (var /** number */ ai = 0, /** @const {number} */ alen = childResults.length; ai !== alen; ++ai) {
-    var /** @const {*} */ argValue = childResults[ai].childTraversalResult;
-    var /** @type {string} */ argStr;
-    var /** @type {number} */ argCat;
-    if ('string' === typeof argValue) {
-      argStr = argValue;
-      argCat = Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
-    } else if (argValue && 'string' === typeof argValue['s']) {
-      argStr = /** @type {string} */ (argValue['s']);
-      argCat =
-        'number' === typeof argValue['c'] ? /** @type {number} */ (argValue['c']) : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
-    } else {
-      argStr = '0';
-      argCat = Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
-    }
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ argInfo =
+        Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_(childResults, ai);
     var /** @const {number} */ argType =
-        ai < callSig.params.length ? callSig.params[ai] : binaryen.getExpressionInfo(operands[ai]).type;
-    callArgs[callArgs.length] = this.coerceToType_(binaryen, argStr, argCat, argType);
+        ai < callSig.sigParams.length ? callSig.sigParams[ai] : binaryen.getExpressionInfo(operands[ai]).type;
+    callArgs[callArgs.length] = this.coerceToType_(binaryen, argInfo.expressionString, argInfo.expressionCategory, argType);
   }
 
   return callArgs;
@@ -1208,7 +1497,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
  *   renderBitwise: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
  *   renderRotate: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
  *   renderComparison: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
- *   renderUnknown: (function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string|undefined)
+ *   renderUnknown: (function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string|void)
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.BinaryOpRenderer_;
@@ -1366,7 +1655,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.traversalEnter_ = function (state, n
  *
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @return {string}
+ * @return {string|!Array<!Wasm2Lang.OutputSink.ChunkEntry>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitCode = function (wasmModule, options) {
   void options;

@@ -53,6 +53,8 @@ const verifyMVPOps = function (exports) {
   exports.alignHeapTop();
   const startOffset = exports.getHeapTop();
   exports.exerciseMVPOps(p0, p1, p2);
+  exports.exerciseOverflowOps();
+  exports.exerciseEdgeCases();
 };
 
 const runTest = function (buff, out, exports) {
@@ -62,9 +64,15 @@ const runTest = function (buff, out, exports) {
   exports.emitSegmentsToHost();
 
   const memoryBytes = new Uint8Array(instanceMemoryBuffer);
-  const expectedOutputs = expectedData.map((unusedValue, dataIndex) => readZeroTerminatedString(memoryBytes, offsetList[dataIndex]));
+  const expectedOutputs = expectedData.map((unusedValue, dataIndex) =>
+    readZeroTerminatedString(memoryBytes, offsetList[dataIndex])
+  );
 
-  const count = 1 + expectedOutputs.findIndex(function (item) { return 'X\n' === item; });
+  const count =
+    1 +
+    expectedOutputs.findIndex(function (item) {
+      return 'X\n' === item;
+    });
 
   if (observedData.length !== count) {
     throw new Error('Output count mismatch: expected ' + count + ', got ' + observedData.length);
@@ -72,7 +80,15 @@ const runTest = function (buff, out, exports) {
 
   for (let dataIndex = 0; dataIndex < count; ++dataIndex) {
     if (observedData[dataIndex] !== expectedOutputs[dataIndex]) {
-      throw new Error('Output mismatch at index ' + dataIndex + ': expected "' + expectedOutputs[dataIndex] + '", got "' + observedData[dataIndex] + '"');
+      throw new Error(
+        'Output mismatch at index ' +
+          dataIndex +
+          ': expected "' +
+          expectedOutputs[dataIndex] +
+          '", got "' +
+          observedData[dataIndex] +
+          '"'
+      );
     }
   }
 

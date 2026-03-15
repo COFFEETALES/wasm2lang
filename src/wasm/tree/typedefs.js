@@ -10,10 +10,10 @@ Wasm2Lang.Wasm.Tree.ExpressionInfo;
 
 /**
  * @typedef {{
- *   passFuncName: (string|undefined),
- *   bodyReplaced: (boolean|undefined),
- *   dropConstEliminations: (number|undefined),
- *   localGetCounts: (!Object<string, number>|undefined)
+ *   passFuncName: (string|void),
+ *   bodyReplaced: (boolean|void),
+ *   dropConstEliminations: (number|void),
+ *   localGetCounts: (!Object<string, number>|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.PassMetadata;
@@ -22,7 +22,7 @@ Wasm2Lang.Wasm.Tree.PassMetadata;
  * @typedef {{
  *   edgePropertyName: string,
  *   edgeTraversalKind: !Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind,
- *   setter: (function(number, number, number): void|undefined)
+ *   setter: (function(number, number, number): void|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.EdgeSpec;
@@ -60,9 +60,9 @@ Wasm2Lang.Wasm.Tree.ExpressionAncestorList;
  * @typedef {{
  *   binaryen: !Binaryen,
  *   treeModule: !BinaryenModule,
- *   functionInfo: (?BinaryenFunctionInfo|undefined),
- *   treeMetadata: (!Wasm2Lang.Wasm.Tree.PassMetadata|undefined),
- *   ancestors: (!Wasm2Lang.Wasm.Tree.ExpressionAncestorList|undefined)
+ *   functionInfo: (?BinaryenFunctionInfo|void),
+ *   treeMetadata: (!Wasm2Lang.Wasm.Tree.PassMetadata|void),
+ *   ancestors: (!Wasm2Lang.Wasm.Tree.ExpressionAncestorList|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.TraversalContext;
@@ -85,17 +85,17 @@ Wasm2Lang.Wasm.Tree.TraversalNodeContext;
 /**
  * @typedef {{
  *   decisionAction: string,
- *   expressionPointer: (*|undefined),
- *   decisionValue: (*|undefined)
+ *   expressionPointer: (*|void),
+ *   decisionValue: (*|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.TraversalDecision;
 
 /**
  * @typedef {{
- *   decisionAction: (string|undefined),
- *   expressionPointer: (*|undefined),
- *   decisionValue: (*|undefined)
+ *   decisionAction: (string|void),
+ *   expressionPointer: (*|void),
+ *   decisionValue: (*|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.TraversalDecisionInput;
@@ -114,19 +114,19 @@ Wasm2Lang.Wasm.Tree.TraversalChildResult;
 Wasm2Lang.Wasm.Tree.TraversalChildResultList;
 
 /**
- * @typedef {function(!Wasm2Lang.Wasm.Tree.TraversalNodeContext): (?Wasm2Lang.Wasm.Tree.TraversalDecisionInput|undefined)}
+ * @typedef {function(!Wasm2Lang.Wasm.Tree.TraversalNodeContext): (?Wasm2Lang.Wasm.Tree.TraversalDecisionInput|void)}
  */
 Wasm2Lang.Wasm.Tree.TraversalEnterCallback;
 
 /**
- * @typedef {function(!Wasm2Lang.Wasm.Tree.TraversalNodeContext, !Wasm2Lang.Wasm.Tree.TraversalChildResultList=): (?Wasm2Lang.Wasm.Tree.TraversalDecisionInput|undefined)}
+ * @typedef {function(!Wasm2Lang.Wasm.Tree.TraversalNodeContext, !Wasm2Lang.Wasm.Tree.TraversalChildResultList=): (?Wasm2Lang.Wasm.Tree.TraversalDecisionInput|void)}
  */
 Wasm2Lang.Wasm.Tree.TraversalLeaveCallback;
 
 /**
  * @typedef {{
- *   enter: (!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|undefined),
- *   leave: (!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|undefined)
+ *   enter: (!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|void),
+ *   leave: (!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.TraversalVisitor;
@@ -161,9 +161,9 @@ Wasm2Lang.Wasm.Tree.PassModuleHook;
  *   passName: string,
  *   phase: string,
  *   createVisitor: function(!Wasm2Lang.Wasm.Tree.PassMetadata): !Wasm2Lang.Wasm.Tree.TraversalVisitor,
- *   validateModule: (!Wasm2Lang.Wasm.Tree.PassModuleHook|undefined),
- *   onFunctionEnter: (!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined),
- *   onFunctionLeave: (!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)
+ *   validateModule: (!Wasm2Lang.Wasm.Tree.PassModuleHook|void),
+ *   onFunctionEnter: (!Wasm2Lang.Wasm.Tree.PassFunctionHook|void),
+ *   onFunctionLeave: (!Wasm2Lang.Wasm.Tree.PassFunctionHook|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.Pass;

@@ -46,6 +46,8 @@ $runTest = function (string &$buff, callable $out, array $exports) use (
     $exports['alignHeapTop']();
     $startOffset = $exports['getHeapTop']();
     $exports['exerciseMVPOps'](42, 3.5, 2.75);
+    $exports['exerciseOverflowOps']();
+    $exports['exerciseEdgeCases']();
 };
 
 $dumpMemory = true;

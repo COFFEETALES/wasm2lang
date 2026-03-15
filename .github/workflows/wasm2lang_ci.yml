@@ -1,14 +1,14 @@
-name: "Wasm2Lang CI"
+name: 'Wasm2Lang CI'
 
 on:
   push:
 
 jobs:
   build:
-    name: "🔵 CI · Build"
+    name: '🔵 CI · Build'
     uses: ./.github/workflows/wasm2lang_build.yml
 
   test:
-    name: "🟢 CI · Test"
+    name: '🟢 CI · Test'
     needs: build
     uses: ./.github/workflows/wasm2lang_test.yml

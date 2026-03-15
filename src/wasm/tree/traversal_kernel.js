@@ -65,8 +65,8 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
   var /** @const {!BinaryenModule} */ module = context.treeModule;
   var /** @const {?BinaryenFunctionInfo} */ functionInfo = context.functionInfo || null;
   // prettier-ignore
-  var /** @type {(!Wasm2Lang.Wasm.Tree.ExpressionAncestorList|undefined)} */ contextAncestors =
-    /** @type {(!Wasm2Lang.Wasm.Tree.ExpressionAncestorList|undefined)} */ (context.ancestors);
+  var /** @type {(!Wasm2Lang.Wasm.Tree.ExpressionAncestorList|void)} */ contextAncestors =
+    /** @type {(!Wasm2Lang.Wasm.Tree.ExpressionAncestorList|void)} */ (context.ancestors);
   if (!contextAncestors) {
     contextAncestors = [];
   }
@@ -107,8 +107,8 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
         };
 
       // prettier-ignore
-      var /** @const {(!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|undefined)} */ enterCallback =
-      /** @const {(!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|undefined)} */ (visitorObject.enter);
+      var /** @const {(!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|void)} */ enterCallback =
+      /** @const {(!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|void)} */ (visitorObject.enter);
       var /** @const {!Wasm2Lang.Wasm.Tree.TraversalDecision} */ enterDecision =
           Wasm2Lang.Wasm.Tree.TraversalKernel.normalizeDecision_(
             'function' === typeof enterCallback ? enterCallback(nodeContext) : null
@@ -156,8 +156,8 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
       }
 
       // prettier-ignore
-      var /** @const {(!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|undefined)} */ leaveCallback =
-      /** @const {(!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|undefined)} */ (visitorObject.leave);
+      var /** @const {(!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|void)} */ leaveCallback =
+      /** @const {(!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|void)} */ (visitorObject.leave);
       var /** @const {!Wasm2Lang.Wasm.Tree.TraversalDecision} */ leaveDecision =
           Wasm2Lang.Wasm.Tree.TraversalKernel.normalizeDecision_(
             'function' === typeof leaveCallback ? leaveCallback(nodeContext, childResults) : null

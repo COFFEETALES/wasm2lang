@@ -10,16 +10,11 @@
  * @constructor
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LocalUsageAnalysisPass = function () {
-  /** @type {string} */
-  this.passName = 'local-usage-analysis';
-  /** @type {string} */
-  this.phase = Wasm2Lang.Wasm.Tree.PassRunner.Phase.ANALYZE;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassModuleHook|undefined)} */
-  this.validateModule = void 0;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)} */
-  this.onFunctionEnter = void 0;
-  /** @type {(!Wasm2Lang.Wasm.Tree.PassFunctionHook|undefined)} */
-  this.onFunctionLeave = void 0;
+  Wasm2Lang.Wasm.Tree.CustomPasses.initializePass(
+    /** @type {!Wasm2Lang.Wasm.Tree.Pass} */ (this),
+    'local-usage-analysis',
+    Wasm2Lang.Wasm.Tree.PassRunner.Phase.ANALYZE
+  );
 };
 
 /**
@@ -53,8 +48,5 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalUsageAnalysisPass.prototype.createVisitor 
   var /** @const {!Object<string, number>} */ localGetCounts = /** @const {!Object<string, number>} */ (Object.create(null));
   funcMetadata.localGetCounts = localGetCounts;
 
-  // prettier-ignore
-  return /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-    enter: this.enter_.bind(this, localGetCounts)
-  });
+  return Wasm2Lang.Wasm.Tree.CustomPasses.createEnterVisitor(this, this.enter_, localGetCounts);
 };
