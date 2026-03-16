@@ -11,7 +11,6 @@ Wasm2Lang.Options.Schema = {};
 Wasm2Lang.Options.Schema.OptionKey = {
   LANGUAGE_OUT: 'languageOut',
   NORMALIZE_WASM: 'normalizeWasm',
-  SIMPLIFY_OUTPUT: 'simplifyOutput',
   DEFINE: 'define',
   INPUT_DATA: 'inputData',
   INPUT_FILE: 'inputFile',
@@ -25,7 +24,6 @@ Wasm2Lang.Options.Schema.OptionKey = {
  * @typedef {{
  *   languageOut: string,
  *   normalizeWasm: !Array<string>,
- *   simplifyOutput: boolean,
  *   definitions: !Object<string, string>,
  *   inputData: (string|!Uint8Array|null),
  *   inputFile: (string|null),
@@ -81,7 +79,6 @@ Wasm2Lang.Options.Schema.normalizeBundles['wasm2lang:codegen'] = {
 Wasm2Lang.Options.Schema.defaultOptions = {
   languageOut: 'asmjs',
   normalizeWasm: ['binaryen:min'],
-  simplifyOutput: false,
   definitions: Object.create(null),
   inputData: null,
   inputFile: null,
@@ -117,18 +114,6 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.NORMAL
   options.normalizeWasm = strs.flatMap(function (str) {
     return str.toLowerCase().split(',');
   });
-};
-
-/**
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @param {!Array<string>} strs
- */
-Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.SIMPLIFY_OUTPUT] = function (options, strs) {
-  if (0 === strs.length) {
-    options.simplifyOutput = true;
-    return;
-  }
-  options.simplifyOutput = ['1', 'on', 'true', 'yes', ''].includes(strs[strs.length - 1].toLowerCase());
 };
 
 /**
@@ -234,10 +219,6 @@ Wasm2Lang.Options.Schema.optionSchema = {
     bundles: Wasm2Lang.Options.Schema.normalizeBundles,
     optionDesc:
       'Comma-separated list of normalization bundles to apply before code generation (e.g. "binaryen:min,wasm2lang:codegen").'
-  },
-  'simplifyOutput': {
-    optionType: 'boolean',
-    optionDesc: 'Enables backend-specific output simplifications (may change formatting/structure but preserves semantics).'
   },
   'define': {
     optionType: 'string|null',

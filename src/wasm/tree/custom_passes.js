@@ -35,3 +35,88 @@ Wasm2Lang.Wasm.Tree.CustomPasses.createEnterVisitor = function (target, enterFn,
     enter: enterFn.bind(target, enterState)
   });
 };
+
+/**
+ * Applies label-prefix renaming to BreakId, SwitchId, and BlockId nodes
+ * whose label is in the target set (and not in the optional exclusion set).
+ * Returns a REPLACE_NODE decision if renaming was applied, null otherwise.
+ *
+ * This is the shared rename infrastructure for marker-based passes (sw$, lb$,
+ * rs$) that detect a pattern in enter_, build a set of affected labels, then
+ * rename matching labels in leave_.
+ *
+ * @param {string} marker
+ * @param {!Object<string, boolean>} targetSet
+ * @param {?Object<string, boolean>} exclusionSet
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} module
+ * @param {!BinaryenExpressionInfo} expr
+ * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_ = function (marker, targetSet, exclusionSet, binaryen, module, expr) {
+  var /** @const {number} */ id = expr.id;
+  var /** @const {string} */ REPLACE_NODE = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE;
+
+  if (id === binaryen.BreakId) {
+    var /** @const {?string} */ breakName = /** @type {?string} */ (expr.name);
+    if (breakName && breakName in targetSet && (!exclusionSet || !(breakName in exclusionSet))) {
+      return {
+        decisionAction: REPLACE_NODE,
+        expressionPointer: module.break(
+          marker + breakName,
+          /** @type {number} */ (expr.condition || 0),
+          /** @type {number} */ (expr.value || 0)
+        )
+      };
+    }
+  }
+
+  if (id === binaryen.SwitchId) {
+    var /** @const {!Array<string>} */ names = /** @type {!Array<string>} */ ((expr.names || []).slice(0));
+    var /** @const {number} */ nameCount = names.length;
+    var /** @type {boolean} */ hasChanges = false;
+    var /** @type {number} */ i = 0;
+
+    for (i = 0; i !== nameCount; ++i) {
+      if (names[i] in targetSet && (!exclusionSet || !(names[i] in exclusionSet))) {
+        names[i] = marker + names[i];
+        hasChanges = true;
+      }
+    }
+
+    var /** @const {string} */ defaultName = /** @type {string} */ (expr.defaultName || '');
+    var /** @type {string} */ newDefault = defaultName;
+    if ('' !== defaultName && defaultName in targetSet && (!exclusionSet || !(defaultName in exclusionSet))) {
+      newDefault = marker + defaultName;
+      hasChanges = true;
+    }
+
+    if (hasChanges) {
+      return {
+        decisionAction: REPLACE_NODE,
+        expressionPointer: module.switch(
+          names,
+          newDefault,
+          /** @type {number} */ (expr.condition || 0),
+          /** @type {number} */ (expr.value || 0)
+        )
+      };
+    }
+  }
+
+  if (id === binaryen.BlockId) {
+    var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
+    if (blockName && blockName in targetSet && (!exclusionSet || !(blockName in exclusionSet))) {
+      return {
+        decisionAction: REPLACE_NODE,
+        expressionPointer: module.block(
+          marker + blockName,
+          /** @type {!Array<number>} */ ((expr.children || []).slice(0)),
+          expr.type
+        )
+      };
+    }
+  }
+
+  return null;
+};

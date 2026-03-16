@@ -104,25 +104,6 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmMod
   wasmModule.runPasses(['flatten', 'simplify-locals', 'reorder-locals', 'vacuum']);
 };
 
-// /**
-//  * @private
-//  * @param {!BinaryenModule} wasmModule
-//  * @param {!Array<string>} passList
-//  * @return {void}
-//  */
-// Wasm2Lang.Wasm.WasmNormalization.runBinaryenFunctionPasses_ = function (wasmModule, passList) {
-//   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-//   var /** @const {number} */ functionCount = wasmModule.getNumFunctions();
-//
-//   for (var /** number */ i = 0; i !== functionCount; ++i) {
-//     var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(i);
-//     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
-//     if ('' === funcInfo['base']) {
-//       wasmModule.runPassesOnFunction(funcInfo.name, passList);
-//     }
-//   }
-// };
-
 /**
  * @param {!BinaryenModule} wasmModule
  * @param {string} mode

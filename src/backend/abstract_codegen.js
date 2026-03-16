@@ -35,6 +35,69 @@ Wasm2Lang.Backend.createBackend = function (languageId) {
   return new Wasm2Lang.Backend.AbstractCodegen();
 };
 
+// ---------------------------------------------------------------------------
+// Mangler profile registry.
+//
+// Defined here (abstract_codegen.js) rather than in identifier_mangler.js so
+// that concrete backends, which load before the mangler, can register their
+// profiles at declaration time.
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {{
+ *   reservedWords: !Object<string, boolean>,
+ *   singleCharset: string,
+ *   blockCharset: string,
+ *   caseInsensitive: boolean
+ * }}
+ */
+Wasm2Lang.Backend.ManglerProfile;
+
+/**
+ * Profile registry populated by backends via {@code registerManglerProfile}.
+ *
+ * @private
+ * @const {!Object<string, !Wasm2Lang.Backend.ManglerProfile>}
+ */
+Wasm2Lang.Backend.manglerProfileRegistry_ = Object.create(null);
+
+/**
+ * Registers a mangler profile for a backend language.  Called by each
+ * concrete backend alongside {@code Backend.registerBackend}.
+ *
+ * @param {string} languageId
+ * @param {!Wasm2Lang.Backend.ManglerProfile} profile
+ * @return {void}
+ */
+Wasm2Lang.Backend.registerManglerProfile = function (languageId, profile) {
+  Wasm2Lang.Backend.manglerProfileRegistry_[languageId] = profile;
+};
+
+/**
+ * Returns the mangler profile registered for the given language, or
+ * {@code undefined} if none has been registered.
+ *
+ * @param {string} languageId
+ * @return {!Wasm2Lang.Backend.ManglerProfile|void}
+ */
+Wasm2Lang.Backend.getManglerProfile = function (languageId) {
+  return Wasm2Lang.Backend.manglerProfileRegistry_[languageId];
+};
+
+/**
+ * Builds a reserved-word lookup table from an array of words.
+ *
+ * @param {!Array<string>} words
+ * @return {!Object<string, boolean>}
+ */
+Wasm2Lang.Backend.buildReservedSet = function (words) {
+  var /** @const {!Object<string, boolean>} */ set = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  for (var /** number */ i = 0; i < words.length; ++i) {
+    set[words[i]] = true;
+  }
+  return set;
+};
+
 /**
  * @constructor
  */
@@ -492,7 +555,7 @@ Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_ = function (name, r
 Wasm2Lang.Backend.AbstractCodegen.pad_ = function (indent) {
   var /** @type {string} */ s = '';
   for (var /** number */ k = 0; k !== indent; ++k) {
-    s += '      ';
+    s += '  ';
   }
   return s;
 };
@@ -593,6 +656,605 @@ Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, 
     expressionString: '0',
     expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
   };
+};
+
+// ---------------------------------------------------------------------------
+// Switch-dispatch flat-switch extraction (shared by all backends).
+// ---------------------------------------------------------------------------
+
+/**
+ * Marker prefix that the switch-dispatch-detection pass prepends to the outer
+ * block of a br_table dispatch.  After the label-prefixing pass this becomes
+ * {@code 'sw$'}.
+ *
+ * @protected
+ * @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.SW_DISPATCH_PREFIX_ = 'sw$';
+
+/**
+ * Prefix for blocks fused with their sole-child/sole-parent loop by the
+ * BlockLoopFusionPass.  Backend emitters that see this prefix suppress the
+ * block wrapper and redirect breaks targeting the block to the associated loop.
+ *
+ * @protected
+ * @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_ = 'lb$';
+
+/**
+ * Prefix for loops whose trailing self-continue was removed by the
+ * LoopSimplificationPass.  Backend emitters emit `for(;;)` with no
+ * trailing break.
+ *
+ * @protected
+ * @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.LC_CONTINUE_PREFIX_ = 'lc$';
+
+/**
+ * Prefix for loops converted to do-while by the LoopSimplificationPass.
+ * The body block's last child is the bare condition expression.
+ *
+ * @protected
+ * @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.LD_DOWHILE_PREFIX_ = 'ld$';
+
+/**
+ * Prefix for label-elided for(;;) loops (no label needed in output).
+ *
+ * @protected
+ * @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.LF_FORLOOP_PREFIX_ = 'lf$';
+
+/**
+ * Prefix for label-elided do-while loops (no label needed in output).
+ *
+ * @protected
+ * @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.LE_DOWHILE_PREFIX_ = 'le$';
+
+/**
+ * Prefix for labeled while loops (condition hoisted from loop body).
+ * The body block's last child is the inverted condition expression.
+ *
+ * @protected
+ * @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.LW_WHILE_PREFIX_ = 'lw$';
+
+/**
+ * Prefix for label-elided while loops (no label needed in output).
+ *
+ * @protected
+ * @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.LY_WHILE_PREFIX_ = 'ly$';
+
+/**
+ * Prefix for the outermost block of a root-switch-loop pattern detected by
+ * the RootSwitchDetectionPass.  Backend emitters that see this prefix
+ * collapse the outer block wrappers into a single loop+switch with exit
+ * paths inlined into the switch cases.
+ *
+ * @protected
+ * @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.RS_ROOT_SWITCH_PREFIX_ = 'rs$';
+
+/**
+ * Returns true when {@code name} starts with {@code prefix}.
+ *
+ * Replaces the repeated {@code 0 === name.indexOf(prefix)} idiom across all
+ * backend and pass code, improving readability without changing semantics.
+ *
+ * @protected
+ * @param {string} name
+ * @param {string} prefix
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.hasPrefix_ = function (name, prefix) {
+  return 0 === name.indexOf(prefix);
+};
+
+/**
+ * Returns true if the given loop name carries a label-elided prefix,
+ * meaning backends should omit the label and emit plain break/continue.
+ *
+ * @protected
+ * @param {string} name
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.isLabelElided = function (name) {
+  var /** @const */ hp = Wasm2Lang.Backend.AbstractCodegen.hasPrefix_;
+  return (
+    hp(name, Wasm2Lang.Backend.AbstractCodegen.LF_FORLOOP_PREFIX_) ||
+    hp(name, Wasm2Lang.Backend.AbstractCodegen.LE_DOWHILE_PREFIX_) ||
+    hp(name, Wasm2Lang.Backend.AbstractCodegen.LY_WHILE_PREFIX_)
+  );
+};
+
+/**
+ * @protected
+ * @typedef {{
+ *   indices: !Array<number>,
+ *   actionPtrs: !Array<number>,
+ *   needsBreak: boolean,
+ *   externalTarget: ?string
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_;
+
+/**
+ * @protected
+ * @typedef {{
+ *   conditionPtr: number,
+ *   outerName: string,
+ *   caseGroups: !Array<!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_>,
+ *   defaultGroup: ?Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_,
+ *   requiresLabel: boolean
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_;
+
+/**
+ * Information extracted from a root-switch-loop pattern.
+ *
+ * @protected
+ * @typedef {{
+ *   loopPtr: number,
+ *   loopName: string,
+ *   rsBlockName: string,
+ *   exitPaths: !Object<string, !Array<number>>
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_;
+
+/**
+ * Extracts the flat-switch structure from a br_table dispatch block that has
+ * been annotated by the SwitchDispatchDetectionPass.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} outerBlockPtr
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_}
+ */
+Wasm2Lang.Backend.AbstractCodegen.extractSwitchDispatchStructure_ = function (binaryen, outerBlockPtr) {
+  var /** @const {!Object<string, *>} */ outerInfo = /** @type {!Object<string, *>} */ (
+      binaryen.getExpressionInfo(outerBlockPtr)
+    );
+  var /** @const {string} */ outerName = /** @type {string} */ (outerInfo['name']);
+
+  // Walk the chain of first-child blocks.
+  // Each entry is [name, childPtrs].  chain[0] = outer, chain[N] = innermost wrapper.
+  var /** @const {!Array<!Array>} */ chain = [];
+  var /** @const {!Object<string, number>} */ nameToIdx = /** @type {!Object<string, number>} */ (Object.create(null));
+
+  var /** @type {!Object<string, *>} */ curInfo = outerInfo;
+  for (;;) {
+    var /** @const {string} */ curName = /** @type {string} */ (curInfo['name']);
+    var /** @const {!Array<number>} */ curChildPtrs = /** @type {!Array<number>} */ (curInfo['children']);
+    nameToIdx[curName] = chain.length;
+    chain[chain.length] = [curName, curChildPtrs];
+
+    var /** @const {number} */ fcPtr = curChildPtrs[0];
+    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(fcPtr));
+    if (/** @type {number} */ (fcInfo['id']) !== binaryen.BlockId) {
+      break;
+    }
+    var /** @const {!Array<number>} */ fcChildren = /** @type {!Array<number>} */ (fcInfo['children'] || []);
+    if (1 === fcChildren.length) {
+      var /** @const {!Object<string, *>} */ soleInfo = /** @type {!Object<string, *>} */ (
+          binaryen.getExpressionInfo(fcChildren[0])
+        );
+      if (/** @type {number} */ (soleInfo['id']) === binaryen.SwitchId) {
+        // Record innermost wrapper.
+        var /** @const {string} */ wrapperName = /** @type {string} */ (fcInfo['name']);
+        nameToIdx[wrapperName] = chain.length;
+        chain[chain.length] = [wrapperName, fcChildren];
+
+        var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (soleInfo['names'] || []);
+        var /** @const {string} */ switchDefault = /** @type {string} */ (soleInfo['defaultName'] || '');
+        var /** @const {number} */ conditionPtr = /** @type {number} */ (soleInfo['condition']);
+
+        // prettier-ignore
+        var /** @const */ buildGroup =
+          /** @param {string} target @return {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */
+          function (target) {
+            var /** @type {!Array<number>} */ aPtrs;
+            var /** @type {boolean} */ nb;
+            var /** @type {?string} */ ext = null;
+            var /** @const {number|undefined} */ tIdx = nameToIdx[target];
+            if (void 0 !== tIdx && 0 < tIdx) {
+              var /** @const {number} */ pIdx = tIdx - 1;
+              aPtrs = /** @type {!Array<number>} */ (chain[pIdx][1]).slice(1);
+              nb = 0 === pIdx;
+            } else if (target === outerName || (void 0 !== tIdx && 0 === tIdx)) {
+              // Target is the outermost chain block itself — no actions inside.
+              aPtrs = [];
+              nb = true;
+            } else {
+              // External target (not in the dispatch chain).
+              aPtrs = [];
+              nb = false;
+              ext = target;
+            }
+            // If the last action is an unconditional break, the case is already
+            // terminated — no additional switch break is needed.
+            if (nb && aPtrs.length > 0) {
+              var /** @const {!Object<string, *>} */ lastAct = /** @type {!Object<string, *>} */ (
+                  binaryen.getExpressionInfo(aPtrs[aPtrs.length - 1])
+                );
+              if (
+                /** @type {number} */ (lastAct['id']) === binaryen.BreakId &&
+                0 === /** @type {number} */ (lastAct['condition'] || 0)
+              ) {
+                nb = false;
+              }
+            }
+            return /** @type {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ ({
+              indices: [],
+              actionPtrs: aPtrs,
+              needsBreak: nb,
+              externalTarget: ext
+            });
+          };
+
+        // Build case groups (adjacent same-target entries merged).
+        var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_>} */ caseGroups = [];
+        var /** @type {number} */ si = 0;
+        while (si < switchNames.length) {
+          var /** @const {string} */ target = switchNames[si];
+          var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ group = buildGroup(target);
+          var /** @const {!Array<number>} */ groupIndices = /** @type {!Array<number>} */ (group.indices);
+          while (si < switchNames.length && switchNames[si] === target) {
+            groupIndices[groupIndices.length] = si;
+            ++si;
+          }
+          caseGroups[caseGroups.length] = group;
+        }
+
+        var /** @type {?Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ defaultGroup = null;
+        if ('' !== switchDefault) {
+          defaultGroup = buildGroup(switchDefault);
+        }
+
+        return /** @type {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ ({
+          conditionPtr: conditionPtr,
+          outerName: outerName,
+          caseGroups: caseGroups,
+          defaultGroup: defaultGroup,
+          // Flat-switch emission consumes the whole outer block, so case exits
+          // can use a plain switch break instead of a labeled one.
+          requiresLabel: false
+        });
+      }
+    }
+
+    curInfo = fcInfo;
+  }
+
+  // Fallback (should not reach here for a correctly annotated block).
+  return /** @type {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ ({
+    conditionPtr: 0,
+    outerName: outerName,
+    caseGroups: [],
+    defaultGroup: null,
+    requiresLabel: true
+  });
+};
+
+/**
+ * Appends the flat-switch opening line, adding a label only when the
+ * extracted dispatch structure requires one.
+ *
+ * @protected
+ * @param {!Array<string>} lines
+ * @param {number} indent
+ * @param {string} conditionExpr
+ * @param {string} switchLabel
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} info
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.emitFlatSwitchHeader_ = function (lines, indent, conditionExpr, switchLabel, info) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  lines[lines.length] = pad(indent) + (info.requiresLabel ? switchLabel + ': ' : '') + 'switch (' + conditionExpr + ') {\n';
+};
+
+/**
+ * Appends the exit statement for a flat-switch case group.
+ *
+ * @protected
+ * @param {!Array<string>} lines
+ * @param {number} indent
+ * @param {string} switchLabel
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} info
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.emitFlatSwitchBreak_ = function (lines, indent, switchLabel, info) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  lines[lines.length] = pad(indent) + 'break' + (info.requiresLabel ? ' ' + switchLabel : '') + ';\n';
+};
+
+/**
+ * Sub-walks a single expression pointer through the given visitor, reusing the
+ * same enter/leave callbacks as the main code-gen traversal.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} visitor
+ * @param {number} exprPtr
+ * @return {*}
+ */
+Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_ = function (wasmModule, binaryen, funcInfo, visitor, exprPtr) {
+  if (0 === exprPtr) {
+    return '';
+  }
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalContext} */ ctx = {
+      binaryen: binaryen,
+      treeModule: wasmModule,
+      functionInfo: funcInfo,
+      treeMetadata: /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata} */ (Object.create(null)),
+      ancestors: []
+    };
+  return Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression(exprPtr, ctx, visitor);
+};
+
+/**
+ * Extracts the code string from a sub-walk result (which may be a plain string
+ * or a typed expression object {@code {s, c}}).
+ *
+ * @protected
+ * @param {*} result
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.subWalkString_ = function (result) {
+  if ('string' === typeof result) {
+    return result;
+  }
+  if (result && 'object' === typeof result) {
+    var /** @const {*} */ s = result['s'];
+    if ('string' === typeof s) {
+      return /** @type {string} */ (s);
+    }
+  }
+  return '';
+};
+
+/**
+ * Renders sub-walked action expressions as switch-case body lines, using the
+ * same formatting as the BlockId child rendering (single-line gets pad+semi,
+ * multi-line used as-is).
+ *
+ * @protected
+ * @param {!Array<string>} lines  Output array to append to.
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} visitor
+ * @param {!Array<number>} actionPtrs
+ * @param {number} caseIndent
+ * @param {string=} opt_terminalBreakTarget
+ * @return {boolean}  True when a terminal break-to-target was stripped.
+ */
+Wasm2Lang.Backend.AbstractCodegen.emitSwitchCaseActions_ = function (
+  lines,
+  wasmModule,
+  binaryen,
+  funcInfo,
+  visitor,
+  actionPtrs,
+  caseIndent,
+  opt_terminalBreakTarget
+) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const */ subWalk = Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_;
+  var /** @const */ subStr = Wasm2Lang.Backend.AbstractCodegen.subWalkString_;
+  var /** @type {number} */ actionCount = actionPtrs.length;
+  var /** @type {boolean} */ strippedTerminalBreak = false;
+
+  if (0 < actionCount && 'string' === typeof opt_terminalBreakTarget) {
+    var /** @const {!Object<string, *>} */ terminalInfo = /** @type {!Object<string, *>} */ (
+        binaryen.getExpressionInfo(actionPtrs[actionCount - 1])
+      );
+    if (
+      terminalInfo['id'] === binaryen.BreakId &&
+      terminalInfo['name'] === opt_terminalBreakTarget &&
+      0 === /** @type {number} */ (terminalInfo['condition'] || 0) &&
+      0 === /** @type {number} */ (terminalInfo['value'] || 0)
+    ) {
+      --actionCount;
+      strippedTerminalBreak = true;
+
+      // If the new last action is itself an unconditional break, the case is
+      // already terminated — no additional switch break is needed.  This avoids
+      // emitting unreachable code (Java rejects unreachable statements).
+      if (0 < actionCount) {
+        var /** @const {!Object<string, *>} */ prevInfo = /** @type {!Object<string, *>} */ (
+            binaryen.getExpressionInfo(actionPtrs[actionCount - 1])
+          );
+        if (
+          /** @type {number} */ (prevInfo['id']) === binaryen.BreakId &&
+          0 === /** @type {number} */ (prevInfo['condition'] || 0)
+        ) {
+          strippedTerminalBreak = false;
+        }
+      }
+    }
+  }
+
+  for (var /** number */ i = 0; i < actionCount; ++i) {
+    var /** @const {string} */ code = subStr(subWalk(wasmModule, binaryen, funcInfo, visitor, actionPtrs[i]));
+    if ('' !== code) {
+      if (-1 === code.indexOf('\n')) {
+        lines[lines.length] = pad(caseIndent) + code + ';\n';
+      } else {
+        lines[lines.length] = code;
+      }
+    }
+  }
+
+  return strippedTerminalBreak;
+};
+
+// ---------------------------------------------------------------------------
+// Root-switch extraction (shared by all backends).
+// ---------------------------------------------------------------------------
+
+/**
+ * Walks the first-child chain from an {@code rs$}-prefixed block to locate
+ * the inner loop and collect exit-code expression pointers for each
+ * intermediate block level.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} rsBlockPtr
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_}
+ */
+Wasm2Lang.Backend.AbstractCodegen.extractRootSwitchStructure_ = function (binaryen, rsBlockPtr) {
+  var /** @const {!Object<string, *>} */ outerInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(rsBlockPtr));
+  var /** @const {string} */ rsBlockName = /** @type {string} */ (outerInfo['name']);
+
+  // chain[i] = {name: blockName, childPtrs: Array<number>}
+  var /** @const {!Array<!Object>} */ chain = [];
+  var /** @type {!Object<string, *>} */ curInfo = outerInfo;
+  var /** @type {number} */ loopPtr = 0;
+  var /** @type {string} */ loopName = '';
+
+  for (;;) {
+    var /** @const {string} */ curName = /** @type {string} */ (curInfo['name']);
+    var /** @const {!Array<number>} */ curChildPtrs = /** @type {!Array<number>} */ (curInfo['children'] || []);
+    chain[chain.length] = {'n': curName, 'c': curChildPtrs};
+
+    if (0 === curChildPtrs.length) {
+      break;
+    }
+
+    var /** @const {number} */ fcPtr = curChildPtrs[0];
+    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(fcPtr));
+    var /** @const {number} */ fcId = /** @type {number} */ (fcInfo['id']);
+
+    // Direct loop child.
+    if (fcId === binaryen.LoopId) {
+      loopPtr = fcPtr;
+      loopName = /** @type {string} */ (fcInfo['name']);
+      break;
+    }
+
+    if (fcId !== binaryen.BlockId) {
+      break;
+    }
+
+    var /** @const {string} */ fcName = /** @type {string} */ (fcInfo['name'] || '');
+
+    // lb$ fused block containing a loop.
+    if (Wasm2Lang.Backend.AbstractCodegen.hasPrefix_(fcName, Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_)) {
+      var /** @const {!Array<number>} */ fusedCh = /** @type {!Array<number>} */ (fcInfo['children'] || []);
+      if (1 === fusedCh.length) {
+        var /** @const {!Object<string, *>} */ fusedChild = /** @type {!Object<string, *>} */ (
+            binaryen.getExpressionInfo(fusedCh[0])
+          );
+        if (/** @type {number} */ (fusedChild['id']) === binaryen.LoopId) {
+          // Add lb$ block to the chain so that br $lb$... targets inside
+          // the flat switch are intercepted by the root-switch exit map.
+          chain[chain.length] = {'n': fcName, 'c': fusedCh};
+          loopPtr = fusedCh[0];
+          loopName = /** @type {string} */ (fusedChild['name']);
+          break;
+        }
+      }
+    }
+
+    curInfo = fcInfo;
+  }
+
+  // Build exit paths for each intermediate block.
+  // For br chain[j].name (j >= 1):
+  //   exit code = chain[j-1].childPtrs[1..] ∪ chain[j-2].childPtrs[1..] ∪ ... ∪ chain[0].childPtrs[1..]
+  //   (stop early if a ReturnId or UnreachableId is encountered)
+  var /** @const {!Object<string, !Array<number>>} */ exitPaths = /** @type {!Object<string, !Array<number>>} */ (
+      Object.create(null)
+    );
+
+  for (var /** number */ j = 1; j < chain.length; ++j) {
+    var /** @const {string} */ targetName = /** @type {string} */ (chain[j]['n']);
+    var /** @const {!Array<number>} */ exitPtrs = [];
+    var /** @type {boolean} */ hitTerminal = false;
+
+    for (var /** number */ k = j - 1; 0 <= k && !hitTerminal; --k) {
+      var /** @const {!Array<number>} */ levelPtrs = /** @type {!Array<number>} */ (chain[k]['c']);
+      for (var /** number */ p = 1; p < levelPtrs.length; ++p) {
+        exitPtrs[exitPtrs.length] = levelPtrs[p];
+        var /** @const {number} */ ptrId = /** @type {number} */ (binaryen.getExpressionInfo(levelPtrs[p])['id']);
+        if (ptrId === binaryen.ReturnId || ptrId === binaryen.UnreachableId) {
+          hitTerminal = true;
+          break;
+        }
+      }
+    }
+
+    exitPaths[targetName] = exitPtrs;
+  }
+
+  return /** @type {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_} */ ({
+    loopPtr: loopPtr,
+    loopName: loopName,
+    rsBlockName: rsBlockName,
+    exitPaths: exitPaths
+  });
+};
+
+/**
+ * Sub-walks root-switch exit-code expression pointers, appending the rendered
+ * lines to {@code lines}.  Returns {@code true} when the last expression is
+ * terminal (ReturnId or UnreachableId), meaning no additional break is needed.
+ *
+ * @protected
+ * @param {!Array<string>} lines
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} visitor
+ * @param {!Array<number>} exitPtrs
+ * @param {number} indent
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.emitRootSwitchExitCode_ = function (
+  lines,
+  wasmModule,
+  binaryen,
+  funcInfo,
+  visitor,
+  exitPtrs,
+  indent
+) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const */ subWalk = Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_;
+  var /** @const */ subStr = Wasm2Lang.Backend.AbstractCodegen.subWalkString_;
+  var /** @type {boolean} */ isTerminal = false;
+
+  for (var /** number */ i = 0; i < exitPtrs.length; ++i) {
+    var /** @const {string} */ code = subStr(subWalk(wasmModule, binaryen, funcInfo, visitor, exitPtrs[i]));
+    if ('' !== code) {
+      if (-1 === code.indexOf('\n')) {
+        lines[lines.length] = pad(indent) + code + ';\n';
+      } else {
+        lines[lines.length] = code;
+      }
+    }
+  }
+
+  if (0 < exitPtrs.length) {
+    var /** @const {number} */ lastId = /** @type {number} */ (binaryen.getExpressionInfo(exitPtrs[exitPtrs.length - 1])['id']);
+    isTerminal = lastId === binaryen.ReturnId || lastId === binaryen.UnreachableId;
+  }
+
+  return isTerminal;
 };
 
 /**
@@ -1184,6 +1846,49 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.labelN_ = function (labelMap, binary
 };
 
 /**
+ * Formats a {@code break} or {@code continue} statement targeting a resolved
+ * label name, eliding the label when the prefix allows it.
+ *
+ * @protected
+ * @param {!Object<string, number>} labelMap
+ * @param {string} keyword  {@code 'break'} or {@code 'continue'}.
+ * @param {string} resolvedName  Already-resolved target (after fusion lookup).
+ * @return {string}  Statement string ending in {@code ';\n'}.
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderLabeledJump_ = function (labelMap, keyword, resolvedName) {
+  return Wasm2Lang.Backend.AbstractCodegen.isLabelElided(resolvedName)
+    ? keyword + ';\n'
+    : keyword + ' ' + this.labelN_(labelMap, resolvedName) + ';\n';
+};
+
+/**
+ * Resolves a target label to its break/continue statement string, looking up
+ * the label kind and block-to-loop fusion redirection.
+ *
+ * Used by asm.js and Java backends for BreakId, SwitchId, and flat-switch
+ * external-target handling where the same 4-line resolution pattern was
+ * previously repeated.
+ *
+ * @protected
+ * @param {!Object<string, string>} labelKinds   Map of label name → 'block'|'loop'.
+ * @param {!Object<string, string>} fusedBlockToLoop  Fused block → loop name.
+ * @param {!Object<string, number>} labelMap
+ * @param {string} targetName
+ * @return {string}  Statement string ending in {@code ';\n'}.
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.resolveBreakTarget_ = function (
+  labelKinds,
+  fusedBlockToLoop,
+  labelMap,
+  targetName
+) {
+  var /** @const {string} */ kind = labelKinds[targetName] || 'block';
+  var /** @const {string} */ actual = fusedBlockToLoop[targetName] || targetName;
+  var /** @const {string} */ keyword = 'loop' === kind ? 'continue' : 'break';
+  return this.renderLabeledJump_(labelMap, keyword, actual);
+};
+
+/**
  * Counts the number of named block/loop labels in a function body.
  *
  * @protected
@@ -1513,20 +2218,21 @@ Wasm2Lang.Backend.AbstractCodegen.BinaryOpRenderer_;
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOpByCategory_ = function (info, L, R, renderer) {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  // OP_* constants are 0–5 — direct index into dispatch table.
+  var /** @const {!Array<function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string>} */ dispatch =
+      [
+        renderer.renderArithmetic,
+        renderer.renderMultiply,
+        renderer.renderDivision,
+        renderer.renderBitwise,
+        renderer.renderRotate,
+        renderer.renderComparison
+      ];
 
-  if (C.OP_ARITHMETIC === info.category) {
-    return renderer.renderArithmetic.call(this, info, L, R);
-  } else if (C.OP_MULTIPLY === info.category) {
-    return renderer.renderMultiply.call(this, info, L, R);
-  } else if (C.OP_DIVISION === info.category) {
-    return renderer.renderDivision.call(this, info, L, R);
-  } else if (C.OP_BITWISE === info.category) {
-    return renderer.renderBitwise.call(this, info, L, R);
-  } else if (C.OP_ROTATE === info.category) {
-    return renderer.renderRotate.call(this, info, L, R);
-  } else if (C.OP_COMPARISON === info.category) {
-    return renderer.renderComparison.call(this, info, L, R);
+  var /** @const {function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string|void} */ fn =
+      dispatch[info.category];
+  if (fn) {
+    return fn.call(this, info, L, R);
   }
 
   if ('function' === typeof renderer.renderUnknown) {

@@ -24,7 +24,7 @@ jobs:
         working-directory: dist_artifacts
         run: |
           yarn run closure-make
-          NODE_PATH="$(cd "../node_modules" && pwd -P)" node ../wasmxlang.js --help
+          NODE_PATH="$(cd "../node_modules" && pwd -P)" node ../wasm2lang.js --help
 
       - name: '🧪 Build tests'
         working-directory: test_artifacts

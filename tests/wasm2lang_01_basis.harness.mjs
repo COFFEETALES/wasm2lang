@@ -46,15 +46,139 @@ const moduleImports = {
 };
 
 const verifyMVPOps = function (exports) {
-  const p0 = 42;
-  const p1 = Math.fround(3.5);
-  const p2 = 2.75;
-
   exports.alignHeapTop();
   const startOffset = exports.getHeapTop();
-  exports.exerciseMVPOps(p0, p1, p2);
+  const invokeScenarios = function (scenarioList, callback) {
+    for (const scenario of scenarioList) {
+      callback(...scenario);
+    }
+  };
+
+  // Primary parameter set.
+  exports.exerciseMVPOps(42, Math.fround(3.5), 2.75);
+
+  // Edge-case parameter sets.
+  exports.exerciseMVPOps(0, Math.fround(0.0), 0.0);
+  exports.exerciseMVPOps(-1, Math.fround(0.5), 0.5);
+  exports.exerciseMVPOps(2147483647, Math.fround(100.0), 100.0);
+
+  // Additional parameter sets.
+  exports.exerciseMVPOps(1, Math.fround(1.0), 1.0);
+  exports.exerciseMVPOps(-2147483648, Math.fround(3.0), 3.0);
+  exports.exerciseMVPOps(255, Math.fround(0.125), 0.125);
+  exports.exerciseMVPOps(16, Math.fround(4.0), 4.0);
+
   exports.exerciseOverflowOps();
   exports.exerciseEdgeCases();
+
+  // br_table dispatch — direct cases, default, and adversarial indices.
+  invokeScenarios([[0], [1], [2], [3]], index => exports.exerciseBrTable(index));
+  invokeScenarios([[4], [-1], [99], [-2147483648]], index => exports.exerciseBrTable(index));
+
+  // br_table with loop target — positive countdowns and already-terminal starts.
+  invokeScenarios([[5], [2], [1], [0], [-3], [9]], startCount => exports.exerciseBrTableLoop(startCount));
+
+  // Counted loop — forward ranges, empty ranges, reverse ranges, and negatives.
+  invokeScenarios(
+    [
+      [0, 5],
+      [2, 2],
+      [-2, 3],
+      [5, 1],
+      [7, 8]
+    ],
+    (startValue, exclusiveLimit) => exports.exerciseCountedLoop(startValue, exclusiveLimit)
+  );
+
+  // Do-while countdown — normal factorial path and non-positive entry values.
+  invokeScenarios([[5], [1], [0], [-3]], countdownStart => exports.exerciseDoWhileLoop(countdownStart));
+
+  // Do-while variant — long, short, and zero-budget entries.
+  invokeScenarios(
+    [
+      [1, 10],
+      [3, 1],
+      [7, 0],
+      [2, 4]
+    ],
+    (startValue, iterationCount) => exports.exerciseDoWhileVariantA(startValue, iterationCount)
+  );
+
+  // Nested loop + switch dispatch — empty outer loop, direct default, and alternating resets.
+  invokeScenarios(
+    [
+      [0, 0],
+      [1, 0],
+      [3, 0],
+      [3, 2],
+      [4, -1]
+    ],
+    (outerLimit, initialDispatchState) => exports.exerciseNestedLoops(outerLimit, initialDispatchState)
+  );
+
+  // Loop state machine — multi-step transitions, direct case 2, terminal, and default exits.
+  invokeScenarios(
+    [
+      [0, 0, 3],
+      [0, 20, 5],
+      [2, 9, 4],
+      [3, 7, 2],
+      [4, 99, 9],
+      [-1, 5, 1]
+    ],
+    (startState, startAccumulator, transitionBudget) =>
+      exports.exerciseSwitchInLoop(startState, startAccumulator, transitionBudget)
+  );
+
+  // br_table with duplicate targets — shared targets and default routing.
+  invokeScenarios([[0], [1], [2], [3], [4], [5], [-1], [99]], index => exports.exerciseBrTableMultiTarget(index));
+
+  // Nested switches — inner defaults, outer defaults, and outer non-zero cases.
+  invokeScenarios(
+    [
+      [0, 0],
+      [0, 1],
+      [0, -1],
+      [0, 5],
+      [1, 0],
+      [2, 0],
+      [-1, 0],
+      [9, 0]
+    ],
+    (outerIndex, innerIndex) => exports.exerciseNestedSwitch(outerIndex, innerIndex)
+  );
+
+  // br_table with an internal default target.
+  invokeScenarios([[0], [1], [2], [3], [-1], [99]], index => exports.exerciseSwitchDefaultInternal(index));
+
+  // Multi-exit loop + switch — completed, alternate, and default-driven exits.
+  invokeScenarios(
+    [
+      [0, 0],
+      [0, 50],
+      [1, 1],
+      [2, -5],
+      [2, 5],
+      [3, 7],
+      [-1, 42],
+      [9, 42]
+    ],
+    (startState, startAccumulator) => exports.exerciseMultiExitSwitchLoop(startState, startAccumulator)
+  );
+
+  // Conditional escape loop + switch — looping, immediate default exits, and direct escape checks.
+  invokeScenarios(
+    [
+      [10, 0],
+      [30, 0],
+      [1, 0],
+      [0, 5],
+      [-10, 2],
+      [60, 2],
+      [5, -1]
+    ],
+    (startAccumulator, startState) => exports.exerciseSwitchConditionalEscape(startAccumulator, startState)
+  );
 };
 
 const runTest = function (buff, out, exports) {

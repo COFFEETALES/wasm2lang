@@ -21,6 +21,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses = function (options) {
   return [
     new Wasm2Lang.Wasm.Tree.CustomPasses.LocalUsageAnalysisPass(),
     new Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass(),
-    new Wasm2Lang.Wasm.Tree.CustomPasses.LabelPrefixingPass()
+    new Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass(),
+    new Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass(),
+    new Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass(),
+    new Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass()
   ];
 };

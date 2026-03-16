@@ -1,67 +1,70 @@
 'use strict';
 
-// https://github.com/mozilla/gecko-dev/blob/master/js/src/wasm/AsmJS.cpp
-// https://github.com/v8/v8/blob/master/src/asmjs/asm-js.cc
-// Firefox 34 was the first release with full asm.js support,
-// including f32 coercion and related optimizations.
-// Chrome 61 was the first release to integrate the asm.js validator
-// and compile validated asm.js modules to WebAssembly bytecode.
+(async function () {
+  var path = await import('path');
 
-(async () => {
-  const assert = require('assert');
-  const path = require('path');
-  const fs = require('fs');
-  const vm = require('vm');
-  const url = require('url');
-  const binaryen = (
+  var url = await import('url');
+
+  var binaryen = (
     await import(
-      url.pathToFileURL(
-        path.join(
-          process.env.NODE_PATH || path.join(process.cwd(), 'node_modules'),
-          'binaryen',
-          'index.js'
-        )
-      )['href']
+      url.pathToFileURL(path.join(process.env.NODE_PATH || path.join(process.cwd(), 'node_modules'), 'binaryen', 'index.js'))[
+        'href'
+      ]
     )
   ).default;
 
-  const babelTypes = await import('@babel/types');
-  const babelGenerator = await import('@babel/generator');
+  if (
+    process.argv.some(function (arg) {
+      return '--dev' === arg;
+    })
+  ) {
+    var fs = await import('fs');
 
-  const sandbox = {
-    'Buffer': Buffer,
-    '__dirname': __dirname,
-    '__filename': __filename,
-    'assert': assert,
-    'babelGenerator': babelGenerator,
-    'babelTypes': babelTypes,
-    'binaryen': binaryen,
-    'console': console,
-    'fs': fs,
-    'path': path,
-    'process': process
-  };
+    var moduleSpecs = [
+      {'sourcePath': 'src/0-header.js', 'exportName': 'Wasm2Lang'},
+      {'sourcePath': 'src/backend/abstract_codegen.js'},
+      {'sourcePath': 'src/backend/i32_coercion.js'},
+      {'sourcePath': 'src/backend/value_types.js'},
+      {'sourcePath': 'src/backend/numeric_ops.js'},
+      {'sourcePath': 'src/backend/identifier_mangler.js'},
+      {'sourcePath': 'src/backend/asmjs_codegen.js'},
+      {'sourcePath': 'src/backend/php64_codegen.js'},
+      {'sourcePath': 'src/backend/java_codegen.js'},
+      {'sourcePath': 'src/cli/command_line_parser.js'},
+      {'sourcePath': 'src/options/schema.js'},
+      {'sourcePath': 'src/utilities/environment.js'},
+      {'sourcePath': 'src/utilities/output_sink.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/local_usage_analysis_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/drop_const_elision_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/switch_dispatch_detection_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/block_loop_fusion_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/loop_simplification_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/feature_profile_validation_pass.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/registry.js'},
+      {'sourcePath': 'src/wasm/tree/node_schema.js'},
+      {'sourcePath': 'src/wasm/tree/pass_runner.js'},
+      {'sourcePath': 'src/wasm/tree/traversal_kernel.js'},
+      {'sourcePath': 'src/wasm/wasm_normalization.js'},
+      {'sourcePath': 'src/1-processor.js'},
+      {'sourcePath': 'src/2-footer.js'}
+    ];
+    for (var i = 0, specCount = moduleSpecs.length; i !== specCount; ++i) {
+      const code = fs.readFileSync(path.resolve(__dirname, moduleSpecs[i]['sourcePath']), {
+        encoding: 'utf-8'
+      });
+      if (moduleSpecs[i]['exportName']) {
+        globalThis[moduleSpecs[i]['exportName']] = eval([code, moduleSpecs[i]['exportName']].join('\n'));
+      } else {
+        eval(code);
+      }
+    }
+  } else {
+    globalThis['Wasm2Lang'] = require('./dist_artifacts/wasmxlang.js');
+  }
 
-  let ctx = vm.createContext(sandbox);
-
-  const RunFile = function (p) {
-    vm.runInContext(
-      fs.readFileSync(path.resolve(__dirname, p), {encoding: 'utf-8'}),
-      ctx,
-      p
-    );
-  };
-
-  sandbox['RunFile'] = RunFile;
-
-  RunFile('alpha/wasm2lang_header.js');
-  RunFile('alpha/wasm2lang_basex.js');
-  RunFile('alpha/wasm2lang_decoder.js');
-  RunFile('alpha/wasm2lang_miscellaneous.js');
-  RunFile('alpha/wasm2lang_op_general.js');
-  RunFile('alpha/wasm2lang_op_heap.js');
-  RunFile('alpha/wasm2lang_op_loop.js');
-  RunFile('alpha/wasm2lang_func.js');
-  RunFile('alpha/wasm2lang_link.js');
-  RunFile('alpha/wasm2lang_void0.js');
+  var result = Wasm2Lang.runCliEntryPoint(binaryen);
+  if (result && 'function' === typeof result['then']) {
+    await result;
+  }
 })();

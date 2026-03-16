@@ -256,21 +256,21 @@
         // 0x10000 * 0x10001: lower 32 bits of 0x100010000 → 0x10000
         storeI32(module.i32.mul(module.i32.const(0x10000), module.i32.const(0x10001))),
         // INT_MAX * 2 → wraps to -2 (0xFFFFFFFE)
-        storeI32(module.i32.mul(module.i32.const(0x7FFFFFFF), module.i32.const(2))),
+        storeI32(module.i32.mul(module.i32.const(0x7fffffff), module.i32.const(2))),
         // (-1) * 0x12345678 → -0x12345678 (negate via multiply)
         storeI32(module.i32.mul(module.i32.const(-1), module.i32.const(0x12345678))),
         // (-1) * (-1) → 1
         storeI32(module.i32.mul(module.i32.const(-1), module.i32.const(-1))),
         // 0xDEADBEEF * 0xCAFEBABE: large mixed-sign multiplicands
-        storeI32(module.i32.mul(module.i32.const(0xDEADBEEF | 0), module.i32.const(0xCAFEBABE | 0))),
+        storeI32(module.i32.mul(module.i32.const(0xdeadbeef | 0), module.i32.const(0xcafebabe | 0))),
         // 65537 * 65537 → lower 32 bits of 4295098369 = 0x20001
         storeI32(module.i32.mul(module.i32.const(65537), module.i32.const(65537))),
 
         // --- i32.add/sub overflow ---
         // INT_MAX + 1 → INT_MIN
-        storeI32(module.i32.add(module.i32.const(0x7FFFFFFF), module.i32.const(1))),
+        storeI32(module.i32.add(module.i32.const(0x7fffffff), module.i32.const(1))),
         // INT_MAX + INT_MAX → -2
-        storeI32(module.i32.add(module.i32.const(0x7FFFFFFF), module.i32.const(0x7FFFFFFF))),
+        storeI32(module.i32.add(module.i32.const(0x7fffffff), module.i32.const(0x7fffffff))),
         // INT_MIN - 1 → INT_MAX
         storeI32(module.i32.sub(module.i32.const(-0x80000000), module.i32.const(1))),
         // 0 - INT_MIN → INT_MIN (negating INT_MIN wraps to itself)
@@ -354,21 +354,21 @@
       module.block(null, [
         // --- 1. Integer unary at boundary values ---
         // clz
-        storeI32(module.i32.clz(module.i32.const(0))),              // → 32
-        storeI32(module.i32.clz(module.i32.const(-0x80000000))),     // → 0
-        storeI32(module.i32.clz(module.i32.const(1))),               // → 31
+        storeI32(module.i32.clz(module.i32.const(0))), // → 32
+        storeI32(module.i32.clz(module.i32.const(-0x80000000))), // → 0
+        storeI32(module.i32.clz(module.i32.const(1))), // → 31
         // ctz
-        storeI32(module.i32.ctz(module.i32.const(0))),               // → 32
-        storeI32(module.i32.ctz(module.i32.const(-0x80000000))),      // → 31
-        storeI32(module.i32.ctz(module.i32.const(1))),                // → 0
+        storeI32(module.i32.ctz(module.i32.const(0))), // → 32
+        storeI32(module.i32.ctz(module.i32.const(-0x80000000))), // → 31
+        storeI32(module.i32.ctz(module.i32.const(1))), // → 0
         // popcnt
-        storeI32(module.i32.popcnt(module.i32.const(0))),            // → 0
-        storeI32(module.i32.popcnt(module.i32.const(-1))),           // → 32
-        storeI32(module.i32.popcnt(module.i32.const(0x55555555))),   // → 16
+        storeI32(module.i32.popcnt(module.i32.const(0))), // → 0
+        storeI32(module.i32.popcnt(module.i32.const(-1))), // → 32
+        storeI32(module.i32.popcnt(module.i32.const(0x55555555))), // → 16
         // eqz
-        storeI32(module.i32.eqz(module.i32.const(0))),              // → 1
-        storeI32(module.i32.eqz(module.i32.const(1))),              // → 0
-        storeI32(module.i32.eqz(module.i32.const(-1))),             // → 0
+        storeI32(module.i32.eqz(module.i32.const(0))), // → 1
+        storeI32(module.i32.eqz(module.i32.const(1))), // → 0
+        storeI32(module.i32.eqz(module.i32.const(-1))), // → 0
         // [12 stores, 48 bytes]
 
         // --- 2. Float negative zero (detect sign via reinterpret) ---
@@ -383,15 +383,15 @@
         // [16 stores, 64 bytes]
 
         // --- 3. Banker's rounding (nearest → trunc to i32 to verify) ---
-        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(0.5)))),    // → 0  (ties to even: 0)
-        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(1.5)))),    // → 2  (ties to even: 2)
-        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(2.5)))),    // → 2  (ties to even: 2)
-        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(-1.5)))),   // → -2 (ties to even: -2)
-        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(3.5)))),    // → 4  (ties to even: 4)
-        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(4.5)))),    // → 4  (ties to even: 4)
+        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(0.5)))), // → 0  (ties to even: 0)
+        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(1.5)))), // → 2  (ties to even: 2)
+        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(2.5)))), // → 2  (ties to even: 2)
+        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(-1.5)))), // → -2 (ties to even: -2)
+        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(3.5)))), // → 4  (ties to even: 4)
+        storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.const(4.5)))), // → 4  (ties to even: 4)
         // f32 nearest
-        storeI32(module.i32.trunc_s.f32(module.f32.nearest(module.f32.const(0.5)))),    // → 0
-        storeI32(module.i32.trunc_s.f32(module.f32.nearest(module.f32.const(1.5)))),    // → 2
+        storeI32(module.i32.trunc_s.f32(module.f32.nearest(module.f32.const(0.5)))), // → 0
+        storeI32(module.i32.trunc_s.f32(module.f32.nearest(module.f32.const(1.5)))), // → 2
         // [24 stores, 96 bytes]
 
         // --- 4. Conversion edge cases ---
@@ -407,10 +407,10 @@
         // [26 i32/f32 + 2 f64 = 120 bytes]
 
         // --- 5. Reinterpret round-trips ---
-        storeI32(module.i32.reinterpret(module.f32.const(1.0))),                  // → 0x3F800000
-        storeI32(module.i32.reinterpret(module.f32.const(-1.0))),                 // → 0xBF800000
-        storeF32(module.f32.reinterpret(module.i32.const(0x3F800000))),           // → 1.0
-        storeF32(module.f32.reinterpret(module.i32.const(0xBF800000 | 0))),       // → -1.0
+        storeI32(module.i32.reinterpret(module.f32.const(1.0))), // → 0x3F800000
+        storeI32(module.i32.reinterpret(module.f32.const(-1.0))), // → 0xBF800000
+        storeF32(module.f32.reinterpret(module.i32.const(0x3f800000))), // → 1.0
+        storeF32(module.f32.reinterpret(module.i32.const(0xbf800000 | 0))), // → -1.0
         // [30 i32/f32 + 2 f64 = 136 bytes. 136 mod 8 = 0]
 
         // --- 6. i8/i16 sign extension at boundary ---
@@ -420,9 +420,9 @@
         module.i32.store8(0, 1, heapTop(), module.i32.const(0x80)),
         storeI32(module.i32.load8_u(0, 1, heapTop())),
         // 0xFF: load8_s → -1, load8_u → 255
-        module.i32.store8(0, 1, heapTop(), module.i32.const(0xFF)),
+        module.i32.store8(0, 1, heapTop(), module.i32.const(0xff)),
         storeI32(module.i32.load8_s(0, 1, heapTop())),
-        module.i32.store8(0, 1, heapTop(), module.i32.const(0xFF)),
+        module.i32.store8(0, 1, heapTop(), module.i32.const(0xff)),
         storeI32(module.i32.load8_u(0, 1, heapTop())),
         // 0x8000: load16_s → -32768, load16_u → 32768
         module.i32.store16(0, 2, heapTop(), module.i32.const(0x8000)),
@@ -440,7 +440,7 @@
 
         // --- 8. Memory with non-zero offset ---
         // Write via offset=4, read back via offset=4, verify offset is applied
-        module.i32.store(4, 4, heapTop(), module.i32.const(0xABCD1234 | 0)),
+        module.i32.store(4, 4, heapTop(), module.i32.const(0xabcd1234 | 0)),
         storeI32(module.i32.load(4, 4, heapTop())),
         advanceHeap(4),
         // [37 + 4 f64 = 184 bytes. 184 mod 8 = 0]
@@ -462,10 +462,12 @@
         // eqz(1 - 1) → 1 (eqz of sub)
         storeI32(module.i32.eqz(module.i32.sub(module.i32.const(1), module.i32.const(1)))),
         // (5 > 3) + (1 > 10) → 1 + 0 → 1 (comparison as operand of add)
-        storeI32(module.i32.add(
-          module.i32.gt_s(module.i32.const(5), module.i32.const(3)),
-          module.i32.gt_s(module.i32.const(1), module.i32.const(10))
-        )),
+        storeI32(
+          module.i32.add(
+            module.i32.gt_s(module.i32.const(5), module.i32.const(3)),
+            module.i32.gt_s(module.i32.const(1), module.i32.const(10))
+          )
+        ),
         // (1 << 16) >>> 8 → 256 (chained shifts)
         storeI32(module.i32.shr_u(module.i32.shl(module.i32.const(1), module.i32.const(16)), module.i32.const(8))),
         // -(-42) → 42 via sub(0, sub(0, 42)) (double negate)
@@ -476,14 +478,14 @@
         // true branch taken: 42 > 10 → stores 0xAAAA
         module.if(
           module.i32.gt_s(module.i32.const(42), module.i32.const(10)),
-          storeI32(module.i32.const(0xAAAA)),
-          storeI32(module.i32.const(0xBBBB))
+          storeI32(module.i32.const(0xaaaa)),
+          storeI32(module.i32.const(0xbbbb))
         ),
         // false branch taken: 10 > 42 → stores 0xDDDD
         module.if(
           module.i32.gt_s(module.i32.const(10), module.i32.const(42)),
-          storeI32(module.i32.const(0xCCCC)),
-          storeI32(module.i32.const(0xDDDD))
+          storeI32(module.i32.const(0xcccc)),
+          storeI32(module.i32.const(0xdddd))
         ),
         // nested expression in if condition: eqz(5-5) → true → stores 7*7=49
         module.if(
@@ -496,6 +498,613 @@
         module.return()
       ])
     );
+
+    // -----------------------------------------------------------------
+    // exerciseBrTable: tests br_table (switch) dispatch.
+    // Takes an i32 index parameter; each case stores a unique marker
+    // to memory.  Called multiple times with different indices.
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseBrTable',
+      binaryen.createType([binaryen.i32]),
+      binaryen.none,
+      [],
+      module.block('branchTableDispatchCompleted', [
+        module.block('branchTableCaseThree', [
+          module.block('branchTableCaseTwo', [
+            module.block('branchTableCaseOne', [
+              module.block('branchTableCaseZero', [
+                module.block('branchTableDefaultCase', [
+                  module.switch(
+                    ['branchTableCaseZero', 'branchTableCaseOne', 'branchTableCaseTwo', 'branchTableCaseThree'],
+                    'branchTableDefaultCase',
+                    module.local.get(0, binaryen.i32)
+                  )
+                ]),
+                // default
+                storeI32(module.i32.const(0x00def000 | 0)),
+                module.break('branchTableDispatchCompleted')
+              ]),
+              // case 0
+              storeI32(module.i32.const(0x00ca5000 | 0)),
+              module.break('branchTableDispatchCompleted')
+            ]),
+            // case 1
+            storeI32(module.i32.const(0x00ca5001 | 0)),
+            module.break('branchTableDispatchCompleted')
+          ]),
+          // case 2
+          storeI32(module.i32.const(0x00ca5002 | 0)),
+          module.break('branchTableDispatchCompleted')
+        ]),
+        // case 3
+        storeI32(module.i32.const(0x00ca5003 | 0))
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseBrTableLoop: tests br_table with a loop target.
+    // Counts down from param, using br_table to either continue the
+    // loop (index 0) or break out (index 1), with default = break.
+    // Stores the final counter value.
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseBrTableLoop',
+      binaryen.createType([binaryen.i32]),
+      binaryen.none,
+      [binaryen.i32],
+      module.block(null, [
+        module.local.set(1, module.local.get(0, binaryen.i32)),
+        module.block('branchTableLoopCompleted', [
+          module.loop(
+            'branchTableLoopIteration',
+            module.block(null, [
+              module.local.set(1, module.i32.sub(module.local.get(1, binaryen.i32), module.i32.const(1))),
+              // if counter > 0 → index 0 (continue loop); else → index 1 (break)
+              module.switch(
+                ['branchTableLoopIteration', 'branchTableLoopCompleted'],
+                'branchTableLoopCompleted',
+                module.i32.le_s(module.local.get(1, binaryen.i32), module.i32.const(0))
+              )
+            ])
+          )
+        ]),
+        storeI32(module.local.get(1, binaryen.i32)),
+        module.return()
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseCountedLoop: LC pattern — parameterized counted loop.
+    // Params: (startValue, exclusiveLimit)
+    // Stores the sum of startValue..exclusiveLimit-1.
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseCountedLoop',
+      binaryen.createType([binaryen.i32, binaryen.i32]),
+      binaryen.none,
+      [binaryen.i32],
+      module.block(null, [
+        module.local.set(2, module.i32.const(0)),
+        module.block('countedLoopCompleted', [
+          module.loop(
+            'countedLoopIteration',
+            module.block(null, [
+              module.break(
+                'countedLoopCompleted',
+                module.i32.ge_s(module.local.get(0, binaryen.i32), module.local.get(1, binaryen.i32))
+              ),
+              module.local.set(2, module.i32.add(module.local.get(2, binaryen.i32), module.local.get(0, binaryen.i32))),
+              module.local.set(0, module.i32.add(module.local.get(0, binaryen.i32), module.i32.const(1))),
+              module.break('countedLoopIteration')
+            ])
+          )
+        ]),
+        storeI32(module.local.get(2, binaryen.i32)),
+        module.return()
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseDoWhileLoop: LD-B pattern — parameterized do-while.
+    // Params: (countdownStart)
+    // Positive inputs compute a factorial-style product; non-positive
+    // inputs still execute once and take the fallback marker path.
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseDoWhileLoop',
+      binaryen.createType([binaryen.i32]),
+      binaryen.none,
+      [binaryen.i32],
+      module.block(null, [
+        module.local.set(1, module.i32.const(1)),
+        module.loop(
+          'doWhileCountdownLoop',
+          module.block(null, [
+            module.if(
+              module.i32.gt_s(module.local.get(0, binaryen.i32), module.i32.const(0)),
+              module.local.set(1, module.i32.mul(module.local.get(1, binaryen.i32), module.local.get(0, binaryen.i32))),
+              module.local.set(1, module.i32.add(module.local.get(1, binaryen.i32), module.i32.const(111)))
+            ),
+            module.local.set(0, module.i32.sub(module.local.get(0, binaryen.i32), module.i32.const(1))),
+            module.break('doWhileCountdownLoop', module.i32.gt_s(module.local.get(0, binaryen.i32), module.i32.const(0)))
+          ])
+        ),
+        storeI32(module.local.get(1, binaryen.i32)),
+        module.return()
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseDoWhileVariantA: LD-A pattern — parameterized do-while
+    // variant with a trailing conditional self-branch.
+    // Params: (startValue, iterationCount)
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseDoWhileVariantA',
+      binaryen.createType([binaryen.i32, binaryen.i32]),
+      binaryen.none,
+      [],
+      module.block(null, [
+        module.block('doWhileVariantCompleted', [
+          module.loop(
+            'doWhileVariantLoop',
+            module.block(null, [
+              module.local.set(0, module.i32.mul(module.local.get(0, binaryen.i32), module.i32.const(2))),
+              module.local.set(1, module.i32.sub(module.local.get(1, binaryen.i32), module.i32.const(1))),
+              module.break('doWhileVariantLoop', module.i32.gt_s(module.local.get(1, binaryen.i32), module.i32.const(0))),
+              module.break('doWhileVariantCompleted')
+            ])
+          )
+        ]),
+        storeI32(module.local.get(0, binaryen.i32)),
+        module.return()
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseNestedLoops: nested loop + switch dispatch.  The inner
+    // dispatch mutates its active state across iterations, and the
+    // default target exits the inner loop for the current outer round.
+    // Params: (outerLimit, initialDispatchState)
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseNestedLoops',
+      binaryen.createType([binaryen.i32, binaryen.i32]),
+      binaryen.none,
+      [binaryen.i32, binaryen.i32, binaryen.i32],
+      module.block(null, [
+        module.local.set(2, module.i32.const(0)),
+        module.local.set(4, module.i32.const(0)),
+        module.block('nestedLoopOuterCompleted', [
+          module.loop(
+            'nestedLoopOuterIteration',
+            module.block(null, [
+              module.break(
+                'nestedLoopOuterCompleted',
+                module.i32.ge_s(module.local.get(2, binaryen.i32), module.local.get(0, binaryen.i32))
+              ),
+              module.local.set(3, module.i32.const(0)),
+              module.block('nestedLoopInnerCompleted', [
+                module.loop(
+                  'nestedLoopInnerIteration',
+                  module.block(null, [
+                    module.break(
+                      'nestedLoopInnerCompleted',
+                      module.i32.gt_s(
+                        module.local.get(3, binaryen.i32),
+                        module.i32.add(module.local.get(2, binaryen.i32), module.i32.const(1))
+                      )
+                    ),
+                    module.block('nestedLoopDispatchStateTwo', [
+                      module.block('nestedLoopDispatchStateOne', [
+                        module.block('nestedLoopDispatchStateZero', [
+                          module.switch(
+                            ['nestedLoopDispatchStateZero', 'nestedLoopDispatchStateOne', 'nestedLoopDispatchStateTwo'],
+                            'nestedLoopInnerCompleted',
+                            module.local.get(1, binaryen.i32)
+                          )
+                        ]),
+                        module.local.set(
+                          4,
+                          module.i32.add(
+                            module.local.get(4, binaryen.i32),
+                            module.i32.add(
+                              module.i32.mul(module.local.get(2, binaryen.i32), module.i32.const(16)),
+                              module.local.get(3, binaryen.i32)
+                            )
+                          )
+                        ),
+                        module.if(
+                          module.i32.eq(module.local.get(3, binaryen.i32), module.i32.const(0)),
+                          module.local.set(1, module.i32.const(1)),
+                          module.local.set(1, module.i32.const(2))
+                        ),
+                        module.local.set(3, module.i32.add(module.local.get(3, binaryen.i32), module.i32.const(1))),
+                        module.break('nestedLoopInnerIteration')
+                      ]),
+                      module.local.set(
+                        4,
+                        module.i32.add(
+                          module.local.get(4, binaryen.i32),
+                          module.i32.add(module.i32.const(100), module.local.get(2, binaryen.i32))
+                        )
+                      ),
+                      module.if(
+                        module.i32.and(
+                          module.i32.add(module.local.get(2, binaryen.i32), module.local.get(3, binaryen.i32)),
+                          module.i32.const(1)
+                        ),
+                        module.local.set(1, module.i32.const(2)),
+                        module.local.set(1, module.i32.const(0))
+                      ),
+                      module.local.set(3, module.i32.add(module.local.get(3, binaryen.i32), module.i32.const(1))),
+                      module.break('nestedLoopInnerIteration')
+                    ]),
+                    module.local.set(
+                      4,
+                      module.i32.add(
+                        module.local.get(4, binaryen.i32),
+                        module.i32.add(module.i32.const(200), module.local.get(3, binaryen.i32))
+                      )
+                    ),
+                    module.if(
+                      module.i32.ge_s(module.local.get(3, binaryen.i32), module.local.get(2, binaryen.i32)),
+                      module.local.set(1, module.i32.const(7)),
+                      module.local.set(1, module.i32.const(0))
+                    ),
+                    module.local.set(3, module.i32.add(module.local.get(3, binaryen.i32), module.i32.const(1))),
+                    module.break('nestedLoopInnerIteration')
+                  ])
+                )
+              ]),
+              module.local.set(2, module.i32.add(module.local.get(2, binaryen.i32), module.i32.const(1))),
+              module.local.set(1, module.i32.and(module.local.get(2, binaryen.i32), module.i32.const(1))),
+              module.break('nestedLoopOuterIteration')
+            ])
+          )
+        ]),
+        storeI32(module.local.get(4, binaryen.i32)),
+        storeI32(module.local.get(1, binaryen.i32)),
+        module.return()
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseSwitchInLoop: parameterized loop state machine with
+    // multi-step transitions before the default exit path completes.
+    // Params: (startState, startAccumulator, transitionBudget)
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseSwitchInLoop',
+      binaryen.createType([binaryen.i32, binaryen.i32, binaryen.i32]),
+      binaryen.none,
+      [],
+      module.block(null, [
+        module.block('switchStateMachineCompleted', [
+          module.loop(
+            'switchStateMachineLoop',
+            module.block(null, [
+              module.block('switchStateMachineDispatchStateThree', [
+                module.block('switchStateMachineDispatchStateTwo', [
+                  module.block('switchStateMachineDispatchStateOne', [
+                    module.block('switchStateMachineDispatchStateZero', [
+                      module.switch(
+                        [
+                          'switchStateMachineDispatchStateZero',
+                          'switchStateMachineDispatchStateOne',
+                          'switchStateMachineDispatchStateTwo',
+                          'switchStateMachineDispatchStateThree'
+                        ],
+                        'switchStateMachineCompleted',
+                        module.local.get(0, binaryen.i32)
+                      )
+                    ]),
+                    module.local.set(1, module.i32.add(module.local.get(1, binaryen.i32), module.i32.const(10))),
+                    module.local.set(2, module.i32.sub(module.local.get(2, binaryen.i32), module.i32.const(1))),
+                    module.if(
+                      module.i32.lt_s(module.local.get(1, binaryen.i32), module.i32.const(15)),
+                      module.local.set(0, module.i32.const(2)),
+                      module.local.set(0, module.i32.const(1))
+                    ),
+                    module.break('switchStateMachineLoop')
+                  ]),
+                  module.local.set(1, module.i32.mul(module.local.get(1, binaryen.i32), module.i32.const(2))),
+                  module.local.set(2, module.i32.sub(module.local.get(2, binaryen.i32), module.i32.const(1))),
+                  module.if(
+                    module.i32.gt_s(module.local.get(2, binaryen.i32), module.i32.const(1)),
+                    module.local.set(0, module.i32.const(2)),
+                    module.local.set(0, module.i32.const(4))
+                  ),
+                  module.break('switchStateMachineLoop')
+                ]),
+                module.local.set(1, module.i32.sub(module.local.get(1, binaryen.i32), module.i32.const(3))),
+                module.local.set(2, module.i32.sub(module.local.get(2, binaryen.i32), module.i32.const(1))),
+                module.if(
+                  module.i32.lt_s(module.local.get(1, binaryen.i32), module.i32.const(0)),
+                  module.local.set(0, module.i32.const(4)),
+                  module.if(
+                    module.i32.and(module.local.get(2, binaryen.i32), module.i32.const(1)),
+                    module.local.set(0, module.i32.const(1)),
+                    module.local.set(0, module.i32.const(0))
+                  )
+                ),
+                module.break('switchStateMachineLoop')
+              ]),
+              module.local.set(1, module.i32.add(module.local.get(1, binaryen.i32), module.i32.const(70))),
+              module.local.set(0, module.i32.const(4)),
+              module.break('switchStateMachineLoop')
+            ])
+          )
+        ]),
+        storeI32(module.local.get(1, binaryen.i32)),
+        storeI32(module.local.get(0, binaryen.i32)),
+        storeI32(module.local.get(2, binaryen.i32)),
+        module.return()
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseBrTableMultiTarget: br_table with duplicate targets.
+    // Indices 0,2,4 → caseA (0xAABB0001), indices 1,3 → caseB
+    // (0xAABB0002), default → 0xAABB00FF.
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseBrTableMultiTarget',
+      binaryen.createType([binaryen.i32]),
+      binaryen.none,
+      [],
+      module.block('multiTargetBranchTableCompleted', [
+        module.block('multiTargetBranchTableDefaultCase', [
+          module.block('multiTargetBranchTableSharedCaseB', [
+            module.block('multiTargetBranchTableSharedCaseA', [
+              module.switch(
+                [
+                  'multiTargetBranchTableSharedCaseA',
+                  'multiTargetBranchTableSharedCaseB',
+                  'multiTargetBranchTableSharedCaseA',
+                  'multiTargetBranchTableSharedCaseB',
+                  'multiTargetBranchTableSharedCaseA'
+                ],
+                'multiTargetBranchTableDefaultCase',
+                module.local.get(0, binaryen.i32)
+              )
+            ]),
+            storeI32(module.i32.const(0xaabb0001 | 0)),
+            module.break('multiTargetBranchTableCompleted')
+          ]),
+          storeI32(module.i32.const(0xaabb0002 | 0)),
+          module.break('multiTargetBranchTableCompleted')
+        ]),
+        storeI32(module.i32.const(0xaabb00ff | 0))
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseNestedSwitch: two independent br_table dispatches — an
+    // inner dispatch lives inside outer case 0.  Tests that the
+    // detection pass scopes nested dispatch blocks correctly.
+    // Params: (outerIndex, innerIndex)
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseNestedSwitch',
+      binaryen.createType([binaryen.i32, binaryen.i32]),
+      binaryen.none,
+      [],
+      module.block('nestedSwitchDispatchCompleted', [
+        module.block('nestedSwitchOuterCaseTwo', [
+          module.block('nestedSwitchOuterCaseOne', [
+            module.block('nestedSwitchOuterCaseZero', [
+              module.block('nestedSwitchOuterDefaultCase', [
+                module.switch(
+                  ['nestedSwitchOuterCaseZero', 'nestedSwitchOuterCaseOne', 'nestedSwitchOuterCaseTwo'],
+                  'nestedSwitchOuterDefaultCase',
+                  module.local.get(0, binaryen.i32)
+                )
+              ]),
+              // outer default
+              storeI32(module.i32.const(0xde000000 | 0)),
+              module.break('nestedSwitchDispatchCompleted')
+            ]),
+            // outer case 0: inner switch on param1
+            module.block('nestedSwitchInnerDispatchCompleted', [
+              module.block('nestedSwitchInnerCaseOne', [
+                module.block('nestedSwitchInnerCaseZero', [
+                  module.block('nestedSwitchInnerDefaultCase', [
+                    module.switch(
+                      ['nestedSwitchInnerCaseZero', 'nestedSwitchInnerCaseOne'],
+                      'nestedSwitchInnerDefaultCase',
+                      module.local.get(1, binaryen.i32)
+                    )
+                  ]),
+                  // inner default
+                  storeI32(module.i32.const(0xde0000ff | 0)),
+                  module.break('nestedSwitchInnerDispatchCompleted')
+                ]),
+                // inner case 0
+                storeI32(module.i32.const(0xde000010 | 0)),
+                module.break('nestedSwitchInnerDispatchCompleted')
+              ]),
+              // inner case 1
+              storeI32(module.i32.const(0xde000011 | 0))
+            ]),
+            module.break('nestedSwitchDispatchCompleted')
+          ]),
+          // outer case 1
+          storeI32(module.i32.const(0xde000001 | 0)),
+          module.break('nestedSwitchDispatchCompleted')
+        ]),
+        // outer case 2
+        storeI32(module.i32.const(0xde000002 | 0))
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseSwitchDefaultInternal: br_table where the default target
+    // is an intermediate block in the dispatch chain (not external).
+    // Param: (index)
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseSwitchDefaultInternal',
+      binaryen.createType([binaryen.i32]),
+      binaryen.none,
+      [],
+      module.block('switchDefaultInternalCompleted', [
+        module.block('switchDefaultInternalCaseTwo', [
+          module.block('switchDefaultInternalCaseOne', [
+            module.block('switchDefaultInternalCaseZero', [
+              module.switch(
+                ['switchDefaultInternalCaseZero', 'switchDefaultInternalCaseOne', 'switchDefaultInternalCaseTwo'],
+                'switchDefaultInternalCaseOne',
+                module.local.get(0, binaryen.i32)
+              )
+            ]),
+            // case 0
+            storeI32(module.i32.const(0xd1000000 | 0)),
+            module.break('switchDefaultInternalCompleted')
+          ]),
+          // case 1 AND default
+          storeI32(module.i32.const(0xd1000001 | 0)),
+          module.break('switchDefaultInternalCompleted')
+        ]),
+        // case 2
+        storeI32(module.i32.const(0xd1000002 | 0))
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseMultiExitSwitchLoop: loop + switch state machine with
+    // continued iterations, an alternate outer break, and a distinct
+    // default-driven exit path.
+    // Params: (startState, startAccumulator)
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseMultiExitSwitchLoop',
+      binaryen.createType([binaryen.i32, binaryen.i32]),
+      binaryen.none,
+      [],
+      module.block(null, [
+        module.block('multiExitSwitchExitCompletedPath', [
+          module.block('multiExitSwitchExitDefaultPath', [
+            module.block('multiExitSwitchExitAlternatePath', [
+              module.loop(
+                'multiExitSwitchStateMachineLoop',
+                module.block(null, [
+                  module.block('multiExitSwitchStateThree', [
+                    module.block('multiExitSwitchStateTwo', [
+                      module.block('multiExitSwitchStateOne', [
+                        module.block('multiExitSwitchStateZero', [
+                          module.switch(
+                            [
+                              'multiExitSwitchStateZero',
+                              'multiExitSwitchStateOne',
+                              'multiExitSwitchStateTwo',
+                              'multiExitSwitchStateThree'
+                            ],
+                            'multiExitSwitchExitDefaultPath',
+                            module.local.get(0, binaryen.i32)
+                          )
+                        ]),
+                        module.local.set(1, module.i32.add(module.local.get(1, binaryen.i32), module.i32.const(100))),
+                        module.if(
+                          module.i32.lt_s(module.local.get(1, binaryen.i32), module.i32.const(130)),
+                          module.local.set(0, module.i32.const(1)),
+                          module.local.set(0, module.i32.const(3))
+                        ),
+                        module.break('multiExitSwitchStateMachineLoop')
+                      ]),
+                      module.local.set(1, module.i32.add(module.local.get(1, binaryen.i32), module.i32.const(20))),
+                      module.if(
+                        module.i32.and(module.local.get(1, binaryen.i32), module.i32.const(1)),
+                        module.local.set(0, module.i32.const(2)),
+                        module.local.set(0, module.i32.const(3))
+                      ),
+                      module.break('multiExitSwitchStateMachineLoop')
+                    ]),
+                    module.if(
+                      module.i32.lt_s(module.local.get(1, binaryen.i32), module.i32.const(0)),
+                      module.break('multiExitSwitchExitAlternatePath')
+                    ),
+                    module.local.set(1, module.i32.sub(module.local.get(1, binaryen.i32), module.i32.const(5))),
+                    module.local.set(0, module.i32.const(3)),
+                    module.break('multiExitSwitchStateMachineLoop')
+                  ]),
+                  module.local.set(1, module.i32.add(module.local.get(1, binaryen.i32), module.i32.const(3))),
+                  module.break('multiExitSwitchExitCompletedPath')
+                ])
+              )
+            ]),
+            storeI32(module.local.get(1, binaryen.i32)),
+            storeI32(module.i32.const(0xcccccccc | 0)),
+            module.return()
+          ]),
+          storeI32(module.local.get(1, binaryen.i32)),
+          storeI32(module.i32.const(0xbbbbbbbb | 0)),
+          module.return()
+        ]),
+        storeI32(module.local.get(1, binaryen.i32)),
+        storeI32(module.i32.const(0xaaaaaaaa | 0)),
+        module.return()
+      ])
+    );
+
+    // -----------------------------------------------------------------
+    // exerciseSwitchConditionalEscape: loop + switch (wrapping pattern)
+    // where case 2 conditionally escapes; default exits immediately.
+    // Params: (startAcc, startState)
+    // -----------------------------------------------------------------
+    module.addFunction(
+      'exerciseSwitchConditionalEscape',
+      binaryen.createType([binaryen.i32, binaryen.i32]),
+      binaryen.none,
+      [],
+      module.block(null, [
+        module.block('switchConditionalEscapeCompleted', [
+          module.loop(
+            'switchConditionalEscapeLoop',
+            module.block(null, [
+              module.block('switchConditionalEscapeStateTwo', [
+                module.block('switchConditionalEscapeStateOne', [
+                  module.block('switchConditionalEscapeStateZero', [
+                    module.switch(
+                      [
+                        'switchConditionalEscapeStateZero',
+                        'switchConditionalEscapeStateOne',
+                        'switchConditionalEscapeStateTwo'
+                      ],
+                      'switchConditionalEscapeCompleted',
+                      module.local.get(1, binaryen.i32)
+                    )
+                  ]),
+                  // case 0: acc *= 2, state = 1
+                  module.local.set(0, module.i32.mul(module.local.get(0, binaryen.i32), module.i32.const(2))),
+                  module.local.set(1, module.i32.const(1)),
+                  module.break('switchConditionalEscapeLoop')
+                ]),
+                // case 1: acc -= 1, state = 2
+                module.local.set(0, module.i32.sub(module.local.get(0, binaryen.i32), module.i32.const(1))),
+                module.local.set(1, module.i32.const(2)),
+                module.break('switchConditionalEscapeLoop')
+              ]),
+              // case 2 (trailing): conditional escape
+              module.if(
+                module.i32.gt_s(module.local.get(0, binaryen.i32), module.i32.const(50)),
+                module.block(null, [
+                  storeI32(module.i32.const(0xeeee0001 | 0)),
+                  module.break('switchConditionalEscapeCompleted')
+                ]),
+                0
+              ),
+              module.local.set(0, module.i32.add(module.local.get(0, binaryen.i32), module.i32.const(25))),
+              module.local.set(1, module.i32.const(0)),
+              module.break('switchConditionalEscapeLoop')
+            ])
+          )
+        ]),
+        storeI32(module.local.get(0, binaryen.i32)),
+        module.return()
+      ])
+    );
   }
 
   module.addFunction(
@@ -505,14 +1114,14 @@
     [binaryen.i32, binaryen.i32, binaryen.i32, binaryen.i32],
     module.block(null, [
       module.loop(
-        'segmentLoop',
-        module.block('segmentBlock', [
+        'emitSegmentsSegmentLoop',
+        module.block('emitSegmentsCurrentSegmentCompleted', [
           module.local.set(1, module.i32.load(0, 4, module.i32.mul(module.local.get(0, binaryen.i32), module.i32.const(4)))),
           module.local.set(0, module.i32.add(module.i32.const(1), module.local.get(0, binaryen.i32))),
           module.local.set(2, module.i32.const(0)),
           module.loop(
-            'byteLoop',
-            module.block('byteBlock', [
+            'emitSegmentsByteLoop',
+            module.block('emitSegmentsCurrentByteCompleted', [
               module.local.set(3, module.i32.load8_u(0, 1, module.local.get(1, binaryen.i32))),
               module.local.set(1, module.i32.add(module.i32.const(1), module.local.get(1, binaryen.i32))),
               module.i32.store8(
@@ -551,7 +1160,7 @@
                   module.i32.store8(0, 1, module.global.get('heapTop', binaryen.i32), module.i32.const(0xa)),
                   module.call('alignHeapTop', [], binaryen.none),
                   module.call('hostOnBufferReady', [], binaryen.none),
-                  module.break('segmentBlock')
+                  module.break('emitSegmentsCurrentSegmentCompleted')
                 ]),
                 0
               ),
@@ -560,14 +1169,17 @@
                 module.block(null, [
                   module.call('alignHeapTop', [], binaryen.none),
                   module.call('hostOnBufferReady', [], binaryen.none),
-                  module.break('byteBlock')
+                  module.break('emitSegmentsCurrentByteCompleted')
                 ])
               ),
-              module.break('byteLoop')
+              module.break('emitSegmentsByteLoop')
             ])
           ),
 
-          module.break('segmentLoop', module.i32.lt_s(module.local.get(0, binaryen.i32), module.i32.const(expectedData.length)))
+          module.break(
+            'emitSegmentsSegmentLoop',
+            module.i32.lt_s(module.local.get(0, binaryen.i32), module.i32.const(expectedData.length))
+          )
         ])
       ),
       module.return()
@@ -578,6 +1190,18 @@
   module.addFunctionExport('exerciseMVPOps', 'exerciseMVPOps');
   module.addFunctionExport('exerciseOverflowOps', 'exerciseOverflowOps');
   module.addFunctionExport('exerciseEdgeCases', 'exerciseEdgeCases');
+  module.addFunctionExport('exerciseBrTable', 'exerciseBrTable');
+  module.addFunctionExport('exerciseBrTableLoop', 'exerciseBrTableLoop');
+  module.addFunctionExport('exerciseCountedLoop', 'exerciseCountedLoop');
+  module.addFunctionExport('exerciseDoWhileLoop', 'exerciseDoWhileLoop');
+  module.addFunctionExport('exerciseDoWhileVariantA', 'exerciseDoWhileVariantA');
+  module.addFunctionExport('exerciseNestedLoops', 'exerciseNestedLoops');
+  module.addFunctionExport('exerciseSwitchInLoop', 'exerciseSwitchInLoop');
+  module.addFunctionExport('exerciseBrTableMultiTarget', 'exerciseBrTableMultiTarget');
+  module.addFunctionExport('exerciseNestedSwitch', 'exerciseNestedSwitch');
+  module.addFunctionExport('exerciseSwitchDefaultInternal', 'exerciseSwitchDefaultInternal');
+  module.addFunctionExport('exerciseMultiExitSwitchLoop', 'exerciseMultiExitSwitchLoop');
+  module.addFunctionExport('exerciseSwitchConditionalEscape', 'exerciseSwitchConditionalEscape');
   module.addFunctionExport('alignHeapTop', 'alignHeapTop');
   module.addFunctionExport('getHeapTop', 'getHeapTop');
   module.addFunctionImport('hostOnBufferReady', 'module', 'hostOnBufferReady', /* params */ binaryen.none, binaryen.none);

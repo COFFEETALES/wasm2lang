@@ -16,15 +16,20 @@
  * @param {string} languageId  Backend language identifier (e.g. 'asmjs').
  */
 Wasm2Lang.Backend.IdentifierMangler = function (key, languageId) {
-  /** @private @const {!Wasm2Lang.Backend.IdentifierMangler.Profile} */
-  this.profile_ = Wasm2Lang.Backend.IdentifierMangler.PROFILES[languageId] || {
-    reservedWords: Wasm2Lang.Backend.IdentifierMangler.JS_RESERVED_,
-    disallowDollarStart: false,
+  /** @private @const {!Wasm2Lang.Backend.ManglerProfile} */
+  this.profile_ = Wasm2Lang.Backend.getManglerProfile(languageId) || {
+    reservedWords: /** @type {!Object<string, boolean>} */ (Object.create(null)),
+    singleCharset: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz',
+    blockCharset: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz0123456789',
     caseInsensitive: false
   };
 
   /** @private @const {!Wasm2Lang.Backend.IdentifierMangler.EncoderSpec_} */
-  this.spec_ = Wasm2Lang.Backend.IdentifierMangler.buildEncoderSpec_(key, this.profile_.caseInsensitive);
+  this.spec_ = Wasm2Lang.Backend.IdentifierMangler.buildEncoderSpec_(
+    key,
+    this.profile_.singleCharset,
+    this.profile_.blockCharset
+  );
 
   /**
    * Ordered list of module-scope original identifiers, in registration order.
@@ -52,18 +57,6 @@ Wasm2Lang.Backend.IdentifierMangler = function (key, languageId) {
 // Feistel-network permutation over Web Crypto SHA-256.  The public API
 // is promise-based because subtle.digest is asynchronous.
 // ---------------------------------------------------------------------------
-
-/** @private @const {string} */
-Wasm2Lang.Backend.IdentifierMangler.SINGLE_CHARSET_ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
-
-/** @private @const {string} */
-Wasm2Lang.Backend.IdentifierMangler.BLOCK_CHARSET_ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz0123456789';
-
-/** @private @const {string} */
-Wasm2Lang.Backend.IdentifierMangler.CI_SINGLE_CHARSET_ = 'abcdefghijklmnopqrstuvwxyz_';
-
-/** @private @const {string} */
-Wasm2Lang.Backend.IdentifierMangler.CI_BLOCK_CHARSET_ = 'abcdefghijklmnopqrstuvwxyz_0123456789';
 
 /** @private @const {number} */
 Wasm2Lang.Backend.IdentifierMangler.ENCODER_ROUNDS_ = 5;
@@ -156,17 +149,13 @@ Wasm2Lang.Backend.IdentifierMangler.newEncoderTier_ = function (length, singleCh
  *
  * @private
  * @param {string} key
- * @param {boolean} caseInsensitive  When true, uses a single-case charset
- *     so the bijection domain matches the usable identifier space.
+ * @param {string} singleCharset  Characters allowed for single-char identifiers.
+ * @param {string} blockCharset   Characters allowed at non-first positions (typically includes digits).
  * @return {!Wasm2Lang.Backend.IdentifierMangler.EncoderSpec_}
  */
-Wasm2Lang.Backend.IdentifierMangler.buildEncoderSpec_ = function (key, caseInsensitive) {
-  var /** @const {string} */ sc = caseInsensitive
-      ? Wasm2Lang.Backend.IdentifierMangler.CI_SINGLE_CHARSET_
-      : Wasm2Lang.Backend.IdentifierMangler.SINGLE_CHARSET_;
-  var /** @const {string} */ bc = caseInsensitive
-      ? Wasm2Lang.Backend.IdentifierMangler.CI_BLOCK_CHARSET_
-      : Wasm2Lang.Backend.IdentifierMangler.BLOCK_CHARSET_;
+Wasm2Lang.Backend.IdentifierMangler.buildEncoderSpec_ = function (key, singleCharset, blockCharset) {
+  var /** @const {string} */ sc = singleCharset;
+  var /** @const {string} */ bc = blockCharset;
   var /** @const {number} */ maxChars = Wasm2Lang.Backend.IdentifierMangler.ENCODER_MAX_CHARS_;
   var /** @const {!Array<!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_>} */ tiers = [];
   var /** @type {number} */ offset = 0;
@@ -187,12 +176,7 @@ Wasm2Lang.Backend.IdentifierMangler.buildEncoderSpec_ = function (key, caseInsen
  * @return {!Uint8Array}
  */
 Wasm2Lang.Backend.IdentifierMangler.encodeUtf8_ = function (text) {
-  if (typeof TextEncoder !== 'undefined') {
-    return new TextEncoder().encode(text);
-  }
-  // Node.js Buffer fallback.
-  // prettier-ignore
-  return /** @type {!Uint8Array} */ (Buffer.from(text, 'utf8'));
+  return new TextEncoder().encode(text);
 };
 
 /**
@@ -206,26 +190,14 @@ Wasm2Lang.Backend.IdentifierMangler.encodeUtf8_ = function (text) {
 Wasm2Lang.Backend.IdentifierMangler.invokeRound_ = function (r, key, range, round) {
   var /** @const {string} */ dataString = key + '\0' + round + '\0' + r;
   var /** @const {!Uint8Array} */ inputData = Wasm2Lang.Backend.IdentifierMangler.encodeUtf8_(dataString);
-  // Access subtle.digest via bracket notation to suppress Closure property checks.
-  /** @type {!Object} */
-  var cryptoObj;
-  if (typeof globalThis !== 'undefined') {
-    var /** @const {*} */ gCrypto = /** @type {*} */ (globalThis)['crypto'];
-    if (gCrypto) {
-      cryptoObj = /** @type {!Object} */ (gCrypto);
-    }
-  }
-  if (!cryptoObj) {
-    cryptoObj = /** @type {!Object} */ (require('crypto')['webcrypto']);
-  }
-  var /** @const {!Object} */ subtleObj = /** @type {!Object} */ (cryptoObj['subtle']);
-  var /** @const {function(string, !Uint8Array): !Promise<!ArrayBuffer>} */ digestFn =
-      /** @type {function(string, !Uint8Array): !Promise<!ArrayBuffer>} */ (subtleObj['digest']);
   // prettier-ignore
-  return digestFn.call(subtleObj, 'SHA-256', inputData
-  ).then(/** @param {!ArrayBuffer} hashBuffer @return {number} */ function (hashBuffer) {
-    return new DataView(/** @type {!ArrayBuffer} */ (hashBuffer)).getUint32(0, true) % range;
-  });
+  var /** @const {!webCrypto.SubtleCrypto} */ subtle =
+      /** @type {!webCrypto.SubtleCrypto} */ (/** @type {!webCrypto.Crypto} */ (globalThis.crypto).subtle);
+  return subtle.digest('SHA-256', inputData).then(
+    /** @param {!ArrayBuffer} hashBuffer @return {number} */ function (hashBuffer) {
+      return new DataView(hashBuffer).getUint32(0, true) % range;
+    }
+  );
 };
 
 /**
@@ -320,269 +292,6 @@ Wasm2Lang.Backend.IdentifierMangler.encode_ = function (numberValue, spec) {
 };
 
 // ---------------------------------------------------------------------------
-// Reserved word sets for backend profiles.
-// ---------------------------------------------------------------------------
-
-/** @const {!Object<string, boolean>} */
-Wasm2Lang.Backend.IdentifierMangler.JS_RESERVED_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
-
-(function () {
-  var /** @const {!Array<string>} */ words = [
-      'abstract',
-      'arguments',
-      'await',
-      'boolean',
-      'break',
-      'byte',
-      'case',
-      'catch',
-      'char',
-      'class',
-      'const',
-      'continue',
-      'debugger',
-      'default',
-      'delete',
-      'do',
-      'double',
-      'else',
-      'enum',
-      'eval',
-      'export',
-      'extends',
-      'false',
-      'final',
-      'finally',
-      'float',
-      'for',
-      'function',
-      'goto',
-      'if',
-      'implements',
-      'import',
-      'in',
-      'instanceof',
-      'int',
-      'interface',
-      'let',
-      'long',
-      'native',
-      'new',
-      'null',
-      'of',
-      'package',
-      'private',
-      'protected',
-      'public',
-      'return',
-      'short',
-      'static',
-      'super',
-      'switch',
-      'synchronized',
-      'this',
-      'throw',
-      'throws',
-      'transient',
-      'true',
-      'try',
-      'typeof',
-      'undefined',
-      'var',
-      'void',
-      'volatile',
-      'while',
-      'with',
-      'yield',
-      'NaN',
-      'Infinity'
-    ];
-  for (var /** number */ i = 0; i < words.length; ++i) {
-    Wasm2Lang.Backend.IdentifierMangler.JS_RESERVED_[words[i]] = true;
-  }
-})();
-
-/** @const {!Object<string, boolean>} */
-Wasm2Lang.Backend.IdentifierMangler.PHP_RESERVED_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
-
-(function () {
-  var /** @const {!Array<string>} */ words = [
-      'abstract',
-      'and',
-      'array',
-      'as',
-      'break',
-      'callable',
-      'case',
-      'catch',
-      'class',
-      'clone',
-      'const',
-      'continue',
-      'declare',
-      'default',
-      'die',
-      'do',
-      'echo',
-      'else',
-      'elseif',
-      'empty',
-      'enddeclare',
-      'endfor',
-      'endforeach',
-      'endif',
-      'endswitch',
-      'endwhile',
-      'eval',
-      'exit',
-      'extends',
-      'false',
-      'final',
-      'finally',
-      'fn',
-      'for',
-      'foreach',
-      'function',
-      'global',
-      'goto',
-      'if',
-      'implements',
-      'include',
-      'include_once',
-      'instanceof',
-      'insteadof',
-      'interface',
-      'isset',
-      'list',
-      'match',
-      'namespace',
-      'new',
-      'null',
-      'or',
-      'print',
-      'private',
-      'protected',
-      'public',
-      'readonly',
-      'require',
-      'require_once',
-      'return',
-      'static',
-      'switch',
-      'throw',
-      'trait',
-      'true',
-      'try',
-      'unset',
-      'use',
-      'var',
-      'while',
-      'xor',
-      'yield'
-    ];
-  for (var /** number */ i = 0; i < words.length; ++i) {
-    Wasm2Lang.Backend.IdentifierMangler.PHP_RESERVED_[words[i]] = true;
-  }
-})();
-
-/** @const {!Object<string, boolean>} */
-Wasm2Lang.Backend.IdentifierMangler.JAVA_RESERVED_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
-
-(function () {
-  var /** @const {!Array<string>} */ words = [
-      'abstract',
-      'assert',
-      'boolean',
-      'break',
-      'byte',
-      'case',
-      'catch',
-      'char',
-      'class',
-      'const',
-      'continue',
-      'default',
-      'do',
-      'double',
-      'else',
-      'enum',
-      'extends',
-      'false',
-      'final',
-      'finally',
-      'float',
-      'for',
-      'goto',
-      'if',
-      'implements',
-      'import',
-      'instanceof',
-      'int',
-      'interface',
-      'long',
-      'native',
-      'new',
-      'null',
-      'package',
-      'private',
-      'protected',
-      'public',
-      'return',
-      'short',
-      'static',
-      'strictfp',
-      'super',
-      'switch',
-      'synchronized',
-      'this',
-      'throw',
-      'throws',
-      'transient',
-      'true',
-      'try',
-      'var',
-      'void',
-      'volatile',
-      'while'
-    ];
-  for (var /** number */ i = 0; i < words.length; ++i) {
-    Wasm2Lang.Backend.IdentifierMangler.JAVA_RESERVED_[words[i]] = true;
-  }
-})();
-
-// ---------------------------------------------------------------------------
-// Mangler profiles per backend language.
-// ---------------------------------------------------------------------------
-
-/**
- * @typedef {{
- *   reservedWords: !Object<string, boolean>,
- *   disallowDollarStart: boolean,
- *   caseInsensitive: boolean
- * }}
- */
-Wasm2Lang.Backend.IdentifierMangler.Profile;
-
-/** @const {!Object<string, !Wasm2Lang.Backend.IdentifierMangler.Profile>} */
-Wasm2Lang.Backend.IdentifierMangler.PROFILES = {
-  'asmjs': {
-    reservedWords: Wasm2Lang.Backend.IdentifierMangler.JS_RESERVED_,
-    disallowDollarStart: false,
-    caseInsensitive: false
-  },
-  'php64': {
-    reservedWords: Wasm2Lang.Backend.IdentifierMangler.PHP_RESERVED_,
-    disallowDollarStart: true,
-    caseInsensitive: true
-  },
-  'java': {
-    reservedWords: Wasm2Lang.Backend.IdentifierMangler.JAVA_RESERVED_,
-    disallowDollarStart: false,
-    caseInsensitive: false
-  }
-};
-
-// ---------------------------------------------------------------------------
 // Instance methods.
 // ---------------------------------------------------------------------------
 
@@ -656,12 +365,11 @@ Wasm2Lang.Backend.IdentifierMangler.prototype.ln = function (index) {
  * @private
  * @param {number} count
  * @param {!Wasm2Lang.Backend.IdentifierMangler.EncoderSpec_} spec
- * @param {!Wasm2Lang.Backend.IdentifierMangler.Profile} profile
+ * @param {!Wasm2Lang.Backend.ManglerProfile} profile
  * @return {!Promise<!Array<string>>}
  */
 Wasm2Lang.Backend.IdentifierMangler.resolveNames_ = function (count, spec, profile) {
   var /** @const {!Object<string, boolean>} */ reserved = profile.reservedWords;
-  var /** @const {boolean} */ noDollar = profile.disallowDollarStart;
   var /** @const {boolean} */ ciCheck = profile.caseInsensitive;
   var /** @const {!Object<string, boolean>} */ seenLower = /** @type {!Object<string, boolean>} */ (Object.create(null));
   var /** @const {!Array<string>} */ names = [];
@@ -686,8 +394,8 @@ Wasm2Lang.Backend.IdentifierMangler.resolveNames_ = function (count, spec, profi
     var /** @const {number} */ c = counter++;
     return Wasm2Lang.Backend.IdentifierMangler.encode_(c, spec).then(function (name) {
       var /** @const {number} */ ch = name.charCodeAt(0);
-      // Reject digit-leading (0x30-0x39), reserved words, and $ if profile disallows.
-      if ((48 <= ch && ch <= 57) || reserved[name] || (noDollar && 36 === ch)) {
+      // Reject digit-leading (0x30-0x39) and reserved words.
+      if ((48 <= ch && ch <= 57) || reserved[name]) {
         return tryNext(idx);
       }
       // For case-insensitive languages (PHP), reject names that collide

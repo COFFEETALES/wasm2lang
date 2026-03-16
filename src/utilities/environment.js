@@ -166,19 +166,3 @@ Wasm2Lang.Utilities.Environment.isNode = function () {
 
   return Wasm2Lang.Utilities.Environment.OutputTarget.WEB;
 };
-
-///**
-// * @private
-// * @return {boolean}
-// */
-//Wasm2Lang.Processor.isWorker_ = function () {
-//  return Boolean('function' === typeof importScripts);
-//};
-
-///**
-// * @private
-// * @return {boolean}
-// */
-//Wasm2Lang.Processor.isBrowser_ = function () {
-//  return Boolean(!Wasm2Lang.Processor.isWorker() && 'object' === typeof window && window);
-//};
