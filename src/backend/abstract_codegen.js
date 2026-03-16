@@ -105,6 +105,9 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
   /** @protected @type {?Object<string, boolean>} */
   this.usedHelpers_ = null;
 
+  /** @protected @type {?Object<string, boolean>} */
+  this.usedBindings_ = null;
+
   /** @protected @type {?Wasm2Lang.Backend.IdentifierMangler} */
   this.mangler_ = null;
 };
@@ -119,6 +122,18 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
 Wasm2Lang.Backend.AbstractCodegen.prototype.markHelper_ = function (name) {
   if (this.usedHelpers_) {
     this.usedHelpers_[name] = true;
+  }
+};
+
+/**
+ * Records a module-level binding name as used (heap views, stdlib imports).
+ *
+ * @protected
+ * @param {string} name
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.markBinding_ = function (name) {
+  if (this.usedBindings_) {
+    this.usedBindings_[name] = true;
   }
 };
 
@@ -1978,6 +1993,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
       this.collectModuleCodegenInfo_(wasmModule);
 
   // Register all module-scope identifiers in deterministic order.
+  // Frequently-referenced names (fixed bindings, globals, imports,
+  // functions) are registered first so they claim shorter identifiers.
+  // Helper function names are registered last — they appear at most once
+  // each as declarations and rarely in call sites.
   var /** @const {!Array<string>} */ keys = [];
 
   // 1. Backend-specific fixed bindings (sorted for determinism).
@@ -1986,25 +2005,26 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
     keys[keys.length] = fixed[fi];
   }
 
-  // 2. All possible helper function names (sorted for determinism).
-  var /** @const {!Array<string>} */ helpers = this.getAllHelperNames_();
-  for (var /** number */ hi = 0, /** @const {number} */ hLen = helpers.length; hi !== hLen; ++hi) {
-    keys[keys.length] = helpers[hi];
-  }
-
-  // 3. Globals (module order).
+  // 2. Globals (module order).
   for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
     keys[keys.length] = this.buildGlobalIdentifier_(moduleInfo.globals[gi].globalName);
   }
 
-  // 4. Import bindings (module order).
+  // 3. Import bindings (module order).
   for (var /** number */ ii = 0, /** @const {number} */ iLen = moduleInfo.impFuncs.length; ii !== iLen; ++ii) {
     keys[keys.length] = this.buildImportIdentifier_(moduleInfo.impFuncs[ii].importBaseName);
   }
 
-  // 5. Internal function names (module order).
+  // 4. Internal function names (module order).
   for (var /** number */ fn = 0, /** @const {number} */ fnLen = moduleInfo.functions.length; fn !== fnLen; ++fn) {
     keys[keys.length] = this.buildFunctionIdentifier_(moduleInfo.functions[fn].name);
+  }
+
+  // 5. All possible helper function names (sorted for determinism).
+  // Registered last: helpers appear at most once as declarations.
+  var /** @const {!Array<string>} */ helpers = this.getAllHelperNames_();
+  for (var /** number */ hi = 0, /** @const {number} */ hLen = helpers.length; hi !== hLen; ++hi) {
+    keys[keys.length] = helpers[hi];
   }
 
   this.mangler_.registerModuleBindings(keys);

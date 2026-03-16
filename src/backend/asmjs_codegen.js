@@ -281,6 +281,7 @@ Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_ = function (expr) {
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderFloatCoercion_ = function (expr) {
+  this.markBinding_('Math_fround');
   return this.n_('Math_fround') + '(' + expr + ')';
 };
 
@@ -372,17 +373,21 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericUnaryOp_ = function (binar
   var /** @const {boolean} */ isF32 = Wasm2Lang.Backend.ValueType.isF32(binaryen, info.operandType);
 
   if ('abs' === name || 'ceil' === name || 'floor' === name || 'sqrt' === name) {
+    this.markBinding_('Math_' + name);
     var /** @const {string} */ mathFn = this.n_('Math_' + name);
     if (isF32) {
+      this.markBinding_('Math_fround');
       return this.n_('Math_fround') + '(' + mathFn + '(' + P.renderPrefix('+', valueExpr) + '))';
     }
     return P.renderPrefix('+', mathFn + '(' + valueExpr + ')');
   }
 
   if ('convert_s_i32_to_f32' === name) {
+    this.markBinding_('Math_fround');
     return this.n_('Math_fround') + '(' + Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(valueExpr) + ')';
   }
   if ('convert_u_i32_to_f32' === name) {
+    this.markBinding_('Math_fround');
     return this.n_('Math_fround') + '(' + P.wrap(valueExpr, P.PREC_SHIFT_, false) + '>>>0)';
   }
   if ('convert_s_i32_to_f64' === name) {
@@ -393,6 +398,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericUnaryOp_ = function (binar
   }
 
   if ('demote_f64_to_f32' === name) {
+    this.markBinding_('Math_fround');
     return this.n_('Math_fround') + '(' + valueExpr + ')';
   }
   if ('promote_f32_to_f64' === name) {
@@ -424,8 +430,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericBinaryOp_ = function (bina
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
 
   if ('min' === info.opName || 'max' === info.opName) {
+    this.markBinding_('Math_' + info.opName);
     var /** @const {string} */ fn = this.n_('Math_' + info.opName);
     if (Wasm2Lang.Backend.ValueType.isF32(binaryen, info.retType)) {
+      this.markBinding_('Math_fround');
       return this.n_('Math_fround') + '(' + fn + '(' + P.renderPrefix('+', L) + ', ' + P.renderPrefix('+', R) + '))';
     }
     return P.renderPrefix('+', fn + '(' + L + ', ' + R + ')');
@@ -465,6 +473,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderArithmeticBinaryOp_ = function (i
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderMultiplyBinaryOp_ = function (info, L, R) {
   void info;
+  this.markBinding_('Math_imul');
   return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(this.n_('Math_imul') + '(' + L + ', ' + R + ')');
 };
 
@@ -631,6 +640,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderBinaryOp_ = function (info, L, R)
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLocalInit_ = function (binaryen, wasmType) {
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
+    this.markBinding_('Math_fround');
     return this.n_('Math_fround') + '(0.0)';
   }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
@@ -748,6 +758,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
   var /** @const {string} */ nMathClz32 = this.n_('Math_clz32');
 
   if (used['$w2l_ctz']) {
+    this.markBinding_('Math_clz32');
     // params: l0=$x; vars: l1=$y
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_ctz') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + l0 + '|0;';
@@ -774,6 +785,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
   }
 
   if (used['$w2l_copysign_f64']) {
+    this.markBinding_('Math_abs');
     // params: l0=$x, l1=$y
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_copysign_f64') + '(' + l0 + ', ' + l1 + ') {';
     lines[lines.length] = pad2 + l0 + ' = +' + l0 + ';';
@@ -791,6 +803,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
     lines[lines.length] = pad1 + '}';
   }
   if (used['$w2l_copysign_f32']) {
+    this.markBinding_('Math_abs');
+    this.markBinding_('Math_fround');
     // params: l0=$x, l1=$y
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_copysign_f32') + '(' + l0 + ', ' + l1 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');';
@@ -809,6 +823,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
   }
 
   if (used['$w2l_trunc_f64']) {
+    this.markBinding_('Math_ceil');
+    this.markBinding_('Math_floor');
     // params: l0=$x
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_trunc_f64') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = +' + l0 + ';';
@@ -816,6 +832,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
     lines[lines.length] = pad1 + '}';
   }
   if (used['$w2l_trunc_f32']) {
+    this.markBinding_('Math_ceil');
+    this.markBinding_('Math_floor');
+    this.markBinding_('Math_fround');
     // params: l0=$x
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_trunc_f32') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');';
@@ -838,6 +857,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
   }
 
   if (used['$w2l_nearest_f64']) {
+    this.markBinding_('Math_floor');
     // params: l0=$x; vars: l1=$floor, l2=$diff, l3=$i
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_nearest_f64') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = +' + l0 + ';';
@@ -860,6 +880,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
     lines[lines.length] = pad1 + '}';
   }
   if (used['$w2l_nearest_f32']) {
+    this.markBinding_('Math_floor');
+    this.markBinding_('Math_fround');
     // params: l0=$x; vars: l1=$floor, l2=$diff, l3=$i
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_nearest_f32') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');';
@@ -885,6 +907,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
   }
 
   if (used['$w2l_trunc_u_f32_to_i32']) {
+    this.markBinding_('Math_fround');
     // params: l0=$x
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_trunc_u_f32_to_i32') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');';
@@ -905,6 +928,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
     lines[lines.length] = pad1 + '}';
   }
   if (used['$w2l_trunc_sat_s_f32_to_i32']) {
+    this.markBinding_('Math_fround');
     // params: l0=$x
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_trunc_sat_s_f32_to_i32') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');';
@@ -915,6 +939,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
     lines[lines.length] = pad1 + '}';
   }
   if (used['$w2l_trunc_sat_u_f32_to_i32']) {
+    this.markBinding_('Math_fround');
     // params: l0=$x
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_trunc_sat_u_f32_to_i32') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');';
@@ -952,6 +977,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
   }
 
   if (used['$w2l_store_f32']) {
+    this.markBinding_('HEAPF32');
+    this.markBinding_('HEAPU8');
+    this.markBinding_('HEAP32');
+    this.markBinding_('Math_fround');
     // params: l0=$p, l1=$x
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_store_f32') + '(' + l0 + ', ' + l1 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + l0 + '|0;';
@@ -973,6 +1002,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
     lines[lines.length] = pad1 + '}';
   }
   if (used['$w2l_load_f32']) {
+    this.markBinding_('HEAPF32');
+    this.markBinding_('HEAPU8');
+    this.markBinding_('HEAP32');
+    this.markBinding_('Math_fround');
     // params: l0=$p; vars: l1=$r
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_load_f32') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + l0 + '|0;';
@@ -996,6 +1029,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
   }
 
   if (used['$w2l_store_f64']) {
+    this.markBinding_('HEAPF64');
+    this.markBinding_('HEAPU8');
+    this.markBinding_('HEAP32');
     // params: l0=$p, l1=$x
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_store_f64') + '(' + l0 + ', ' + l1 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + l0 + '|0;';
@@ -1018,6 +1054,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
     lines[lines.length] = pad1 + '}';
   }
   if (used['$w2l_load_f64']) {
+    this.markBinding_('HEAPF64');
+    this.markBinding_('HEAPU8');
+    this.markBinding_('HEAP32');
     // params: l0=$p; vars: l1=$r
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_load_f64') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + l0 + '|0;';
@@ -1042,6 +1081,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
   }
 
   if (used['$w2l_reinterpret_f32_to_i32']) {
+    this.markBinding_('HEAPF32');
+    this.markBinding_('HEAP32');
+    this.markBinding_('Math_fround');
     // params: l0=$x; vars: l1=$r
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_reinterpret_f32_to_i32') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');';
@@ -1053,6 +1095,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
     lines[lines.length] = pad1 + '}';
   }
   if (used['$w2l_reinterpret_i32_to_f32']) {
+    this.markBinding_('HEAP32');
+    this.markBinding_('HEAPF32');
+    this.markBinding_('Math_fround');
     // params: l0=$x; vars: l1=$r
     lines[lines.length] = pad1 + 'function ' + this.n_('$w2l_reinterpret_i32_to_f32') + '(' + l0 + ') {';
     lines[lines.length] = pad2 + l0 + ' = ' + l0 + '|0;';
@@ -1143,12 +1188,24 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHeapAccess_ = function (binaryen,
 
   var /** @const {string} */ shiftedPtr = P.renderInfix(ptrExpr, '>>', shiftAmount, P.PREC_SHIFT_);
 
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) return this.n_('HEAPF64') + '[' + shiftedPtr + ']';
-  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) return this.n_('HEAPF32') + '[' + shiftedPtr + ']';
-  if (4 === bytes) return this.n_('HEAP32') + '[' + shiftedPtr + ']';
-  if (2 === bytes) return (isSigned ? this.n_('HEAP16') + '[' : this.n_('HEAPU16') + '[') + shiftedPtr + ']';
-  if (1 === bytes) return (isSigned ? this.n_('HEAP8') + '[' : this.n_('HEAPU8') + '[') + shiftedPtr + ']';
-  return this.n_('HEAP8') + '[0]';
+  /** @type {string} */
+  var viewName;
+  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
+    viewName = 'HEAPF64';
+  } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
+    viewName = 'HEAPF32';
+  } else if (4 === bytes) {
+    viewName = 'HEAP32';
+  } else if (2 === bytes) {
+    viewName = isSigned ? 'HEAP16' : 'HEAPU16';
+  } else if (1 === bytes) {
+    viewName = isSigned ? 'HEAP8' : 'HEAPU8';
+  } else {
+    this.markBinding_('HEAP8');
+    return this.n_('HEAP8') + '[0]';
+  }
+  this.markBinding_(viewName);
+  return this.n_(viewName) + '[' + shiftedPtr + ']';
 };
 
 /**
@@ -1245,6 +1302,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         );
         resultCat = C.SIGNED;
       } else if (C.UNARY_CLZ === unCat) {
+        this.markBinding_('Math_clz32');
         result = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(this.n_('Math_clz32') + '(' + cr(0) + ')');
         resultCat = C.SIGNED;
       } else if (C.UNARY_CTZ === unCat) {
@@ -1969,30 +2027,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
     'var ' + moduleName + ' = function ' + asmjsModuleName + '(' + stdlibName + ', ' + foreignName + ', ' + bufferName_ + ') {';
   outputParts[outputParts.length] = pad1 + '"use asm";';
 
-  // Heap views.
-  outputParts[outputParts.length] =
-    pad1 + 'var ' + this.n_('HEAP8') + ' = new ' + stdlibName + '.Int8Array(' + bufferName_ + ');';
-  outputParts[outputParts.length] =
-    pad1 + 'var ' + this.n_('HEAPU8') + ' = new ' + stdlibName + '.Uint8Array(' + bufferName_ + ');';
-  outputParts[outputParts.length] =
-    pad1 + 'var ' + this.n_('HEAP16') + ' = new ' + stdlibName + '.Int16Array(' + bufferName_ + ');';
-  outputParts[outputParts.length] =
-    pad1 + 'var ' + this.n_('HEAPU16') + ' = new ' + stdlibName + '.Uint16Array(' + bufferName_ + ');';
-  outputParts[outputParts.length] =
-    pad1 + 'var ' + this.n_('HEAP32') + ' = new ' + stdlibName + '.Int32Array(' + bufferName_ + ');';
-  outputParts[outputParts.length] =
-    pad1 + 'var ' + this.n_('HEAPF32') + ' = new ' + stdlibName + '.Float32Array(' + bufferName_ + ');';
-  outputParts[outputParts.length] =
-    pad1 + 'var ' + this.n_('HEAPF64') + ' = new ' + stdlibName + '.Float64Array(' + bufferName_ + ');';
-  outputParts[outputParts.length] = pad1 + 'var ' + this.n_('Math_imul') + ' = ' + stdlibName + '.Math.imul;';
-  outputParts[outputParts.length] = pad1 + 'var ' + this.n_('Math_clz32') + ' = ' + stdlibName + '.Math.clz32;';
-  outputParts[outputParts.length] = pad1 + 'var ' + this.n_('Math_fround') + ' = ' + stdlibName + '.Math.fround;';
-  outputParts[outputParts.length] = pad1 + 'var ' + this.n_('Math_abs') + ' = ' + stdlibName + '.Math.abs;';
-  outputParts[outputParts.length] = pad1 + 'var ' + this.n_('Math_ceil') + ' = ' + stdlibName + '.Math.ceil;';
-  outputParts[outputParts.length] = pad1 + 'var ' + this.n_('Math_floor') + ' = ' + stdlibName + '.Math.floor;';
-  outputParts[outputParts.length] = pad1 + 'var ' + this.n_('Math_min') + ' = ' + stdlibName + '.Math.min;';
-  outputParts[outputParts.length] = pad1 + 'var ' + this.n_('Math_max') + ' = ' + stdlibName + '.Math.max;';
-  outputParts[outputParts.length] = pad1 + 'var ' + this.n_('Math_sqrt') + ' = ' + stdlibName + '.Math.sqrt;';
+  // Heap views and stdlib imports are emitted conditionally after function
+  // body and helper emission — see usedBindings_ below.  Reserve an index
+  // so the declarations appear in the correct position.
+  var /** @const {number} */ bindingsInsertIndex = outputParts.length;
 
   // Imported function bindings.
   for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
@@ -2013,8 +2051,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       pad1 + 'var ' + this.n_('$g_' + moduleInfo.globals[gi].globalName) + ' = ' + moduleInfo.globals[gi].globalInitValue + ';';
   }
 
-  // Function bodies (emitted first to discover which helpers are needed).
+  // Function bodies (emitted first to discover which helpers and bindings are needed).
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   var /** @const {!Array<string>} */ functionParts = [];
   for (var /** number */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
@@ -2029,8 +2068,74 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   }
 
   // Numeric helper bundle (only helpers referenced by function bodies).
+  // emitHelpers_ also marks binding dependencies for each emitted helper.
   var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(scratchByteOffset, scratchWordIndex, scratchQwordIndex);
   this.usedHelpers_ = null;
+
+  // Insert conditional heap views and stdlib imports at the reserved position.
+  var /** @const {!Object<string, boolean>} */ ub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
+  this.usedBindings_ = null;
+  var /** @const {!Array<string>} */ bindingLines = [];
+  if (ub['HEAP8']) {
+    bindingLines[bindingLines.length] =
+      pad1 + 'var ' + this.n_('HEAP8') + ' = new ' + stdlibName + '.Int8Array(' + bufferName_ + ');';
+  }
+  if (ub['HEAPU8']) {
+    bindingLines[bindingLines.length] =
+      pad1 + 'var ' + this.n_('HEAPU8') + ' = new ' + stdlibName + '.Uint8Array(' + bufferName_ + ');';
+  }
+  if (ub['HEAP16']) {
+    bindingLines[bindingLines.length] =
+      pad1 + 'var ' + this.n_('HEAP16') + ' = new ' + stdlibName + '.Int16Array(' + bufferName_ + ');';
+  }
+  if (ub['HEAPU16']) {
+    bindingLines[bindingLines.length] =
+      pad1 + 'var ' + this.n_('HEAPU16') + ' = new ' + stdlibName + '.Uint16Array(' + bufferName_ + ');';
+  }
+  if (ub['HEAP32']) {
+    bindingLines[bindingLines.length] =
+      pad1 + 'var ' + this.n_('HEAP32') + ' = new ' + stdlibName + '.Int32Array(' + bufferName_ + ');';
+  }
+  if (ub['HEAPF32']) {
+    bindingLines[bindingLines.length] =
+      pad1 + 'var ' + this.n_('HEAPF32') + ' = new ' + stdlibName + '.Float32Array(' + bufferName_ + ');';
+  }
+  if (ub['HEAPF64']) {
+    bindingLines[bindingLines.length] =
+      pad1 + 'var ' + this.n_('HEAPF64') + ' = new ' + stdlibName + '.Float64Array(' + bufferName_ + ');';
+  }
+  if (ub['Math_imul']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_imul') + ' = ' + stdlibName + '.Math.imul;';
+  }
+  if (ub['Math_clz32']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_clz32') + ' = ' + stdlibName + '.Math.clz32;';
+  }
+  if (ub['Math_fround']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_fround') + ' = ' + stdlibName + '.Math.fround;';
+  }
+  if (ub['Math_abs']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_abs') + ' = ' + stdlibName + '.Math.abs;';
+  }
+  if (ub['Math_ceil']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_ceil') + ' = ' + stdlibName + '.Math.ceil;';
+  }
+  if (ub['Math_floor']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_floor') + ' = ' + stdlibName + '.Math.floor;';
+  }
+  if (ub['Math_min']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_min') + ' = ' + stdlibName + '.Math.min;';
+  }
+  if (ub['Math_max']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_max') + ' = ' + stdlibName + '.Math.max;';
+  }
+  if (ub['Math_sqrt']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_sqrt') + ' = ' + stdlibName + '.Math.sqrt;';
+  }
+  // Splice binding declarations into the reserved position.
+  for (var /** number */ bi = bindingLines.length - 1; bi >= 0; --bi) {
+    outputParts.splice(bindingsInsertIndex, 0, bindingLines[bi]);
+  }
+
   for (var /** number */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
     outputParts[outputParts.length] = helperLines[hi];
   }

@@ -29,10 +29,14 @@ more consistently compliant across backends.
 ## Quick start
 
 ```bash
-# Inline a .wast module and emit asm.js (default backend):
-node wasm2lang.js --dev                                                                                            \
-  --input-data '(module (func (export "add") (param i32 i32) (result i32) (i32.add (local.get 0) (local.get 1))))' \
-  --normalize-wasm binaryen:none --emit-code
+# Inline a .wast module and emit PHP:
+node wasm2lang.js                                                                                                 \
+ --dev                                                                                                            \
+ --language-out php64                                                                                             \
+ --input-data '(module (func (export "add") (param i32 i32) (result i32) (i32.add (local.get 0) (local.get 1))))' \
+ --normalize-wasm binaryen:min                                                                                    \
+ --mangler secret                                                                                                 \
+ --emit-code
 ```
 
 ## CLI reference
@@ -139,10 +143,13 @@ Java output is a class wrapping all exported functions as methods, with a
 ### Inline WebAssembly text
 
 ```bash
-node wasm2lang.js --dev                                                              \
-  --input-data '(module (func (export "f") (param i32) (result i32) (local.get 0)))' \
-  --normalize-wasm binaryen:none                                                     \
-  --emit-code
+node wasm2lang.js                                                                   \
+ --dev                                                                              \
+ --language-out java                                                                \
+ --input-data '(module (func (export "f") (param i32) (result i32) (local.get 0)))' \
+ --normalize-wasm binaryen:min                                                      \
+ --mangler secret                                                                   \
+ --emit-code
 ```
 
 `--input-data` passes the WAT source directly as a CLI argument — no pipe or

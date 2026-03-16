@@ -312,23 +312,27 @@ Wasm2Lang.Backend.IdentifierMangler.prototype.registerModuleBindings = function 
 };
 
 /**
- * Precomputes all mangled names.  Module-scope names occupy encoder indices
- * 0..N-1 and local pool names occupy N..N+M-1, guaranteeing uniqueness by
+ * Precomputes all mangled names.  Local pool names occupy encoder indices
+ * 0..M-1 and module-scope names occupy M..M+N-1, guaranteeing uniqueness by
  * construction (the Aquitaine encoder is a bijection within each tier).
+ *
+ * Locals are allocated first so they claim the shortest (single-character)
+ * identifiers, since locals appear far more frequently in emitted code than
+ * module-level declarations.
  *
  * @param {number} localPoolSize  Number of local pool entries needed.
  * @return {!Promise<void>}
  */
 Wasm2Lang.Backend.IdentifierMangler.prototype.precompute = function (localPoolSize) {
   var /** @const {number} */ moduleCount = this.moduleKeys_.length;
-  var /** @const {number} */ totalCount = moduleCount + localPoolSize;
+  var /** @const {number} */ totalCount = localPoolSize + moduleCount;
   var /** @const */ self = this;
 
   return Wasm2Lang.Backend.IdentifierMangler.resolveNames_(totalCount, this.spec_, this.profile_).then(function (names) {
+    self.localPool_ = names.slice(0, localPoolSize);
     for (var /** number */ i = 0; i < moduleCount; ++i) {
-      self.moduleNames_[self.moduleKeys_[i]] = names[i];
+      self.moduleNames_[self.moduleKeys_[i]] = names[localPoolSize + i];
     }
-    self.localPool_ = names.slice(moduleCount);
   });
 };
 
