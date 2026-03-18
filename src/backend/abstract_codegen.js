@@ -829,6 +829,34 @@ Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_;
 Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_;
 
 /**
+ * Shared state shape for labeled-break backends (asm.js, Java).
+ * Both AsmjsCodegen.EmitState_ and JavaCodegen.EmitState_ are structural
+ * subtypes of this (they carry all these fields plus backend-specific ones).
+ *
+ * @protected
+ * @typedef {{
+ *   binaryen: !Binaryen,
+ *   indent: number,
+ *   wasmModule: !BinaryenModule,
+ *   functionInfo: !BinaryenFunctionInfo,
+ *   visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor,
+ *   labelMap: !Object<string, number>,
+ *   labelKinds: !Object<string, string>,
+ *   fusedBlockToLoop: !Object<string, string>,
+ *   pendingBlockFusion: string,
+ *   currentLoopName: string,
+ *   doWhileBodyPtrs: !Object<string, boolean>,
+ *   whileBodyPtrs: !Object<string, boolean>,
+ *   rootSwitchExitMap: ?Object<string, !Array<number>>,
+ *   rootSwitchRsName: string,
+ *   rootSwitchLoopName: string,
+ *   doWhileConditionStr: string,
+ *   whileConditionStr: string
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_;
+
+/**
  * Extracts the flat-switch structure from a br_table dispatch block that has
  * been annotated by the SwitchDispatchDetectionPass.
  *
@@ -992,6 +1020,383 @@ Wasm2Lang.Backend.AbstractCodegen.emitFlatSwitchHeader_ = function (lines, inden
 Wasm2Lang.Backend.AbstractCodegen.emitFlatSwitchBreak_ = function (lines, indent, switchLabel, info) {
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   lines[lines.length] = pad(indent) + 'break' + (info.requiresLabel ? ' ' + switchLabel : '') + ';\n';
+};
+
+/**
+ * Coerces the flat-switch condition expression before emission.
+ * Default returns the expression unchanged; asm.js overrides to apply
+ * signed coercion ({@code |0}).
+ *
+ * @protected
+ * @param {string} condStr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.coerceSwitchCondition_ = function (condStr) {
+  return condStr;
+};
+
+/**
+ * Emits a flat switch statement for backends using labeled break semantics
+ * (asm.js, Java).  PHP overrides {@code emitFlatSwitch_} entirely because
+ * it uses numeric break depths instead of labels.
+ *
+ * The only backend-specific hooks are:
+ * - {@code coerceSwitchCondition_}: wraps the switch discriminant.
+ * - {@code state.lastExprIsTerminal}: set by the caller after this returns
+ *   (Java only).
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {{result: string, hasDefault: boolean}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledFlatSwitch_ = function (state, nodeCtx) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const {number} */ ind = state.indent;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
+    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ info =
+    /** @type {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ (
+      A.extractSwitchDispatchStructure_(binaryen, nodeCtx.expressionPointer)
+    );
+  var /** @const {string} */ outerLabel = this.labelN_(state.labelMap, info.outerName);
+
+  var /** @const {string} */ condStr = this.coerceSwitchCondition_(
+      A.subWalkString_(A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.conditionPtr))
+    );
+
+  var /** @const {!Array<string>} */ lines = [];
+  A.emitFlatSwitchHeader_(lines, ind, condStr, outerLabel, info);
+
+  var /** @type {?Object<string, !Array<number>>} */ rsExitMap = state.rootSwitchExitMap;
+  var /** @type {string} */ rsRsName = state.rootSwitchRsName;
+  var /** @type {string} */ rsLoopName = state.rootSwitchLoopName;
+
+  // --- Case groups (shared iteration) ---
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_>} */ groups = info.caseGroups;
+  for (var /** number */ gi = 0; gi < groups.length; ++gi) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ group = groups[gi];
+    var /** @const {!Array<number>} */ indices = group.indices;
+    for (var /** number */ ii = 0; ii < indices.length; ++ii) {
+      lines[lines.length] = pad(ind + 1) + 'case ' + indices[ii] + ':\n';
+    }
+    var /** @const {number} */ savedIndent = state.indent;
+    state.indent = ind + 2;
+    var /** @const {boolean} */ strippedBreak = A.emitSwitchCaseActions_(
+        lines,
+        state.wasmModule,
+        binaryen,
+        state.functionInfo,
+        vis,
+        group.actionPtrs,
+        ind + 2,
+        info.outerName
+      );
+    state.indent = savedIndent;
+    if (group.externalTarget) {
+      if (rsExitMap && group.externalTarget in rsExitMap) {
+        var /** @const {number} */ rsSavedInd = state.indent;
+        state.indent = ind + 2;
+        var /** @const {boolean} */ rsEtTerminal = A.emitRootSwitchExitCode_(
+            lines,
+            state.wasmModule,
+            binaryen,
+            state.functionInfo,
+            vis,
+            rsExitMap[group.externalTarget],
+            ind + 2
+          );
+        state.indent = rsSavedInd;
+        if (!rsEtTerminal) {
+          lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
+        }
+      } else if (rsRsName && group.externalTarget === rsRsName) {
+        lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
+      } else {
+        lines[lines.length] =
+          pad(ind + 2) +
+          this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, group.externalTarget);
+      }
+    } else if (group.needsBreak || strippedBreak) {
+      A.emitFlatSwitchBreak_(lines, ind + 2, outerLabel, info);
+    }
+  }
+
+  // --- Default group ---
+  var /** @type {?Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ defGroup = info.defaultGroup;
+  if (defGroup) {
+    lines[lines.length] = pad(ind + 1) + 'default:\n';
+    var /** @const {number} */ savedIndent2 = state.indent;
+    state.indent = ind + 2;
+    var /** @const {boolean} */ strippedDefBreak = A.emitSwitchCaseActions_(
+        lines,
+        state.wasmModule,
+        binaryen,
+        state.functionInfo,
+        vis,
+        defGroup.actionPtrs,
+        ind + 2,
+        info.outerName
+      );
+    state.indent = savedIndent2;
+    if (defGroup.externalTarget) {
+      if (rsExitMap && defGroup.externalTarget in rsExitMap) {
+        var /** @const {number} */ rsSavedDefInd = state.indent;
+        state.indent = ind + 2;
+        var /** @const {boolean} */ rsDefEtTerminal = A.emitRootSwitchExitCode_(
+            lines,
+            state.wasmModule,
+            binaryen,
+            state.functionInfo,
+            vis,
+            rsExitMap[defGroup.externalTarget],
+            ind + 2
+          );
+        state.indent = rsSavedDefInd;
+        if (!rsDefEtTerminal) {
+          lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
+        }
+      } else if (rsRsName && defGroup.externalTarget === rsRsName) {
+        lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
+      } else {
+        lines[lines.length] =
+          pad(ind + 2) +
+          this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, defGroup.externalTarget);
+      }
+    } else if (defGroup.needsBreak || strippedDefBreak) {
+      A.emitFlatSwitchBreak_(lines, ind + 2, outerLabel, info);
+    }
+  }
+
+  lines[lines.length] = pad(ind) + '}\n';
+  return {result: lines.join(''), hasDefault: !!defGroup};
+};
+
+/**
+ * Emits a root-switch-loop structure for backends using labeled break semantics.
+ * Shared by asm.js and Java; PHP overrides {@code emitRootSwitch_} entirely.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledRootSwitch_ = function (state, nodeCtx) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
+    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_} */ info =
+    /** @type {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_} */ (
+      A.extractRootSwitchStructure_(binaryen, nodeCtx.expressionPointer)
+    );
+
+  state.rootSwitchExitMap = info.exitPaths;
+  state.rootSwitchRsName = info.rsBlockName;
+  state.rootSwitchLoopName = info.loopName;
+
+  state.labelKinds[info.loopName] = 'loop';
+  for (var /** @type {string} */ exitName in info.exitPaths) {
+    state.labelKinds[exitName] = 'block';
+  }
+
+  var /** @const {string} */ loopCode = A.subWalkString_(
+      A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.loopPtr)
+    );
+
+  state.rootSwitchExitMap = null;
+  state.rootSwitchRsName = '';
+  state.rootSwitchLoopName = '';
+
+  return loopCode;
+};
+
+/**
+ * Shared enter callback for labeled-break backends (asm.js, Java).
+ * Records label kinds, handles block-loop fusion, and adjusts indent.
+ * PHP overrides its own {@code emitEnter_} entirely (uses labelStack).
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledEnter_ = function (state, nodeCtx) {
+  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
+  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ hp = A.hasPrefix_;
+
+  if (binaryen.BlockId === id) {
+    var /** @const {?string} */ bName = /** @type {?string} */ (expr['name']);
+    if (bName) {
+      state.labelKinds[bName] = 'block';
+      if (hp(bName, A.LB_FUSION_PREFIX_)) {
+        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr['children']);
+        if (ch && 1 === ch.length && binaryen.getExpressionInfo(ch[0]).id === binaryen.LoopId) {
+          state.pendingBlockFusion = bName;
+        } else {
+          state.fusedBlockToLoop[bName] = state.currentLoopName;
+        }
+      } else if (hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
+        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
+      } else if (hp(bName, A.SW_DISPATCH_PREFIX_)) {
+        ++state.indent;
+        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
+      } else {
+        ++state.indent;
+      }
+    }
+  } else if (binaryen.LoopId === id) {
+    var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
+    state.labelKinds[loopName] = 'loop';
+    state.currentLoopName = loopName;
+    ++state.indent;
+    if ('' !== state.pendingBlockFusion) {
+      state.fusedBlockToLoop[state.pendingBlockFusion] = loopName;
+      state.pendingBlockFusion = '';
+    }
+    if (hp(loopName, A.LD_DOWHILE_PREFIX_) || hp(loopName, A.LE_DOWHILE_PREFIX_)) {
+      state.doWhileBodyPtrs[String(/** @type {number} */ (expr['body']))] = true;
+    } else if (hp(loopName, A.LW_WHILE_PREFIX_) || hp(loopName, A.LY_WHILE_PREFIX_)) {
+      state.whileBodyPtrs[String(/** @type {number} */ (expr['body']))] = true;
+    }
+  } else if (binaryen.IfId === id) {
+    ++state.indent;
+  }
+
+  return null;
+};
+
+/**
+ * Shared leave-callback indent adjustment for labeled-break backends.
+ * Decrements state.indent for LoopId, IfId, and named blocks (excluding
+ * fused blocks and root-switch blocks).  PHP overrides its leave callback
+ * entirely because it additionally pops labelStack entries.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.adjustLeaveIndent_ = function (state, nodeCtx) {
+  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
+  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  if (binaryen.LoopId === id || binaryen.IfId === id) {
+    --state.indent;
+  } else if (binaryen.BlockId === id && expr['name']) {
+    var /** @const {string} */ bn = /** @type {string} */ (expr['name']);
+    if (
+      0 !== bn.indexOf(Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_) &&
+      0 !== bn.indexOf(Wasm2Lang.Backend.AbstractCodegen.RS_ROOT_SWITCH_PREFIX_)
+    ) {
+      --state.indent;
+    }
+  }
+};
+
+/**
+ * Assembles child result strings into the body of a block node.
+ * Shared across all three backends — the loop and semicolon-appending
+ * logic is identical; only the final block wrapping differs per backend.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {number} emitCount  Number of children to assemble (may exclude
+ *     trailing condition expression for do-while/while bodies).
+ * @param {number} childInd   Indentation level for expression-statement lines.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.assembleBlockChildren_ = function (childResults, emitCount, childInd) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const {!Array<string>} */ lines = [];
+  for (var /** number */ bi = 0; bi < emitCount; ++bi) {
+    var /** @const {string} */ childCode = A.getChildResultInfo_(childResults, bi).expressionString;
+    if ('' !== childCode) {
+      if (-1 === childCode.indexOf('\n')) {
+        lines[lines.length] = pad(childInd) + childCode + ';\n';
+      } else {
+        lines[lines.length] = childCode;
+      }
+    }
+  }
+  return lines.join('');
+};
+
+/**
+ * Wraps a single break/continue statement in a conditional if the break
+ * expression has a condition pointer.  Shared across all three backends
+ * for the common BreakId conditional-wrapping pattern.
+ *
+ * @protected
+ * @param {number} ind   Current indentation level.
+ * @param {number} condPtr  Condition pointer (0 = unconditional).
+ * @param {string} condExpr  Rendered condition expression (from child result).
+ * @param {string} stmt  The break/continue statement string (including trailing newline).
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitConditionalStatement_ = function (ind, condPtr, condExpr, stmt) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  if (0 !== condPtr) {
+    return pad(ind) + 'if ' + this.formatCondition_(condExpr) + ' {\n' + pad(ind + 1) + stmt + pad(ind) + '}\n';
+  }
+  return pad(ind) + stmt;
+};
+
+/**
+ * Emits a BlockId node body for labeled-break backends (asm.js, Java).
+ * Handles fused blocks, do-while/while body detection, and child assembly.
+ * Callers handle prefix dispatch (root-switch, flat-switch) before calling.
+ * PHP handles BlockId directly because it uses different block wrapping.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state, nodeCtx, childResults) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
+  var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
+  var /** @const {number} */ ind = state.indent;
+  var /** @const {boolean} */ isFused = !!blockName && A.hasPrefix_(blockName, A.LB_FUSION_PREFIX_);
+  var /** @const {string} */ blockPtrKey = String(nodeCtx.expressionPointer);
+  var /** @const {boolean} */ isDWBody = blockPtrKey in state.doWhileBodyPtrs;
+  if (isDWBody) {
+    delete state.doWhileBodyPtrs[blockPtrKey];
+  }
+  var /** @const {boolean} */ isWhileBody = blockPtrKey in state.whileBodyPtrs;
+  if (isWhileBody) {
+    delete state.whileBodyPtrs[blockPtrKey];
+  }
+  var /** @const {boolean} */ hasTrailingCond = isDWBody || isWhileBody;
+  var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
+  var /** @const {number} */ emitCount =
+      hasTrailingCond && 0 < childResults.length ? childResults.length - 1 : childResults.length;
+  var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
+  if (isDWBody) {
+    state.doWhileConditionStr = A.getChildResultInfo_(childResults, childResults.length - 1).expressionString;
+  }
+  if (isWhileBody) {
+    state.whileConditionStr = A.getChildResultInfo_(childResults, childResults.length - 1).expressionString;
+  }
+  if (isFused) {
+    return blockBody;
+  }
+  if (blockName) {
+    return pad(ind) + this.labelN_(state.labelMap, blockName) + ': {\n' + blockBody + pad(ind) + '}\n';
+  }
+  return blockBody;
 };
 
 /**
@@ -1590,6 +1995,84 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
 });
 
 /**
+ * Formats an expression for use as a boolean condition in control flow
+ * (if, while, do-while).  Default delegates to the Precedence_ helper;
+ * Java overrides to produce {@code (expr != 0)} form.
+ *
+ * @protected
+ * @param {string} expr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.formatCondition_ = function (expr) {
+  return Wasm2Lang.Backend.AbstractCodegen.Precedence_.formatCondition(expr);
+};
+
+/**
+ * Emits an if/if-else statement.  All backends share the same structure;
+ * only the condition formatting differs (dispatched via formatCondition_).
+ *
+ * @protected
+ * @param {number} indent
+ * @param {string} conditionExpr  Raw condition child result string.
+ * @param {string} trueCode       True-branch child result string.
+ * @param {number} ifFalsePtr     Binaryen pointer to else branch (0 if none).
+ * @param {number} childCount     Number of child results.
+ * @param {string=} opt_falseCode False-branch child result string.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitIfStatement_ = function (
+  indent,
+  conditionExpr,
+  trueCode,
+  ifFalsePtr,
+  childCount,
+  opt_falseCode
+) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const {string} */ cond = this.formatCondition_(conditionExpr);
+  if (0 !== ifFalsePtr && 2 < childCount) {
+    return pad(indent) + 'if ' + cond + ' {\n' + trueCode + pad(indent) + '} else {\n' + opt_falseCode + pad(indent) + '}\n';
+  }
+  return pad(indent) + 'if ' + cond + ' {\n' + trueCode + pad(indent) + '}\n';
+};
+
+/**
+ * Emits a local.set or local.tee expression.  Shared across all backends —
+ * name formatting dispatches through localN_; coercion through coerceToType_.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} functionInfo
+ * @param {number} indent
+ * @param {boolean} isTee
+ * @param {number} localIndex
+ * @param {string} valueExpr
+ * @param {number} valueCat
+ * @return {{result: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitLocalSet_ = function (
+  binaryen,
+  functionInfo,
+  indent,
+  isTee,
+  localIndex,
+  valueExpr,
+  valueCat
+) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {number} */ localType = Wasm2Lang.Backend.ValueType.getLocalType(binaryen, functionInfo, localIndex);
+  var /** @const {string} */ setValue = this.coerceToType_(binaryen, valueExpr, valueCat, localType);
+  if (isTee) {
+    return {
+      result: '(' + this.localN_(localIndex) + ' = ' + setValue + ')',
+      resultCat: A.catForCoercedType_(binaryen, localType)
+    };
+  }
+  return {result: pad(indent) + this.localN_(localIndex) + ' = ' + setValue + ';\n', resultCat: A.CAT_VOID};
+};
+
+/**
  * Collects every function export from the wasm module.  Non-function exports
  * (memories, globals, tables) are silently skipped.
  *
@@ -2105,7 +2588,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getRuntimeHelperPrefix_ = function (
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
-  return conditionExpr;
+  return '(' + conditionExpr + ' ? 1 : 0)';
 };
 
 /**
@@ -2149,9 +2632,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_ = function (b
  * @param {!Binaryen} binaryen
  * @param {!Wasm2Lang.Backend.NumericOps.UnaryOpInfo} info
  * @param {string} valueExpr
+ * @param {number=} opt_valueCat
  * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr, opt_valueCat) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @type {string} */ helperName = this.getRuntimeHelperPrefix_() + info.opName;
 

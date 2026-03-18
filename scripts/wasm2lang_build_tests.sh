@@ -61,15 +61,17 @@ if [ ${#0} -ne ${#prefix} ]; then
           harness_variant_name="${artifact_dir}${harness_name#$testbase}"
           cp "$harness_file" "./${artifact_dir}/${harness_variant_name}"
         done
-        #
-        # Generate original WAST
-        node                             \
-          "../tests/$filename"           \
-          1>"${artifact_base}".orig.wast
+
+        if [ 'codegen' = "$variant_suffix" ]; then
+          #
+          # Generate original WAST
+          node                             \
+            "../tests/$filename"           \
+            1>./"${testbase}".orig.wast
+        fi
         #
         # Generate WASM
-        node                                          \
-          "../tests/$filename"                        \
+        cat ./"${testbase}".orig.wast                 \
         |                                             \
         node                                          \
           "../wasm2lang.js"                           \
@@ -79,8 +81,7 @@ if [ ${#0} -ne ${#prefix} ]; then
           1>"${artifact_base}".wasm
         #
         # Generate WAST
-        node                                          \
-          "../tests/$filename"                        \
+        cat ./"${testbase}".orig.wast                 \
         |                                             \
         node                                          \
           "../wasm2lang.js"                           \

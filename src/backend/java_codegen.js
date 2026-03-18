@@ -310,6 +310,25 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderCoercionByType_ = function (binary
 };
 
 /**
+ * Java widens float to double automatically, so CAT_F32 satisfies f64
+ * targets without an explicit cast.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} expr
+ * @param {number} cat
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaCodegen.prototype.coerceToType_ = function (binaryen, expr, cat, wasmType) {
+  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType) && Wasm2Lang.Backend.AbstractCodegen.CAT_F32 === cat) {
+    return expr;
+  }
+  return Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_.call(this, binaryen, expr, cat, wasmType);
+};
+
+/**
  * @private
  * @param {!Binaryen} binaryen
  * @param {number} value
@@ -480,31 +499,35 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderBinaryOp_ = function (info, L, R) 
  * @param {!Binaryen} binaryen
  * @param {!Wasm2Lang.Backend.NumericOps.UnaryOpInfo} info
  * @param {string} valueExpr
+ * @param {number=} opt_valueCat
  * @return {string}
  */
-Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr) {
+Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr, opt_valueCat) {
   var /** @const {string} */ name = info.opName;
   var /** @const {boolean} */ isF32 = Wasm2Lang.Backend.ValueType.isF32(binaryen, info.operandType);
+  var /** @const {number} */ cat = opt_valueCat != null ? opt_valueCat : Wasm2Lang.Backend.AbstractCodegen.CAT_RAW;
+  var /** @type {string} */ inner;
+
+  // neg: Java negation preserves float type — skip coercion when input category confirms type.
+  if ('neg' === name) {
+    var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    return this.coerceToType_(binaryen, P.renderPrefix('-', valueExpr), cat, info.retType);
+  }
 
   if ('abs' === name) {
-    if (isF32) return '(float)Math.abs((float)(' + valueExpr + '))';
+    if (isF32) {
+      inner = this.coerceToType_(binaryen, valueExpr, cat, info.operandType);
+      return '(float)Math.abs(' + inner + ')';
+    }
     return 'Math.abs(' + valueExpr + ')';
   }
-  if ('ceil' === name) {
-    if (isF32) return '(float)Math.ceil((double)(' + valueExpr + '))';
-    return 'Math.ceil(' + valueExpr + ')';
-  }
-  if ('floor' === name) {
-    if (isF32) return '(float)Math.floor((double)(' + valueExpr + '))';
-    return 'Math.floor(' + valueExpr + ')';
-  }
-  if ('sqrt' === name) {
-    if (isF32) return '(float)Math.sqrt((double)(' + valueExpr + '))';
-    return 'Math.sqrt(' + valueExpr + ')';
-  }
-  if ('nearest' === name) {
-    if (isF32) return '(float)Math.rint((double)(' + valueExpr + '))';
-    return 'Math.rint(' + valueExpr + ')';
+  if ('ceil' === name || 'floor' === name || 'sqrt' === name || 'nearest' === name) {
+    var /** @const {string} */ mathName = 'nearest' === name ? 'rint' : name;
+    if (isF32) {
+      inner = this.coerceToType_(binaryen, valueExpr, cat, info.operandType);
+      return '(float)Math.' + mathName + '(' + inner + ')';
+    }
+    return 'Math.' + mathName + '(' + valueExpr + ')';
   }
 
   if ('convert_s_i32_to_f32' === name) return '(float)(' + valueExpr + ')';
@@ -515,13 +538,18 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericUnaryOp_ = function (binary
   if ('demote_f64_to_f32' === name) return '(float)(' + valueExpr + ')';
   if ('promote_f32_to_f64' === name) return '(double)(' + valueExpr + ')';
 
-  if ('trunc_s_f32_to_i32' === name) return '(int)(float)(' + valueExpr + ')';
-  if ('trunc_s_f64_to_i32' === name) return '(int)(double)(' + valueExpr + ')';
+  if ('trunc_s_f32_to_i32' === name || 'trunc_s_f64_to_i32' === name) {
+    inner = this.coerceToType_(binaryen, valueExpr, cat, info.operandType);
+    return '(int)(' + inner + ')';
+  }
 
-  if ('reinterpret_f32_to_i32' === name) return 'Float.floatToRawIntBits((float)(' + valueExpr + '))';
+  if ('reinterpret_f32_to_i32' === name) {
+    inner = this.coerceToType_(binaryen, valueExpr, cat, info.operandType);
+    return 'Float.floatToRawIntBits(' + inner + ')';
+  }
   if ('reinterpret_i32_to_f32' === name) return 'Float.intBitsToFloat(' + valueExpr + ')';
 
-  return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_.call(this, binaryen, info, valueExpr);
+  return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_.call(this, binaryen, info, valueExpr, opt_valueCat);
 };
 
 /**
@@ -549,18 +577,20 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericBinaryOp_ = function (binar
     return 'Math.copySign(' + L + ', ' + R + ')';
   }
 
-  return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_.call(this, binaryen, info, L, R);
+  if (info.isComparison) {
+    return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_.call(this, binaryen, info, L, R);
+  }
+
+  // Java float/double arithmetic preserves the operand type — no cast needed.
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @type {number} */ prec = P.PREC_ADDITIVE_;
+  if ('mul' === info.opName || 'div' === info.opName) {
+    prec = P.PREC_MULTIPLICATIVE_;
+  }
+  return P.renderInfix(L, info.opStr, R, prec);
 };
 
-/**
- * @override
- * @protected
- * @param {string} conditionExpr
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
-  return '(' + conditionExpr + ' ? 1 : 0)';
-};
+// renderNumericComparisonResult_: inherited from AbstractCodegen (ternary ? 1 : 0).
 
 // ---------------------------------------------------------------------------
 // Code-gen traversal state.
@@ -612,13 +642,12 @@ Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_ = function (baseExpr, offset)
 };
 
 /**
- * Wraps an expression for use as a Java boolean condition ({@code != 0}).
- *
- * @private
+ * @override
+ * @protected
  * @param {string} expr
  * @return {string}
  */
-Wasm2Lang.Backend.JavaCodegen.formatCondition_ = function (expr) {
+Wasm2Lang.Backend.JavaCodegen.prototype.formatCondition_ = function (expr) {
   if ('' === expr) return '(0 != 0)';
   return '((' + expr + ') != 0)';
 };
@@ -674,10 +703,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderStore_ = function (binaryen, ptrEx
   var /** @const {number} */ valueCat = void 0 !== opt_valueCat ? opt_valueCat : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
   var /** @const {string} */ buf = 'this.' + this.n_('buffer');
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return buf + '.putDouble(' + ptrExpr + ', (double)(' + valueExpr + '));';
+    return buf + '.putDouble(' + ptrExpr + ', ' + this.coerceToType_(binaryen, valueExpr, valueCat, wasmType) + ');';
   }
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return buf + '.putFloat(' + ptrExpr + ', (float)(' + valueExpr + '));';
+    return buf + '.putFloat(' + ptrExpr + ', ' + this.coerceToType_(binaryen, valueExpr, valueCat, wasmType) + ');';
   }
   var /** @const {string} */ coercedValue = this.coerceToType_(binaryen, valueExpr, valueCat, binaryen.i32);
   if (4 === bytes) {
@@ -782,18 +811,37 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         ? C.FIXNUM
         : Wasm2Lang.Backend.ValueType.isF32(binaryen, constType)
           ? A.CAT_F32
+          : Wasm2Lang.Backend.ValueType.isF64(binaryen, constType)
+            ? A.CAT_F64
+            : A.CAT_RAW;
+      break;
+    }
+    case binaryen.LocalGetId: {
+      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr['index']);
+      var /** @const {number} */ localGetType = Wasm2Lang.Backend.ValueType.getLocalType(
+          binaryen,
+          state.functionInfo,
+          localGetIdx
+        );
+      result = this.localN_(localGetIdx);
+      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, localGetType)
+        ? A.CAT_F64
+        : Wasm2Lang.Backend.ValueType.isF32(binaryen, localGetType)
+          ? A.CAT_F32
           : A.CAT_RAW;
       break;
     }
-    case binaryen.LocalGetId:
-      result = this.localN_(/** @type {number} */ (expr['index']));
-      resultCat = A.CAT_RAW;
+    case binaryen.GlobalGetId: {
+      var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
+      var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
+      result = 'this.' + this.n_('$g_' + Wasm2Lang.Backend.JavaCodegen.javaSafeName_(globalGetName));
+      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
+        ? A.CAT_F64
+        : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
+          ? A.CAT_F32
+          : A.CAT_RAW;
       break;
-
-    case binaryen.GlobalGetId:
-      result = 'this.' + this.n_('$g_' + Wasm2Lang.Backend.JavaCodegen.javaSafeName_(/** @type {string} */ (expr['name'])));
-      resultCat = A.CAT_RAW;
-      break;
+    }
 
     case binaryen.BinaryId: {
       var /** @const {number} */ binaryOp = /** @type {number} */ (expr['op']);
@@ -823,7 +871,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           /** @type {number} */ (expr['op'])
         );
       if (C.UNARY_EQZ === unCat) {
-        result = '(' + cr(0) + ' == 0 ? 1 : 0)';
+        var /** @const */ Pe = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+        result = '(' + Pe.renderInfix(cr(0), '==', '0', Pe.PREC_EQUALITY_) + ' ? 1 : 0)';
         resultCat = C.SIGNED;
       } else if (C.UNARY_CLZ === unCat) {
         result = 'Integer.numberOfLeadingZeros(' + cr(0) + ')';
@@ -838,7 +887,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numericUnInfo =
             Wasm2Lang.Backend.NumericOps.classifyUnaryOp(binaryen, /** @type {number} */ (expr['op']));
         if (numericUnInfo) {
-          result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0));
+          result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0), cc(0));
           resultCat = A.catForCoercedType_(binaryen, numericUnInfo.retType);
         } else {
           result = '0 /* unknown unop ' + expr['op'] + ' */';
@@ -868,16 +917,17 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
     }
     case binaryen.LocalSetId: {
-      var /** @const {boolean} */ isTee = !!expr['isTee'];
-      var /** @const {number} */ setIdx = /** @type {number} */ (expr['index']);
-      var /** @const {number} */ localType = Wasm2Lang.Backend.ValueType.getLocalType(binaryen, state.functionInfo, setIdx);
-      var /** @const {string} */ setValue = this.coerceToType_(binaryen, cr(0), cc(0), localType);
-      if (isTee) {
-        result = '(' + this.localN_(setIdx) + ' = ' + setValue + ')';
-        resultCat = A.catForCoercedType_(binaryen, localType);
-      } else {
-        result = pad(ind) + this.localN_(setIdx) + ' = ' + setValue + ';\n';
-      }
+      var /** @const */ lsResult = this.emitLocalSet_(
+          binaryen,
+          state.functionInfo,
+          ind,
+          !!expr['isTee'],
+          /** @type {number} */ (expr['index']),
+          cr(0),
+          cc(0)
+        );
+      result = lsResult.result;
+      resultCat = lsResult.resultCat;
       break;
     }
     case binaryen.GlobalSetId: {
@@ -946,7 +996,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
 
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
-      result = this.renderCoercionByType_(binaryen, '(' + cr(0) + ' != 0 ? ' + cr(1) + ' : ' + cr(2) + ')', selectType);
+      var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+      result = this.renderCoercionByType_(
+        binaryen,
+        '(' + Ps.renderInfix(cr(0), '!=', '0', Ps.PREC_EQUALITY_) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
+        selectType
+      );
       resultCat = A.catForCoercedType_(binaryen, selectType);
       break;
     }
@@ -969,44 +1024,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         result = this.emitFlatSwitch_(state, nodeCtx);
         break;
       }
-      var /** @const {boolean} */ isFused = !!blockName && hp(blockName, A.LB_FUSION_PREFIX_);
-      var /** @const {string} */ blockPtrKey = String(nodeCtx.expressionPointer);
-      var /** @const {boolean} */ isDWBody = blockPtrKey in state.doWhileBodyPtrs;
-      if (isDWBody) {
-        delete state.doWhileBodyPtrs[blockPtrKey];
-      }
-      var /** @const {boolean} */ isWhileBody = blockPtrKey in state.whileBodyPtrs;
-      if (isWhileBody) {
-        delete state.whileBodyPtrs[blockPtrKey];
-      }
-      var /** @const {boolean} */ hasTrailingCond = isDWBody || isWhileBody;
-      var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
-      var /** @const {number} */ emitCount =
-          hasTrailingCond && 0 < childResults.length ? childResults.length - 1 : childResults.length;
-      var /** @const {!Array<string>} */ blockLines = [];
-      for (var /** number */ bi = 0; bi < emitCount; ++bi) {
-        var /** @const {string} */ childCode = cr(bi);
-        if ('' !== childCode) {
-          if (-1 === childCode.indexOf('\n')) {
-            blockLines[blockLines.length] = pad(childInd) + childCode + ';\n';
-          } else {
-            blockLines[blockLines.length] = childCode;
-          }
-        }
-      }
-      if (isDWBody) {
-        state.doWhileConditionStr = cr(childResults.length - 1);
-      }
-      if (isWhileBody) {
-        state.whileConditionStr = cr(childResults.length - 1);
-      }
-      if (isFused) {
-        result = blockLines.join('');
-      } else if (blockName) {
-        result = pad(ind) + this.labelN_(state.labelMap, blockName) + ': {\n' + blockLines.join('') + pad(ind) + '}\n';
-      } else {
-        result = blockLines.join('');
-      }
+      result = this.emitLabeledBlock_(state, nodeCtx, childResults);
       break;
     }
     case binaryen.LoopId: {
@@ -1019,14 +1037,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       } else if (hp(loopName, A.LE_DOWHILE_PREFIX_)) {
         var /** @const {string} */ dwCondE = state.doWhileConditionStr;
         state.doWhileConditionStr = '';
-        result =
-          pad(ind) +
-          'do {\n' +
-          loopBody +
-          pad(ind) +
-          '} while ' +
-          Wasm2Lang.Backend.JavaCodegen.formatCondition_(dwCondE) +
-          ';\n';
+        result = pad(ind) + 'do {\n' + loopBody + pad(ind) + '} while ' + this.formatCondition_(dwCondE) + ';\n';
       } else if (hp(loopName, A.LD_DOWHILE_PREFIX_)) {
         var /** @const {string} */ dwCond = state.doWhileConditionStr;
         state.doWhileConditionStr = '';
@@ -1037,13 +1048,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           loopBody +
           pad(ind) +
           '} while ' +
-          Wasm2Lang.Backend.JavaCodegen.formatCondition_(dwCond) +
+          this.formatCondition_(dwCond) +
           ';\n';
       } else if (hp(loopName, A.LY_WHILE_PREFIX_)) {
         var /** @const {string} */ whCondY = state.whileConditionStr;
         state.whileConditionStr = '';
-        result =
-          pad(ind) + 'while ' + Wasm2Lang.Backend.JavaCodegen.formatCondition_(whCondY) + ' {\n' + loopBody + pad(ind) + '}\n';
+        result = pad(ind) + 'while ' + this.formatCondition_(whCondY) + ' {\n' + loopBody + pad(ind) + '}\n';
       } else if (hp(loopName, A.LW_WHILE_PREFIX_)) {
         var /** @const {string} */ whCond = state.whileConditionStr;
         state.whileConditionStr = '';
@@ -1051,7 +1061,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           pad(ind) +
           this.labelN_(state.labelMap, loopName) +
           ': while ' +
-          Wasm2Lang.Backend.JavaCodegen.formatCondition_(whCond) +
+          this.formatCondition_(whCond) +
           ' {\n' +
           loopBody +
           pad(ind) +
@@ -1077,18 +1087,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       }
       break;
     }
-    case binaryen.IfId: {
-      var /** @const {number} */ ifFalsePtr = /** @type {number} */ (expr['ifFalse']);
-      var /** @type {string} */ condExpr = Wasm2Lang.Backend.JavaCodegen.formatCondition_(cr(0));
-      var /** @type {string} */ trueCode = cr(1);
-      if (0 !== ifFalsePtr && 2 < childResults.length) {
-        var /** @type {string} */ falseCode = cr(2);
-        result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '} else {\n' + falseCode + pad(ind) + '}\n';
-      } else {
-        result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '}\n';
-      }
+    case binaryen.IfId:
+      result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
       break;
-    }
     case binaryen.BreakId: {
       var /** @const {string} */ brName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ brCondPtr = /** @type {number} */ (expr['condition']);
@@ -1114,14 +1115,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
               pad(ind) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
           }
           if (0 !== brCondPtr) {
-            result =
-              pad(ind) +
-              'if ' +
-              Wasm2Lang.Backend.JavaCodegen.formatCondition_(cr(0)) +
-              ' {\n' +
-              rsExitLines.join('') +
-              pad(ind) +
-              '}\n';
+            result = pad(ind) + 'if ' + this.formatCondition_(cr(0)) + ' {\n' + rsExitLines.join('') + pad(ind) + '}\n';
           } else {
             result = rsExitLines.join('');
           }
@@ -1130,18 +1124,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         }
         if (brName === state.rootSwitchRsName) {
           var /** @const {string} */ rsBreakStmt = this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-          if (0 !== brCondPtr) {
-            result =
-              pad(ind) +
-              'if ' +
-              Wasm2Lang.Backend.JavaCodegen.formatCondition_(cr(0)) +
-              ' {\n' +
-              pad(ind + 1) +
-              rsBreakStmt +
-              pad(ind) +
-              '}\n';
-          } else {
-            result = pad(ind) + rsBreakStmt;
+          result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), rsBreakStmt);
+          if (0 === brCondPtr) {
             state.lastExprIsTerminal = true;
           }
           break;
@@ -1153,18 +1137,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           state.labelMap,
           brName
         );
-      if (0 !== brCondPtr) {
-        result =
-          pad(ind) +
-          'if ' +
-          Wasm2Lang.Backend.JavaCodegen.formatCondition_(cr(0)) +
-          ' {\n' +
-          pad(ind + 1) +
-          brStmt +
-          pad(ind) +
-          '}\n';
-      } else {
-        result = pad(ind) + brStmt;
+      result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), brStmt);
+      if (0 === brCondPtr) {
         state.lastExprIsTerminal = true;
       }
       break;
@@ -1214,124 +1188,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
-  var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const {number} */ ind = state.indent;
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
-    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ info =
-    /** @type {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ (
-      A.extractSwitchDispatchStructure_(binaryen, nodeCtx.expressionPointer)
-    );
-  var /** @const {string} */ outerLabel = this.labelN_(state.labelMap, info.outerName);
-
-  var /** @const {string} */ condStr = A.subWalkString_(
-      A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.conditionPtr)
-    );
-
-  var /** @const {!Array<string>} */ lines = [];
-  A.emitFlatSwitchHeader_(lines, ind, condStr, outerLabel, info);
-
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_>} */ groups = info.caseGroups;
-  for (var /** number */ gi = 0; gi < groups.length; ++gi) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ group = groups[gi];
-    var /** @const {!Array<number>} */ indices = group.indices;
-    for (var /** number */ ii = 0; ii < indices.length; ++ii) {
-      lines[lines.length] = pad(ind + 1) + 'case ' + indices[ii] + ':\n';
-    }
-    var /** @const {number} */ savedIndent = state.indent;
-    state.indent = ind + 2;
-    var /** @const {boolean} */ strippedBreak = A.emitSwitchCaseActions_(
-        lines,
-        state.wasmModule,
-        binaryen,
-        state.functionInfo,
-        vis,
-        group.actionPtrs,
-        ind + 2,
-        info.outerName
-      );
-    state.indent = savedIndent;
-    if (group.externalTarget) {
-      if (state.rootSwitchExitMap && group.externalTarget in state.rootSwitchExitMap) {
-        var /** @const {number} */ rsSavedInd = state.indent;
-        state.indent = ind + 2;
-        var /** @const {boolean} */ rsEtTerminal = A.emitRootSwitchExitCode_(
-            lines,
-            state.wasmModule,
-            binaryen,
-            state.functionInfo,
-            vis,
-            state.rootSwitchExitMap[group.externalTarget],
-            ind + 2
-          );
-        state.indent = rsSavedInd;
-        if (!rsEtTerminal) {
-          lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-        }
-      } else if (state.rootSwitchRsName && group.externalTarget === state.rootSwitchRsName) {
-        lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-      } else {
-        lines[lines.length] =
-          pad(ind + 2) +
-          this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, group.externalTarget);
-      }
-    } else if (group.needsBreak || strippedBreak) {
-      A.emitFlatSwitchBreak_(lines, ind + 2, outerLabel, info);
-    }
-  }
-
-  var /** @type {?Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ defGroup = info.defaultGroup;
-  if (defGroup) {
-    lines[lines.length] = pad(ind + 1) + 'default:\n';
-    var /** @const {number} */ savedIndent2 = state.indent;
-    state.indent = ind + 2;
-    var /** @const {boolean} */ strippedDefBreak = A.emitSwitchCaseActions_(
-        lines,
-        state.wasmModule,
-        binaryen,
-        state.functionInfo,
-        vis,
-        defGroup.actionPtrs,
-        ind + 2,
-        info.outerName
-      );
-    state.indent = savedIndent2;
-    if (defGroup.externalTarget) {
-      if (state.rootSwitchExitMap && defGroup.externalTarget in state.rootSwitchExitMap) {
-        var /** @const {number} */ rsDefSavedInd = state.indent;
-        state.indent = ind + 2;
-        var /** @const {boolean} */ rsDefEtTerminal = A.emitRootSwitchExitCode_(
-            lines,
-            state.wasmModule,
-            binaryen,
-            state.functionInfo,
-            vis,
-            state.rootSwitchExitMap[defGroup.externalTarget],
-            ind + 2
-          );
-        state.indent = rsDefSavedInd;
-        if (!rsDefEtTerminal) {
-          lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-        }
-      } else if (state.rootSwitchRsName && defGroup.externalTarget === state.rootSwitchRsName) {
-        lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-      } else {
-        lines[lines.length] =
-          pad(ind + 2) +
-          this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, defGroup.externalTarget);
-      }
-    } else if (defGroup.needsBreak || strippedDefBreak) {
-      A.emitFlatSwitchBreak_(lines, ind + 2, outerLabel, info);
-    }
-  }
-
-  lines[lines.length] = pad(ind) + '}\n';
-  state.lastExprIsTerminal = !!defGroup;
-  return lines.join('');
+  var /** @const */ fsResult = this.emitLabeledFlatSwitch_(state, nodeCtx);
+  state.lastExprIsTerminal = fsResult.hasDefault;
+  return fsResult.result;
 };
 
 /**
@@ -1344,39 +1203,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFlatSwitch_ = function (state, nodeC
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitRootSwitch_ = function (state, nodeCtx) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
-    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_} */ info =
-    /** @type {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_} */ (
-      A.extractRootSwitchStructure_(binaryen, nodeCtx.expressionPointer)
-    );
-
-  // Set up root-switch state for BreakId / flat-switch interception.
-  state.rootSwitchExitMap = info.exitPaths;
-  state.rootSwitchRsName = info.rsBlockName;
-  state.rootSwitchLoopName = info.loopName;
-
-  // Register label kinds so nested code can resolve break targets.
-  state.labelKinds[info.loopName] = 'loop';
-  for (var /** @type {string} */ exitName in info.exitPaths) {
-    state.labelKinds[exitName] = 'block';
-  }
-
-  // Sub-walk the loop — its enter/leave produce the complete loop code.
-  var /** @const {string} */ loopCode = A.subWalkString_(
-      A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.loopPtr)
-    );
-
-  // Clear root-switch state.
-  state.rootSwitchExitMap = null;
-  state.rootSwitchRsName = '';
-  state.rootSwitchLoopName = '';
-
-  return loopCode;
+  return this.emitLabeledRootSwitch_(state, nodeCtx);
 };
 
 /**
@@ -1388,51 +1215,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitRootSwitch_ = function (state, nodeC
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitEnter_ = function (state, nodeCtx) {
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
-  var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ hp = A.hasPrefix_;
-
-  if (binaryen.BlockId === id) {
-    var /** @const {?string} */ bName = /** @type {?string} */ (expr['name']);
-    if (bName) {
-      state.labelKinds[bName] = 'block';
-      if (hp(bName, A.LB_FUSION_PREFIX_)) {
-        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr['children']);
-        if (ch && 1 === ch.length && binaryen.getExpressionInfo(ch[0]).id === binaryen.LoopId) {
-          state.pendingBlockFusion = bName;
-        } else {
-          state.fusedBlockToLoop[bName] = state.currentLoopName;
-        }
-      } else if (hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
-        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (hp(bName, A.SW_DISPATCH_PREFIX_)) {
-        ++state.indent;
-        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else {
-        ++state.indent;
-      }
-    }
-  } else if (binaryen.LoopId === id) {
-    var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
-    state.labelKinds[loopName] = 'loop';
-    state.currentLoopName = loopName;
-    ++state.indent;
-    if ('' !== state.pendingBlockFusion) {
-      state.fusedBlockToLoop[state.pendingBlockFusion] = loopName;
-      state.pendingBlockFusion = '';
-    }
-    if (hp(loopName, A.LD_DOWHILE_PREFIX_) || hp(loopName, A.LE_DOWHILE_PREFIX_)) {
-      state.doWhileBodyPtrs[String(/** @type {number} */ (expr['body']))] = true;
-    } else if (hp(loopName, A.LW_WHILE_PREFIX_) || hp(loopName, A.LY_WHILE_PREFIX_)) {
-      state.whileBodyPtrs[String(/** @type {number} */ (expr['body']))] = true;
-    }
-  } else if (binaryen.IfId === id) {
-    ++state.indent;
-  }
-
-  return null;
+  return this.emitLabeledEnter_(state, nodeCtx);
 };
 
 // ---------------------------------------------------------------------------
@@ -1530,16 +1313,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
       /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
         enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { return self.emitEnter_(emitState, nc); },
         leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) {
-          var /** @const {!Object<string, *>} */ e = /** @type {!Object<string, *>} */ (nc.expression);
-          var /** @const {number} */ eId = /** @type {number} */ (e['id']);
-          if (binaryen.LoopId === eId || binaryen.IfId === eId) {
-            --emitState.indent;
-          } else if (binaryen.BlockId === eId && e['name']) {
-            if (0 !== /** @type {string} */ (e['name']).indexOf(Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_) &&
-                0 !== /** @type {string} */ (e['name']).indexOf(Wasm2Lang.Backend.AbstractCodegen.RS_ROOT_SWITCH_PREFIX_)) {
-              --emitState.indent;
-            }
-          }
+          self.adjustLeaveIndent_(emitState, nc);
           return self.emitLeave_(emitState, nc, cr || []);
         }
       });

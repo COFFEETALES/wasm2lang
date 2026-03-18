@@ -179,6 +179,98 @@ const verifyMVPOps = function (exports) {
     ],
     (startAccumulator, startState) => exports.exerciseSwitchConditionalEscape(startAccumulator, startState)
   );
+
+  // Nested arithmetic trees — deeply nested i32 expressions.
+  invokeScenarios([[42], [0], [-1], [2147483647], [1], [255], [-100]], a => exports.exerciseNestedArithmetic(a));
+
+  // Memory-driven arithmetic — store/load/compute chains.
+  invokeScenarios(
+    [
+      [42, 7],
+      [0, 0],
+      [-1, 1],
+      [0x12345678, -100],
+      [255, 256]
+    ],
+    (a, b) => exports.exerciseMemoryArithmetic(a, b)
+  );
+
+  // Mixed-type chains — cross-type conversions and arithmetic.
+  invokeScenarios(
+    [
+      [42, Math.fround(3.5), 2.75],
+      [0, Math.fround(0.0), 0.0],
+      [-1, Math.fround(-1.5), -1.5],
+      [100, Math.fround(0.125), 100.0]
+    ],
+    (a, b, c) => exports.exerciseMixedTypeChains(a, b, c)
+  );
+
+  // Edge arithmetic — overflow, boundary, and identity tests.
+  exports.exerciseEdgeArithmetic();
+
+  // Mixed-width loads — signed/unsigned byte and halfword arithmetic.
+  invokeScenarios(
+    [
+      [42, 7],
+      [0, 0],
+      [-1, 1],
+      [0x12345678, -100],
+      [255, 128],
+      [-128, -1]
+    ],
+    (a, b) => exports.exerciseMixedWidthLoads(a, b)
+  );
+
+  // Load-to-float — memory loads converted to f32/f64 and combined.
+  invokeScenarios(
+    [
+      [42, 7],
+      [0, 0],
+      [-1, 1],
+      [0x12345678, -100],
+      [255, 256],
+      [-128, 127]
+    ],
+    (a, b) => exports.exerciseLoadToFloat(a, b)
+  );
+
+  // Cross-type pipeline — deep multi-stage mixed-type pipelines.
+  invokeScenarios(
+    [
+      [42, Math.fround(3.5), 2.75],
+      [0, Math.fround(0.0), 0.0],
+      [-1, Math.fround(-1.5), -1.5],
+      [100, Math.fround(0.125), 100.0],
+      [255, Math.fround(10.0), -50.0]
+    ],
+    (a, b, c) => exports.exerciseCrossTypePipeline(a, b, c)
+  );
+
+  // Sub-word store/reload — store8/store16 computed values, byte-assembly, multi-stage chains.
+  invokeScenarios(
+    [
+      [42, 7],
+      [0, 0],
+      [-1, 1],
+      [0x12345678, -100],
+      [255, 128],
+      [-128, -1]
+    ],
+    (a, b) => exports.exerciseSubWordStoreReload(a, b)
+  );
+
+  // Precision and reinterpret — f32 precision boundaries, fractional truncation, reinterpret chains.
+  invokeScenarios(
+    [
+      [42, Math.fround(3.5), 2.75],
+      [0, Math.fround(0.0), 0.0],
+      [-1, Math.fround(-1.5), -1.5],
+      [100, Math.fround(0.125), 100.0],
+      [255, Math.fround(10.0), -50.0]
+    ],
+    (a, b, c) => exports.exercisePrecisionAndReinterpret(a, b, c)
+  );
 };
 
 const runTest = function (buff, out, exports) {

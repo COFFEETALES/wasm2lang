@@ -648,9 +648,46 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderCoercionByType_ = function (binar
     return this.n_('_w2l_f32') + '(' + expr + ')';
   }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
+    if (0 === expr.indexOf('(float)')) return expr;
     return '(float)(' + expr + ')';
   }
   return expr;
+};
+
+/**
+ * PHP helpers declare typed return values (`: int`, `: float`), so the
+ * coercion wrapper that the base implementation adds is always redundant.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} helperName
+ * @param {!Array<string>} args
+ * @param {number} resultType
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.renderHelperCall_ = function (binaryen, helperName, args, resultType) {
+  this.markHelper_(helperName);
+  return this.n_(helperName) + '(' + args.join(', ') + ')';
+};
+
+/**
+ * PHP float is always f64 — an f32-clipped value is still a PHP float, so
+ * CAT_F32 satisfies an f64 target without an additional cast.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} expr
+ * @param {number} cat
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.coerceToType_ = function (binaryen, expr, cat, wasmType) {
+  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType) && Wasm2Lang.Backend.AbstractCodegen.CAT_F32 === cat) {
+    return expr;
+  }
+  return Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_.call(this, binaryen, expr, cat, wasmType);
 };
 
 /**
@@ -682,9 +719,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.getRuntimeHelperPrefix_ = function () {
  * @param {!Binaryen} binaryen
  * @param {!Wasm2Lang.Backend.NumericOps.UnaryOpInfo} info
  * @param {string} valueExpr
+ * @param {number=} opt_valueCat
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr) {
+Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr, opt_valueCat) {
   var /** @const {string} */ name = info.opName;
   var /** @const {boolean} */ isF32 = Wasm2Lang.Backend.ValueType.isF32(binaryen, info.operandType);
   var /** @const {string} */ nI = this.n_('_w2l_i');
@@ -692,9 +730,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
 
   if ('abs' === name || 'ceil' === name || 'floor' === name || 'sqrt' === name) {
     if (isF32) {
-      return nF32 + '(' + name + '((float)(' + valueExpr + ')))';
+      return nF32 + '(' + name + '(' + this.renderCoercionByType_(binaryen, valueExpr, info.operandType) + '))';
     }
-    return name + '((float)(' + valueExpr + '))';
+    return name + '(' + this.renderCoercionByType_(binaryen, valueExpr, info.operandType) + ')';
   }
 
   if ('convert_s_i32_to_f32' === name) {
@@ -705,13 +743,21 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
   }
 
   if ('demote_f64_to_f32' === name) {
-    return nF32 + '((float)(' + valueExpr + '))';
+    return nF32 + '(' + this.renderCoercionByType_(binaryen, valueExpr, info.operandType) + ')';
   }
   if ('promote_f32_to_f64' === name) {
-    return '(float)' + nF32 + '(' + valueExpr + ')';
+    // PHP float is f64 — the f32 operand is already a PHP float, promotion is a no-op.
+    return valueExpr;
   }
 
-  return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_.call(this, binaryen, info, valueExpr);
+  // f64/f32 neg: negation of a float is always float — WASM typing guarantees
+  // the operand is already the correct float type, skip the coercion wrapper.
+  if ('neg' === name) {
+    var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    return isF32 ? nF32 + '(' + P.renderPrefix('-', valueExpr) + ')' : P.renderPrefix('-', valueExpr);
+  }
+
+  return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_.call(this, binaryen, info, valueExpr, opt_valueCat);
 };
 
 /**
@@ -729,21 +775,36 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericBinaryOp_ = function (bina
     if (Wasm2Lang.Backend.ValueType.isF32(binaryen, info.retType)) {
       return this.n_('_w2l_f32') + '(' + fn + '((float)(' + L + '), (float)(' + R + ')))';
     }
-    return fn + '((float)(' + L + '), (float)(' + R + '))';
+    return (
+      fn +
+      '(' +
+      this.renderCoercionByType_(binaryen, L, info.retType) +
+      ', ' +
+      this.renderCoercionByType_(binaryen, R, info.retType) +
+      ')'
+    );
+  }
+
+  // f64 arithmetic: coerce operands individually — PHP float arithmetic
+  // preserves the float type, so the outer (float) wrap is unnecessary.
+  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, info.retType) && !info.isComparison && '' !== info.opStr) {
+    var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    var /** @type {number} */ precedence = P.PREC_ADDITIVE_;
+    if ('mul' === info.opName || 'div' === info.opName) {
+      precedence = P.PREC_MULTIPLICATIVE_;
+    }
+    return P.renderInfix(
+      this.renderCoercionByType_(binaryen, L, info.retType),
+      info.opStr,
+      this.renderCoercionByType_(binaryen, R, info.retType),
+      precedence
+    );
   }
 
   return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_.call(this, binaryen, info, L, R);
 };
 
-/**
- * @override
- * @protected
- * @param {string} conditionExpr
- * @return {string}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
-  return '(' + conditionExpr + ' ? 1 : 0)';
-};
+// renderNumericComparisonResult_: inherited from AbstractCodegen (ternary ? 1 : 0).
 
 /**
  * @private
@@ -774,14 +835,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderPtrWithOffset_ = function (baseEx
   return this.n_('_w2l_i') + '(' + P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_) + ')';
 };
 
-/**
- * @private
- * @param {string} expr
- * @return {string}
- */
-Wasm2Lang.Backend.Php64Codegen.formatCondition_ = function (expr) {
-  return Wasm2Lang.Backend.AbstractCodegen.Precedence_.formatCondition(expr);
-};
+// formatCondition_: inherited from AbstractCodegen (delegates to Precedence_).
 
 // ---------------------------------------------------------------------------
 // Expression emitter (leave callback).
@@ -831,18 +885,36 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
         ? C.FIXNUM
         : Wasm2Lang.Backend.ValueType.isF32(binaryen, constType)
           ? A.CAT_F32
+          : A.CAT_F64;
+      break;
+    }
+    case binaryen.LocalGetId: {
+      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr['index']);
+      var /** @const {number} */ localGetType = Wasm2Lang.Backend.ValueType.getLocalType(
+          binaryen,
+          state.functionInfo,
+          localGetIdx
+        );
+      result = this.localN_(localGetIdx);
+      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, localGetType)
+        ? A.CAT_F64
+        : Wasm2Lang.Backend.ValueType.isF32(binaryen, localGetType)
+          ? A.CAT_F32
           : A.CAT_RAW;
       break;
     }
-    case binaryen.LocalGetId:
-      result = this.localN_(/** @type {number} */ (expr['index']));
-      resultCat = A.CAT_RAW;
-      break;
 
-    case binaryen.GlobalGetId:
-      result = this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(/** @type {string} */ (expr['name'])));
-      resultCat = A.CAT_RAW;
+    case binaryen.GlobalGetId: {
+      var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
+      var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
+      result = this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globalGetName));
+      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
+        ? A.CAT_F64
+        : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
+          ? A.CAT_F32
+          : A.CAT_RAW;
       break;
+    }
 
     case binaryen.BinaryId: {
       var /** @const {number} */ binaryOp = /** @type {number} */ (expr['op']);
@@ -857,7 +929,41 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
         var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numericBinInfo =
             Wasm2Lang.Backend.NumericOps.classifyBinaryOp(binaryen, binaryOp);
         if (numericBinInfo) {
-          result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1));
+          // f64 arithmetic/min/max: coerce operands individually using categories
+          // so that known-float operands (locals, consts, loads) skip the cast.
+          var /** @const {boolean} */ isF64Ret = Wasm2Lang.Backend.ValueType.isF64(binaryen, numericBinInfo.retType);
+          var /** @const {boolean} */ isF32Ret = Wasm2Lang.Backend.ValueType.isF32(binaryen, numericBinInfo.retType);
+          var /** @const {string} */ numBinOpName = numericBinInfo.opName;
+          // Float min/max: coerce operands with categories so that known-float
+          // operands (locals, consts, loads, helper results) skip the cast.
+          if ((isF64Ret || isF32Ret) && ('min' === numBinOpName || 'max' === numBinOpName)) {
+            var /** @const {string} */ mmInner =
+                numBinOpName +
+                '(' +
+                this.coerceToType_(binaryen, cr(0), cc(0), numericBinInfo.retType) +
+                ', ' +
+                this.coerceToType_(binaryen, cr(1), cc(1), numericBinInfo.retType) +
+                ')';
+            result = isF32Ret ? this.n_('_w2l_f32') + '(' + mmInner + ')' : mmInner;
+          } else if (isF64Ret && !numericBinInfo.isComparison) {
+            if ('' !== numericBinInfo.opStr) {
+              var /** @type {number} */ f64Prec = A.Precedence_.PREC_ADDITIVE_;
+              if ('mul' === numBinOpName || 'div' === numBinOpName) {
+                f64Prec = A.Precedence_.PREC_MULTIPLICATIVE_;
+              }
+              result = A.Precedence_.renderInfix(
+                this.coerceToType_(binaryen, cr(0), cc(0), numericBinInfo.retType),
+                numericBinInfo.opStr,
+                this.coerceToType_(binaryen, cr(1), cc(1), numericBinInfo.retType),
+                f64Prec
+              );
+            } else {
+              // copysign — delegate to renderNumericBinaryOp_.
+              result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1));
+            }
+          } else {
+            result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1));
+          }
           resultCat = A.catForCoercedType_(binaryen, numericBinInfo.retType);
         } else {
           result = '0 /* unknown binop ' + expr['op'] + ' */';
@@ -891,7 +997,22 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
         var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numericUnInfo =
             Wasm2Lang.Backend.NumericOps.classifyUnaryOp(binaryen, /** @type {number} */ (expr['op']));
         if (numericUnInfo) {
-          result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0));
+          // f64 abs/ceil/floor/sqrt/demote: coerce operand using category so
+          // that known-float operands skip the redundant (float) cast.
+          var /** @const {string} */ unOpName = numericUnInfo.opName;
+          if (
+            Wasm2Lang.Backend.ValueType.isF64(binaryen, numericUnInfo.operandType) &&
+            ('abs' === unOpName || 'ceil' === unOpName || 'floor' === unOpName || 'sqrt' === unOpName)
+          ) {
+            result = unOpName + '(' + this.coerceToType_(binaryen, cr(0), cc(0), numericUnInfo.operandType) + ')';
+          } else if (
+            Wasm2Lang.Backend.ValueType.isF64(binaryen, numericUnInfo.operandType) &&
+            'demote_f64_to_f32' === unOpName
+          ) {
+            result = this.n_('_w2l_f32') + '(' + this.coerceToType_(binaryen, cr(0), cc(0), numericUnInfo.operandType) + ')';
+          } else {
+            result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0));
+          }
           resultCat = A.catForCoercedType_(binaryen, numericUnInfo.retType);
         } else {
           result = '0 /* unknown unop ' + expr['op'] + ' */';
@@ -908,7 +1029,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ nBuf = this.phpVar_('buffer');
 
       if (Wasm2Lang.Backend.ValueType.isF64(binaryen, loadType)) {
-        result = "(float)(unpack('e', " + nBuf + ', ' + loadPtr + ')[1])';
+        result = "unpack('e', " + nBuf + ', ' + loadPtr + ')[1]';
       } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, loadType)) {
         result = this.n_('_w2l_f32') + "(unpack('g', " + nBuf + ', ' + loadPtr + ')[1])';
       } else if (4 === loadBytes) {
@@ -948,9 +1069,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
           storePtr +
           '; ' +
           tS +
-          " = pack('e', (float)(" +
-          cr(1) +
-          ')); ' +
+          " = pack('e', " +
+          this.coerceToType_(binaryen, cr(1), cc(1), storeType) +
+          '); ' +
           sBuf +
           '[' +
           tP +
@@ -1079,9 +1200,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
           storePtr +
           '; ' +
           tS +
-          " = pack('v', " +
+          " = pack('v', (" +
           this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
-          ' & 0xFFFF); ' +
+          ') & 0xFFFF); ' +
           sBuf +
           '[' +
           tP +
@@ -1100,24 +1221,24 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
           sBuf +
           '[' +
           storePtr +
-          '] = chr(' +
+          '] = chr((' +
           this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
-          ' & 0xFF);\n';
+          ') & 0xFF);\n';
       }
       break;
     }
     case binaryen.LocalSetId: {
-      var /** @const {boolean} */ isTee = !!expr['isTee'];
-      var /** @const {number} */ setIdx = /** @type {number} */ (expr['index']);
-      var /** @const {number} */ localType = Wasm2Lang.Backend.ValueType.getLocalType(binaryen, state.functionInfo, setIdx);
-      var /** @const {string} */ setValue = this.coerceToType_(binaryen, cr(0), cc(0), localType);
-      var /** @const {string} */ setLocalName = this.localN_(setIdx);
-      if (isTee) {
-        result = '(' + setLocalName + ' = ' + setValue + ')';
-        resultCat = A.catForCoercedType_(binaryen, localType);
-      } else {
-        result = pad(ind) + setLocalName + ' = ' + setValue + ';\n';
-      }
+      var /** @const */ lsResult = this.emitLocalSet_(
+          binaryen,
+          state.functionInfo,
+          ind,
+          !!expr['isTee'],
+          /** @type {number} */ (expr['index']),
+          cr(0),
+          cc(0)
+        );
+      result = lsResult.result;
+      resultCat = lsResult.resultCat;
       break;
     }
     case binaryen.GlobalSetId: {
@@ -1209,17 +1330,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ childInd = blockName && !isFusedBlock ? ind + 1 : ind;
       var /** @const {number} */ emitCount =
           hasTrailingCond && 0 < childResults.length ? childResults.length - 1 : childResults.length;
-      var /** @const {!Array<string>} */ blockLines = [];
-      for (var /** number */ bi = 0; bi < emitCount; ++bi) {
-        var /** @const {string} */ childCode = cr(bi);
-        if ('' !== childCode) {
-          if (-1 === childCode.indexOf('\n')) {
-            blockLines[blockLines.length] = pad(childInd) + childCode + ';\n';
-          } else {
-            blockLines[blockLines.length] = childCode;
-          }
-        }
-      }
+      var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
       if (isDWBody) {
         state.doWhileConditionStr = cr(childResults.length - 1);
       }
@@ -1227,11 +1338,11 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
         state.whileConditionStr = cr(childResults.length - 1);
       }
       if (isFusedBlock) {
-        result = blockLines.join('');
+        result = blockBody;
       } else if (blockName) {
-        result = pad(ind) + 'do {\n' + blockLines.join('') + pad(ind) + '} while (false);\n';
+        result = pad(ind) + 'do {\n' + blockBody + pad(ind) + '} while (false);\n';
       } else {
-        result = blockLines.join('');
+        result = blockBody;
       }
       break;
     }
@@ -1242,31 +1353,20 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       } else if (hp(loopName, A.LE_DOWHILE_PREFIX_) || hp(loopName, A.LD_DOWHILE_PREFIX_)) {
         var /** @const {string} */ dwCond = state.doWhileConditionStr;
         state.doWhileConditionStr = '';
-        result =
-          pad(ind) + 'do {\n' + cr(0) + pad(ind) + '} while ' + Wasm2Lang.Backend.Php64Codegen.formatCondition_(dwCond) + ';\n';
+        result = pad(ind) + 'do {\n' + cr(0) + pad(ind) + '} while ' + this.formatCondition_(dwCond) + ';\n';
       } else if (hp(loopName, A.LY_WHILE_PREFIX_) || hp(loopName, A.LW_WHILE_PREFIX_)) {
         var /** @const {string} */ whCond = state.whileConditionStr;
         state.whileConditionStr = '';
-        result =
-          pad(ind) + 'while ' + Wasm2Lang.Backend.Php64Codegen.formatCondition_(whCond) + ' {\n' + cr(0) + pad(ind) + '}\n';
+        result = pad(ind) + 'while ' + this.formatCondition_(whCond) + ' {\n' + cr(0) + pad(ind) + '}\n';
       } else {
         result = pad(ind) + 'while (true) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
       }
       break;
     }
 
-    case binaryen.IfId: {
-      var /** @const {number} */ ifFalsePtr = /** @type {number} */ (expr['ifFalse']);
-      var /** @type {string} */ condExpr = Wasm2Lang.Backend.Php64Codegen.formatCondition_(cr(0));
-      var /** @type {string} */ trueCode = cr(1);
-      if (0 !== ifFalsePtr && 2 < childResults.length) {
-        var /** @type {string} */ falseCode = cr(2);
-        result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '} else {\n' + falseCode + pad(ind) + '}\n';
-      } else {
-        result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '}\n';
-      }
+    case binaryen.IfId:
+      result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
       break;
-    }
     case binaryen.BreakId: {
       var /** @const {string} */ brName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ brCondPtr = /** @type {number} */ (expr['condition']);
@@ -1299,14 +1399,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
             rsExitLines[rsExitLines.length] = pad(ind) + 'break' + (1 < rsLoopDepth ? ' ' + rsLoopDepth : '') + ';\n';
           }
           if (0 !== brCondPtr) {
-            result =
-              pad(ind) +
-              'if ' +
-              Wasm2Lang.Backend.Php64Codegen.formatCondition_(cr(0)) +
-              ' {\n' +
-              rsExitLines.join('') +
-              pad(ind) +
-              '}\n';
+            result = pad(ind) + 'if ' + this.formatCondition_(cr(0)) + ' {\n' + rsExitLines.join('') + pad(ind) + '}\n';
           } else {
             result = rsExitLines.join('');
           }
@@ -1322,19 +1415,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
             }
           }
           var /** @const {string} */ rsBrStmt = 'break' + (1 < rsBreakDepth ? ' ' + rsBreakDepth : '') + ';\n';
-          if (0 !== brCondPtr) {
-            result =
-              pad(ind) +
-              'if ' +
-              Wasm2Lang.Backend.Php64Codegen.formatCondition_(cr(0)) +
-              ' {\n' +
-              pad(ind + 1) +
-              rsBrStmt +
-              pad(ind) +
-              '}\n';
-          } else {
-            result = pad(ind) + rsBrStmt;
-          }
+          result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), rsBrStmt);
           break;
         }
       }
@@ -1354,19 +1435,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       }
 
       var /** @const {string} */ brStmt = ('loop' === brKind ? 'continue' : 'break') + (1 < depth ? ' ' + depth : '') + ';\n';
-      if (0 !== brCondPtr) {
-        result =
-          pad(ind) +
-          'if ' +
-          Wasm2Lang.Backend.Php64Codegen.formatCondition_(cr(0)) +
-          ' {\n' +
-          pad(ind + 1) +
-          brStmt +
-          pad(ind) +
-          '}\n';
-      } else {
-        result = pad(ind) + brStmt;
-      }
+      result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), brStmt);
       break;
     }
     case binaryen.SwitchId: {

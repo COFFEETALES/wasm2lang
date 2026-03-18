@@ -288,6 +288,16 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderFloatCoercion_ = function (expr) 
 /**
  * @override
  * @protected
+ * @param {string} condStr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceSwitchCondition_ = function (condStr) {
+  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(condStr);
+};
+
+/**
+ * @override
+ * @protected
  * @param {!Binaryen} binaryen
  * @param {string} expr
  * @param {number} wasmType
@@ -365,9 +375,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.buildFunctionIdentifier_ = function (fu
  * @param {!Binaryen} binaryen
  * @param {!Wasm2Lang.Backend.NumericOps.UnaryOpInfo} info
  * @param {string} valueExpr
+ * @param {number=} opt_valueCat
  * @return {string}
  */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr) {
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr, opt_valueCat) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const {string} */ name = info.opName;
   var /** @const {boolean} */ isF32 = Wasm2Lang.Backend.ValueType.isF32(binaryen, info.operandType);
@@ -414,7 +425,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericUnaryOp_ = function (binar
     return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_('~~' + P.wrap(valueExpr, P.PREC_UNARY_, true));
   }
 
-  return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_.call(this, binaryen, info, valueExpr);
+  return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_.call(this, binaryen, info, valueExpr, opt_valueCat);
 };
 
 /**
@@ -449,7 +460,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericBinaryOp_ = function (bina
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
-  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_('(' + conditionExpr + ')');
+  // Comparisons produce fixnum (0 or 1) in asm.js — no |0 coercion needed.
+  return '(' + conditionExpr + ')';
 };
 
 /**
@@ -474,7 +486,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderArithmeticBinaryOp_ = function (i
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderMultiplyBinaryOp_ = function (info, L, R) {
   void info;
   this.markBinding_('Math_imul');
-  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(this.n_('Math_imul') + '(' + L + ', ' + R + ')');
+  // Math.imul(intish, intish) returns signed in asm.js — no |0 needed.
+  return this.n_('Math_imul') + '(' + L + ', ' + R + ')';
 };
 
 /**
@@ -591,14 +604,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderComparisonOperand_ = function (ex
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderComparisonBinaryOp_ = function (info, L, R) {
-  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
+  // Comparisons produce fixnum (0 or 1) in asm.js — no |0 coercion needed.
+  return (
     '(' +
-      this.renderComparisonOperand_(L, info.unsigned) +
-      ' ' +
-      info.opStr +
-      ' ' +
-      this.renderComparisonOperand_(R, info.unsigned) +
-      ')'
+    this.renderComparisonOperand_(L, info.unsigned) +
+    ' ' +
+    info.opStr +
+    ' ' +
+    this.renderComparisonOperand_(R, info.unsigned) +
+    ')'
   );
 };
 
@@ -1210,15 +1224,6 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHeapAccess_ = function (binaryen,
 
 /**
  * @private
- * @param {string} expr
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.formatCondition_ = function (expr) {
-  return Wasm2Lang.Backend.AbstractCodegen.Precedence_.formatCondition(expr);
-};
-
-/**
- * @private
  * @param {!Wasm2Lang.Backend.AsmjsCodegen.EmitState_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
@@ -1277,13 +1282,18 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         );
       if (binInfo) {
         result = this.renderBinaryOp_(binInfo, cr(0), cr(1));
-        resultCat = C.OP_BITWISE === binInfo.category && binInfo.unsigned ? C.UNSIGNED : C.SIGNED;
+        resultCat =
+          C.OP_COMPARISON === binInfo.category
+            ? C.FIXNUM
+            : C.OP_BITWISE === binInfo.category && binInfo.unsigned
+              ? C.UNSIGNED
+              : C.SIGNED;
       } else {
         var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numericBinInfo =
             Wasm2Lang.Backend.NumericOps.classifyBinaryOp(binaryen, binaryOp);
         if (numericBinInfo) {
           result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1));
-          resultCat = A.catForCoercedType_(binaryen, numericBinInfo.retType);
+          resultCat = numericBinInfo.isComparison ? C.FIXNUM : A.catForCoercedType_(binaryen, numericBinInfo.retType);
         } else {
           result = '__unknown_binop_' + expr['op'] + '(' + cr(0) + ', ' + cr(1) + ')';
           resultCat = A.CAT_RAW;
@@ -1297,10 +1307,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           /** @type {number} */ (expr['op'])
         );
       if (C.UNARY_EQZ === unCat) {
-        result = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
-          Wasm2Lang.Backend.AbstractCodegen.Precedence_.renderPrefix('!', cr(0))
-        );
-        resultCat = C.SIGNED;
+        // !expr produces fixnum (0 or 1) in asm.js — no |0 coercion needed.
+        result = Wasm2Lang.Backend.AbstractCodegen.Precedence_.renderPrefix('!', cr(0));
+        resultCat = C.FIXNUM;
       } else if (C.UNARY_CLZ === unCat) {
         this.markBinding_('Math_clz32');
         result = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(this.n_('Math_clz32') + '(' + cr(0) + ')');
@@ -1364,16 +1373,17 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.LocalSetId: {
-      var /** @const {boolean} */ isTee = !!expr['isTee'];
-      var /** @const {number} */ setIdx = /** @type {number} */ (expr['index']);
-      var /** @const {number} */ localType = Wasm2Lang.Backend.ValueType.getLocalType(binaryen, state.functionInfo, setIdx);
-      var /** @const {string} */ setValue = this.coerceToType_(binaryen, cr(0), cc(0), localType);
-      if (isTee) {
-        result = '(' + this.localN_(setIdx) + ' = ' + setValue + ')';
-        resultCat = A.catForCoercedType_(binaryen, localType);
-      } else {
-        result = pad(ind) + this.localN_(setIdx) + ' = ' + setValue + ';\n';
-      }
+      var /** @const */ lsResult = this.emitLocalSet_(
+          binaryen,
+          state.functionInfo,
+          ind,
+          !!expr['isTee'],
+          /** @type {number} */ (expr['index']),
+          cr(0),
+          cc(0)
+        );
+      result = lsResult.result;
+      resultCat = lsResult.resultCat;
       break;
     }
     case binaryen.GlobalSetId: {
@@ -1423,7 +1433,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
       result = this.renderCoercionByType_(
         binaryen,
-        '(' + Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(cr(0)) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
+        '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
         selectType
       );
       resultCat = A.catForCoercedType_(binaryen, selectType);
@@ -1448,44 +1458,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         result = this.emitFlatSwitch_(state, nodeCtx);
         break;
       }
-      var /** @const {boolean} */ isFused = !!blockName && hp(blockName, A.LB_FUSION_PREFIX_);
-      var /** @const {string} */ blockPtrKey = String(nodeCtx.expressionPointer);
-      var /** @const {boolean} */ isDWBody = blockPtrKey in state.doWhileBodyPtrs;
-      if (isDWBody) {
-        delete state.doWhileBodyPtrs[blockPtrKey];
-      }
-      var /** @const {boolean} */ isWhileBody = blockPtrKey in state.whileBodyPtrs;
-      if (isWhileBody) {
-        delete state.whileBodyPtrs[blockPtrKey];
-      }
-      var /** @const {boolean} */ hasTrailingCond = isDWBody || isWhileBody;
-      var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
-      var /** @const {number} */ emitCount =
-          hasTrailingCond && 0 < childResults.length ? childResults.length - 1 : childResults.length;
-      var /** @const {!Array<string>} */ blockLines = [];
-      for (var /** number */ bi = 0; bi < emitCount; ++bi) {
-        var /** @const {string} */ childCode = cr(bi);
-        if ('' !== childCode) {
-          if (-1 === childCode.indexOf('\n')) {
-            blockLines[blockLines.length] = pad(childInd) + childCode + ';\n';
-          } else {
-            blockLines[blockLines.length] = childCode;
-          }
-        }
-      }
-      if (isDWBody) {
-        state.doWhileConditionStr = cr(childResults.length - 1);
-      }
-      if (isWhileBody) {
-        state.whileConditionStr = cr(childResults.length - 1);
-      }
-      if (isFused) {
-        result = blockLines.join('');
-      } else if (blockName) {
-        result = pad(ind) + this.labelN_(state.labelMap, blockName) + ': {\n' + blockLines.join('') + pad(ind) + '}\n';
-      } else {
-        result = blockLines.join('');
-      }
+      result = this.emitLabeledBlock_(state, nodeCtx, childResults);
       break;
     }
     case binaryen.LoopId: {
@@ -1506,8 +1479,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       } else if (hp(loopName, A.LY_WHILE_PREFIX_)) {
         var /** @const {string} */ whCondY = state.whileConditionStr;
         state.whileConditionStr = '';
-        result =
-          pad(ind) + 'while ' + Wasm2Lang.Backend.AsmjsCodegen.formatCondition_(whCondY) + ' {\n' + cr(0) + pad(ind) + '}\n';
+        result = pad(ind) + 'while ' + this.formatCondition_(whCondY) + ' {\n' + cr(0) + pad(ind) + '}\n';
       } else if (hp(loopName, A.LW_WHILE_PREFIX_)) {
         var /** @const {string} */ whCond = state.whileConditionStr;
         state.whileConditionStr = '';
@@ -1515,7 +1487,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           pad(ind) +
           this.labelN_(state.labelMap, loopName) +
           ': while ' +
-          Wasm2Lang.Backend.AsmjsCodegen.formatCondition_(whCond) +
+          this.formatCondition_(whCond) +
           ' {\n' +
           cr(0) +
           pad(ind) +
@@ -1533,18 +1505,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       }
       break;
     }
-    case binaryen.IfId: {
-      var /** @const {number} */ ifFalsePtr = /** @type {number} */ (expr['ifFalse']);
-      var /** @type {string} */ condExpr = Wasm2Lang.Backend.AsmjsCodegen.formatCondition_(cr(0));
-      var /** @type {string} */ trueCode = cr(1);
-      if (0 !== ifFalsePtr && 2 < childResults.length) {
-        var /** @type {string} */ falseCode = cr(2);
-        result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '} else {\n' + falseCode + pad(ind) + '}\n';
-      } else {
-        result = pad(ind) + 'if ' + condExpr + ' {\n' + trueCode + pad(ind) + '}\n';
-      }
+    case binaryen.IfId:
+      result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
       break;
-    }
     case binaryen.BreakId: {
       var /** @const {string} */ brName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ brCondPtr = /** @type {number} */ (expr['condition']);
@@ -1570,14 +1533,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
               pad(ind) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
           }
           if (0 !== brCondPtr) {
-            result =
-              pad(ind) +
-              'if ' +
-              Wasm2Lang.Backend.AsmjsCodegen.formatCondition_(cr(0)) +
-              ' {\n' +
-              rsExitLines.join('') +
-              pad(ind) +
-              '}\n';
+            result = pad(ind) + 'if ' + this.formatCondition_(cr(0)) + ' {\n' + rsExitLines.join('') + pad(ind) + '}\n';
           } else {
             result = rsExitLines.join('');
           }
@@ -1585,19 +1541,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         }
         if (brName === state.rootSwitchRsName) {
           var /** @const {string} */ rsBreakStmt = this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-          if (0 !== brCondPtr) {
-            result =
-              pad(ind) +
-              'if ' +
-              Wasm2Lang.Backend.AsmjsCodegen.formatCondition_(cr(0)) +
-              ' {\n' +
-              pad(ind + 1) +
-              rsBreakStmt +
-              pad(ind) +
-              '}\n';
-          } else {
-            result = pad(ind) + rsBreakStmt;
-          }
+          result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), rsBreakStmt);
           break;
         }
       }
@@ -1607,19 +1551,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           state.labelMap,
           brName
         );
-      if (0 !== brCondPtr) {
-        result =
-          pad(ind) +
-          'if ' +
-          Wasm2Lang.Backend.AsmjsCodegen.formatCondition_(cr(0)) +
-          ' {\n' +
-          pad(ind + 1) +
-          brStmt +
-          pad(ind) +
-          '}\n';
-      } else {
-        result = pad(ind) + brStmt;
-      }
+      result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), brStmt);
       break;
     }
     case binaryen.SwitchId: {
@@ -1669,124 +1601,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
-  var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const {number} */ ind = state.indent;
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
-    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ info =
-    /** @type {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ (
-      A.extractSwitchDispatchStructure_(binaryen, nodeCtx.expressionPointer)
-    );
-  var /** @const {string} */ outerLabel = this.labelN_(state.labelMap, info.outerName);
-
-  // Sub-walk the switch condition.
-  var /** @const {string} */ condStr = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
-      A.subWalkString_(A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.conditionPtr))
-    );
-
-  var /** @const {!Array<string>} */ lines = [];
-  A.emitFlatSwitchHeader_(lines, ind, condStr, outerLabel, info);
-
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_>} */ groups = info.caseGroups;
-  for (var /** number */ gi = 0; gi < groups.length; ++gi) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ group = groups[gi];
-    var /** @const {!Array<number>} */ indices = group.indices;
-    for (var /** number */ ii = 0; ii < indices.length; ++ii) {
-      lines[lines.length] = pad(ind + 1) + 'case ' + indices[ii] + ':\n';
-    }
-    var /** @const {number} */ savedIndent = state.indent;
-    state.indent = ind + 2;
-    var /** @const {boolean} */ strippedBreak = A.emitSwitchCaseActions_(
-        lines,
-        state.wasmModule,
-        binaryen,
-        state.functionInfo,
-        vis,
-        group.actionPtrs,
-        ind + 2,
-        info.outerName
-      );
-    state.indent = savedIndent;
-    if (group.externalTarget) {
-      if (state.rootSwitchExitMap && group.externalTarget in state.rootSwitchExitMap) {
-        var /** @const {number} */ rsSavedInd = state.indent;
-        state.indent = ind + 2;
-        var /** @const {boolean} */ rsEtTerminal = A.emitRootSwitchExitCode_(
-            lines,
-            state.wasmModule,
-            binaryen,
-            state.functionInfo,
-            vis,
-            state.rootSwitchExitMap[group.externalTarget],
-            ind + 2
-          );
-        state.indent = rsSavedInd;
-        if (!rsEtTerminal) {
-          lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-        }
-      } else if (state.rootSwitchRsName && group.externalTarget === state.rootSwitchRsName) {
-        lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-      } else {
-        lines[lines.length] =
-          pad(ind + 2) +
-          this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, group.externalTarget);
-      }
-    } else if (group.needsBreak || strippedBreak) {
-      A.emitFlatSwitchBreak_(lines, ind + 2, outerLabel, info);
-    }
-  }
-
-  var /** @type {?Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ defGroup = info.defaultGroup;
-  if (defGroup) {
-    lines[lines.length] = pad(ind + 1) + 'default:\n';
-    var /** @const {number} */ savedIndent2 = state.indent;
-    state.indent = ind + 2;
-    var /** @const {boolean} */ strippedDefBreak = A.emitSwitchCaseActions_(
-        lines,
-        state.wasmModule,
-        binaryen,
-        state.functionInfo,
-        vis,
-        defGroup.actionPtrs,
-        ind + 2,
-        info.outerName
-      );
-    state.indent = savedIndent2;
-    if (defGroup.externalTarget) {
-      if (state.rootSwitchExitMap && defGroup.externalTarget in state.rootSwitchExitMap) {
-        var /** @const {number} */ rsSavedDefInd = state.indent;
-        state.indent = ind + 2;
-        var /** @const {boolean} */ rsDefEtTerminal = A.emitRootSwitchExitCode_(
-            lines,
-            state.wasmModule,
-            binaryen,
-            state.functionInfo,
-            vis,
-            state.rootSwitchExitMap[defGroup.externalTarget],
-            ind + 2
-          );
-        state.indent = rsSavedDefInd;
-        if (!rsDefEtTerminal) {
-          lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-        }
-      } else if (state.rootSwitchRsName && defGroup.externalTarget === state.rootSwitchRsName) {
-        lines[lines.length] = pad(ind + 2) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-      } else {
-        lines[lines.length] =
-          pad(ind + 2) +
-          this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, defGroup.externalTarget);
-      }
-    } else if (defGroup.needsBreak || strippedDefBreak) {
-      A.emitFlatSwitchBreak_(lines, ind + 2, outerLabel, info);
-    }
-  }
-
-  lines[lines.length] = pad(ind) + '}\n';
-  return lines.join('');
+  return this.emitLabeledFlatSwitch_(state, nodeCtx).result;
 };
 
 /**
@@ -1799,39 +1614,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFlatSwitch_ = function (state, node
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.emitRootSwitch_ = function (state, nodeCtx) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
-    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_} */ info =
-    /** @type {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_} */ (
-      A.extractRootSwitchStructure_(binaryen, nodeCtx.expressionPointer)
-    );
-
-  // Set up root-switch state for BreakId / flat-switch interception.
-  state.rootSwitchExitMap = info.exitPaths;
-  state.rootSwitchRsName = info.rsBlockName;
-  state.rootSwitchLoopName = info.loopName;
-
-  // Register label kinds so nested code can resolve break targets.
-  state.labelKinds[info.loopName] = 'loop';
-  for (var /** @type {string} */ exitName in info.exitPaths) {
-    state.labelKinds[exitName] = 'block';
-  }
-
-  // Sub-walk the loop — its enter/leave produce the complete loop code.
-  var /** @const {string} */ loopCode = A.subWalkString_(
-      A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.loopPtr)
-    );
-
-  // Clear root-switch state.
-  state.rootSwitchExitMap = null;
-  state.rootSwitchRsName = '';
-  state.rootSwitchLoopName = '';
-
-  return loopCode;
+  return this.emitLabeledRootSwitch_(state, nodeCtx);
 };
 
 /**
@@ -1843,55 +1626,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitRootSwitch_ = function (state, node
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.emitEnter_ = function (state, nodeCtx) {
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
-  var /** @const {!Binaryen} */ binaryen = state.binaryen;
-
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ hp = A.hasPrefix_;
-
-  if (binaryen.BlockId === id) {
-    var /** @const {?string} */ bName = /** @type {?string} */ (expr['name']);
-    if (bName) {
-      state.labelKinds[bName] = 'block';
-      if (hp(bName, A.LB_FUSION_PREFIX_)) {
-        // Fused block: skip indent, record fusion.
-        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr['children']);
-        if (ch && 1 === ch.length && binaryen.getExpressionInfo(ch[0]).id === binaryen.LoopId) {
-          // Pattern A (block wraps loop): loop enters next, will pick up pending.
-          state.pendingBlockFusion = bName;
-        } else {
-          // Pattern B (block inside loop): loop already entered.
-          state.fusedBlockToLoop[bName] = state.currentLoopName;
-        }
-      } else if (hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
-        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (hp(bName, A.SW_DISPATCH_PREFIX_)) {
-        ++state.indent;
-        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else {
-        ++state.indent;
-      }
-    }
-  } else if (binaryen.LoopId === id) {
-    var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
-    state.labelKinds[loopName] = 'loop';
-    state.currentLoopName = loopName;
-    ++state.indent;
-    if ('' !== state.pendingBlockFusion) {
-      state.fusedBlockToLoop[state.pendingBlockFusion] = loopName;
-      state.pendingBlockFusion = '';
-    }
-    if (hp(loopName, A.LD_DOWHILE_PREFIX_) || hp(loopName, A.LE_DOWHILE_PREFIX_)) {
-      state.doWhileBodyPtrs[String(/** @type {number} */ (expr['body']))] = true;
-    } else if (hp(loopName, A.LW_WHILE_PREFIX_) || hp(loopName, A.LY_WHILE_PREFIX_)) {
-      state.whileBodyPtrs[String(/** @type {number} */ (expr['body']))] = true;
-    }
-  } else if (binaryen.IfId === id) {
-    ++state.indent;
-  }
-
-  return null;
+  return this.emitLabeledEnter_(state, nodeCtx);
 };
 
 /**
@@ -1977,17 +1712,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
       /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
         enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { return self.emitEnter_(emitState, nc); },
         leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) {
-          // Decrement indent for scope nodes before emitting their leave.
-          var /** @const {!Object<string, *>} */ e = /** @type {!Object<string, *>} */ (nc.expression);
-          var /** @const {number} */ eId = /** @type {number} */ (e['id']);
-          if (binaryen.LoopId === eId || binaryen.IfId === eId) {
-            --emitState.indent;
-          } else if (binaryen.BlockId === eId && e['name']) {
-            if (0 !== /** @type {string} */ (e['name']).indexOf(Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_) &&
-                0 !== /** @type {string} */ (e['name']).indexOf(Wasm2Lang.Backend.AbstractCodegen.RS_ROOT_SWITCH_PREFIX_)) {
-              --emitState.indent;
-            }
-          }
+          self.adjustLeaveIndent_(emitState, nc);
           return self.emitLeave_(emitState, nc, cr || []);
         }
       });

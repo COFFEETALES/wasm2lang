@@ -93,18 +93,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.leave_ = function (state, nodeCtx) {
-  var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
-  var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
-  var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
-      binaryen.getExpressionInfo(nodeCtx.expressionPointer)
-    );
-  return Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_(
+  return Wasm2Lang.Wasm.Tree.CustomPasses.applyLeaveRenaming_(
     Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER,
     state.fusionBlocks,
     null,
-    binaryen,
-    module,
-    expr
+    nodeCtx
   );
 };
 

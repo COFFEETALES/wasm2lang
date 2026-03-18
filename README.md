@@ -14,9 +14,31 @@
 `wasm2lang` is a CLI tool that reads WebAssembly modules and emits equivalent
 source code in other languages. The pipeline normalizes the input through
 configurable passes, traverses the IR, and emits code for a selected backend.
-The project intentionally focuses on WebAssembly MVP features so lowering can
-stay aligned with the most straightforward instructions/opcodes and remain
-more consistently compliant across backends.
+
+## Why wasm2lang exists
+
+`wasm2lang` was created around a simple idea: if your code already compiles to
+WebAssembly, you should be able to reuse that investment across multiple
+languages without rewriting the same core logic again and again.
+
+Instead of treating WebAssembly only as a runtime format, `wasm2lang` treats it
+as a portable intermediate representation for source-code generation. This makes
+it possible to share one logic base, then emit equivalent code for ecosystems
+such as Java, PHP, and asm.js.
+
+That approach matters because embedding a WebAssembly runtime is not always the
+right tradeoff. Depending on the environment, it may introduce integration
+friction, deployment limitations, or concerns around performance expectations
+compared with code that fits more naturally into the host language.
+
+`wasm2lang` is designed for those situations: preserve the benefits of a shared
+WebAssembly-based codebase while generating output that is easier to adopt,
+integrate, and operate in the target ecosystem.
+
+The project currently focuses on WebAssembly MVP features for straightforward
+and reliable lowering. Longer term, its ambition is broader: support more
+advanced WebAssembly features such as SIMD and threads, especially for backends
+where those features could map well to the host platform — including Java.
 
 ## Backends
 

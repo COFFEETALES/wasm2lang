@@ -224,23 +224,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.enter_ = 
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = function (state, nodeCtx) {
-  var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
-  var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
-  var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
-      binaryen.getExpressionInfo(nodeCtx.expressionPointer)
-    );
   var /** @const {string} */ M = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER;
 
   // Standard marker renaming for BreakId, SwitchId, and non-wrapping BlockId.
   var /** @const {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ renameResult =
-      Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_(
-        M,
-        state.switchOuterBlocks,
-        state.switchNeedsWrapping,
-        binaryen,
-        module,
-        expr
-      );
+      Wasm2Lang.Wasm.Tree.CustomPasses.applyLeaveRenaming_(M, state.switchOuterBlocks, state.switchNeedsWrapping, nodeCtx);
   if (renameResult) {
     return renameResult;
   }
@@ -249,6 +237,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
   // that needs wrapping.  Wrap the chain + trailing siblings in a new sw$
   // block, optionally excluding a trailing unconditional break so the loop
   // simplification pass can still detect the LC (for(;;)) pattern.
+  var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
+  // prettier-ignore
+  var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
+  // prettier-ignore
+  var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
+    binaryen.getExpressionInfo(nodeCtx.expressionPointer)
+  );
   if (expr.id === binaryen.BlockId) {
     var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (expr.children || []);
     if (children.length > 1) {
@@ -531,18 +526,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.enter_ = func
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.leave_ = function (st, nodeCtx) {
-  var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
-  var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
-  var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
-      binaryen.getExpressionInfo(nodeCtx.expressionPointer)
-    );
-  return Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_(
+  return Wasm2Lang.Wasm.Tree.CustomPasses.applyLeaveRenaming_(
     Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.MARKER,
     st.rootSwitchOuters,
     null,
-    binaryen,
-    module,
-    expr
+    nodeCtx
   );
 };
 

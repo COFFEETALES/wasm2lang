@@ -37,6 +37,28 @@ Wasm2Lang.Wasm.Tree.CustomPasses.createEnterVisitor = function (target, enterFn,
 };
 
 /**
+ * Convenience wrapper that extracts binaryen/module/expr from a traversal
+ * node context and delegates to {@code applyMarkerRenaming_}.  Used by
+ * leave_ callbacks that only need marker renaming (no additional logic).
+ *
+ * @param {string} marker
+ * @param {!Object<string, boolean>} targetSet
+ * @param {?Object<string, boolean>} exclusionSet
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.applyLeaveRenaming_ = function (marker, targetSet, exclusionSet, nodeCtx) {
+  var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
+  // prettier-ignore
+  var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
+  // prettier-ignore
+  var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
+    binaryen.getExpressionInfo(nodeCtx.expressionPointer)
+  );
+  return Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_(marker, targetSet, exclusionSet, binaryen, module, expr);
+};
+
+/**
  * Applies label-prefix renaming to BreakId, SwitchId, and BlockId nodes
  * whose label is in the target set (and not in the optional exclusion set).
  * Returns a REPLACE_NODE decision if renaming was applied, null otherwise.

@@ -96,4 +96,52 @@
     for (int[] scenario : new int[][] {{10, 0}, {30, 0}, {1, 0}, {0, 5}, {-10, 2}, {60, 2}, {5, -1}}) {
         mod.exerciseSwitchConditionalEscape(scenario[0], scenario[1]);
     }
+
+    // Nested arithmetic trees: deeply nested i32 expressions.
+    for (int a : new int[] {42, 0, -1, 2147483647, 1, 255, -100}) {
+        mod.exerciseNestedArithmetic(a);
+    }
+
+    // Memory-driven arithmetic: store/load/compute chains.
+    for (int[] scenario : new int[][] {{42, 7}, {0, 0}, {-1, 1}, {0x12345678, -100}, {255, 256}}) {
+        mod.exerciseMemoryArithmetic(scenario[0], scenario[1]);
+    }
+
+    // Mixed-type chains: cross-type conversions and arithmetic.
+    mod.exerciseMixedTypeChains(42, 3.5f, 2.75);
+    mod.exerciseMixedTypeChains(0, 0.0f, 0.0);
+    mod.exerciseMixedTypeChains(-1, -1.5f, -1.5);
+    mod.exerciseMixedTypeChains(100, 0.125f, 100.0);
+
+    // Edge arithmetic: overflow, boundary, and identity tests.
+    mod.exerciseEdgeArithmetic();
+
+    // Mixed-width loads: signed/unsigned byte and halfword arithmetic.
+    for (int[] scenario : new int[][] {{42, 7}, {0, 0}, {-1, 1}, {0x12345678, -100}, {255, 128}, {-128, -1}}) {
+        mod.exerciseMixedWidthLoads(scenario[0], scenario[1]);
+    }
+
+    // Load-to-float: memory loads converted to f32/f64 and combined.
+    for (int[] scenario : new int[][] {{42, 7}, {0, 0}, {-1, 1}, {0x12345678, -100}, {255, 256}, {-128, 127}}) {
+        mod.exerciseLoadToFloat(scenario[0], scenario[1]);
+    }
+
+    // Cross-type pipeline: deep multi-stage mixed-type pipelines.
+    mod.exerciseCrossTypePipeline(42, 3.5f, 2.75);
+    mod.exerciseCrossTypePipeline(0, 0.0f, 0.0);
+    mod.exerciseCrossTypePipeline(-1, -1.5f, -1.5);
+    mod.exerciseCrossTypePipeline(100, 0.125f, 100.0);
+    mod.exerciseCrossTypePipeline(255, 10.0f, -50.0);
+
+    // Sub-word store/reload: store8/store16 computed values, byte-assembly, multi-stage chains.
+    for (int[] scenario : new int[][] {{42, 7}, {0, 0}, {-1, 1}, {0x12345678, -100}, {255, 128}, {-128, -1}}) {
+        mod.exerciseSubWordStoreReload(scenario[0], scenario[1]);
+    }
+
+    // Precision and reinterpret: f32 precision boundaries, fractional truncation, reinterpret chains.
+    mod.exercisePrecisionAndReinterpret(42, 3.5f, 2.75);
+    mod.exercisePrecisionAndReinterpret(0, 0.0f, 0.0);
+    mod.exercisePrecisionAndReinterpret(-1, -1.5f, -1.5);
+    mod.exercisePrecisionAndReinterpret(100, 0.125f, 100.0);
+    mod.exercisePrecisionAndReinterpret(255, 10.0f, -50.0);
 }

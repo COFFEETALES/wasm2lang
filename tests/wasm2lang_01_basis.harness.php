@@ -122,6 +122,49 @@ $runTest = function (string &$buff, callable $out, array $exports) use (
     foreach ([[10, 0], [30, 0], [1, 0], [0, 5], [-10, 2], [60, 2], [5, -1]] as $scenario) {
         $exports['exerciseSwitchConditionalEscape']($scenario[0], $scenario[1]);
     }
+
+    // Nested arithmetic trees: deeply nested i32 expressions.
+    foreach ([42, 0, -1, 2147483647, 1, 255, -100] as $a) {
+        $exports['exerciseNestedArithmetic']($a);
+    }
+
+    // Memory-driven arithmetic: store/load/compute chains.
+    foreach ([[42, 7], [0, 0], [-1, 1], [0x12345678, -100], [255, 256]] as $scenario) {
+        $exports['exerciseMemoryArithmetic']($scenario[0], $scenario[1]);
+    }
+
+    // Mixed-type chains: cross-type conversions and arithmetic.
+    foreach ([[42, 3.5, 2.75], [0, 0.0, 0.0], [-1, -1.5, -1.5], [100, 0.125, 100.0]] as $scenario) {
+        $exports['exerciseMixedTypeChains']($scenario[0], $scenario[1], $scenario[2]);
+    }
+
+    // Edge arithmetic: overflow, boundary, and identity tests.
+    $exports['exerciseEdgeArithmetic']();
+
+    // Mixed-width loads: signed/unsigned byte and halfword arithmetic.
+    foreach ([[42, 7], [0, 0], [-1, 1], [0x12345678, -100], [255, 128], [-128, -1]] as $scenario) {
+        $exports['exerciseMixedWidthLoads']($scenario[0], $scenario[1]);
+    }
+
+    // Load-to-float: memory loads converted to f32/f64 and combined.
+    foreach ([[42, 7], [0, 0], [-1, 1], [0x12345678, -100], [255, 256], [-128, 127]] as $scenario) {
+        $exports['exerciseLoadToFloat']($scenario[0], $scenario[1]);
+    }
+
+    // Cross-type pipeline: deep multi-stage mixed-type pipelines.
+    foreach ([[42, 3.5, 2.75], [0, 0.0, 0.0], [-1, -1.5, -1.5], [100, 0.125, 100.0], [255, 10.0, -50.0]] as $scenario) {
+        $exports['exerciseCrossTypePipeline']($scenario[0], $scenario[1], $scenario[2]);
+    }
+
+    // Sub-word store/reload: store8/store16 computed values, byte-assembly, multi-stage chains.
+    foreach ([[42, 7], [0, 0], [-1, 1], [0x12345678, -100], [255, 128], [-128, -1]] as $scenario) {
+        $exports['exerciseSubWordStoreReload']($scenario[0], $scenario[1]);
+    }
+
+    // Precision and reinterpret: f32 precision boundaries, fractional truncation, reinterpret chains.
+    foreach ([[42, 3.5, 2.75], [0, 0.0, 0.0], [-1, -1.5, -1.5], [100, 0.125, 100.0], [255, 10.0, -50.0]] as $scenario) {
+        $exports['exercisePrecisionAndReinterpret']($scenario[0], $scenario[1], $scenario[2]);
+    }
 };
 
 $dumpMemory = true;
