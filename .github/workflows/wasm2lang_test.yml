@@ -17,6 +17,7 @@ jobs:
       - name: '📦 Install tools'
         run: |
           apk add --no-cache \
+            'maven'          \
             'mozjs~140'      \
             'nodejs~24'      \
             openjdk21        \
@@ -26,7 +27,8 @@ jobs:
         working-directory: test_artifacts
         run: |
           chmod +x ./wasm2lang_run_tests.sh
-          SPIDERMONKEY_JS=/usr/bin/js140 \
-          PHP_CLI=/usr/bin/php           \
-          JSHELL_CLI=/usr/bin/jshell     \
+          GSON_LIBRARY="$(ls /usr/share/java/maven-3/lib/gson-*.jar | tail -n 1)" \
+          SPIDERMONKEY_JS=/usr/bin/js140                                          \
+          PHP_CLI=/usr/bin/php                                                    \
+          JSHELL_CLI=/usr/bin/jshell                                              \
           ./wasm2lang_run_tests.sh

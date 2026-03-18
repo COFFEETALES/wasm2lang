@@ -45,7 +45,7 @@ const moduleImports = {
   }
 };
 
-const verifyMVPOps = function (exports) {
+const verifyMVPOps = function (exports, data) {
   exports.alignHeapTop();
   const startOffset = exports.getHeapTop();
   const invokeScenarios = function (scenarioList, callback) {
@@ -54,46 +54,35 @@ const verifyMVPOps = function (exports) {
     }
   };
 
-  // Primary parameter set.
-  exports.exerciseMVPOps(42, Math.fround(3.5), 2.75);
-
-  // Edge-case parameter sets.
-  exports.exerciseMVPOps(0, Math.fround(0.0), 0.0);
-  exports.exerciseMVPOps(-1, Math.fround(0.5), 0.5);
-  exports.exerciseMVPOps(2147483647, Math.fround(100.0), 100.0);
-
-  // Additional parameter sets.
-  exports.exerciseMVPOps(1, Math.fround(1.0), 1.0);
-  exports.exerciseMVPOps(-2147483648, Math.fround(3.0), 3.0);
-  exports.exerciseMVPOps(255, Math.fround(0.125), 0.125);
-  exports.exerciseMVPOps(16, Math.fround(4.0), 4.0);
+  // MVP ops — shared i32/f32/f64 triples.
+  for (const t of data.i32_f32_f64_triples) {
+    exports.exerciseMVPOps(t[0], Math.fround(t[1]), t[2]);
+  }
 
   exports.exerciseOverflowOps();
   exports.exerciseEdgeCases();
 
-  // br_table dispatch — direct cases, default, and adversarial indices.
-  invokeScenarios([[0], [1], [2], [3]], index => exports.exerciseBrTable(index));
-  invokeScenarios([[4], [-1], [99], [-2147483648]], index => exports.exerciseBrTable(index));
+  // br_table dispatch — shared branch indices.
+  for (const v of data.branch_indices) {
+    exports.exerciseBrTable(v);
+  }
 
-  // br_table with loop target — positive countdowns and already-terminal starts.
-  invokeScenarios([[5], [2], [1], [0], [-3], [9]], startCount => exports.exerciseBrTableLoop(startCount));
+  // br_table with loop target — shared countdown values.
+  for (const v of data.loop_countdown_values) {
+    exports.exerciseBrTableLoop(v);
+  }
 
-  // Counted loop — forward ranges, empty ranges, reverse ranges, and negatives.
-  invokeScenarios(
-    [
-      [0, 5],
-      [2, 2],
-      [-2, 3],
-      [5, 1],
-      [7, 8]
-    ],
-    (startValue, exclusiveLimit) => exports.exerciseCountedLoop(startValue, exclusiveLimit)
-  );
+  // Counted loop — shared loop pairs.
+  for (const p of data.loop_pairs) {
+    exports.exerciseCountedLoop(p[0], p[1]);
+  }
 
-  // Do-while countdown — normal factorial path and non-positive entry values.
-  invokeScenarios([[5], [1], [0], [-3]], countdownStart => exports.exerciseDoWhileLoop(countdownStart));
+  // Do-while countdown — shared do-while values.
+  for (const v of data.do_while_values) {
+    exports.exerciseDoWhileLoop(v);
+  }
 
-  // Do-while variant — long, short, and zero-budget entries.
+  // Do-while variant — function-specific scenarios.
   invokeScenarios(
     [
       [1, 10],
@@ -104,7 +93,7 @@ const verifyMVPOps = function (exports) {
     (startValue, iterationCount) => exports.exerciseDoWhileVariantA(startValue, iterationCount)
   );
 
-  // Nested loop + switch dispatch — empty outer loop, direct default, and alternating resets.
+  // Nested loop + switch dispatch — function-specific scenarios.
   invokeScenarios(
     [
       [0, 0],
@@ -116,24 +105,15 @@ const verifyMVPOps = function (exports) {
     (outerLimit, initialDispatchState) => exports.exerciseNestedLoops(outerLimit, initialDispatchState)
   );
 
-  // Loop state machine — multi-step transitions, direct case 2, terminal, and default exits.
-  invokeScenarios(
-    [
-      [0, 0, 3],
-      [0, 20, 5],
-      [2, 9, 4],
-      [3, 7, 2],
-      [4, 99, 9],
-      [-1, 5, 1]
-    ],
-    (startState, startAccumulator, transitionBudget) =>
-      exports.exerciseSwitchInLoop(startState, startAccumulator, transitionBudget)
-  );
+  // Loop state machine — shared i32 triples.
+  for (const t of data.i32_triples) {
+    exports.exerciseSwitchInLoop(t[0], t[1], t[2]);
+  }
 
-  // br_table with duplicate targets — shared targets and default routing.
+  // br_table with duplicate targets — function-specific (differs from branch_indices).
   invokeScenarios([[0], [1], [2], [3], [4], [5], [-1], [99]], index => exports.exerciseBrTableMultiTarget(index));
 
-  // Nested switches — inner defaults, outer defaults, and outer non-zero cases.
+  // Nested switches — function-specific scenarios.
   invokeScenarios(
     [
       [0, 0],
@@ -148,10 +128,10 @@ const verifyMVPOps = function (exports) {
     (outerIndex, innerIndex) => exports.exerciseNestedSwitch(outerIndex, innerIndex)
   );
 
-  // br_table with an internal default target.
+  // br_table with an internal default target — function-specific subset.
   invokeScenarios([[0], [1], [2], [3], [-1], [99]], index => exports.exerciseSwitchDefaultInternal(index));
 
-  // Multi-exit loop + switch — completed, alternate, and default-driven exits.
+  // Multi-exit loop + switch — function-specific scenarios.
   invokeScenarios(
     [
       [0, 0],
@@ -166,7 +146,7 @@ const verifyMVPOps = function (exports) {
     (startState, startAccumulator) => exports.exerciseMultiExitSwitchLoop(startState, startAccumulator)
   );
 
-  // Conditional escape loop + switch — looping, immediate default exits, and direct escape checks.
+  // Conditional escape loop + switch — function-specific scenarios.
   invokeScenarios(
     [
       [10, 0],
@@ -180,49 +160,31 @@ const verifyMVPOps = function (exports) {
     (startAccumulator, startState) => exports.exerciseSwitchConditionalEscape(startAccumulator, startState)
   );
 
-  // Nested arithmetic trees — deeply nested i32 expressions.
-  invokeScenarios([[42], [0], [-1], [2147483647], [1], [255], [-100]], a => exports.exerciseNestedArithmetic(a));
+  // Nested arithmetic trees — shared i32 values.
+  for (const v of data.i32_values) {
+    exports.exerciseNestedArithmetic(v);
+  }
 
-  // Memory-driven arithmetic — store/load/compute chains.
-  invokeScenarios(
-    [
-      [42, 7],
-      [0, 0],
-      [-1, 1],
-      [0x12345678, -100],
-      [255, 256]
-    ],
-    (a, b) => exports.exerciseMemoryArithmetic(a, b)
-  );
+  // Memory-driven arithmetic — shared i32 pairs.
+  for (const p of data.i32_pairs) {
+    exports.exerciseMemoryArithmetic(p[0], p[1]);
+  }
 
-  // Mixed-type chains — cross-type conversions and arithmetic.
-  invokeScenarios(
-    [
-      [42, Math.fround(3.5), 2.75],
-      [0, Math.fround(0.0), 0.0],
-      [-1, Math.fround(-1.5), -1.5],
-      [100, Math.fround(0.125), 100.0]
-    ],
-    (a, b, c) => exports.exerciseMixedTypeChains(a, b, c)
-  );
+  // Mixed-type chains — first 4 shared mixed-type cases.
+  for (let i = 0; i < 4; ++i) {
+    const t = data.mixed_type_cases[i];
+    exports.exerciseMixedTypeChains(t[0], Math.fround(t[1]), t[2]);
+  }
 
-  // Edge arithmetic — overflow, boundary, and identity tests.
+  // Edge arithmetic — no parameters.
   exports.exerciseEdgeArithmetic();
 
-  // Mixed-width loads — signed/unsigned byte and halfword arithmetic.
-  invokeScenarios(
-    [
-      [42, 7],
-      [0, 0],
-      [-1, 1],
-      [0x12345678, -100],
-      [255, 128],
-      [-128, -1]
-    ],
-    (a, b) => exports.exerciseMixedWidthLoads(a, b)
-  );
+  // Mixed-width loads — shared subword cases.
+  for (const p of data.subword_cases) {
+    exports.exerciseMixedWidthLoads(p[0], p[1]);
+  }
 
-  // Load-to-float — memory loads converted to f32/f64 and combined.
+  // Load-to-float — function-specific pairs (differs from subword_cases).
   invokeScenarios(
     [
       [42, 7],
@@ -235,45 +197,23 @@ const verifyMVPOps = function (exports) {
     (a, b) => exports.exerciseLoadToFloat(a, b)
   );
 
-  // Cross-type pipeline — deep multi-stage mixed-type pipelines.
-  invokeScenarios(
-    [
-      [42, Math.fround(3.5), 2.75],
-      [0, Math.fround(0.0), 0.0],
-      [-1, Math.fround(-1.5), -1.5],
-      [100, Math.fround(0.125), 100.0],
-      [255, Math.fround(10.0), -50.0]
-    ],
-    (a, b, c) => exports.exerciseCrossTypePipeline(a, b, c)
-  );
+  // Cross-type pipeline — shared mixed-type cases.
+  for (const t of data.mixed_type_cases) {
+    exports.exerciseCrossTypePipeline(t[0], Math.fround(t[1]), t[2]);
+  }
 
-  // Sub-word store/reload — store8/store16 computed values, byte-assembly, multi-stage chains.
-  invokeScenarios(
-    [
-      [42, 7],
-      [0, 0],
-      [-1, 1],
-      [0x12345678, -100],
-      [255, 128],
-      [-128, -1]
-    ],
-    (a, b) => exports.exerciseSubWordStoreReload(a, b)
-  );
+  // Sub-word store/reload — shared subword cases.
+  for (const p of data.subword_cases) {
+    exports.exerciseSubWordStoreReload(p[0], p[1]);
+  }
 
-  // Precision and reinterpret — f32 precision boundaries, fractional truncation, reinterpret chains.
-  invokeScenarios(
-    [
-      [42, Math.fround(3.5), 2.75],
-      [0, Math.fround(0.0), 0.0],
-      [-1, Math.fround(-1.5), -1.5],
-      [100, Math.fround(0.125), 100.0],
-      [255, Math.fround(10.0), -50.0]
-    ],
-    (a, b, c) => exports.exercisePrecisionAndReinterpret(a, b, c)
-  );
+  // Precision and reinterpret — shared mixed-type cases.
+  for (const t of data.mixed_type_cases) {
+    exports.exercisePrecisionAndReinterpret(t[0], Math.fround(t[1]), t[2]);
+  }
 };
 
-const runTest = function (buff, out, exports) {
+const runTest = function (buff, out, exports, data) {
   instanceMemoryBuffer = buff;
   stdoutWrite = out;
   observedData = [];
@@ -308,7 +248,7 @@ const runTest = function (buff, out, exports) {
     }
   }
 
-  verifyMVPOps(exports);
+  verifyMVPOps(exports, data);
 };
 
 const dumpMemory = true;

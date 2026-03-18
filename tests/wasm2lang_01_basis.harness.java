@@ -1,7 +1,8 @@
 // Java test harness for wasm2lang_01_basis.
 //
-// Loaded by jshell after the generated .java file (which defines memBuffer
-// and class WasmModule).  Instantiates the module, calls exported functions,
+// Loaded by jshell after wasm2lang_java_runner.jsh (which defines w2l*
+// helpers) and the generated .java file (which defines memBuffer and
+// WasmModule).  Instantiates the module, calls exported functions,
 // and prints segment data — mirroring the .harness.mjs / .harness.php files.
 
 {
@@ -20,128 +21,123 @@
     mod.emitSegmentsToHost();
     mod.alignHeapTop();
 
-    // Primary parameter set.
-    mod.exerciseMVPOps(42, 3.5f, 2.75);
+    // Load shared edge-case corpus.
+    java.util.Map<String, Object> _data = w2lLoadSharedData(System.getProperty("w2l.testname", ""));
 
-    // Edge-case parameter sets.
-    mod.exerciseMVPOps(0, 0.0f, 0.0);
-    mod.exerciseMVPOps(-1, 0.5f, 0.5);
-    mod.exerciseMVPOps(2147483647, 100.0f, 100.0);
-
-    // Additional parameter sets.
-    mod.exerciseMVPOps(1, 1.0f, 1.0);
-    mod.exerciseMVPOps(-2147483648, 3.0f, 3.0);
-    mod.exerciseMVPOps(255, 0.125f, 0.125);
-    mod.exerciseMVPOps(16, 4.0f, 4.0);
+    // MVP ops — shared i32/f32/f64 triples.
+    for (java.util.List<Double> t : w2lNested(_data, "i32_f32_f64_triples")) {
+        mod.exerciseMVPOps(t.get(0).intValue(), t.get(1).floatValue(), t.get(2));
+    }
 
     mod.exerciseOverflowOps();
     mod.exerciseEdgeCases();
 
-    // br_table dispatch: direct cases, default, and adversarial indices.
-    for (int index : new int[] {0, 1, 2, 3, 4, -1, 99, Integer.MIN_VALUE}) {
-        mod.exerciseBrTable(index);
+    // br_table dispatch — shared branch indices.
+    for (Double v : w2lFlat(_data, "branch_indices")) {
+        mod.exerciseBrTable(v.intValue());
     }
 
-    // br_table with loop target: positive countdowns and already-terminal starts.
-    for (int startCount : new int[] {5, 2, 1, 0, -3, 9}) {
-        mod.exerciseBrTableLoop(startCount);
+    // br_table with loop target — shared countdown values.
+    for (Double v : w2lFlat(_data, "loop_countdown_values")) {
+        mod.exerciseBrTableLoop(v.intValue());
     }
 
-    // Counted loop: forward ranges, empty ranges, reverse ranges, and negatives.
-    for (int[] scenario : new int[][] {{0, 5}, {2, 2}, {-2, 3}, {5, 1}, {7, 8}}) {
-        mod.exerciseCountedLoop(scenario[0], scenario[1]);
+    // Counted loop — shared loop pairs.
+    for (java.util.List<Double> p : w2lNested(_data, "loop_pairs")) {
+        mod.exerciseCountedLoop(p.get(0).intValue(), p.get(1).intValue());
     }
 
-    // Do-while countdown: normal factorial path and non-positive entry values.
-    for (int countdownStart : new int[] {5, 1, 0, -3}) {
-        mod.exerciseDoWhileLoop(countdownStart);
+    // Do-while countdown — shared do-while values.
+    for (Double v : w2lFlat(_data, "do_while_values")) {
+        mod.exerciseDoWhileLoop(v.intValue());
     }
 
-    // Do-while variant: long, short, and zero-budget entries.
+    // Do-while variant — function-specific scenarios.
     for (int[] scenario : new int[][] {{1, 10}, {3, 1}, {7, 0}, {2, 4}}) {
         mod.exerciseDoWhileVariantA(scenario[0], scenario[1]);
     }
 
-    // Nested loop + switch dispatch: empty outer loop, direct default, and alternating resets.
+    // Nested loop + switch dispatch — function-specific scenarios.
     for (int[] scenario : new int[][] {{0, 0}, {1, 0}, {3, 0}, {3, 2}, {4, -1}}) {
         mod.exerciseNestedLoops(scenario[0], scenario[1]);
     }
 
-    // Loop state machine: multi-step transitions, direct case 2, terminal, and default exits.
-    for (int[] scenario : new int[][] {{0, 0, 3}, {0, 20, 5}, {2, 9, 4}, {3, 7, 2}, {4, 99, 9}, {-1, 5, 1}}) {
-        mod.exerciseSwitchInLoop(scenario[0], scenario[1], scenario[2]);
+    // Loop state machine — shared i32 triples.
+    for (java.util.List<Double> t : w2lNested(_data, "i32_triples")) {
+        mod.exerciseSwitchInLoop(t.get(0).intValue(), t.get(1).intValue(), t.get(2).intValue());
     }
 
-    // br_table with duplicate targets: shared targets and default routing.
+    // br_table with duplicate targets — function-specific (differs from branch_indices).
     for (int index : new int[] {0, 1, 2, 3, 4, 5, -1, 99}) {
         mod.exerciseBrTableMultiTarget(index);
     }
 
-    // Nested switches: inner defaults, outer defaults, and outer non-zero cases.
+    // Nested switches — function-specific scenarios.
     for (int[] scenario : new int[][] {{0, 0}, {0, 1}, {0, -1}, {0, 5}, {1, 0}, {2, 0}, {-1, 0}, {9, 0}}) {
         mod.exerciseNestedSwitch(scenario[0], scenario[1]);
     }
 
-    // br_table with an internal default target.
+    // br_table with an internal default target — function-specific subset.
     for (int index : new int[] {0, 1, 2, 3, -1, 99}) {
         mod.exerciseSwitchDefaultInternal(index);
     }
 
-    // Multi-exit loop + switch: completed, alternate, and default-driven exits.
+    // Multi-exit loop + switch — function-specific scenarios.
     for (int[] scenario : new int[][] {{0, 0}, {0, 50}, {1, 1}, {2, -5}, {2, 5}, {3, 7}, {-1, 42}, {9, 42}}) {
         mod.exerciseMultiExitSwitchLoop(scenario[0], scenario[1]);
     }
 
-    // Conditional escape loop + switch: looping, immediate default exits, and direct escape checks.
+    // Conditional escape loop + switch — function-specific scenarios.
     for (int[] scenario : new int[][] {{10, 0}, {30, 0}, {1, 0}, {0, 5}, {-10, 2}, {60, 2}, {5, -1}}) {
         mod.exerciseSwitchConditionalEscape(scenario[0], scenario[1]);
     }
 
-    // Nested arithmetic trees: deeply nested i32 expressions.
-    for (int a : new int[] {42, 0, -1, 2147483647, 1, 255, -100}) {
-        mod.exerciseNestedArithmetic(a);
+    // Nested arithmetic trees — shared i32 values.
+    for (Double v : w2lFlat(_data, "i32_values")) {
+        mod.exerciseNestedArithmetic(v.intValue());
     }
 
-    // Memory-driven arithmetic: store/load/compute chains.
-    for (int[] scenario : new int[][] {{42, 7}, {0, 0}, {-1, 1}, {0x12345678, -100}, {255, 256}}) {
-        mod.exerciseMemoryArithmetic(scenario[0], scenario[1]);
+    // Memory-driven arithmetic — shared i32 pairs.
+    for (java.util.List<Double> p : w2lNested(_data, "i32_pairs")) {
+        mod.exerciseMemoryArithmetic(p.get(0).intValue(), p.get(1).intValue());
     }
 
-    // Mixed-type chains: cross-type conversions and arithmetic.
-    mod.exerciseMixedTypeChains(42, 3.5f, 2.75);
-    mod.exerciseMixedTypeChains(0, 0.0f, 0.0);
-    mod.exerciseMixedTypeChains(-1, -1.5f, -1.5);
-    mod.exerciseMixedTypeChains(100, 0.125f, 100.0);
+    // Mixed-type chains — first 4 shared mixed-type cases.
+    java.util.List<java.util.List<Double>> _mtc = w2lNested(_data, "mixed_type_cases");
+    for (int _i = 0; _i < 4 && _i < _mtc.size(); ++_i) {
+        java.util.List<Double> t = _mtc.get(_i);
+        mod.exerciseMixedTypeChains(t.get(0).intValue(), t.get(1).floatValue(), t.get(2));
+    }
 
-    // Edge arithmetic: overflow, boundary, and identity tests.
+    // Edge arithmetic — no parameters.
     mod.exerciseEdgeArithmetic();
 
-    // Mixed-width loads: signed/unsigned byte and halfword arithmetic.
-    for (int[] scenario : new int[][] {{42, 7}, {0, 0}, {-1, 1}, {0x12345678, -100}, {255, 128}, {-128, -1}}) {
-        mod.exerciseMixedWidthLoads(scenario[0], scenario[1]);
+    // Mixed-width loads — shared subword cases.
+    for (java.util.List<Double> p : w2lNested(_data, "subword_cases")) {
+        mod.exerciseMixedWidthLoads(p.get(0).intValue(), p.get(1).intValue());
     }
 
-    // Load-to-float: memory loads converted to f32/f64 and combined.
+    // Load-to-float — function-specific pairs (differs from subword_cases).
     for (int[] scenario : new int[][] {{42, 7}, {0, 0}, {-1, 1}, {0x12345678, -100}, {255, 256}, {-128, 127}}) {
         mod.exerciseLoadToFloat(scenario[0], scenario[1]);
     }
 
-    // Cross-type pipeline: deep multi-stage mixed-type pipelines.
-    mod.exerciseCrossTypePipeline(42, 3.5f, 2.75);
-    mod.exerciseCrossTypePipeline(0, 0.0f, 0.0);
-    mod.exerciseCrossTypePipeline(-1, -1.5f, -1.5);
-    mod.exerciseCrossTypePipeline(100, 0.125f, 100.0);
-    mod.exerciseCrossTypePipeline(255, 10.0f, -50.0);
-
-    // Sub-word store/reload: store8/store16 computed values, byte-assembly, multi-stage chains.
-    for (int[] scenario : new int[][] {{42, 7}, {0, 0}, {-1, 1}, {0x12345678, -100}, {255, 128}, {-128, -1}}) {
-        mod.exerciseSubWordStoreReload(scenario[0], scenario[1]);
+    // Cross-type pipeline — shared mixed-type cases.
+    for (java.util.List<Double> t : _mtc) {
+        mod.exerciseCrossTypePipeline(t.get(0).intValue(), t.get(1).floatValue(), t.get(2));
     }
 
-    // Precision and reinterpret: f32 precision boundaries, fractional truncation, reinterpret chains.
-    mod.exercisePrecisionAndReinterpret(42, 3.5f, 2.75);
-    mod.exercisePrecisionAndReinterpret(0, 0.0f, 0.0);
-    mod.exercisePrecisionAndReinterpret(-1, -1.5f, -1.5);
-    mod.exercisePrecisionAndReinterpret(100, 0.125f, 100.0);
-    mod.exercisePrecisionAndReinterpret(255, 10.0f, -50.0);
+    // Sub-word store/reload — shared subword cases.
+    for (java.util.List<Double> p : w2lNested(_data, "subword_cases")) {
+        mod.exerciseSubWordStoreReload(p.get(0).intValue(), p.get(1).intValue());
+    }
+
+    // Precision and reinterpret — shared mixed-type cases.
+    for (java.util.List<Double> t : _mtc) {
+        mod.exercisePrecisionAndReinterpret(t.get(0).intValue(), t.get(1).floatValue(), t.get(2));
+    }
+
+    w2lDumpCRC(memBuffer);
 }
+
+/exit

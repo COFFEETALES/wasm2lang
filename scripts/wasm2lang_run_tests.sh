@@ -81,13 +81,15 @@ if [ ${#0} -ne ${#prefix} ]; then
         if [ -f "${filebase}".harness.java ]; then
           jshell_harness="${filebase}".harness.java
         fi
-        "$JSHELL_CLI"                   \
-          -J-Dline.separator="$LF"      \
-          --execution local             \
-          -q                            \
-          "${filebase}".java            \
-          ${jshell_harness}             \
-          "./wasm2lang_java_runner.jsh" \
+        "$JSHELL_CLI"                                      \
+          -J-Dline.separator="$LF"                         \
+          -R-Dline.separator="$LF"                         \
+          -R-Dw2l.testname="$filebase"                     \
+          --class-path "$GSON_LIBRARY"                     \
+          -q                                               \
+          "./wasm2lang_java_runner.jsh"                    \
+          "${filebase}".java                               \
+          ${jshell_harness}                                \
         |                               \
         tee "${filebase}".jshell.out
       fi

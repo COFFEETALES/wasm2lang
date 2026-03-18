@@ -2746,5 +2746,79 @@
 
   process.stdout.write(module.emitText());
 
+  // ---- Shared data generation ----
+  {
+    let sharedDataPath = '';
+    for (let i = 2; i < process.argv.length; ++i) {
+      if ('--emit-shared-data' === process.argv[i] && i + 1 < process.argv.length) {
+        sharedDataPath = process.argv[++i];
+      }
+    }
+
+    if (sharedDataPath) {
+      const randI32 = () => (Math.random() * 0xFFFFFFFF >>> 0) - 0x80000000;
+      const randSmallI32 = () => ((Math.random() * 511) | 0) - 255;
+      const randF32 = () => Math.fround((Math.random() - 0.5) * 200);
+      const randF64 = () => (Math.random() - 0.5) * 200;
+      const randUF32 = () => Math.fround(Math.random() * 100);
+      const randUF64 = () => Math.random() * 100;
+      const randUSmall = () => (Math.random() * 10) | 0;
+
+      const staticData = {
+        i32_values: [42, 0, -1, 2147483647, 1, 255, -100],
+        i32_pairs: [[42, 7], [0, 0], [-1, 1], [305419896, -100], [255, 256]],
+        i32_triples: [[0, 0, 3], [0, 20, 5], [2, 9, 4], [3, 7, 2], [4, 99, 9], [-1, 5, 1]],
+        i32_f32_f64_triples: [
+          [42, 3.5, 2.75], [0, 0.0, 0.0], [-1, 0.5, 0.5],
+          [2147483647, 100.0, 100.0], [1, 1.0, 1.0],
+          [-2147483648, 3.0, 3.0], [255, 0.125, 0.125], [16, 4.0, 4.0]
+        ],
+        branch_indices: [0, 1, 2, 3, 4, -1, 99, -2147483648],
+        loop_pairs: [[0, 5], [2, 2], [-2, 3], [5, 1], [7, 8]],
+        loop_countdown_values: [5, 2, 1, 0, -3, 9],
+        do_while_values: [5, 1, 0, -3],
+        subword_cases: [[42, 7], [0, 0], [-1, 1], [305419896, -100], [255, 128], [-128, -1]],
+        mixed_type_cases: [
+          [42, 3.5, 2.75], [0, 0.0, 0.0], [-1, -1.5, -1.5],
+          [100, 0.125, 100.0], [255, 10.0, -50.0]
+        ]
+      };
+
+      const data = {};
+      data.i32_values = staticData.i32_values.concat(
+        Array.from({length: 4}, randI32)
+      );
+      data.i32_pairs = staticData.i32_pairs.concat(
+        Array.from({length: 3}, () => [randI32(), randI32()])
+      );
+      data.i32_triples = staticData.i32_triples.concat(
+        Array.from({length: 3}, () => [randUSmall(), randI32(), randUSmall()])
+      );
+      data.i32_f32_f64_triples = staticData.i32_f32_f64_triples.concat(
+        Array.from({length: 3}, () => [randI32(), randUF32(), randUF64()])
+      );
+      data.branch_indices = staticData.branch_indices.concat(
+        Array.from({length: 3}, () => randUSmall())
+      );
+      data.loop_pairs = staticData.loop_pairs.concat(
+        Array.from({length: 3}, () => [randSmallI32(), randUSmall()])
+      );
+      data.loop_countdown_values = staticData.loop_countdown_values.concat(
+        Array.from({length: 3}, () => randUSmall())
+      );
+      data.do_while_values = staticData.do_while_values.concat(
+        Array.from({length: 3}, () => randUSmall())
+      );
+      data.subword_cases = staticData.subword_cases.concat(
+        Array.from({length: 3}, () => [randSmallI32(), randSmallI32()])
+      );
+      data.mixed_type_cases = staticData.mixed_type_cases.concat(
+        Array.from({length: 3}, () => [randSmallI32(), randF32(), randF64()])
+      );
+
+      require('fs').writeFileSync(sharedDataPath, JSON.stringify(data, null, 2) + '\n');
+    }
+  }
+
   return module;
 })();

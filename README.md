@@ -26,14 +26,41 @@ as a portable intermediate representation for source-code generation. This makes
 it possible to share one logic base, then emit equivalent code for ecosystems
 such as Java, PHP, and asm.js.
 
-That approach matters because embedding a WebAssembly runtime is not always the
-right tradeoff. Depending on the environment, it may introduce integration
-friction, deployment limitations, or concerns around performance expectations
-compared with code that fits more naturally into the host language.
+### When a WebAssembly runtime isn't an option
 
-`wasm2lang` is designed for those situations: preserve the benefits of a shared
-WebAssembly-based codebase while generating output that is easier to adopt,
-integrate, and operate in the target ecosystem.
+Embedding a WebAssembly runtime is not always possible — or even desirable.
+
+**Environments where WASM simply cannot run.** Shared hosting providers,
+managed PHP platforms, and restrictive application servers often forbid native
+extensions and custom runtimes. A WordPress plugin on a $5/month shared host
+cannot load a WASM module. `wasm2lang` bridges that gap: it emits pure PHP (or
+Java, or asm.js) source code with zero runtime dependencies, so the output runs
+anywhere the target language runs.
+
+**Performance-critical paths where native optimization matters.** Running WASM
+inside a host-language interpreter means an extra abstraction layer between your
+code and the platform's optimizer. In Java, a WASM runtime is an interpreter or
+a JIT-over-JIT — the bytecode never reaches HotSpot directly. `wasm2lang`
+emits plain Java source code that the JVM compiles, inlines, and optimizes like
+any other Java class. For compute-intensive workloads — cryptography, codecs,
+compression, numerical kernels — the difference between interpreted WASM and
+HotSpot-optimized Java bytecode can be substantial. The same principle applies
+to PHP 8+ with OPcache/JIT: transpiled PHP that the JIT can reason about
+directly will outperform opaque calls into a WASM interpreter extension.
+
+**The asm.js backend and its relationship to WebAssembly.** WebAssembly was
+designed as the binary evolution of asm.js — they share the same linear memory
+model, integer coercion semantics, and structured control flow. asm.js is not
+merely a JavaScript subset; it is a formally specified typed bytecode that
+happens to be syntactically valid JavaScript, and engines such as V8 still
+recognize the `"use asm"` directive and apply ahead-of-time compilation. This
+makes asm.js the most semantically natural transpilation target for WASM: the
+mapping is nearly a round-trip. It serves both as a proven foundation for the
+transpilation architecture and as a practical output format in its own right.
+
+`wasm2lang` is designed for all of these situations: preserve the benefits of a
+shared WebAssembly-based codebase while generating output that is easier to
+adopt, integrate, and operate in the target ecosystem.
 
 The project currently focuses on WebAssembly MVP features for straightforward
 and reliable lowering. Longer term, its ambition is broader: support more
@@ -42,11 +69,11 @@ where those features could map well to the host platform — including Java.
 
 ## Backends
 
-| Backend     | `--language-out`  | Status                                                                  |
-|-------------|-------------------|-------------------------------------------------------------------------|
-| **asm.js**  | `ASMJS`           | Active — full function-body emission, validated by V8 and SpiderMonkey  |
-| **PHP**     | `PHP64`           | Active — full function-body emission, validated by PHP CLI              |
-| **Java**    | `JAVA`            | Active — full function-body emission, validated by jshell               |
+| Backend     | `--language-out`  | Strength                                            |Status                                                                   |
+|-------------|-------------------|-----------------------------------------------------|-------------------------------------------------------------------------|
+| **asm.js**  | `ASMJS`           | Closest semantic match to WASM; AOT-compiled by V8  | Active — full function-body emission, validated by V8 and SpiderMonkey  |
+| **PHP**     | `PHP64`           | Runs on shared hosting with no extensions           | Active — full function-body emission, validated by PHP CLI              |
+| **Java**    | `JAVA`            | HotSpot/Graal optimize the output directly          | Active — full function-body emission, validated by jshell               |
 
 ## Quick start
 

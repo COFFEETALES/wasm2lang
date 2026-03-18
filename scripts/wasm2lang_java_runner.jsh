@@ -1,52 +1,42 @@
-// wasm2lang jshell test runner.
+// wasm2lang jshell test runner + JSON data loader.
 //
-// Java/jshell equivalent of wasm2lang_wasm_asmjs_runner.js.
-//
-// Usage (from test_artifacts):
-//   jshell --execution local \
-//     wasm2lang_java_runner.jsh \
-//     <test_dir>/<test_base>.java
+// Requires Gson on --class-path and w2l.testname system property.
+// Loaded BEFORE harness files so helpers are available to them.
 
-// ---- Locate the generated Java source file from arguments ----
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
-// jshell does not expose argv directly; the generated .java file is loaded
-// via /open before this runner, so the variables (memBuffer, Module class)
-// are already in scope by the time this runner executes.
-//
-// The build script concatenates the generated .java file with this runner
-// into a single jshell session.
-
-// At this point the following should be in scope from the generated code:
-//   java.nio.ByteBuffer memBuffer — static memory (from emitMetadata)
-//   class Module                  — the module class (from emitCode)
-
-// ---- Memory CRC32 dump ----
-
-{
-    //int crc = 0xFFFFFFFF;
-    //int len = memBuffer.capacity();
-
-    //for (int i = 0; i < len; ++i) {
-    //    int ch = memBuffer.get(i) & 0xFF;
-    //    for (int j = 0; j < 8; ++j) {
-    //        int bit = (ch ^ crc) & 1;
-    //        crc >>>= 1;
-    //        if (bit != 0) crc ^= 0xEDB88320;
-    //        ch >>= 1;
-    //    }
-    //}
-
-    //crc = ~crc;
-    //String hex = String.format("%08x", crc);
-
-    java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
-    byte[] arr = new byte[memBuffer.capacity()];
-    memBuffer.position(0);
-    memBuffer.get(arr);
-    memBuffer.position(0);
-    crc32.update(arr);
-    String hex = String.format("%08x", crc32.getValue());
-    System.out.println("Memory CRC32: 0x" + hex);
+@SuppressWarnings("unchecked")
+java.util.Map<String, Object> w2lLoadSharedData(String testName) {
+    if (testName == null || testName.isEmpty()) return java.util.Collections.emptyMap();
+    String base = testName.contains("/") ? testName.substring(testName.lastIndexOf('/') + 1) : testName;
+    base = base.replaceAll("_(codegen|none)$", "");
+    try {
+        String c = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(base + ".shared.data.json")));
+        return (java.util.Map<String, Object>) new Gson().fromJson(c, new TypeToken<java.util.Map<String, Object>>(){}.getType());
+    } catch (Exception e) {
+        return java.util.Collections.emptyMap();
+    }
 }
 
-/exit
+@SuppressWarnings("unchecked")
+java.util.List<Double> w2lFlat(java.util.Map<String, Object> data, String key) {
+    Object v = data.get(key);
+    return v != null ? (java.util.List<Double>) v : java.util.Collections.emptyList();
+}
+
+@SuppressWarnings("unchecked")
+java.util.List<java.util.List<Double>> w2lNested(java.util.Map<String, Object> data, String key) {
+    Object v = data.get(key);
+    return v != null ? (java.util.List<java.util.List<Double>>) v : java.util.Collections.emptyList();
+}
+
+void w2lDumpCRC(java.nio.ByteBuffer buf) {
+    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+    byte[] arr = new byte[buf.capacity()];
+    buf.position(0);
+    buf.get(arr);
+    buf.position(0);
+    crc.update(arr);
+    System.out.println("Memory CRC32: 0x" + String.format("%08x", crc.getValue()));
+}

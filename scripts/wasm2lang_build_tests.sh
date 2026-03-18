@@ -24,11 +24,13 @@ if [ ${#0} -ne ${#prefix} ]; then
 
     export WASM2LANG_OPTIMIZE_OUTPUT=on
 
-    rm -rf                     \
-      ./wasm2lang_*_*/         \
-      ./wasm2lang_*_runner.js  \
-      ./wasm2lang_*_runner.jsh \
-      ./wasm2lang_*_runner.php \
+    rm -rf                              \
+      ./wasm2lang_*_*/                  \
+      ./wasm2lang_*.shared.data.json    \
+      ./wasm2lang_*.orig.wast           \
+      ./wasm2lang_*_runner.js           \
+      ./wasm2lang_*_runner.jsh          \
+      ./wasm2lang_*_runner.php          \
       ./wasm2lang_run_tests.sh
 
     cp '../scripts/wasm2lang_run_tests.sh' .
@@ -37,6 +39,16 @@ if [ ${#0} -ne ${#prefix} ]; then
     cp '../scripts/wasm2lang_wasm_asmjs_runner.js' .
 
     for file in '../tests/wasm2lang_'*'.build.js'; do
+      filename="$(basename "$file")"
+      testbase="${filename%.build.js}"
+
+      #
+      # Generate original WAST + shared data (once per test, before variants)
+      node                                                                       \
+        "../tests/$filename"                                                     \
+        --emit-shared-data "./${testbase}.shared.data.json"                      \
+        1>./"${testbase}".orig.wast
+
       for variant_suffix in codegen none; do
         case "$variant_suffix" in
           codegen)
@@ -50,8 +62,6 @@ if [ ${#0} -ne ${#prefix} ]; then
         esac
 
         artifact_normalize_wasm="binaryen:none"
-        filename="$(basename "$file")"
-        testbase="${filename%.build.js}"
         artifact_dir="${testbase}_${variant_suffix}"
         artifact_base="${artifact_dir}/${artifact_dir}"
 
@@ -61,14 +71,6 @@ if [ ${#0} -ne ${#prefix} ]; then
           harness_variant_name="${artifact_dir}${harness_name#$testbase}"
           cp "$harness_file" "./${artifact_dir}/${harness_variant_name}"
         done
-
-        if [ 'codegen' = "$variant_suffix" ]; then
-          #
-          # Generate original WAST
-          node                             \
-            "../tests/$filename"           \
-            1>./"${testbase}".orig.wast
-        fi
         #
         # Generate WASM
         cat ./"${testbase}".orig.wast                 \

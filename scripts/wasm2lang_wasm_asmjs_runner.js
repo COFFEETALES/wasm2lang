@@ -37,6 +37,17 @@ const wasm = !!obj['wasm'];
 (async function () {
   const harness = await import(['./', testName, '.harness.mjs'].join(''));
 
+  let sharedData = null;
+  try {
+    const testBase = testName.replace(/^.*\//, '').replace(/_(codegen|none)$/, '');
+    const dataPath = ['./', testBase, '.shared.data.json'].join('');
+    if (isNode) {
+      sharedData = JSON.parse(require('fs').readFileSync(dataPath, 'utf8'));
+    } else {
+      sharedData = JSON.parse(read(dataPath));
+    }
+  } catch (e) { /* data file optional */ }
+
   let instanceMemoryBuffer = null;
 
   if (wasm) {
@@ -52,7 +63,7 @@ const wasm = !!obj['wasm'];
       'module': harness.moduleImports
     });
     instanceMemoryBuffer = instance.exports.memory.buffer;
-    harness.runTest(instanceMemoryBuffer, stdoutWrite, instance.exports);
+    harness.runTest(instanceMemoryBuffer, stdoutWrite, instance.exports, sharedData);
   }
   if (asmjs) {
     let code = '';
@@ -75,7 +86,7 @@ const wasm = !!obj['wasm'];
     }
 
     const l = module(isNode ? global : globalThis, harness.moduleImports, memBuffer);
-    harness.runTest((instanceMemoryBuffer = memBuffer), stdoutWrite, l);
+    harness.runTest((instanceMemoryBuffer = memBuffer), stdoutWrite, l, sharedData);
   }
 
   if (harness.dumpMemory) {

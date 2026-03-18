@@ -101,7 +101,13 @@ $exports = $module($moduleImports ?? [], $memBuffer);
 $instanceMemoryBuffer = &$memBuffer;
 
 if (isset($runTest)) {
-    $runTest($memBuffer, $stdoutWrite, $exports);
+    $sharedData = null;
+    $testBase = preg_replace('/_(codegen|none)$/', '', basename($testName));
+    $dataPath = __DIR__ . '/' . $testBase . '.shared.data.json';
+    if (is_file($dataPath)) {
+        $sharedData = json_decode(file_get_contents($dataPath), true);
+    }
+    $runTest($memBuffer, $stdoutWrite, $exports, $sharedData);
 }
 
 // ---- Memory CRC32 dump ----

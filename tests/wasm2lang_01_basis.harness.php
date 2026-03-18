@@ -32,11 +32,12 @@ $moduleImports = [
 ];
 
 /**
- * @param string   $buff
- * @param callable $out
- * @param array    $exports
+ * @param string     $buff
+ * @param callable   $out
+ * @param array      $exports
+ * @param array|null $data  Shared edge-case corpus (from wasm2lang.shared.data.json).
  */
-$runTest = function (string &$buff, callable $out, array $exports) use (
+$runTest = function (string &$buff, callable $out, array $exports, ?array $data = null) use (
     &$stdoutWrite,
     $readZeroTerminatedString
 ): void {
@@ -46,123 +47,114 @@ $runTest = function (string &$buff, callable $out, array $exports) use (
     $exports['alignHeapTop']();
     $startOffset = $exports['getHeapTop']();
 
-    // Primary parameter set.
-    $exports['exerciseMVPOps'](42, 3.5, 2.75);
-
-    // Edge-case parameter sets.
-    $exports['exerciseMVPOps'](0, 0.0, 0.0);
-    $exports['exerciseMVPOps'](-1, 0.5, 0.5);
-    $exports['exerciseMVPOps'](2147483647, 100.0, 100.0);
-
-    // Additional parameter sets.
-    $exports['exerciseMVPOps'](1, 1.0, 1.0);
-    $exports['exerciseMVPOps'](-2147483648, 3.0, 3.0);
-    $exports['exerciseMVPOps'](255, 0.125, 0.125);
-    $exports['exerciseMVPOps'](16, 4.0, 4.0);
+    // MVP ops — shared i32/f32/f64 triples.
+    foreach ($data['i32_f32_f64_triples'] as $t) {
+        $exports['exerciseMVPOps']($t[0], $t[1], $t[2]);
+    }
 
     $exports['exerciseOverflowOps']();
     $exports['exerciseEdgeCases']();
 
-    // br_table dispatch: direct cases, default, and adversarial indices.
-    foreach ([0, 1, 2, 3, 4, -1, 99, -2147483648] as $index) {
+    // br_table dispatch — shared branch indices.
+    foreach ($data['branch_indices'] as $index) {
         $exports['exerciseBrTable']($index);
     }
 
-    // br_table with loop target: positive countdowns and already-terminal starts.
-    foreach ([5, 2, 1, 0, -3, 9] as $startCount) {
+    // br_table with loop target — shared countdown values.
+    foreach ($data['loop_countdown_values'] as $startCount) {
         $exports['exerciseBrTableLoop']($startCount);
     }
 
-    // Counted loop: forward ranges, empty ranges, reverse ranges, and negatives.
-    foreach ([[0, 5], [2, 2], [-2, 3], [5, 1], [7, 8]] as $scenario) {
+    // Counted loop — shared loop pairs.
+    foreach ($data['loop_pairs'] as $scenario) {
         $exports['exerciseCountedLoop']($scenario[0], $scenario[1]);
     }
 
-    // Do-while countdown: normal factorial path and non-positive entry values.
-    foreach ([5, 1, 0, -3] as $countdownStart) {
+    // Do-while countdown — shared do-while values.
+    foreach ($data['do_while_values'] as $countdownStart) {
         $exports['exerciseDoWhileLoop']($countdownStart);
     }
 
-    // Do-while variant: long, short, and zero-budget entries.
+    // Do-while variant — function-specific scenarios.
     foreach ([[1, 10], [3, 1], [7, 0], [2, 4]] as $scenario) {
         $exports['exerciseDoWhileVariantA']($scenario[0], $scenario[1]);
     }
 
-    // Nested loop + switch dispatch: empty outer loop, direct default, and alternating resets.
+    // Nested loop + switch dispatch — function-specific scenarios.
     foreach ([[0, 0], [1, 0], [3, 0], [3, 2], [4, -1]] as $scenario) {
         $exports['exerciseNestedLoops']($scenario[0], $scenario[1]);
     }
 
-    // Loop state machine: multi-step transitions, direct case 2, terminal, and default exits.
-    foreach ([[0, 0, 3], [0, 20, 5], [2, 9, 4], [3, 7, 2], [4, 99, 9], [-1, 5, 1]] as $scenario) {
+    // Loop state machine — shared i32 triples.
+    foreach ($data['i32_triples'] as $scenario) {
         $exports['exerciseSwitchInLoop']($scenario[0], $scenario[1], $scenario[2]);
     }
 
-    // br_table with duplicate targets: shared targets and default routing.
+    // br_table with duplicate targets — function-specific (differs from branch_indices).
     foreach ([0, 1, 2, 3, 4, 5, -1, 99] as $index) {
         $exports['exerciseBrTableMultiTarget']($index);
     }
 
-    // Nested switches: inner defaults, outer defaults, and outer non-zero cases.
+    // Nested switches — function-specific scenarios.
     foreach ([[0, 0], [0, 1], [0, -1], [0, 5], [1, 0], [2, 0], [-1, 0], [9, 0]] as $scenario) {
         $exports['exerciseNestedSwitch']($scenario[0], $scenario[1]);
     }
 
-    // br_table with an internal default target.
+    // br_table with an internal default target — function-specific subset.
     foreach ([0, 1, 2, 3, -1, 99] as $index) {
         $exports['exerciseSwitchDefaultInternal']($index);
     }
 
-    // Multi-exit loop + switch: completed, alternate, and default-driven exits.
+    // Multi-exit loop + switch — function-specific scenarios.
     foreach ([[0, 0], [0, 50], [1, 1], [2, -5], [2, 5], [3, 7], [-1, 42], [9, 42]] as $scenario) {
         $exports['exerciseMultiExitSwitchLoop']($scenario[0], $scenario[1]);
     }
 
-    // Conditional escape loop + switch: looping, immediate default exits, and direct escape checks.
+    // Conditional escape loop + switch — function-specific scenarios.
     foreach ([[10, 0], [30, 0], [1, 0], [0, 5], [-10, 2], [60, 2], [5, -1]] as $scenario) {
         $exports['exerciseSwitchConditionalEscape']($scenario[0], $scenario[1]);
     }
 
-    // Nested arithmetic trees: deeply nested i32 expressions.
-    foreach ([42, 0, -1, 2147483647, 1, 255, -100] as $a) {
+    // Nested arithmetic trees — shared i32 values.
+    foreach ($data['i32_values'] as $a) {
         $exports['exerciseNestedArithmetic']($a);
     }
 
-    // Memory-driven arithmetic: store/load/compute chains.
-    foreach ([[42, 7], [0, 0], [-1, 1], [0x12345678, -100], [255, 256]] as $scenario) {
+    // Memory-driven arithmetic — shared i32 pairs.
+    foreach ($data['i32_pairs'] as $scenario) {
         $exports['exerciseMemoryArithmetic']($scenario[0], $scenario[1]);
     }
 
-    // Mixed-type chains: cross-type conversions and arithmetic.
-    foreach ([[42, 3.5, 2.75], [0, 0.0, 0.0], [-1, -1.5, -1.5], [100, 0.125, 100.0]] as $scenario) {
+    // Mixed-type chains — first 4 shared mixed-type cases.
+    foreach (array_slice($data['mixed_type_cases'], 0, 4) as $scenario) {
         $exports['exerciseMixedTypeChains']($scenario[0], $scenario[1], $scenario[2]);
     }
 
-    // Edge arithmetic: overflow, boundary, and identity tests.
+    // Edge arithmetic — no parameters.
     $exports['exerciseEdgeArithmetic']();
 
-    // Mixed-width loads: signed/unsigned byte and halfword arithmetic.
-    foreach ([[42, 7], [0, 0], [-1, 1], [0x12345678, -100], [255, 128], [-128, -1]] as $scenario) {
+    // Mixed-width loads — shared subword cases.
+    foreach ($data['subword_cases'] as $scenario) {
         $exports['exerciseMixedWidthLoads']($scenario[0], $scenario[1]);
     }
 
-    // Load-to-float: memory loads converted to f32/f64 and combined.
+    // Load-to-float — function-specific pairs (differs from subword_cases).
     foreach ([[42, 7], [0, 0], [-1, 1], [0x12345678, -100], [255, 256], [-128, 127]] as $scenario) {
         $exports['exerciseLoadToFloat']($scenario[0], $scenario[1]);
     }
 
-    // Cross-type pipeline: deep multi-stage mixed-type pipelines.
-    foreach ([[42, 3.5, 2.75], [0, 0.0, 0.0], [-1, -1.5, -1.5], [100, 0.125, 100.0], [255, 10.0, -50.0]] as $scenario) {
+    // Cross-type pipeline — shared mixed-type cases.
+    foreach ($data['mixed_type_cases'] as $scenario) {
         $exports['exerciseCrossTypePipeline']($scenario[0], $scenario[1], $scenario[2]);
     }
 
-    // Sub-word store/reload: store8/store16 computed values, byte-assembly, multi-stage chains.
-    foreach ([[42, 7], [0, 0], [-1, 1], [0x12345678, -100], [255, 128], [-128, -1]] as $scenario) {
+    // Sub-word store/reload — shared subword cases.
+    foreach ($data['subword_cases'] as $scenario) {
         $exports['exerciseSubWordStoreReload']($scenario[0], $scenario[1]);
     }
 
-    // Precision and reinterpret: f32 precision boundaries, fractional truncation, reinterpret chains.
-    foreach ([[42, 3.5, 2.75], [0, 0.0, 0.0], [-1, -1.5, -1.5], [100, 0.125, 100.0], [255, 10.0, -50.0]] as $scenario) {
+    // Precision and reinterpret — shared mixed-type cases.
+    foreach ($data['mixed_type_cases'] as $scenario) {
         $exports['exercisePrecisionAndReinterpret']($scenario[0], $scenario[1], $scenario[2]);
     }
 };
