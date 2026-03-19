@@ -30,17 +30,6 @@ Wasm2Lang.OutputSink.WriteFn;
 // ---------------------------------------------------------------------------
 
 /**
- * Returns {@code true} when {@code value} quacks like a thenable.
- *
- * @private
- * @param {*} value
- * @return {boolean}
- */
-Wasm2Lang.OutputSink.isThenable_ = function (value) {
-  return Boolean(value && 'object' === typeof value && 'function' === typeof value['then']);
-};
-
-/**
  * Continues draining {@code chunks} through {@code writeFn} starting at
  * index {@code startIndex}, using {@code Promise.then()} chaining for
  * every remaining entry.
@@ -63,11 +52,8 @@ Wasm2Lang.OutputSink.drainAsync_ = function (chunks, writeFn, startIndex) {
       return Promise.resolve(void 0);
     }
     var /** @const {*} */ chunk = chunks[idx];
-    if (Wasm2Lang.OutputSink.isThenable_(chunk)) {
-      // prettier-ignore
-      return /** @type {!Promise<!Wasm2Lang.OutputSink.Chunk>} */ (
-        Promise.resolve(chunk)
-      ).then(
+    if (chunk instanceof Promise) {
+      return /** @type {!Promise<!Wasm2Lang.OutputSink.Chunk>} */ (chunk).then(
         /** @param {!Wasm2Lang.OutputSink.Chunk} resolved @return {!Promise<void>} */
         function (resolved) {
           writeFn(resolved);
@@ -97,7 +83,7 @@ Wasm2Lang.OutputSink.drainAsync_ = function (chunks, writeFn, startIndex) {
 Wasm2Lang.OutputSink.drainChunks = function (chunks, writeFn) {
   for (var /** number */ i = 0, /** @const {number} */ len = chunks.length; i !== len; ++i) {
     var /** @const {*} */ chunk = chunks[i];
-    if (Wasm2Lang.OutputSink.isThenable_(chunk)) {
+    if (chunk instanceof Promise) {
       return Wasm2Lang.OutputSink.drainAsync_(chunks, writeFn, i);
     }
     writeFn(/** @type {!Wasm2Lang.OutputSink.Chunk} */ (chunk));
@@ -144,7 +130,7 @@ Wasm2Lang.OutputSink.createStdoutSink = function () {
   if (Wasm2Lang.Utilities.Environment.isNode()) {
     return /** @type {!Wasm2Lang.OutputSink.WriteFn} */ (
       /** @param {!Wasm2Lang.OutputSink.Chunk} chunk */ function (chunk) {
-        if ('object' === typeof chunk) {
+        if (chunk instanceof Uint8Array) {
           process.stdout.write(Buffer.from(/** @type {!Uint8Array} */ (chunk)));
         } else {
           process.stdout.write(/** @type {string} */ (chunk));

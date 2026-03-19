@@ -219,7 +219,7 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
   }
 
   var /** @const {*} */ transpileResult = Wasm2Lang.Processor.transpile_(options);
-  if (transpileResult && 'function' === typeof transpileResult['then']) {
+  if (transpileResult instanceof Promise) {
     return /** @type {!Promise<!Wasm2Lang.Processor.TranspileResult>} */ (transpileResult).then(drainAndReturn);
   }
 

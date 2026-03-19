@@ -1,0 +1,139 @@
+'use strict';
+
+/**
+ * Renders a typed memory load expression.
+ *
+ * Float accesses with declared alignment >= access width use direct
+ * HEAPF32/HEAPF64 views.  Sub-naturally-aligned accesses go through
+ * byte-copy helpers so wasm's unaligned memory semantics remain correct.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {string} ptrExpr
+ * @param {number} wasmType
+ * @param {number} bytes
+ * @param {boolean} isSigned
+ * @param {number} align
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLoad_ = function (binaryen, ptrExpr, wasmType, bytes, isSigned, align) {
+  if (Wasm2Lang.Backend.ValueType.isFloat(binaryen, wasmType)) {
+    // When the WASM alignment attribute declares alignment >= access width,
+    // use the direct typed-array view (HEAPF32/HEAPF64).  When alignment is
+    // lower, the runtime address may not be naturally aligned — asm.js
+    // typed-array views truncate the index (>> shift), silently reading from
+    // a rounded-down offset — so fall back to the byte-copy helper.
+    if (align >= bytes) {
+      return this.renderCoercionByType_(binaryen, this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, true), wasmType);
+    }
+    return this.renderHelperCall_(
+      binaryen,
+      '$w2l_load_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, wasmType),
+      [ptrExpr],
+      wasmType
+    );
+  }
+  return this.renderCoercionByType_(binaryen, this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, isSigned), wasmType);
+};
+
+/**
+ * Renders a typed memory store statement.
+ *
+ * Float accesses with declared alignment >= access width use direct
+ * HEAPF32/HEAPF64 views.  Sub-naturally-aligned accesses go through
+ * byte-copy helpers so wasm's unaligned memory semantics remain correct.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {string} ptrExpr
+ * @param {string} valueExpr
+ * @param {number} wasmType
+ * @param {number} bytes
+ * @param {number} align
+ * @param {number=} opt_valueCat  Expression category of the value.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
+  binaryen,
+  ptrExpr,
+  valueExpr,
+  wasmType,
+  bytes,
+  align,
+  opt_valueCat
+) {
+  var /** @const {number} */ valueCat = void 0 !== opt_valueCat ? opt_valueCat : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+  var /** @const {string} */ coercedValue = this.coerceToType_(binaryen, valueExpr, valueCat, wasmType);
+  if (Wasm2Lang.Backend.ValueType.isFloat(binaryen, wasmType)) {
+    // Use direct HEAPF32/HEAPF64 when alignment is declared sufficient.
+    // Fall back to byte-copy helpers for sub-natural alignment.
+    if (align >= bytes) {
+      return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, true) + ' = ' + coercedValue + ';';
+    }
+    var /** @const {string} */ storeName = '$w2l_store_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, wasmType);
+    this.markHelper_(storeName);
+    return this.n_(storeName) + '(' + ptrExpr + ', ' + coercedValue + ');';
+  }
+  return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, true) + ' = ' + coercedValue + ';';
+};
+
+// ---------------------------------------------------------------------------
+// Expression emitter (leave callback).
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the pointer expression with an optional static byte offset applied.
+ * When offset is zero the original expression is returned unchanged.
+ *
+ * @param {string} baseExpr
+ * @param {number} offset
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_ = function (baseExpr, offset) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  if (0 === offset) return baseExpr;
+  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_));
+};
+
+/**
+ * Returns the asm.js heap-view indexed expression for a given value type,
+ * width, and signedness, e.g. {@code "HEAP32[ptr >> 2]"}.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {string} ptrExpr
+ * @param {number} wasmType
+ * @param {number} bytes  Access width (1, 2, or 4).
+ * @param {boolean} isSigned
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHeapAccess_ = function (binaryen, ptrExpr, wasmType, bytes, isSigned) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @type {string} */ shiftAmount = '0';
+
+  if (8 === bytes) {
+    shiftAmount = '3';
+  } else if (4 === bytes) {
+    shiftAmount = '2';
+  } else if (2 === bytes) {
+    shiftAmount = '1';
+  }
+
+  var /** @const {string} */ shiftedPtr = P.renderInfix(ptrExpr, '>>', shiftAmount, P.PREC_SHIFT_);
+
+  /** @type {string} */
+  var viewName;
+  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
+    viewName = 'HEAPF64';
+  } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
+    viewName = 'HEAPF32';
+  } else if (4 === bytes) {
+    viewName = 'HEAP32';
+  } else if (2 === bytes) {
+    viewName = isSigned ? 'HEAP16' : 'HEAPU16';
+  } else if (1 === bytes) {
+    viewName = isSigned ? 'HEAP8' : 'HEAPU8';
+  } else {
+    this.markBinding_('HEAP8');
+    return this.n_('HEAP8') + '[0]';
+  }
+  this.markBinding_(viewName);
+  return this.n_(viewName) + '[' + shiftedPtr + ']';
+};

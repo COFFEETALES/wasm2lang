@@ -96,7 +96,7 @@ Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.Ou
        * @return {boolean}
        */
       function (chunk) {
-        return 'object' === typeof chunk;
+        return chunk instanceof Uint8Array;
       }
     );
   if (!binaryOnly) {
@@ -153,13 +153,11 @@ Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.Ou
  */
 Wasm2Lang.Utilities.Environment.isNode = function () {
   if (
-    Boolean(
-      'object' === typeof process &&
-      process &&
-      'object' === typeof process.versions &&
-      process.versions &&
-      'string' === typeof process.versions.node
-    )
+    'object' === typeof process &&
+    process &&
+    'object' === typeof process.versions &&
+    process.versions &&
+    'string' === typeof process.versions.node
   ) {
     return Wasm2Lang.Utilities.Environment.OutputTarget.CLI;
   }

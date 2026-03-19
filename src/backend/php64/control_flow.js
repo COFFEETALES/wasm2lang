@@ -1,0 +1,926 @@
+'use strict';
+
+// ---------------------------------------------------------------------------
+// Code-gen traversal state.
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {{
+ *   lbl: string,
+ *   lk: string,
+ *   alias: (string|undefined)
+ * }}
+ */
+Wasm2Lang.Backend.Php64Codegen.LabelEntry_;
+
+/**
+ * @typedef {{
+ *   binaryen: !Binaryen,
+ *   functionInfo: !BinaryenFunctionInfo,
+ *   functionSignatures: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>,
+ *   globalTypes: !Object<string, number>,
+ *   inlineTempOffset: number,
+ *   labelStack: !Array<!Wasm2Lang.Backend.Php64Codegen.LabelEntry_>,
+ *   importedNames: !Object<string, string>,
+ *   indent: number,
+ *   wasmModule: !BinaryenModule,
+ *   visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor,
+ *   pendingBlockFusion: string,
+ *   doWhileBodyPtrs: !Object<string, boolean>,
+ *   doWhileConditionStr: string,
+ *   whileBodyPtrs: !Object<string, boolean>,
+ *   whileConditionStr: string,
+ *   rootSwitchExitMap: ?Object<string, !Array<number>>,
+ *   rootSwitchRsName: string,
+ *   rootSwitchLoopName: string
+ * }}
+ */
+Wasm2Lang.Backend.Php64Codegen.EmitState_;
+
+// ---------------------------------------------------------------------------
+// Expression emitter (leave callback).
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {!Wasm2Lang.Backend.Php64Codegen.EmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, childResults) {
+  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
+  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const {number} */ ind = state.indent;
+  var /** @type {string} */ result = '';
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ hp = A.hasPrefix_;
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @type {number} */ resultCat = A.CAT_VOID;
+  var /** @const */ self = this;
+  /** @param {number} tempIndex @return {string} */
+  var inlineTemp = function (tempIndex) {
+    return self.localN_(state.inlineTempOffset + tempIndex);
+  };
+
+  var /** @const {function(number): !Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ childResultAt = function (i) {
+      return A.getChildResultInfo_(childResults, i);
+    };
+
+  var /** @const {function(number): string} */ cr = function (i) {
+      return childResultAt(i).expressionString;
+    };
+
+  var /** @const {function(number): number} */ cc = function (i) {
+      return childResultAt(i).expressionCategory;
+    };
+
+  switch (id) {
+    case binaryen.ConstId: {
+      var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
+      result = this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType);
+      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, constType)
+        ? C.FIXNUM
+        : Wasm2Lang.Backend.ValueType.isF32(binaryen, constType)
+          ? A.CAT_F32
+          : A.CAT_F64;
+      break;
+    }
+    case binaryen.LocalGetId: {
+      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr['index']);
+      var /** @const {number} */ localGetType = Wasm2Lang.Backend.ValueType.getLocalType(
+          binaryen,
+          state.functionInfo,
+          localGetIdx
+        );
+      result = this.localN_(localGetIdx);
+      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, localGetType)
+        ? A.CAT_F64
+        : Wasm2Lang.Backend.ValueType.isF32(binaryen, localGetType)
+          ? A.CAT_F32
+          : A.CAT_RAW;
+      break;
+    }
+
+    case binaryen.GlobalGetId: {
+      var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
+      var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
+      result = this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globalGetName));
+      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
+        ? A.CAT_F64
+        : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
+          ? A.CAT_F32
+          : A.CAT_RAW;
+      break;
+    }
+
+    case binaryen.BinaryId: {
+      var /** @const {number} */ binaryOp = /** @type {number} */ (expr['op']);
+      var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = Wasm2Lang.Backend.I32Coercion.classifyBinaryOp(
+          binaryen,
+          binaryOp
+        );
+      if (binInfo) {
+        result = this.renderBinaryOp_(binInfo, cr(0), cr(1));
+        resultCat = C.SIGNED;
+      } else {
+        var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numericBinInfo =
+            Wasm2Lang.Backend.NumericOps.classifyBinaryOp(binaryen, binaryOp);
+        if (numericBinInfo) {
+          // f64 arithmetic/min/max: coerce operands individually using categories
+          // so that known-float operands (locals, consts, loads) skip the cast.
+          var /** @const {boolean} */ isF64Ret = Wasm2Lang.Backend.ValueType.isF64(binaryen, numericBinInfo.retType);
+          var /** @const {boolean} */ isF32Ret = Wasm2Lang.Backend.ValueType.isF32(binaryen, numericBinInfo.retType);
+          var /** @const {string} */ numBinOpName = numericBinInfo.opName;
+          // Float min/max: coerce operands with categories so that known-float
+          // operands (locals, consts, loads, helper results) skip the cast.
+          if ((isF64Ret || isF32Ret) && ('min' === numBinOpName || 'max' === numBinOpName)) {
+            var /** @const {string} */ mmInner =
+                numBinOpName +
+                '(' +
+                this.coerceToType_(binaryen, cr(0), cc(0), numericBinInfo.retType) +
+                ', ' +
+                this.coerceToType_(binaryen, cr(1), cc(1), numericBinInfo.retType) +
+                ')';
+            result = isF32Ret ? this.n_('_w2l_f32') + '(' + mmInner + ')' : mmInner;
+          } else if (isF64Ret && !numericBinInfo.isComparison) {
+            if ('' !== numericBinInfo.opStr) {
+              var /** @type {number} */ f64Prec = A.Precedence_.PREC_ADDITIVE_;
+              if ('mul' === numBinOpName || 'div' === numBinOpName) {
+                f64Prec = A.Precedence_.PREC_MULTIPLICATIVE_;
+              }
+              result = A.Precedence_.renderInfix(
+                this.coerceToType_(binaryen, cr(0), cc(0), numericBinInfo.retType),
+                numericBinInfo.opStr,
+                this.coerceToType_(binaryen, cr(1), cc(1), numericBinInfo.retType),
+                f64Prec
+              );
+            } else {
+              // copysign — delegate to renderNumericBinaryOp_.
+              result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1));
+            }
+          } else {
+            result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1));
+          }
+          resultCat = A.catForCoercedType_(binaryen, numericBinInfo.retType);
+        } else {
+          result = '0 /* unknown binop ' + expr['op'] + ' */';
+          resultCat = A.CAT_RAW;
+        }
+      }
+      break;
+    }
+    case binaryen.UnaryId: {
+      var /** @const {number} */ unCat = Wasm2Lang.Backend.I32Coercion.classifyUnaryOp(
+          binaryen,
+          /** @type {number} */ (expr['op'])
+        );
+      if (C.UNARY_EQZ === unCat) {
+        var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+        result = '(' + P.renderInfix('0', '===', cr(0), P.PREC_EQUALITY_) + ' ? 1 : 0)';
+        resultCat = C.SIGNED;
+      } else if (C.UNARY_CLZ === unCat) {
+        this.markHelper_('_w2l_clz');
+        result = this.n_('_w2l_clz') + '(' + cr(0) + ')';
+        resultCat = C.SIGNED;
+      } else if (C.UNARY_CTZ === unCat) {
+        this.markHelper_('_w2l_ctz');
+        result = this.n_('_w2l_ctz') + '(' + cr(0) + ')';
+        resultCat = C.SIGNED;
+      } else if (C.UNARY_POPCNT === unCat) {
+        this.markHelper_('_w2l_popcnt');
+        result = this.n_('_w2l_popcnt') + '(' + cr(0) + ')';
+        resultCat = C.SIGNED;
+      } else {
+        var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numericUnInfo =
+            Wasm2Lang.Backend.NumericOps.classifyUnaryOp(binaryen, /** @type {number} */ (expr['op']));
+        if (numericUnInfo) {
+          // f64 abs/ceil/floor/sqrt/demote: coerce operand using category so
+          // that known-float operands skip the redundant (float) cast.
+          var /** @const {string} */ unOpName = numericUnInfo.opName;
+          if (
+            Wasm2Lang.Backend.ValueType.isF64(binaryen, numericUnInfo.operandType) &&
+            ('abs' === unOpName || 'ceil' === unOpName || 'floor' === unOpName || 'sqrt' === unOpName)
+          ) {
+            result = unOpName + '(' + this.coerceToType_(binaryen, cr(0), cc(0), numericUnInfo.operandType) + ')';
+          } else if (
+            Wasm2Lang.Backend.ValueType.isF64(binaryen, numericUnInfo.operandType) &&
+            'demote_f64_to_f32' === unOpName
+          ) {
+            result = this.n_('_w2l_f32') + '(' + this.coerceToType_(binaryen, cr(0), cc(0), numericUnInfo.operandType) + ')';
+          } else {
+            result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0));
+          }
+          resultCat = A.catForCoercedType_(binaryen, numericUnInfo.retType);
+        } else {
+          result = '0 /* unknown unop ' + expr['op'] + ' */';
+          resultCat = A.CAT_RAW;
+        }
+      }
+      break;
+    }
+    case binaryen.LoadId: {
+      var /** @const {string} */ loadPtr = this.renderPtrWithOffset_(cr(0), /** @type {number} */ (expr['offset']));
+      var /** @const {number} */ loadBytes = /** @type {number} */ (expr['bytes']);
+      var /** @const {boolean} */ loadSigned = !!expr['isSigned'];
+      var /** @const {number} */ loadType = /** @type {number} */ (expr['type']);
+      var /** @const {string} */ nBuf = this.phpVar_('buffer');
+
+      if (Wasm2Lang.Backend.ValueType.isF64(binaryen, loadType)) {
+        result = "unpack('e', " + nBuf + ', ' + loadPtr + ')[1]';
+      } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, loadType)) {
+        result = this.n_('_w2l_f32') + "(unpack('g', " + nBuf + ', ' + loadPtr + ')[1])';
+      } else if (4 === loadBytes) {
+        result = this.n_('_w2l_i') + "(unpack('V', " + nBuf + ', ' + loadPtr + ')[1])';
+      } else if (2 === loadBytes) {
+        if (loadSigned) {
+          var /** @const {string} */ tV16 = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_V_);
+          result =
+            '((' + tV16 + " = unpack('v', " + nBuf + ', ' + loadPtr + ')[1]) > 32767 ? ' + tV16 + ' - 65536 : ' + tV16 + ')';
+        } else {
+          result = "unpack('v', " + nBuf + ', ' + loadPtr + ')[1]';
+        }
+      } else {
+        if (loadSigned) {
+          var /** @const {string} */ tV8 = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_V_);
+          result = '((' + tV8 + ' = ord(' + nBuf + '[' + loadPtr + '])) > 127 ? ' + tV8 + ' - 256 : ' + tV8 + ')';
+        } else {
+          result = 'ord(' + nBuf + '[' + loadPtr + '])';
+        }
+      }
+      resultCat = A.catForCoercedType_(binaryen, loadType);
+      break;
+    }
+    case binaryen.StoreId: {
+      var /** @const {string} */ storePtr = this.renderPtrWithOffset_(cr(0), /** @type {number} */ (expr['offset']));
+      var /** @const {number} */ storeBytes = /** @type {number} */ (expr['bytes']);
+      var /** @const {number} */ storeType = /** @type {number} */ (expr['valueType']) || binaryen.i32;
+      var /** @const {string} */ sBuf = this.phpVar_('buffer');
+
+      var /** @const {string} */ tP = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_P_);
+      var /** @const {string} */ tS = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_S_);
+      if (Wasm2Lang.Backend.ValueType.isF64(binaryen, storeType)) {
+        result =
+          pad(ind) +
+          tP +
+          ' = ' +
+          storePtr +
+          '; ' +
+          tS +
+          " = pack('e', " +
+          this.coerceToType_(binaryen, cr(1), cc(1), storeType) +
+          '); ' +
+          sBuf +
+          '[' +
+          tP +
+          '] = ' +
+          tS +
+          '[0]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 1] = ' +
+          tS +
+          '[1]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 2] = ' +
+          tS +
+          '[2]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 3] = ' +
+          tS +
+          '[3]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 4] = ' +
+          tS +
+          '[4]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 5] = ' +
+          tS +
+          '[5]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 6] = ' +
+          tS +
+          '[6]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 7] = ' +
+          tS +
+          '[7];\n';
+      } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, storeType)) {
+        result =
+          pad(ind) +
+          tP +
+          ' = ' +
+          storePtr +
+          '; ' +
+          tS +
+          " = pack('g', " +
+          this.n_('_w2l_f32') +
+          '(' +
+          cr(1) +
+          ')); ' +
+          sBuf +
+          '[' +
+          tP +
+          '] = ' +
+          tS +
+          '[0]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 1] = ' +
+          tS +
+          '[1]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 2] = ' +
+          tS +
+          '[2]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 3] = ' +
+          tS +
+          '[3];\n';
+      } else if (4 === storeBytes) {
+        result =
+          pad(ind) +
+          tP +
+          ' = ' +
+          storePtr +
+          '; ' +
+          tS +
+          " = pack('V', " +
+          this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
+          '); ' +
+          sBuf +
+          '[' +
+          tP +
+          '] = ' +
+          tS +
+          '[0]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 1] = ' +
+          tS +
+          '[1]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 2] = ' +
+          tS +
+          '[2]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 3] = ' +
+          tS +
+          '[3];\n';
+      } else if (2 === storeBytes) {
+        result =
+          pad(ind) +
+          tP +
+          ' = ' +
+          storePtr +
+          '; ' +
+          tS +
+          " = pack('v', (" +
+          this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
+          ') & 0xFFFF); ' +
+          sBuf +
+          '[' +
+          tP +
+          '] = ' +
+          tS +
+          '[0]; ' +
+          sBuf +
+          '[' +
+          tP +
+          ' + 1] = ' +
+          tS +
+          '[1];\n';
+      } else {
+        result =
+          pad(ind) +
+          sBuf +
+          '[' +
+          storePtr +
+          '] = chr((' +
+          this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
+          ') & 0xFF);\n';
+      }
+      break;
+    }
+    case binaryen.LocalSetId: {
+      var /** @const */ lsResult = this.emitLocalSet_(
+          binaryen,
+          state.functionInfo,
+          ind,
+          !!expr['isTee'],
+          /** @type {number} */ (expr['index']),
+          cr(0),
+          cc(0)
+        );
+      result = lsResult.result;
+      resultCat = lsResult.resultCat;
+      break;
+    }
+    case binaryen.GlobalSetId: {
+      var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
+      var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
+      result =
+        pad(ind) +
+        this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globalName)) +
+        ' = ' +
+        this.coerceToType_(binaryen, cr(0), cc(0), globalType) +
+        ';\n';
+      break;
+    }
+    case binaryen.CallId: {
+      var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
+      var /** @const {string} */ importBase = state.importedNames[callTarget] || '';
+      var /** @type {string} */ callName =
+          '' !== importBase
+            ? this.phpVar_('$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(importBase))
+            : this.phpVar_(Wasm2Lang.Backend.Php64Codegen.phpSafeName_(callTarget));
+      var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
+          binaryen,
+          expr,
+          childResults,
+          state.functionSignatures
+        );
+      var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
+      var /** @const {number} */ callType = /** @type {number} */ (expr['type']);
+      if (callType === binaryen.none || 0 === callType) {
+        result = pad(ind) + callExpr + ';\n';
+      } else {
+        result = this.renderCoercionByType_(binaryen, callExpr, callType);
+        resultCat = A.catForCoercedType_(binaryen, callType);
+      }
+      break;
+    }
+    case binaryen.ReturnId:
+      if (childResultAt(0).hasExpression) {
+        result = pad(ind) + 'return ' + this.coerceToType_(binaryen, cr(0), cc(0), state.functionInfo.results) + ';\n';
+      } else {
+        result = pad(ind) + 'return;\n';
+      }
+      break;
+
+    case binaryen.DropId:
+      result = pad(ind) + cr(0) + ';\n';
+      break;
+
+    case binaryen.NopId:
+    case binaryen.UnreachableId:
+      break;
+
+    case binaryen.SelectId: {
+      var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
+      result = this.renderCoercionByType_(binaryen, '(' + cr(0) + ' ? ' + cr(1) + ' : ' + cr(2) + ')', selectType);
+      resultCat = A.catForCoercedType_(binaryen, selectType);
+      break;
+    }
+    case binaryen.MemorySizeId:
+      result = '0';
+      resultCat = C.FIXNUM;
+      break;
+
+    case binaryen.MemoryGrowId:
+      result = pad(ind) + cr(0) + ';\n';
+      break;
+
+    case binaryen.BlockId: {
+      var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
+      if (blockName && hp(blockName, A.RS_ROOT_SWITCH_PREFIX_)) {
+        result = this.emitRootSwitch_(state, nodeCtx);
+        break;
+      }
+      if (blockName && hp(blockName, A.SW_DISPATCH_PREFIX_)) {
+        result = this.emitFlatSwitch_(state, nodeCtx);
+        break;
+      }
+      var /** @const {boolean} */ isFusedBlock = !!blockName && hp(blockName, A.LB_FUSION_PREFIX_);
+      var /** @const {string} */ blockPtrKey = String(nodeCtx.expressionPointer);
+      var /** @const {boolean} */ isDWBody = blockPtrKey in state.doWhileBodyPtrs;
+      if (isDWBody) {
+        delete state.doWhileBodyPtrs[blockPtrKey];
+      }
+      var /** @const {boolean} */ isWhileBody = blockPtrKey in state.whileBodyPtrs;
+      if (isWhileBody) {
+        delete state.whileBodyPtrs[blockPtrKey];
+      }
+      var /** @const {boolean} */ hasTrailingCond = isDWBody || isWhileBody;
+      var /** @const {number} */ childInd = blockName && !isFusedBlock ? ind + 1 : ind;
+      var /** @const {number} */ emitCount =
+          hasTrailingCond && 0 < childResults.length ? childResults.length - 1 : childResults.length;
+      var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
+      if (isDWBody) {
+        state.doWhileConditionStr = cr(childResults.length - 1);
+      }
+      if (isWhileBody) {
+        state.whileConditionStr = cr(childResults.length - 1);
+      }
+      if (isFusedBlock) {
+        result = blockBody;
+      } else if (blockName) {
+        result = pad(ind) + 'do {\n' + blockBody + pad(ind) + '} while (false);\n';
+      } else {
+        result = blockBody;
+      }
+      break;
+    }
+    case binaryen.LoopId: {
+      var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
+      if (hp(loopName, A.LF_FORLOOP_PREFIX_) || hp(loopName, A.LC_CONTINUE_PREFIX_)) {
+        result = pad(ind) + 'while (true) {\n' + cr(0) + pad(ind) + '}\n';
+      } else if (hp(loopName, A.LE_DOWHILE_PREFIX_) || hp(loopName, A.LD_DOWHILE_PREFIX_)) {
+        var /** @const {string} */ dwCond = state.doWhileConditionStr;
+        state.doWhileConditionStr = '';
+        result = pad(ind) + 'do {\n' + cr(0) + pad(ind) + '} while ' + this.formatCondition_(dwCond) + ';\n';
+      } else if (hp(loopName, A.LY_WHILE_PREFIX_) || hp(loopName, A.LW_WHILE_PREFIX_)) {
+        var /** @const {string} */ whCond = state.whileConditionStr;
+        state.whileConditionStr = '';
+        result = pad(ind) + 'while ' + this.formatCondition_(whCond) + ' {\n' + cr(0) + pad(ind) + '}\n';
+      } else {
+        result = pad(ind) + 'while (true) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
+      }
+      break;
+    }
+
+    case binaryen.IfId:
+      result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
+      break;
+    case binaryen.BreakId: {
+      var /** @const {string} */ brName = /** @type {string} */ (expr['name']);
+      var /** @const {number} */ brCondPtr = /** @type {number} */ (expr['condition']);
+      // Root-switch exit interception.
+      if (state.rootSwitchExitMap) {
+        if (brName in state.rootSwitchExitMap) {
+          var /** @const {!Array<number>} */ rsExitPtrs = state.rootSwitchExitMap[brName];
+          var /** @const {!Array<string>} */ rsExitLines = [];
+          // prettier-ignore
+          var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ rsVis =
+            /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+          var /** @const {boolean} */ rsIsTerminal = A.emitRootSwitchExitCode_(
+              rsExitLines,
+              state.wasmModule,
+              binaryen,
+              state.functionInfo,
+              rsVis,
+              rsExitPtrs,
+              ind
+            );
+          if (!rsIsTerminal) {
+            // Compute depth to the root-switch loop.
+            var /** @type {number} */ rsLoopDepth = 0;
+            for (var /** number */ rsi = state.labelStack.length - 1; 0 <= rsi; --rsi) {
+              ++rsLoopDepth;
+              if (state.labelStack[rsi].lbl === state.rootSwitchLoopName) {
+                break;
+              }
+            }
+            rsExitLines[rsExitLines.length] = pad(ind) + 'break' + (1 < rsLoopDepth ? ' ' + rsLoopDepth : '') + ';\n';
+          }
+          if (0 !== brCondPtr) {
+            result = pad(ind) + 'if ' + this.formatCondition_(cr(0)) + ' {\n' + rsExitLines.join('') + pad(ind) + '}\n';
+          } else {
+            result = rsExitLines.join('');
+          }
+          break;
+        }
+        if (brName === state.rootSwitchRsName) {
+          // Break to the rs$ block = break the loop.
+          var /** @type {number} */ rsBreakDepth = 0;
+          for (var /** number */ rsbi = state.labelStack.length - 1; 0 <= rsbi; --rsbi) {
+            ++rsBreakDepth;
+            if (state.labelStack[rsbi].lbl === state.rootSwitchLoopName) {
+              break;
+            }
+          }
+          var /** @const {string} */ rsBrStmt = 'break' + (1 < rsBreakDepth ? ' ' + rsBreakDepth : '') + ';\n';
+          result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), rsBrStmt);
+          break;
+        }
+      }
+      // Compute depth by scanning label stack from top.
+      var /** @type {number} */ depth = 0;
+      var /** @type {string} */ brKind = 'block';
+      for (var /** number */ si = state.labelStack.length - 1; 0 <= si; --si) {
+        ++depth;
+        if (state.labelStack[si].lbl === brName) {
+          brKind = state.labelStack[si].lk;
+          break;
+        }
+        if (state.labelStack[si].alias === brName) {
+          brKind = 'block';
+          break;
+        }
+      }
+
+      var /** @const {string} */ brStmt = ('loop' === brKind ? 'continue' : 'break') + (1 < depth ? ' ' + depth : '') + ';\n';
+      result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), brStmt);
+      break;
+    }
+    case binaryen.SwitchId: {
+      var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (expr['names'] || []);
+      var /** @const {string} */ switchDefault = /** @type {string} */ (expr['defaultName'] || '');
+      var /** @const {!Array<string>} */ switchLines = [];
+      switchLines[switchLines.length] = pad(ind) + 'switch (' + cr(0) + ') {\n';
+      var /** @type {number} */ swIdx = 0;
+      while (swIdx < switchNames.length) {
+        var /** @const {string} */ switchTarget = switchNames[swIdx];
+        while (swIdx < switchNames.length && switchNames[swIdx] === switchTarget) {
+          switchLines[switchLines.length] = pad(ind + 1) + 'case ' + swIdx + ':\n';
+          ++swIdx;
+        }
+        var /** @type {number} */ swDepth = 0;
+        var /** @type {string} */ swKind = 'block';
+        for (var /** number */ swi = state.labelStack.length - 1; 0 <= swi; --swi) {
+          ++swDepth;
+          if (state.labelStack[swi].lbl === switchTarget) {
+            swKind = state.labelStack[swi].lk;
+            break;
+          }
+          if (state.labelStack[swi].alias === switchTarget) {
+            swKind = 'block';
+            break;
+          }
+        }
+        switchLines[switchLines.length] =
+          pad(ind + 2) + ('loop' === swKind ? 'continue' : 'break') + ' ' + (swDepth + 1) + ';\n';
+      }
+      if ('' !== switchDefault) {
+        switchLines[switchLines.length] = pad(ind + 1) + 'default:\n';
+        var /** @type {number} */ swDefDepth = 0;
+        var /** @type {string} */ swDefKind = 'block';
+        for (var /** number */ swdi = state.labelStack.length - 1; 0 <= swdi; --swdi) {
+          ++swDefDepth;
+          if (state.labelStack[swdi].lbl === switchDefault) {
+            swDefKind = state.labelStack[swdi].lk;
+            break;
+          }
+          if (state.labelStack[swdi].alias === switchDefault) {
+            swDefKind = 'block';
+            break;
+          }
+        }
+        switchLines[switchLines.length] =
+          pad(ind + 2) + ('loop' === swDefKind ? 'continue' : 'break') + ' ' + (swDefDepth + 1) + ';\n';
+      }
+      switchLines[switchLines.length] = pad(ind) + '}\n';
+      result = switchLines.join('');
+      break;
+    }
+    default:
+      result = '/* unknown expr id=' + id + ' */';
+      break;
+  }
+
+  if (resultCat !== A.CAT_VOID) {
+    return {decisionValue: {'s': result, 'c': resultCat}};
+  }
+  return {decisionValue: result};
+};
+
+/**
+ * Emits a flat switch for a br_table dispatch block (PHP variant).
+ *
+ * PHP uses {@code break N} (numeric depth) instead of labeled breaks.  The
+ * outer block becomes {@code do { switch (...) { ... } } while (false);} so
+ * that {@code break 2;} inside a case exits both the switch and the do-while.
+ *
+ * @param {!Wasm2Lang.Backend.Php64Codegen.EmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const {number} */ ind = state.indent;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
+    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ info =
+    /** @type {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} */ (
+      A.extractSwitchDispatchStructure_(binaryen, nodeCtx.expressionPointer)
+    );
+
+  // The leave wrapper already popped the outer block from labelStack.
+  // Re-push it as a single entry so that breaks targeting the outer name
+  // resolve to depth 1 (= exit the switch).  No do-while wrapper needed
+  // because the flat switch consumes the entire outer block with no tail code.
+  state.labelStack[state.labelStack.length] = {lbl: info.outerName, lk: 'block'};
+
+  // Sub-walk the switch condition.
+  var /** @const {string} */ condStr = A.subWalkString_(
+      A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.conditionPtr)
+    );
+
+  var /** @const {!Array<string>} */ lines = [];
+  A.emitFlatSwitchHeader_(lines, ind, condStr, '', info);
+
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_>} */ groups = info.caseGroups;
+  for (var /** number */ gi = 0; gi < groups.length; ++gi) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ group = groups[gi];
+    var /** @const {!Array<number>} */ indices = group.indices;
+    for (var /** number */ ii = 0; ii < indices.length; ++ii) {
+      lines[lines.length] = pad(ind + 1) + 'case ' + indices[ii] + ':\n';
+    }
+    var /** @const {number} */ savedIndent = state.indent;
+    state.indent = ind + 2;
+    var /** @const {boolean} */ strippedBreak = A.emitSwitchCaseActions_(
+        lines,
+        state.wasmModule,
+        binaryen,
+        state.functionInfo,
+        vis,
+        group.actionPtrs,
+        ind + 2,
+        info.outerName
+      );
+    if (group.externalTarget) {
+      // External target: emit break/continue with computed depth.
+      // state.indent is still ind+2 so the sub-walked break inherits
+      // the correct case-body indentation.
+      var /** @const {string} */ etCode = A.subWalkString_(
+          A.subWalkExpression_(
+            state.wasmModule,
+            binaryen,
+            state.functionInfo,
+            vis,
+            state.wasmModule.break(group.externalTarget, 0, 0)
+          )
+        );
+      if ('' !== etCode) {
+        if (-1 === etCode.indexOf('\n')) {
+          lines[lines.length] = pad(ind + 2) + etCode + ';\n';
+        } else {
+          lines[lines.length] = etCode;
+        }
+      }
+    } else if (group.needsBreak || strippedBreak) {
+      A.emitFlatSwitchBreak_(lines, ind + 2, '', info);
+    }
+    state.indent = savedIndent;
+  }
+
+  var /** @type {?Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ defGroup = info.defaultGroup;
+  if (defGroup) {
+    lines[lines.length] = pad(ind + 1) + 'default:\n';
+    var /** @const {number} */ savedIndent2 = state.indent;
+    state.indent = ind + 2;
+    var /** @const {boolean} */ strippedDefBreak = A.emitSwitchCaseActions_(
+        lines,
+        state.wasmModule,
+        binaryen,
+        state.functionInfo,
+        vis,
+        defGroup.actionPtrs,
+        ind + 2,
+        info.outerName
+      );
+    if (defGroup.externalTarget) {
+      var /** @const {string} */ defEtCode = A.subWalkString_(
+          A.subWalkExpression_(
+            state.wasmModule,
+            binaryen,
+            state.functionInfo,
+            vis,
+            state.wasmModule.break(defGroup.externalTarget, 0, 0)
+          )
+        );
+      if ('' !== defEtCode) {
+        if (-1 === defEtCode.indexOf('\n')) {
+          lines[lines.length] = pad(ind + 2) + defEtCode + ';\n';
+        } else {
+          lines[lines.length] = defEtCode;
+        }
+      }
+    } else if (defGroup.needsBreak || strippedDefBreak) {
+      A.emitFlatSwitchBreak_(lines, ind + 2, '', info);
+    }
+    state.indent = savedIndent2;
+  }
+
+  lines[lines.length] = pad(ind) + '}\n';
+
+  // Remove the outer block entry we re-pushed.
+  state.labelStack.pop();
+
+  return lines.join('');
+};
+
+/**
+ * Emits a root-switch-loop structure where the outer block wrappers are
+ * eliminated and exit code is inlined into the switch cases.
+ *
+ * @param {!Wasm2Lang.Backend.Php64Codegen.EmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.emitRootSwitch_ = function (state, nodeCtx) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
+    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_} */ info =
+    /** @type {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_} */ (
+      A.extractRootSwitchStructure_(binaryen, nodeCtx.expressionPointer)
+    );
+
+  // Set up root-switch state for BreakId interception.
+  state.rootSwitchExitMap = info.exitPaths;
+  state.rootSwitchRsName = info.rsBlockName;
+  state.rootSwitchLoopName = info.loopName;
+
+  // Sub-walk the loop — its enter/leave produce the complete loop code
+  // (the loop enter pushes to labelStack, the loop leave pops it).
+  var /** @const {string} */ loopCode = A.subWalkString_(
+      A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.loopPtr)
+    );
+
+  // Clear root-switch state.
+  state.rootSwitchExitMap = null;
+  state.rootSwitchRsName = '';
+  state.rootSwitchLoopName = '';
+
+  return loopCode;
+};
+
+/**
+ * @param {!Wasm2Lang.Backend.Php64Codegen.EmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) {
+  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
+  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ hp = A.hasPrefix_;
+
+  if (binaryen.BlockId === id) {
+    var /** @const {?string} */ bName = /** @type {?string} */ (expr['name']);
+    if (bName) {
+      if (hp(bName, A.LB_FUSION_PREFIX_)) {
+        // Fused block: DON'T push label stack or change indent.
+        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr['children']);
+        if (ch && 1 === ch.length && binaryen.getExpressionInfo(ch[0]).id === binaryen.LoopId) {
+          // Pattern A (block wraps loop): loop enters next.
+          state.pendingBlockFusion = bName;
+        } else {
+          // Pattern B (block inside loop): add alias to top entry.
+          state.labelStack[state.labelStack.length - 1].alias = bName;
+        }
+      } else if (hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
+        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
+      } else if (hp(bName, A.SW_DISPATCH_PREFIX_)) {
+        state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
+        ++state.indent;
+        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
+      } else {
+        state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
+        ++state.indent;
+      }
+    }
+  } else if (binaryen.LoopId === id) {
+    var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
+    if ('' !== state.pendingBlockFusion) {
+      state.labelStack[state.labelStack.length] = {lbl: loopName, lk: 'loop', alias: state.pendingBlockFusion};
+      state.pendingBlockFusion = '';
+    } else {
+      state.labelStack[state.labelStack.length] = {lbl: loopName, lk: 'loop'};
+    }
+    ++state.indent;
+    if (hp(loopName, A.LD_DOWHILE_PREFIX_) || hp(loopName, A.LE_DOWHILE_PREFIX_)) {
+      state.doWhileBodyPtrs[String(/** @type {number} */ (expr['body']))] = true;
+    } else if (hp(loopName, A.LW_WHILE_PREFIX_) || hp(loopName, A.LY_WHILE_PREFIX_)) {
+      state.whileBodyPtrs[String(/** @type {number} */ (expr['body']))] = true;
+    }
+  } else if (binaryen.IfId === id) {
+    ++state.indent;
+  }
+
+  return null;
+};
