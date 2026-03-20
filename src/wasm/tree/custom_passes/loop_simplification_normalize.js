@@ -118,7 +118,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.invertCondition_ = funct
 /**
  * @private
  * @typedef {{
- *   simplifiedLoops: !Object<string, string>
+ *   simplifiedLoops: !Object<string, string>,
+ *   funcMetadata: !Wasm2Lang.Wasm.Tree.PassMetadata
  * }}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_;
@@ -256,6 +257,57 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.markerForKind_ = functio
     return S.LY_MARKER;
   }
   return S.LE_MARKER;
+};
+
+/**
+ * Returns the LoopPlan loopKind for a given simplification variant.
+ *
+ * @private
+ * @param {string} kind
+ * @return {string}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.loopKindForVariant_ = function (kind) {
+  if ('lda' === kind || 'ldb' === kind || 'lea' === kind || 'leb' === kind) {
+    return 'dowhile';
+  }
+  if ('lw' === kind || 'ly' === kind) {
+    return 'while';
+  }
+  return 'for';
+};
+
+/**
+ * Returns whether the loop variant needs a label in the output.
+ *
+ * @private
+ * @param {string} kind
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.needsLabelForVariant_ = function (kind) {
+  return 'lc' === kind || 'lcs' === kind || 'lct' === kind || 'lda' === kind || 'ldb' === kind || 'lw' === kind;
+};
+
+/**
+ * Stores a LoopPlan in the function metadata for a simplified loop.
+ *
+ * @private
+ * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_} state
+ * @param {string} marker
+ * @param {string} loopName
+ * @param {string} kind
+ * @param {number} conditionPtr
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.storePlan_ = function (state, marker, loopName, kind, conditionPtr) {
+  var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
+  var /** @const {*} */ loopPlansRef = state.funcMetadata.loopPlans;
+  if (loopPlansRef) {
+    /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (loopPlansRef)[marker + loopName] =
+      /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ ({
+        loopKind: S.loopKindForVariant_(kind),
+        needsLabel: S.needsLabelForVariant_(kind),
+        conditionPtr: conditionPtr
+      });
+  }
 };
 
 /**
@@ -473,24 +525,26 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     }
     var /** @const {string} */ kind = state.simplifiedLoops[loopName];
     var /** @const {string} */ marker = S.markerForKind_(kind);
+
     var /** @const {number} */ bodyPtr = /** @type {number} */ (expr.body);
     var /** @const {!BinaryenExpressionInfo} */ bodyInfo = /** @type {!BinaryenExpressionInfo} */ (
         binaryen.getExpressionInfo(bodyPtr)
       );
     var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
     var /** @const {number} */ len = children.length;
+    var /** @type {number} */ planCondPtr = 0;
 
     if ('lw' === kind || 'ly' === kind) {
       // While loop: first child is br_if $exit cond, last is trailing br $loop.
-      // Remove both, invert the condition, and append as the last child.
+      // Remove both and invert the condition.
       var /** @const {!BinaryenExpressionInfo} */ brIfInfo = /** @type {!BinaryenExpressionInfo} */ (
           binaryen.getExpressionInfo(children[0])
         );
       var /** @const {number} */ whileCondPtr = /** @type {number} */ (brIfInfo.condition || 0);
-      var /** @const {number} */ invertedCond = S.invertCondition_(binaryen, module, whileCondPtr);
+      planCondPtr = S.invertCondition_(binaryen, module, whileCondPtr);
       var /** @const {!Array<number>} */ whileChildren = children.slice(1, len - 1);
-      whileChildren[whileChildren.length] = invertedCond;
       var /** @const {number} */ newBodyW = module.block(bodyInfo.name || null, whileChildren, binaryen.none);
+      S.storePlan_(state, marker, loopName, kind, planCondPtr);
       return {
         decisionAction: REPLACE_NODE,
         expressionPointer: module.loop(marker + loopName, newBodyW)
@@ -501,6 +555,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
       // Remove the trailing unconditional self-continue.
       children.length = len - 1;
       var /** @const {number} */ newBody = module.block(bodyInfo.name || null, children, binaryen.none);
+      S.storePlan_(state, marker, loopName, kind, 0);
       return {
         decisionAction: REPLACE_NODE,
         expressionPointer: module.loop(marker + loopName, newBody)
@@ -510,36 +565,32 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     if ('lcs' === kind || 'lfs' === kind || 'lct' === kind || 'lft' === kind) {
       // SwitchId-terminated or terminal-exit for(;;): keep all children.
       var /** @const {number} */ newBodyFull = module.block(bodyInfo.name || null, children, binaryen.none);
+      S.storePlan_(state, marker, loopName, kind, 0);
       return {
         decisionAction: REPLACE_NODE,
         expressionPointer: module.loop(marker + loopName, newBodyFull)
       };
     }
 
-    // Do-while: extract condition and rebuild body.
-    var /** @type {number} */ condPtr = 0;
+    // Do-while: extract condition and rebuild body without it.
     if ('ldb' === kind || 'leb' === kind) {
       // Variant B: last child is conditional br_if.
       var /** @const {!BinaryenExpressionInfo} */ brIfB = /** @type {!BinaryenExpressionInfo} */ (
           binaryen.getExpressionInfo(children[len - 1])
         );
-      condPtr = /** @type {number} */ (brIfB.condition || 0);
+      planCondPtr = /** @type {number} */ (brIfB.condition || 0);
       children.length = len - 1;
     } else {
       // Variant A: second-to-last is conditional br_if, last is exit br.
       var /** @const {!BinaryenExpressionInfo} */ brIfA = /** @type {!BinaryenExpressionInfo} */ (
           binaryen.getExpressionInfo(children[len - 2])
         );
-      condPtr = /** @type {number} */ (brIfA.condition || 0);
+      planCondPtr = /** @type {number} */ (brIfA.condition || 0);
       children.length = len - 2;
     }
 
-    // Append condition expression as the new last child.
-    if (0 !== condPtr) {
-      children[children.length] = condPtr;
-    }
-
     var /** @const {number} */ newBodyDW = module.block(bodyInfo.name || null, children, binaryen.none);
+    S.storePlan_(state, marker, loopName, kind, planCondPtr);
     return {
       decisionAction: REPLACE_NODE,
       expressionPointer: module.loop(marker + loopName, newBodyDW)
@@ -554,11 +605,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
  * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.createVisitor = function (funcMetadata) {
-  void funcMetadata;
+  funcMetadata.loopPlans = /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (Object.create(null));
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_} */ state =
     /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_} */ ({
-      simplifiedLoops: /** @type {!Object<string, string>} */ (Object.create(null))
+      simplifiedLoops: /** @type {!Object<string, string>} */ (Object.create(null)),
+      funcMetadata: funcMetadata
     });
   var /** @const */ self = this;
 

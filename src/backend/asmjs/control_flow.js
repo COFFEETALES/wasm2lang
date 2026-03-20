@@ -19,10 +19,6 @@
  *   fusedBlockToLoop: !Object<string, string>,
  *   pendingBlockFusion: string,
  *   currentLoopName: string,
- *   doWhileBodyPtrs: !Object<string, boolean>,
- *   doWhileConditionStr: string,
- *   whileBodyPtrs: !Object<string, boolean>,
- *   whileConditionStr: string,
  *   rootSwitchExitMap: ?Object<string, !Array<number>>,
  *   rootSwitchRsName: string,
  *   rootSwitchLoopName: string
@@ -261,11 +257,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
     case binaryen.BlockId: {
       var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
-      if (blockName && hp(blockName, A.RS_ROOT_SWITCH_PREFIX_)) {
+      var /** @const {string} */ fnName = state.functionInfo.name;
+      if (blockName && (this.isBlockRootSwitch_(fnName, blockName) || hp(blockName, A.RS_ROOT_SWITCH_PREFIX_))) {
         result = this.emitRootSwitch_(state, nodeCtx);
         break;
       }
-      if (blockName && hp(blockName, A.SW_DISPATCH_PREFIX_)) {
+      if (blockName && (this.isBlockSwitchDispatch_(fnName, blockName) || hp(blockName, A.SW_DISPATCH_PREFIX_))) {
         result = this.emitFlatSwitch_(state, nodeCtx);
         break;
       }
@@ -274,35 +271,54 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.LoopId: {
       var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
-      if (hp(loopName, A.LF_FORLOOP_PREFIX_)) {
-        result = pad(ind) + 'for (;;) {\n' + cr(0) + pad(ind) + '}\n';
-      } else if (hp(loopName, A.LC_CONTINUE_PREFIX_)) {
-        result = pad(ind) + this.labelN_(state.labelMap, loopName) + ': for (;;) {\n' + cr(0) + pad(ind) + '}\n';
-      } else if (hp(loopName, A.LE_DOWHILE_PREFIX_)) {
-        var /** @const {string} */ dwCondE = state.doWhileConditionStr;
-        state.doWhileConditionStr = '';
-        result = pad(ind) + 'do {\n' + cr(0) + pad(ind) + '} while (' + dwCondE + ');\n';
-      } else if (hp(loopName, A.LD_DOWHILE_PREFIX_)) {
-        var /** @const {string} */ dwCond = state.doWhileConditionStr;
-        state.doWhileConditionStr = '';
-        result =
-          pad(ind) + this.labelN_(state.labelMap, loopName) + ': do {\n' + cr(0) + pad(ind) + '} while (' + dwCond + ');\n';
-      } else if (hp(loopName, A.LY_WHILE_PREFIX_)) {
-        var /** @const {string} */ whCondY = state.whileConditionStr;
-        state.whileConditionStr = '';
-        result = pad(ind) + 'while ' + this.formatCondition_(whCondY) + ' {\n' + cr(0) + pad(ind) + '}\n';
-      } else if (hp(loopName, A.LW_WHILE_PREFIX_)) {
-        var /** @const {string} */ whCond = state.whileConditionStr;
-        state.whileConditionStr = '';
-        result =
-          pad(ind) +
-          this.labelN_(state.labelMap, loopName) +
-          ': while ' +
-          this.formatCondition_(whCond) +
-          ' {\n' +
-          cr(0) +
-          pad(ind) +
-          '}\n';
+      var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
+      if (loopPlan) {
+        if ('for' === loopPlan.loopKind) {
+          if (loopPlan.needsLabel) {
+            result = pad(ind) + this.labelN_(state.labelMap, loopName) + ': for (;;) {\n' + cr(0) + pad(ind) + '}\n';
+          } else {
+            result = pad(ind) + 'for (;;) {\n' + cr(0) + pad(ind) + '}\n';
+          }
+        } else if ('dowhile' === loopPlan.loopKind) {
+          var /** @const {string} */ dwCond = A.subWalkString_(
+              A.subWalkExpression_(
+                state.wasmModule,
+                binaryen,
+                state.functionInfo,
+                /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor),
+                loopPlan.conditionPtr
+              )
+            );
+          if (loopPlan.needsLabel) {
+            result =
+              pad(ind) + this.labelN_(state.labelMap, loopName) + ': do {\n' + cr(0) + pad(ind) + '} while (' + dwCond + ');\n';
+          } else {
+            result = pad(ind) + 'do {\n' + cr(0) + pad(ind) + '} while (' + dwCond + ');\n';
+          }
+        } else {
+          var /** @const {string} */ whCond = A.subWalkString_(
+              A.subWalkExpression_(
+                state.wasmModule,
+                binaryen,
+                state.functionInfo,
+                /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor),
+                loopPlan.conditionPtr
+              )
+            );
+          if (loopPlan.needsLabel) {
+            result =
+              pad(ind) +
+              this.labelN_(state.labelMap, loopName) +
+              ': while ' +
+              this.formatCondition_(whCond) +
+              ' {\n' +
+              cr(0) +
+              pad(ind) +
+              '}\n';
+          } else {
+            result = pad(ind) + 'while ' + this.formatCondition_(whCond) + ' {\n' + cr(0) + pad(ind) + '}\n';
+          }
+        }
       } else {
         result =
           pad(ind) +

@@ -135,15 +135,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderComparisonOperand_ = function (ex
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderComparisonBinaryOp_ = function (info, L, R) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   // Comparisons produce fixnum (0 or 1) in asm.js — no |0 coercion needed.
-  return (
-    '(' +
-    this.renderComparisonOperand_(L, info.unsigned) +
-    ' ' +
-    info.opStr +
-    ' ' +
-    this.renderComparisonOperand_(R, info.unsigned) +
-    ')'
+  var /** @const {number} */ precedence = '==' === info.opStr || '!=' === info.opStr ? P.PREC_EQUALITY_ : P.PREC_RELATIONAL_;
+  return P.renderInfix(
+    this.renderComparisonOperand_(L, info.unsigned),
+    info.opStr,
+    this.renderComparisonOperand_(R, info.unsigned),
+    precedence
   );
 };
 

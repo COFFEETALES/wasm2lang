@@ -3,8 +3,10 @@
 (async function () {
   const common = require('./build_common');
   const binaryen = await common.loadBinaryen();
-  const {module, heapTop, advanceHeap, storeI32, storeF32, storeF64, storeF64Safe} =
-    common.createTestModule(binaryen, {memoryPages: 8, heapBase: 1024});
+  const {module, heapTop, advanceHeap, storeI32, storeF32, storeF64, storeF64Safe} = common.createTestModule(binaryen, {
+    memoryPages: 8,
+    heapBase: 1024
+  });
 
   const p0 = () => module.local.get(0, binaryen.i32);
   const p1 = () => module.local.get(1, binaryen.f32);
@@ -439,9 +441,14 @@
   // Shared data generation
   const staticData = {
     i32_f32_f64_triples: [
-      [42, 3.5, 2.75], [0, 0.0, 0.0], [-1, 0.5, 0.5],
-      [2147483647, 100.0, 100.0], [1, 1.0, 1.0],
-      [-2147483648, 3.0, 3.0], [255, 0.125, 0.125], [16, 4.0, 4.0]
+      [42, 3.5, 2.75],
+      [0, 0.0, 0.0],
+      [-1, 0.5, 0.5],
+      [2147483647, 100.0, 100.0],
+      [1, 1.0, 1.0],
+      [-2147483648, 3.0, 3.0],
+      [255, 0.125, 0.125],
+      [16, 4.0, 4.0]
     ]
   };
   const data = {};

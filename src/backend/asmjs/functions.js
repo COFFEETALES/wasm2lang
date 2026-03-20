@@ -42,10 +42,17 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
 
   // Local variable declarations.
   if (0 !== numVars) {
+    var /** @const {?Object<string, number>} */ initOverrides = this.getLocalInitOverrides_(funcInfo.name);
     var /** @const {!Array<string>} */ varDecls = [];
     for (var /** number */ vi = 0; vi !== numVars; ++vi) {
       var /** @const {number} */ localType = varTypes[vi];
-      varDecls[varDecls.length] = this.localN_(numParams + vi) + ' = ' + this.renderLocalInit_(binaryen, localType);
+      var /** @const {number} */ localIdx = numParams + vi;
+      var /** @const {number|void} */ overrideValue = initOverrides ? initOverrides[String(localIdx)] : void 0;
+      // prettier-ignore
+      var /** @const {string} */ initStr = overrideValue !== void 0
+        ? this.renderConst_(binaryen, /** @type {number} */ (overrideValue), localType)
+        : this.renderLocalInit_(binaryen, localType);
+      varDecls[varDecls.length] = this.localN_(localIdx) + ' = ' + initStr;
     }
     parts[parts.length] = pad(2) + 'var ' + varDecls.join(', ') + ';';
   }
@@ -67,10 +74,6 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
         fusedBlockToLoop: /** @type {!Object<string, string>} */ (Object.create(null)),
         pendingBlockFusion: '',
         currentLoopName: '',
-        doWhileBodyPtrs: /** @type {!Object<string, boolean>} */ (Object.create(null)),
-        doWhileConditionStr: '',
-        whileBodyPtrs: /** @type {!Object<string, boolean>} */ (Object.create(null)),
-        whileConditionStr: '',
         rootSwitchExitMap: null,
         rootSwitchRsName: '',
         rootSwitchLoopName: ''

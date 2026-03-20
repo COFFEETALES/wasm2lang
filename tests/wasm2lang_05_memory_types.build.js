@@ -964,15 +964,29 @@
   // Shared data
   {
     const staticData = {
-      subword_cases: [[42, 7], [0, 0], [-1, 1], [305419896, -100], [255, 128], [-128, -1]],
+      subword_cases: [
+        [42, 7],
+        [0, 0],
+        [-1, 1],
+        [305419896, -100],
+        [255, 128],
+        [-128, -1]
+      ],
       mixed_type_cases: [
-        [42, 3.5, 2.75], [0, 0.0, 0.0], [-1, -1.5, -1.5],
-        [100, 0.125, 100.0], [255, 10.0, -50.0]
+        [42, 3.5, 2.75],
+        [0, 0.0, 0.0],
+        [-1, -1.5, -1.5],
+        [100, 0.125, 100.0],
+        [255, 10.0, -50.0]
       ]
     };
     const data = {};
-    data.subword_cases = staticData.subword_cases.concat(Array.from({length: 3}, () => [common.rand.smallI32(), common.rand.smallI32()]));
-    data.mixed_type_cases = staticData.mixed_type_cases.concat(Array.from({length: 3}, () => [common.rand.smallI32(), common.rand.f32(), common.rand.f64()]));
+    data.subword_cases = staticData.subword_cases.concat(
+      Array.from({length: 3}, () => [common.rand.smallI32(), common.rand.smallI32()])
+    );
+    data.mixed_type_cases = staticData.mixed_type_cases.concat(
+      Array.from({length: 3}, () => [common.rand.smallI32(), common.rand.f32(), common.rand.f64()])
+    );
     common.emitSharedData(data);
   }
 })();

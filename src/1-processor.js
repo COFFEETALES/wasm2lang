@@ -21,6 +21,28 @@ Wasm2Lang.Processor.TranspileResultProperty = {
 Wasm2Lang.Processor.TranspileResult;
 
 /**
+ * A transpile result where all chunk arrays have been flattened to strings.
+ * Every value is either a flat string or a Uint8Array.
+ *
+ * @typedef {!Object<!Wasm2Lang.Processor.TranspileResultProperty, (string|!Uint8Array)>}
+ */
+Wasm2Lang.Processor.MaterializedResult;
+
+/**
+ * Canonical key ordering for iterating transpile results.  Shared across
+ * {@code drainResults_} and {@code materializeResult_}.
+ *
+ * @private
+ * @const {!Array<!Wasm2Lang.Processor.TranspileResultProperty>}
+ */
+Wasm2Lang.Processor.RESULT_KEY_ORDER_ = [
+  Wasm2Lang.Processor.TranspileResultProperty.METADATA,
+  Wasm2Lang.Processor.TranspileResultProperty.CODE,
+  Wasm2Lang.Processor.TranspileResultProperty.WAST,
+  Wasm2Lang.Processor.TranspileResultProperty.WASM
+];
+
+/**
  * @private
  * @type {?Binaryen}
  */
@@ -89,7 +111,12 @@ Wasm2Lang.Processor.transpile_ = function (options) {
   var /** @const {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(options.inputData);
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ codegen = Wasm2Lang.Backend.createBackend(options.languageOut);
 
-  Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles(wasmModule, options);
+  // prettier-ignore
+  var /** @const {?Wasm2Lang.Wasm.Tree.PassRunResult} */ passRunResult =
+    Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles(wasmModule, options);
+  if (passRunResult) {
+    codegen.setPassRunResult_(passRunResult);
+  }
 
   if (options.mangler) {
     return codegen.precomputeMangledNames_(wasmModule, options).then(function () {
@@ -116,12 +143,7 @@ Wasm2Lang.Processor.transpile_ = function (options) {
  */
 Wasm2Lang.Processor.drainResults_ = function (results, writeFn) {
   /** @const {!Array<!Wasm2Lang.Processor.TranspileResultProperty>} */
-  var keyOrder = [
-    Wasm2Lang.Processor.TranspileResultProperty.METADATA,
-    Wasm2Lang.Processor.TranspileResultProperty.CODE,
-    Wasm2Lang.Processor.TranspileResultProperty.WAST,
-    Wasm2Lang.Processor.TranspileResultProperty.WASM
-  ];
+  var keyOrder = Wasm2Lang.Processor.RESULT_KEY_ORDER_;
 
   /** @type {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */
   var allChunks = [];
@@ -155,6 +177,150 @@ Wasm2Lang.Processor.drainResults_ = function (results, writeFn) {
  */
 Wasm2Lang.Processor.initializeModules_ = function (binaryenModule) {
   Wasm2Lang.Processor.binaryen = binaryenModule;
+};
+
+/**
+ * Merges a user-supplied options object with defaults to produce a
+ * {@code NormalizedOptions}.  User keys are read with bracket notation
+ * (external data survives Closure renaming); result fields use unquoted
+ * dot-access (internal, Closure-compatible).
+ *
+ * Emit flags accept {@code true} for default names, or a string for
+ * custom names.  {@code inputFile} is always {@code null} — the
+ * programmatic API expects input via {@code inputData}.
+ *
+ * @private
+ * @param {!Object} userOptions
+ * @return {!Wasm2Lang.Options.Schema.NormalizedOptions}
+ */
+Wasm2Lang.Processor.normalizeUserOptions_ = function (userOptions) {
+  var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ d = Wasm2Lang.Options.Schema.defaultOptions;
+
+  var /** @const {string} */ languageOut = /** @type {string} */ (userOptions['languageOut']) || d.languageOut;
+  var /** @const {?Array<string>} */ userNormalize = /** @type {?Array<string>} */ (userOptions['normalizeWasm']);
+  var /** @const {?Object<string, string>} */ userDefs = /** @type {?Object<string, string>} */ (userOptions['definitions']);
+  var /** @const {?(string|!Uint8Array)} */ userInput = /** @type {?(string|!Uint8Array)} */ (userOptions['inputData']);
+  var /** @const {?string} */ userMangler = /** @type {?string} */ (userOptions['mangler']);
+
+  var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ o =
+      /** @type {!Wasm2Lang.Options.Schema.NormalizedOptions} */ ({
+        languageOut: String(languageOut),
+        normalizeWasm: userNormalize || d.normalizeWasm.slice(),
+        definitions: userDefs || /** @type {!Object<string, string>} */ (Object.create(null)),
+        inputData: userInput || null,
+        inputFile: null,
+        emitMetadata: null,
+        emitCode: null,
+        emitWebAssembly: null,
+        mangler: userMangler || null
+      });
+
+  if (userOptions['emitMetadata'] != null) {
+    o.emitMetadata = userOptions['emitMetadata'] === true ? 'metadata' : String(userOptions['emitMetadata']);
+  }
+  if (userOptions['emitCode'] != null) {
+    o.emitCode = userOptions['emitCode'] === true ? 'code' : String(userOptions['emitCode']);
+  }
+  if (userOptions['emitWebAssembly'] != null) {
+    o.emitWebAssembly = userOptions['emitWebAssembly'] === true ? '' : String(userOptions['emitWebAssembly']);
+  }
+
+  return o;
+};
+
+/**
+ * Flattens a {@code TranspileResult} by collecting any chunk arrays into
+ * joined strings, producing a {@code MaterializedResult} where every
+ * value is either a flat string or a Uint8Array.
+ *
+ * Runs synchronously when all chunks are resolved.  If any chunk array
+ * contains a pending Promise, the function returns a Promise that
+ * resolves to the fully materialized result.
+ *
+ * @private
+ * @param {!Wasm2Lang.Processor.TranspileResult} result
+ * @return {!Wasm2Lang.Processor.MaterializedResult|!Promise<!Wasm2Lang.Processor.MaterializedResult>}
+ */
+Wasm2Lang.Processor.materializeResult_ = function (result) {
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Processor.MaterializedResult} */ materialized =
+    /** @type {!Wasm2Lang.Processor.MaterializedResult} */ (Object.create(null));
+
+  /** @const {!Array<!Wasm2Lang.Processor.TranspileResultProperty>} */
+  var keyOrder = Wasm2Lang.Processor.RESULT_KEY_ORDER_;
+
+  /** @type {!Array<!Wasm2Lang.Processor.TranspileResultProperty>} */
+  var asyncKeys = [];
+  /** @type {!Array<!Promise<string>>} */
+  var asyncPromises = [];
+
+  for (var /** number */ i = 0, /** @const {number} */ len = keyOrder.length; i !== len; ++i) {
+    var /** @const {!Wasm2Lang.Processor.TranspileResultProperty} */ key = keyOrder[i];
+    if (!(key in result)) {
+      continue;
+    }
+    var /** @const {*} */ value = result[key];
+    if (Array.isArray(value)) {
+      var /** @const {*} */ collected = Wasm2Lang.OutputSink.collectChunks(
+          /** @type {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */ (value)
+        );
+      if (collected instanceof Promise) {
+        asyncKeys[asyncKeys.length] = key;
+        asyncPromises[asyncPromises.length] = /** @type {!Promise<string>} */ (collected);
+      } else {
+        materialized[key] = /** @type {string} */ (collected);
+      }
+    } else {
+      materialized[key] = /** @type {string|!Uint8Array} */ (value);
+    }
+  }
+
+  if (0 !== asyncPromises.length) {
+    return Promise.all(asyncPromises).then(
+      /** @param {!Array<string>} strings @return {!Wasm2Lang.Processor.MaterializedResult} */
+      function (strings) {
+        for (var /** number */ j = 0, /** @const {number} */ jLen = strings.length; j !== jLen; ++j) {
+          materialized[asyncKeys[j]] = strings[j];
+        }
+        return materialized;
+      }
+    );
+  }
+
+  return materialized;
+};
+
+/**
+ * Programmatic entry point for wasm2lang.
+ *
+ * Accepts a binaryen instance and a user options object, runs the
+ * transpile pipeline, and returns a {@code MaterializedResult} where all
+ * chunk arrays have been flattened to strings.  Unlike
+ * {@code runCliEntryPoint}, this does not drain output to stdout — the
+ * caller receives the result object directly.
+ *
+ * @param {!Binaryen} binaryenModule
+ * @param {!Object} userOptions
+ * @return {!Wasm2Lang.Processor.MaterializedResult|!Promise<!Wasm2Lang.Processor.MaterializedResult>}
+ */
+Wasm2Lang.Processor.transpile = function (binaryenModule, userOptions) {
+  if (!binaryenModule) {
+    throw new Error('Missing required binaryen module.');
+  }
+
+  Wasm2Lang.Processor.initializeModules_(binaryenModule);
+
+  var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ options =
+      Wasm2Lang.Processor.normalizeUserOptions_(userOptions);
+
+  var /** @const {*} */ transpileResult = Wasm2Lang.Processor.transpile_(options);
+  if (transpileResult instanceof Promise) {
+    return /** @type {!Promise<!Wasm2Lang.Processor.TranspileResult>} */ (transpileResult).then(
+      Wasm2Lang.Processor.materializeResult_
+    );
+  }
+
+  return Wasm2Lang.Processor.materializeResult_(/** @type {!Wasm2Lang.Processor.TranspileResult} */ (transpileResult));
 };
 
 /**

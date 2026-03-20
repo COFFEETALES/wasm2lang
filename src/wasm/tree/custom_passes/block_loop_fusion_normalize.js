@@ -38,7 +38,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER = 'lb$';
 /**
  * @private
  * @typedef {{
- *   fusionBlocks: !Object<string, boolean>
+ *   fusionBlocks: !Object<string, boolean>,
+ *   funcMetadata: !Wasm2Lang.Wasm.Tree.PassMetadata
  * }}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.State_;
@@ -67,6 +68,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
     var /** @const {!Object<string, *>} */ child = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(children[0]));
     if (child['id'] === binaryen.LoopId) {
       state.fusionBlocks[blockName] = true;
+      var /** @const {*} */ fbRef = state.funcMetadata.fusedBlocks;
+      if (fbRef) {
+        /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (fbRef)[
+          Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER + blockName
+        ] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionPattern: 'a'});
+      }
     }
   } else if (binaryen.LoopId === id) {
     // Pattern B: loop whose sole body is a named block.
@@ -79,6 +86,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
       var /** @const {?string} */ bodyName = /** @type {?string} */ (body['name']);
       if (bodyName) {
         state.fusionBlocks[bodyName] = true;
+        var /** @const {*} */ fbRefB = state.funcMetadata.fusedBlocks;
+        if (fbRefB) {
+          /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (fbRefB)[
+            Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER + bodyName
+          ] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionPattern: 'b'});
+        }
       }
     }
   }
@@ -106,11 +119,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.leave_ = function
  * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.createVisitor = function (funcMetadata) {
-  void funcMetadata;
+  funcMetadata.fusedBlocks = /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (Object.create(null));
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.State_} */ state =
     /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.State_} */ ({
-      fusionBlocks: /** @type {!Object<string, boolean>} */ (Object.create(null))
+      fusionBlocks: /** @type {!Object<string, boolean>} */ (Object.create(null)),
+      funcMetadata: funcMetadata
     });
   var /** @const */ self = this;
 

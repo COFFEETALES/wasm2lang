@@ -45,16 +45,25 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
   parts[parts.length] = pad1 + visibility + returnType + ' ' + fnName + '(' + paramDecls.join(', ') + ') {';
 
   // Local variable declarations.
-  for (var /** number */ vi = 0; vi !== numVars; ++vi) {
-    var /** @const {number} */ localType = varTypes[vi];
-    parts[parts.length] =
-      pad2 +
-      Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, localType) +
-      ' ' +
-      this.localN_(numParams + vi) +
-      ' = ' +
-      this.renderLocalInit_(binaryen, localType) +
-      ';';
+  if (0 !== numVars) {
+    var /** @const {?Object<string, number>} */ initOverrides = this.getLocalInitOverrides_(funcInfo.name);
+    for (var /** number */ vi = 0; vi !== numVars; ++vi) {
+      var /** @const {number} */ localType = varTypes[vi];
+      var /** @const {number} */ localIdx = numParams + vi;
+      var /** @const {number|void} */ overrideValue = initOverrides ? initOverrides[String(localIdx)] : void 0;
+      // prettier-ignore
+      var /** @const {string} */ initStr = overrideValue !== void 0
+        ? this.renderConst_(binaryen, /** @type {number} */ (overrideValue), localType)
+        : this.renderLocalInit_(binaryen, localType);
+      parts[parts.length] =
+        pad2 +
+        Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, localType) +
+        ' ' +
+        this.localN_(localIdx) +
+        ' = ' +
+        initStr +
+        ';';
+    }
   }
 
   // Walk the body with the code-gen visitor.
@@ -75,10 +84,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
         fusedBlockToLoop: /** @type {!Object<string, string>} */ (Object.create(null)),
         pendingBlockFusion: '',
         currentLoopName: '',
-        doWhileBodyPtrs: /** @type {!Object<string, boolean>} */ (Object.create(null)),
-        doWhileConditionStr: '',
-        whileBodyPtrs: /** @type {!Object<string, boolean>} */ (Object.create(null)),
-        whileConditionStr: '',
         rootSwitchExitMap: null,
         rootSwitchRsName: '',
         rootSwitchLoopName: ''

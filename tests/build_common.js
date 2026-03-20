@@ -55,13 +55,7 @@ function createTestModule(binaryen, options) {
     ])
   );
 
-  module.addFunction(
-    'getHeapTop',
-    binaryen.none,
-    binaryen.i32,
-    [],
-    module.return(module.global.get('heapTop', binaryen.i32))
-  );
+  module.addFunction('getHeapTop', binaryen.none, binaryen.i32, [], module.return(module.global.get('heapTop', binaryen.i32)));
 
   module.addFunctionExport('alignHeapTop', 'alignHeapTop');
   module.addFunctionExport('getHeapTop', 'getHeapTop');
@@ -95,7 +89,7 @@ function emitSharedData(data) {
 
 /** Random data generators for fuzz-augmented shared data. */
 const rand = {
-  i32: () => (Math.random() * 0xffffffff >>> 0) - 0x80000000,
+  i32: () => ((Math.random() * 0xffffffff) >>> 0) - 0x80000000,
   smallI32: () => ((Math.random() * 511) | 0) - 255,
   f32: () => Math.fround((Math.random() - 0.5) * 200),
   f64: () => (Math.random() - 0.5) * 200,

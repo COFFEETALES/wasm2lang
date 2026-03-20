@@ -9,11 +9,40 @@
 Wasm2Lang.Wasm.Tree.ExpressionInfo;
 
 /**
+ * Describes a loop optimization applied by the LoopSimplificationPass.
+ * Stored in PassMetadata so backends can dispatch on structured data
+ * instead of parsing label prefixes.
+ *
+ * @typedef {{
+ *   loopKind: string,
+ *   needsLabel: boolean,
+ *   conditionPtr: number
+ * }}
+ */
+Wasm2Lang.Wasm.Tree.LoopPlan;
+
+/**
+ * Describes a block-loop fusion detected by BlockLoopFusionPass.
+ * fusionPattern is 'a' (block wraps loop) or 'b' (loop wraps block).
+ *
+ * @typedef {{
+ *   fusionPattern: string
+ * }}
+ */
+Wasm2Lang.Wasm.Tree.BlockFusionPlan;
+
+/**
  * @typedef {{
  *   passFuncName: (string|void),
  *   bodyReplaced: (boolean|void),
  *   dropConstEliminations: (number|void),
- *   localGetCounts: (!Object<string, number>|void)
+ *   localGetCounts: (!Object<string, number>|void),
+ *   localInitFoldPtrs: (!Object<string, boolean>|void),
+ *   localInitOverrides: (!Object<string, number>|void),
+ *   loopPlans: (!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>|void),
+ *   fusedBlocks: (!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>|void),
+ *   switchDispatchNames: (!Object<string, boolean>|void),
+ *   rootSwitchNames: (!Object<string, boolean>|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.PassMetadata;

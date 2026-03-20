@@ -23,25 +23,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderCoercionByType_ = function (binary
 };
 
 /**
- * Java widens float to double automatically, so CAT_F32 satisfies f64
- * targets without an explicit cast.
- *
- * @override
- * @protected
- * @param {!Binaryen} binaryen
- * @param {string} expr
- * @param {number} cat
- * @param {number} wasmType
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.prototype.coerceToType_ = function (binaryen, expr, cat, wasmType) {
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType) && Wasm2Lang.Backend.AbstractCodegen.CAT_F32 === cat) {
-    return expr;
-  }
-  return Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_.call(this, binaryen, expr, cat, wasmType);
-};
-
-/**
  * @param {!Binaryen} binaryen
  * @param {number} value
  * @param {number} wasmType

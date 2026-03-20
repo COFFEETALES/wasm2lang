@@ -50,12 +50,12 @@ Wasm2Lang.Wasm.WasmNormalization.validateInputModule_ = function (wasmModule) {
 /**
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @return {void}
+ * @return {?Wasm2Lang.Wasm.Tree.PassRunResult}
  */
 Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModule, options) {
   var /** @const {!Array<string>} */ bundles = options.normalizeWasm || ['binaryen:min'];
   if (0 === bundles.length) {
-    return;
+    return null;
   }
 
   var /** @const {!Array<string>} */ unknownBundles = [];
@@ -75,19 +75,20 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
   }
 
   if (-1 !== bundles.indexOf('wasm2lang:codegen')) {
-    Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_(wasmModule, options);
+    return Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_(wasmModule, options);
   }
+  return null;
 };
 
 /**
  * @private
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @return {void}
+ * @return {!Wasm2Lang.Wasm.Tree.PassRunResult}
  */
 Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_ = function (wasmModule, options) {
   var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ passes = Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses(options);
-  Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(wasmModule, passes);
+  return Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(wasmModule, passes);
 };
 
 /**

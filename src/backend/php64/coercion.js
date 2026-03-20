@@ -84,25 +84,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderHelperCall_ = function (binaryen,
 };
 
 /**
- * PHP float is always f64 — an f32-clipped value is still a PHP float, so
- * CAT_F32 satisfies an f64 target without an additional cast.
- *
- * @override
- * @protected
- * @param {!Binaryen} binaryen
- * @param {string} expr
- * @param {number} cat
- * @param {number} wasmType
- * @return {string}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.coerceToType_ = function (binaryen, expr, cat, wasmType) {
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType) && Wasm2Lang.Backend.AbstractCodegen.CAT_F32 === cat) {
-    return expr;
-  }
-  return Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_.call(this, binaryen, expr, cat, wasmType);
-};
-
-/**
  * @param {!Binaryen} binaryen
  * @param {number} value
  * @param {number} wasmType

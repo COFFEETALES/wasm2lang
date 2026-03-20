@@ -92,5 +92,5 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericBinaryOp_ = function (bina
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
   // Comparisons produce fixnum (0 or 1) in asm.js — no |0 coercion needed.
-  return '(' + conditionExpr + ')';
+  return conditionExpr;
 };

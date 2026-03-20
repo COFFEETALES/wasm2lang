@@ -92,6 +92,76 @@ Wasm2Lang.OutputSink.drainChunks = function (chunks, writeFn) {
 };
 
 // ---------------------------------------------------------------------------
+// Serial collect (pull counterpart to drainChunks).
+// ---------------------------------------------------------------------------
+
+/**
+ * Continues collecting {@code chunks} starting at index {@code startIndex},
+ * using {@code Promise.then()} chaining for every remaining entry.
+ *
+ * @private
+ * @param {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} chunks
+ * @param {!Array<string>} parts
+ * @param {number} startIndex
+ * @return {!Promise<string>}
+ */
+Wasm2Lang.OutputSink.collectAsync_ = function (chunks, parts, startIndex) {
+  /**
+   * Resolves one chunk and advances to the next.
+   *
+   * @param {number} idx
+   * @return {!Promise<string>}
+   */
+  function step(idx) {
+    if (idx >= chunks.length) {
+      return Promise.resolve(parts.join(''));
+    }
+    var /** @const {*} */ chunk = chunks[idx];
+    if (chunk instanceof Promise) {
+      return /** @type {!Promise<!Wasm2Lang.OutputSink.Chunk>} */ (chunk).then(
+        /** @param {!Wasm2Lang.OutputSink.Chunk} resolved @return {!Promise<string>} */
+        function (resolved) {
+          parts[parts.length] = /** @type {string} */ (resolved);
+          return step(idx + 1);
+        }
+      );
+    }
+    parts[parts.length] = /** @type {string} */ (chunk);
+    return step(idx + 1);
+  }
+
+  return step(startIndex);
+};
+
+/**
+ * Collects an ordered array of string chunks into a single joined string.
+ *
+ * This is the pull-based counterpart to {@code drainChunks}: where
+ * {@code drainChunks} pushes each chunk to a write function,
+ * {@code collectChunks} accumulates them and returns the joined result.
+ *
+ * Runs synchronously as long as every chunk is a resolved value.  The
+ * moment a thenable/Promise chunk is encountered, the function switches
+ * to {@code Promise.then()} chaining and returns a Promise that resolves
+ * to the joined string.
+ *
+ * @param {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} chunks
+ * @return {string|!Promise<string>}
+ */
+Wasm2Lang.OutputSink.collectChunks = function (chunks) {
+  /** @type {!Array<string>} */
+  var parts = [];
+  for (var /** number */ i = 0, /** @const {number} */ len = chunks.length; i !== len; ++i) {
+    var /** @const {*} */ chunk = chunks[i];
+    if (chunk instanceof Promise) {
+      return Wasm2Lang.OutputSink.collectAsync_(chunks, parts, i);
+    }
+    parts[parts.length] = /** @type {string} */ (chunk);
+  }
+  return parts.join('');
+};
+
+// ---------------------------------------------------------------------------
 // Chunk utilities.
 // ---------------------------------------------------------------------------
 

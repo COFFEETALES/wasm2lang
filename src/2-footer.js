@@ -4,6 +4,7 @@
   if (Wasm2Lang.Utilities.Environment.isNode()) {
     if (require.main !== module) {
       module.exports['runCliEntryPoint'] = Wasm2Lang.Processor.runCliEntryPoint;
+      module.exports['transpile'] = Wasm2Lang.Processor.transpile;
       return;
     }
   }
@@ -12,7 +13,9 @@
    * @typedef {
    *  {
    *    runCliEntryPoint: function(!Binaryen):
-   *      (!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>)
+   *      (!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>),
+   *    transpile: function(!Binaryen, !Object):
+   *      (!Wasm2Lang.Processor.MaterializedResult|!Promise<!Wasm2Lang.Processor.MaterializedResult>)
    *  }
    * }
    */
@@ -28,11 +31,13 @@
 
   if (entryPoints) {
     entryPoints['runCliEntryPoint'] = Wasm2Lang.Processor.runCliEntryPoint;
+    entryPoints['transpile'] = Wasm2Lang.Processor.transpile;
     return;
   }
 
   entryPoints = {
-    'runCliEntryPoint': Wasm2Lang.Processor.runCliEntryPoint
+    'runCliEntryPoint': Wasm2Lang.Processor.runCliEntryPoint,
+    'transpile': Wasm2Lang.Processor.transpile
   };
 
   globalThis['Wasm2Lang'] = entryPoints;

@@ -41,7 +41,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER = 'sw$';
  * @typedef {{
  *   switchOuterBlocks: !Object<string, boolean>,
  *   switchNeedsWrapping: !Object<string, boolean>,
- *   chainBlocks: !Object<string, boolean>
+ *   chainBlocks: !Object<string, boolean>,
+ *   funcMetadata: !Wasm2Lang.Wasm.Tree.PassMetadata
  * }}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.State_;
@@ -194,6 +195,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.enter_ = 
 
   var /** @const {string} */ name = /** @type {string} */ (checkName);
   state.switchOuterBlocks[name] = true;
+  var /** @const {*} */ sdRef = state.funcMetadata.switchDispatchNames;
+  if (sdRef) {
+    /** @type {!Object<string, boolean>} */ (sdRef)[
+      Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER + name
+    ] = true;
+  }
 
   // Mark all chain block names so intermediate blocks are not re-detected.
   this.collectChainBlockNames_(binaryen, expr, state.chainBlocks);
@@ -292,13 +299,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
  * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.createVisitor = function (funcMetadata) {
-  void funcMetadata;
+  funcMetadata.switchDispatchNames = /** @type {!Object<string, boolean>} */ (Object.create(null));
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.State_} */ state =
     /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.State_} */ ({
       switchOuterBlocks: /** @type {!Object<string, boolean>} */ (Object.create(null)),
       switchNeedsWrapping: /** @type {!Object<string, boolean>} */ (Object.create(null)),
-      chainBlocks: /** @type {!Object<string, boolean>} */ (Object.create(null))
+      chainBlocks: /** @type {!Object<string, boolean>} */ (Object.create(null)),
+      funcMetadata: funcMetadata
     });
   var /** @const */ self = this;
 
@@ -361,7 +369,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.MARKER = 'rs$';
 /**
  * @private
  * @typedef {{
- *   rootSwitchOuters: !Object<string, boolean>
+ *   rootSwitchOuters: !Object<string, boolean>,
+ *   funcMetadata: !Wasm2Lang.Wasm.Tree.PassMetadata
  * }}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.State_;
@@ -513,6 +522,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.enter_ = func
       this.isRootSwitchOuter_(binaryen, /** @type {!BinaryenExpressionInfo} */ (expression))
     ) {
       st.rootSwitchOuters[name] = true;
+      var /** @const {*} */ rsRef = st.funcMetadata.rootSwitchNames;
+      if (rsRef) {
+        /** @type {!Object<string, boolean>} */ (rsRef)[
+          Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.MARKER + name
+        ] = true;
+      }
     }
   }
 
@@ -539,11 +554,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.leave_ = func
  * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.createVisitor = function (funcMetadata) {
-  void funcMetadata;
+  funcMetadata.rootSwitchNames = /** @type {!Object<string, boolean>} */ (Object.create(null));
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.State_} */ st =
     /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.State_} */ ({
-      rootSwitchOuters: /** @type {!Object<string, boolean>} */ (Object.create(null))
+      rootSwitchOuters: /** @type {!Object<string, boolean>} */ (Object.create(null)),
+      funcMetadata: funcMetadata
     });
   var /** @const */ self = this;
 

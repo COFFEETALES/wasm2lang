@@ -635,17 +635,34 @@
   {
     const staticData = {
       branch_indices: [0, 1, 2, 3, 4, -1, 99, -2147483648],
-      loop_pairs: [[0, 5], [2, 2], [-2, 3], [5, 1], [7, 8]],
+      loop_pairs: [
+        [0, 5],
+        [2, 2],
+        [-2, 3],
+        [5, 1],
+        [7, 8]
+      ],
       loop_countdown_values: [5, 2, 1, 0, -3, 9],
       do_while_values: [5, 1, 0, -3],
-      i32_triples: [[0, 0, 3], [0, 20, 5], [2, 9, 4], [3, 7, 2], [4, 99, 9], [-1, 5, 1]]
+      i32_triples: [
+        [0, 0, 3],
+        [0, 20, 5],
+        [2, 9, 4],
+        [3, 7, 2],
+        [4, 99, 9],
+        [-1, 5, 1]
+      ]
     };
     const data = {};
     data.branch_indices = staticData.branch_indices.concat(Array.from({length: 3}, () => common.rand.uSmall()));
-    data.loop_pairs = staticData.loop_pairs.concat(Array.from({length: 3}, () => [common.rand.smallI32(), common.rand.uSmall()]));
+    data.loop_pairs = staticData.loop_pairs.concat(
+      Array.from({length: 3}, () => [common.rand.smallI32(), common.rand.uSmall()])
+    );
     data.loop_countdown_values = staticData.loop_countdown_values.concat(Array.from({length: 3}, () => common.rand.uSmall()));
     data.do_while_values = staticData.do_while_values.concat(Array.from({length: 3}, () => common.rand.uSmall()));
-    data.i32_triples = staticData.i32_triples.concat(Array.from({length: 3}, () => [common.rand.uSmall(), common.rand.i32(), common.rand.uSmall()]));
+    data.i32_triples = staticData.i32_triples.concat(
+      Array.from({length: 3}, () => [common.rand.uSmall(), common.rand.i32(), common.rand.uSmall()])
+    );
     common.emitSharedData(data);
   }
 })();
