@@ -33,39 +33,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.getAllHelperNames_ = function () {
 
 /**
  * @override
- * @param {string} globalName
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.prototype.buildGlobalIdentifier_ = function (globalName) {
-  return '$g_' + Wasm2Lang.Backend.JavaCodegen.javaSafeName_(globalName);
-};
-
-/**
- * @override
- * @param {string} importBaseName
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.prototype.buildImportIdentifier_ = function (importBaseName) {
-  return '$if_' + Wasm2Lang.Backend.JavaCodegen.javaSafeName_(importBaseName);
-};
-
-/**
- * @override
- * @param {string} funcName
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.prototype.buildFunctionIdentifier_ = function (funcName) {
-  return Wasm2Lang.Backend.JavaCodegen.javaSafeName_(funcName);
-};
-
-/**
- * Java identifiers may contain {@code [a-zA-Z0-9_$]}.  Binaryen names can
- * contain {@code .} and other characters invalid in Java.
- *
  * @param {string} name
  * @return {string}
  */
-Wasm2Lang.Backend.JavaCodegen.javaSafeName_ = function (name) {
+Wasm2Lang.Backend.JavaCodegen.prototype.safeName_ = function (name) {
   return Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_(
     Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name.replace(/[^a-zA-Z0-9_$]/g, '_')),
     Wasm2Lang.Backend.JavaCodegen.RESERVED_

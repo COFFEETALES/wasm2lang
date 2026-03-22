@@ -72,7 +72,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
       if (fbRef) {
         /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (fbRef)[
           Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER + blockName
-        ] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionPattern: 'a'});
+        ] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionVariant: 'a'});
       }
     }
   } else if (binaryen.LoopId === id) {
@@ -90,7 +90,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
         if (fbRefB) {
           /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (fbRefB)[
             Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER + bodyName
-          ] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionPattern: 'b'});
+          ] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionVariant: 'b'});
         }
       }
     }

@@ -142,3 +142,141 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_ = function (marker, target
 
   return null;
 };
+
+// ---------------------------------------------------------------------------
+// Pass analysis descriptor registry
+// ---------------------------------------------------------------------------
+
+/**
+ * Describes how to extract and optionally serialize a single pass family's
+ * metadata from a PassMetadata object into an external-safe (quoted-key) form.
+ *
+ * Each pass family self-registers a descriptor so that the generic analysis
+ * function can iterate all registered families without pass-specific knowledge.
+ *
+ * @typedef {{
+ *   externalKey: string,
+ *   extract: function(!Wasm2Lang.Wasm.Tree.PassMetadata):*,
+ *   serialize: ?function(!Object):!Object
+ * }}
+ */
+Wasm2Lang.Wasm.Tree.PassAnalysisDescriptor;
+
+/**
+ * @private
+ * @type {!Array<!Wasm2Lang.Wasm.Tree.PassAnalysisDescriptor>}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.analysisDescriptors_ = [];
+
+/**
+ * Registers a pass analysis descriptor.
+ *
+ * @param {!Wasm2Lang.Wasm.Tree.PassAnalysisDescriptor} descriptor
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.registerAnalysisDescriptor = function (descriptor) {
+  Wasm2Lang.Wasm.Tree.CustomPasses.analysisDescriptors_[Wasm2Lang.Wasm.Tree.CustomPasses.analysisDescriptors_.length] =
+    descriptor;
+};
+
+/**
+ * Registers a descriptor from an explicit PassMetadata extractor.
+ *
+ * @param {string} externalKey
+ * @param {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} extractFn
+ * @param {?function(!Object):!Object=} opt_serialize
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor = function (externalKey, extractFn, opt_serialize) {
+  Wasm2Lang.Wasm.Tree.CustomPasses.registerAnalysisDescriptor(
+    /** @type {!Wasm2Lang.Wasm.Tree.PassAnalysisDescriptor} */ ({
+      externalKey: externalKey,
+      extract: extractFn,
+      serialize: opt_serialize || null
+    })
+  );
+};
+
+/**
+ * Returns the PassMetadata for a function, or null when absent.
+ *
+ * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
+ * @param {string} funcName
+ * @return {?Wasm2Lang.Wasm.Tree.PassMetadata}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadata = function (passRunResultIndex, funcName) {
+  return passRunResultIndex ? passRunResultIndex[funcName] || null : null;
+};
+
+/**
+ * Returns one extracted PassMetadata value for a function, or null when absent.
+ *
+ * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
+ * @param {string} funcName
+ * @param {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} extractFn
+ * @return {*}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadataValue = function (passRunResultIndex, funcName, extractFn) {
+  var /** @const {?Wasm2Lang.Wasm.Tree.PassMetadata} */ fm = Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadata(
+      passRunResultIndex,
+      funcName
+    );
+  return fm ? extractFn(fm) : null;
+};
+
+/**
+ * Returns a named entry from a per-function metadata map, or null.
+ *
+ * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
+ * @param {string} funcName
+ * @param {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} extractFn
+ * @param {string} name
+ * @return {*}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry = function (passRunResultIndex, funcName, extractFn, name) {
+  var /** @const {*} */ values = Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadataValue(
+      passRunResultIndex,
+      funcName,
+      extractFn
+    );
+  if (!values) {
+    return null;
+  }
+  var /** @const {!Object} */ valueObject = /** @type {!Object} */ (values);
+  var /** @const {*} */ entry = valueObject[name];
+  return entry || null;
+};
+
+/**
+ * Returns true when a named boolean flag exists in a per-function metadata map.
+ *
+ * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
+ * @param {string} funcName
+ * @param {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} extractFn
+ * @param {string} name
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag = function (passRunResultIndex, funcName, extractFn, name) {
+  var /** @const {*} */ values = Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadataValue(
+      passRunResultIndex,
+      funcName,
+      extractFn
+    );
+  return !!values && true === /** @type {!Object} */ (values)[name];
+};
+
+/**
+ * Serializes a map of plans by projecting one property from each value.
+ *
+ * @param {!Object} raw
+ * @param {function(*):!Object} projectFn
+ * @return {!Object}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap = function (raw, projectFn) {
+  var /** @const {!Object} */ out = Object.create(null);
+  var /** @const {!Array<string>} */ keys = Object.keys(raw);
+  for (var /** number */ i = 0, /** @const {number} */ keyLen = keys.length; i < keyLen; ++i) {
+    out[keys[i]] = projectFn(raw[keys[i]]);
+  }
+  return out;
+};

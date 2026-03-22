@@ -26,19 +26,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication = {};
  * @return {?Wasm2Lang.Wasm.Tree.LoopPlan}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication.getLoopPlan = function (passRunResultIndex, funcName, loopName) {
-  if (!passRunResultIndex) {
-    return null;
-  }
-  var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm = passRunResultIndex[funcName];
-  if (!fm) {
-    return null;
-  }
-  var /** @const {*} */ plans = fm.loopPlans;
-  if (!plans) {
-    return null;
-  }
   return /** @type {?Wasm2Lang.Wasm.Tree.LoopPlan} */ (
-    /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (plans)[loopName] || null
+    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(
+      passRunResultIndex,
+      funcName,
+      /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+        return fm.loopPlans;
+      },
+      loopName
+    )
   );
 };
 
@@ -62,3 +58,22 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication.isLabelElided = f
     hp(name, Wasm2Lang.Backend.AbstractCodegen.LY_WHILE_PREFIX_)
   );
 };
+
+// ---------------------------------------------------------------------------
+// Analysis descriptor
+// ---------------------------------------------------------------------------
+
+Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+  'loopSimplification',
+  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+    return fm.loopPlans;
+  },
+  /** @param {!Object} raw @return {!Object} */ function (raw) {
+    return Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap(
+      raw,
+      /** @param {*} plan @return {!Object} */ function (plan) {
+        return {'loopKind': /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ (plan).simplifiedLoopKind};
+      }
+    );
+  }
+);

@@ -68,24 +68,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getAllHelperNames_ = function () {
 };
 
 /**
- * Sanitises a raw binaryen name into a valid JavaScript identifier, guarding
- * against digit-leading names and JS reserved words.
- *
+ * @override
  * @param {string} name
  * @return {string}
  */
-Wasm2Lang.Backend.AsmjsCodegen.asmjsSafeName_ = function (name) {
+Wasm2Lang.Backend.AsmjsCodegen.prototype.safeName_ = function (name) {
   return Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_(
     Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name),
     Wasm2Lang.Backend.AsmjsCodegen.RESERVED_
   );
-};
-
-/**
- * @override
- * @param {string} funcName
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.buildFunctionIdentifier_ = function (funcName) {
-  return Wasm2Lang.Backend.AsmjsCodegen.asmjsSafeName_(funcName);
 };

@@ -27,8 +27,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
   var /** @const {string} */ pad2 = pad(2);
   var /** @const {boolean} */ isExported = funcInfo.name in exportNameMap;
   var /** @const {string} */ fnName = isExported
-      ? Wasm2Lang.Backend.JavaCodegen.javaSafeName_(exportNameMap[funcInfo.name])
-      : this.n_(Wasm2Lang.Backend.JavaCodegen.javaSafeName_(funcInfo.name));
+      ? this.safeName_(exportNameMap[funcInfo.name])
+      : this.n_(this.safeName_(funcInfo.name));
   var /** @const {string} */ visibility = isExported ? '' : 'private ';
   var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(funcInfo.params);
   var /** @const {number} */ numParams = paramTypes.length;

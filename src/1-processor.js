@@ -60,6 +60,38 @@ Wasm2Lang.Processor.getBinaryen = function () {
 };
 
 /**
+ * Iterates transpile-result entries in canonical output order.
+ *
+ * @private
+ * @param {!Wasm2Lang.Processor.TranspileResult} result
+ * @param {function(!Wasm2Lang.Processor.TranspileResultProperty, *):void} visitFn
+ * @return {void}
+ */
+Wasm2Lang.Processor.forEachResultEntry_ = function (result, visitFn) {
+  var /** @const {!Array<!Wasm2Lang.Processor.TranspileResultProperty>} */ keyOrder = Wasm2Lang.Processor.RESULT_KEY_ORDER_;
+  for (var /** number */ i = 0, /** @const {number} */ len = keyOrder.length; i !== len; ++i) {
+    var /** @const {!Wasm2Lang.Processor.TranspileResultProperty} */ key = keyOrder[i];
+    if (key in result) {
+      visitFn(key, result[key]);
+    }
+  }
+};
+
+/**
+ * Normalizes a boolean-or-string emit option from the user options object.
+ *
+ * @private
+ * @param {!Wasm2Lang.Options.Schema.UserOptions} userOptions
+ * @param {string} optionName
+ * @param {string} trueValue
+ * @return {?string}
+ */
+Wasm2Lang.Processor.normalizeEmitOption_ = function (userOptions, optionName, trueValue) {
+  var /** @const {*} */ value = userOptions[optionName];
+  return value == null ? null : value === true ? trueValue : String(value);
+};
+
+/**
  * Emits all requested output artifacts from a prepared module/codegen pair.
  *
  * @private
@@ -142,30 +174,27 @@ Wasm2Lang.Processor.transpile_ = function (options) {
  * @return {!Promise<void>|void}
  */
 Wasm2Lang.Processor.drainResults_ = function (results, writeFn) {
-  /** @const {!Array<!Wasm2Lang.Processor.TranspileResultProperty>} */
-  var keyOrder = Wasm2Lang.Processor.RESULT_KEY_ORDER_;
-
   /** @type {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */
   var allChunks = [];
 
-  for (var /** number */ i = 0, /** @const {number} */ len = keyOrder.length; i !== len; ++i) {
-    var /** @const {!Wasm2Lang.Processor.TranspileResultProperty} */ key = keyOrder[i];
-    if (!(key in results)) {
-      continue;
-    }
-    var /** @const {*} */ value = results[key];
-    if (Array.isArray(value)) {
-      for (var /** number */ j = 0, /** @const {number} */ cLen = value.length; j !== cLen; ++j) {
-        allChunks[allChunks.length] = value[j];
+  Wasm2Lang.Processor.forEachResultEntry_(
+    results,
+    /** @param {!Wasm2Lang.Processor.TranspileResultProperty} key @param {*} value */
+    function (key, value) {
+      void key;
+      if (Array.isArray(value)) {
+        for (var /** number */ j = 0, /** @const {number} */ cLen = value.length; j !== cLen; ++j) {
+          allChunks[allChunks.length] = value[j];
+        }
+        allChunks[allChunks.length] = '\n';
+      } else if ('string' === typeof value) {
+        allChunks[allChunks.length] = /** @type {string} */ (value);
+        allChunks[allChunks.length] = '\n';
+      } else {
+        allChunks[allChunks.length] = /** @type {!Uint8Array} */ (value);
       }
-      allChunks[allChunks.length] = '\n';
-    } else if ('string' === typeof value) {
-      allChunks[allChunks.length] = /** @type {string} */ (value);
-      allChunks[allChunks.length] = '\n';
-    } else {
-      allChunks[allChunks.length] = /** @type {!Uint8Array} */ (value);
     }
-  }
+  );
 
   return Wasm2Lang.OutputSink.drainChunks(allChunks, writeFn);
 };
@@ -190,7 +219,7 @@ Wasm2Lang.Processor.initializeModules_ = function (binaryenModule) {
  * programmatic API expects input via {@code inputData}.
  *
  * @private
- * @param {!Object} userOptions
+ * @param {!Wasm2Lang.Options.Schema.UserOptions} userOptions
  * @return {!Wasm2Lang.Options.Schema.NormalizedOptions}
  */
 Wasm2Lang.Processor.normalizeUserOptions_ = function (userOptions) {
@@ -209,21 +238,11 @@ Wasm2Lang.Processor.normalizeUserOptions_ = function (userOptions) {
         definitions: userDefs || /** @type {!Object<string, string>} */ (Object.create(null)),
         inputData: userInput || null,
         inputFile: null,
-        emitMetadata: null,
-        emitCode: null,
-        emitWebAssembly: null,
+        emitMetadata: Wasm2Lang.Processor.normalizeEmitOption_(userOptions, 'emitMetadata', 'metadata'),
+        emitCode: Wasm2Lang.Processor.normalizeEmitOption_(userOptions, 'emitCode', 'code'),
+        emitWebAssembly: Wasm2Lang.Processor.normalizeEmitOption_(userOptions, 'emitWebAssembly', ''),
         mangler: userMangler || null
       });
-
-  if (userOptions['emitMetadata'] != null) {
-    o.emitMetadata = userOptions['emitMetadata'] === true ? 'metadata' : String(userOptions['emitMetadata']);
-  }
-  if (userOptions['emitCode'] != null) {
-    o.emitCode = userOptions['emitCode'] === true ? 'code' : String(userOptions['emitCode']);
-  }
-  if (userOptions['emitWebAssembly'] != null) {
-    o.emitWebAssembly = userOptions['emitWebAssembly'] === true ? '' : String(userOptions['emitWebAssembly']);
-  }
 
   return o;
 };
@@ -246,34 +265,30 @@ Wasm2Lang.Processor.materializeResult_ = function (result) {
   var /** @const {!Wasm2Lang.Processor.MaterializedResult} */ materialized =
     /** @type {!Wasm2Lang.Processor.MaterializedResult} */ (Object.create(null));
 
-  /** @const {!Array<!Wasm2Lang.Processor.TranspileResultProperty>} */
-  var keyOrder = Wasm2Lang.Processor.RESULT_KEY_ORDER_;
-
   /** @type {!Array<!Wasm2Lang.Processor.TranspileResultProperty>} */
   var asyncKeys = [];
   /** @type {!Array<!Promise<string>>} */
   var asyncPromises = [];
 
-  for (var /** number */ i = 0, /** @const {number} */ len = keyOrder.length; i !== len; ++i) {
-    var /** @const {!Wasm2Lang.Processor.TranspileResultProperty} */ key = keyOrder[i];
-    if (!(key in result)) {
-      continue;
-    }
-    var /** @const {*} */ value = result[key];
-    if (Array.isArray(value)) {
-      var /** @const {*} */ collected = Wasm2Lang.OutputSink.collectChunks(
-          /** @type {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */ (value)
-        );
-      if (collected instanceof Promise) {
-        asyncKeys[asyncKeys.length] = key;
-        asyncPromises[asyncPromises.length] = /** @type {!Promise<string>} */ (collected);
+  Wasm2Lang.Processor.forEachResultEntry_(
+    result,
+    /** @param {!Wasm2Lang.Processor.TranspileResultProperty} key @param {*} value */
+    function (key, value) {
+      if (Array.isArray(value)) {
+        var /** @const {*} */ collected = Wasm2Lang.OutputSink.collectChunks(
+            /** @type {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */ (value)
+          );
+        if (collected instanceof Promise) {
+          asyncKeys[asyncKeys.length] = key;
+          asyncPromises[asyncPromises.length] = /** @type {!Promise<string>} */ (collected);
+        } else {
+          materialized[key] = /** @type {string} */ (collected);
+        }
       } else {
-        materialized[key] = /** @type {string} */ (collected);
+        materialized[key] = /** @type {string|!Uint8Array} */ (value);
       }
-    } else {
-      materialized[key] = /** @type {string|!Uint8Array} */ (value);
     }
-  }
+  );
 
   if (0 !== asyncPromises.length) {
     return Promise.all(asyncPromises).then(
@@ -291,6 +306,78 @@ Wasm2Lang.Processor.materializeResult_ = function (result) {
 };
 
 /**
+ * Runs the normalization pipeline on a WAST module and returns structured
+ * pass metadata in an external-safe (quoted-key) format.  Iterates all
+ * registered analysis descriptors so that adding a new pass requires only
+ * a descriptor registration — this function needs no modification.
+ *
+ * @suppress {accessControls}
+ * @param {!Binaryen} binaryenModule
+ * @param {string} wastString
+ * @return {!Object}
+ */
+Wasm2Lang.Processor.getPassAnalysis = function (binaryenModule, wastString) {
+  Wasm2Lang.Processor.initializeModules_(binaryenModule);
+
+  var /** @const {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(wastString);
+
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ options =
+    /** @type {!Wasm2Lang.Options.Schema.NormalizedOptions} */ ({
+      languageOut: 'asmjs',
+      normalizeWasm: ['binaryen:none', 'wasm2lang:codegen'],
+      definitions: /** @type {!Object<string, string>} */ (Object.create(null)),
+      inputData: null,
+      inputFile: null,
+      emitMetadata: null,
+      emitCode: null,
+      emitWebAssembly: null,
+      mangler: null
+    });
+
+  var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ passes = Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses(options);
+
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.PassRunResult} */ passRunResult =
+    Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(wasmModule, passes);
+
+  var /** @const {!Array<!Wasm2Lang.Wasm.Tree.PassMetadata>} */ funcs = passRunResult.functions;
+  var /** @const {number} */ fLen = funcs.length;
+
+  // prettier-ignore
+  var /** @const {!Array<!Wasm2Lang.Wasm.Tree.PassAnalysisDescriptor>} */ descriptors =
+    Wasm2Lang.Wasm.Tree.CustomPasses.analysisDescriptors_;
+  var /** @const {number} */ dLen = descriptors.length;
+
+  var /** @const {!Object} */ result = Object.create(null);
+
+  for (var /** number */ fi = 0; fi !== fLen; ++fi) {
+    var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ fm = funcs[fi];
+    var /** @const {string|void} */ funcName = fm.passFuncName;
+    if (!funcName) {
+      continue;
+    }
+
+    var /** @const {!Object} */ funcResult = Object.create(null);
+
+    for (var /** number */ di = 0; di !== dLen; ++di) {
+      var /** @const {!Wasm2Lang.Wasm.Tree.PassAnalysisDescriptor} */ desc = descriptors[di];
+      var /** @const {*} */ raw = desc.extract(fm);
+      var /** @const {!Array<string>} */ rawKeys = raw ? Object.keys(/** @type {!Object} */ (raw)) : [];
+      if (0 !== rawKeys.length) {
+        funcResult[desc.externalKey] = desc.serialize ? desc.serialize(/** @type {!Object} */ (raw)) : raw;
+      } else {
+        funcResult[desc.externalKey] = null;
+      }
+    }
+
+    result[funcName] = funcResult;
+  }
+
+  return result;
+};
+
+/**
  * Programmatic entry point for wasm2lang.
  *
  * Accepts a binaryen instance and a user options object, runs the
@@ -300,7 +387,7 @@ Wasm2Lang.Processor.materializeResult_ = function (result) {
  * caller receives the result object directly.
  *
  * @param {!Binaryen} binaryenModule
- * @param {!Object} userOptions
+ * @param {!Wasm2Lang.Options.Schema.UserOptions} userOptions
  * @return {!Wasm2Lang.Processor.MaterializedResult|!Promise<!Wasm2Lang.Processor.MaterializedResult>}
  */
 Wasm2Lang.Processor.transpile = function (binaryenModule, userOptions) {

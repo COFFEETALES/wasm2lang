@@ -27,19 +27,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionApplication.getBlockFusionPlan =
   funcName,
   blockName
 ) {
-  if (!passRunResultIndex) {
-    return null;
-  }
-  var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm = passRunResultIndex[funcName];
-  if (!fm) {
-    return null;
-  }
-  var /** @const {*} */ plans = fm.fusedBlocks;
-  if (!plans) {
-    return null;
-  }
   return /** @type {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (
-    /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (plans)[blockName] || null
+    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(
+      passRunResultIndex,
+      funcName,
+      /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+        return fm.fusedBlocks;
+      },
+      blockName
+    )
   );
 };
 
@@ -58,3 +54,22 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionApplication.isFusedBlock = funct
     0 === blockName.indexOf(Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_)
   );
 };
+
+// ---------------------------------------------------------------------------
+// Analysis descriptor
+// ---------------------------------------------------------------------------
+
+Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+  'blockLoopFusion',
+  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+    return fm.fusedBlocks;
+  },
+  /** @param {!Object} raw @return {!Object} */ function (raw) {
+    return Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap(
+      raw,
+      /** @param {*} plan @return {!Object} */ function (plan) {
+        return {'fusionPattern': /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (plan).fusionVariant};
+      }
+    );
+  }
+);

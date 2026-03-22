@@ -14,7 +14,7 @@ Wasm2Lang.Wasm.Tree.ExpressionInfo;
  * instead of parsing label prefixes.
  *
  * @typedef {{
- *   loopKind: string,
+ *   simplifiedLoopKind: string,
  *   needsLabel: boolean,
  *   conditionPtr: number
  * }}
@@ -23,10 +23,10 @@ Wasm2Lang.Wasm.Tree.LoopPlan;
 
 /**
  * Describes a block-loop fusion detected by BlockLoopFusionPass.
- * fusionPattern is 'a' (block wraps loop) or 'b' (loop wraps block).
+ * fusionVariant is 'a' (block wraps loop) or 'b' (loop wraps block).
  *
  * @typedef {{
- *   fusionPattern: string
+ *   fusionVariant: string
  * }}
  */
 Wasm2Lang.Wasm.Tree.BlockFusionPlan;

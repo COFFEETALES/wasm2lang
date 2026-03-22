@@ -20,7 +20,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication = {};
 
 /**
  * @typedef {{
- *   indices: !Array<number>,
+ *   caseIndices: !Array<number>,
  *   actionPtrs: !Array<number>,
  *   needsBreak: boolean,
  *   externalTarget: ?string
@@ -66,15 +66,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockSwitchDispatch
   funcName,
   blockName
 ) {
-  if (!passRunResultIndex) {
-    return false;
-  }
-  var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm = passRunResultIndex[funcName];
-  if (!fm) {
-    return false;
-  }
-  var /** @const {*} */ names = fm.switchDispatchNames;
-  return !!names && true === /** @type {!Object<string, boolean>} */ (names)[blockName];
+  return Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag(
+    passRunResultIndex,
+    funcName,
+    /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+      return fm.switchDispatchNames;
+    },
+    blockName
+  );
 };
 
 /**
@@ -90,16 +89,33 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockRootSwitch = f
   funcName,
   blockName
 ) {
-  if (!passRunResultIndex) {
-    return false;
-  }
-  var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm = passRunResultIndex[funcName];
-  if (!fm) {
-    return false;
-  }
-  var /** @const {*} */ names = fm.rootSwitchNames;
-  return !!names && true === /** @type {!Object<string, boolean>} */ (names)[blockName];
+  return Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag(
+    passRunResultIndex,
+    funcName,
+    /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+      return fm.rootSwitchNames;
+    },
+    blockName
+  );
 };
+
+// ---------------------------------------------------------------------------
+// Analysis descriptors
+// ---------------------------------------------------------------------------
+
+Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+  'switchDispatch',
+  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+    return fm.switchDispatchNames;
+  }
+);
+
+Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+  'rootSwitch',
+  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+    return fm.rootSwitchNames;
+  }
+);
 
 // ---------------------------------------------------------------------------
 // Extraction
@@ -187,7 +203,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
               }
             }
             return /** @type {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */ ({
-              indices: [],
+              caseIndices: [],
               actionPtrs: aPtrs,
               needsBreak: nb,
               externalTarget: ext
@@ -197,12 +213,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
         // Build case groups (adjacent same-target entries merged).
         var /** @const {!Array<!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup>} */ caseGroups = [];
         var /** @type {number} */ si = 0;
-        while (si < switchNames.length) {
+        var /** @const {number} */ swNameLen = switchNames.length;
+        while (si < swNameLen) {
           var /** @const {string} */ target = switchNames[si];
           var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */ group =
               buildGroup(target);
-          var /** @const {!Array<number>} */ groupIndices = /** @type {!Array<number>} */ (group.indices);
-          while (si < switchNames.length && switchNames[si] === target) {
+          var /** @const {!Array<number>} */ groupIndices = /** @type {!Array<number>} */ (group.caseIndices);
+          while (si < swNameLen && switchNames[si] === target) {
             groupIndices[groupIndices.length] = si;
             ++si;
           }
@@ -282,6 +299,45 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitFlatSwitchBreak =
 };
 
 /**
+ * Sub-walks expression pointers and appends rendered lines.
+ *
+ * @suppress {accessControls}
+ * @param {!Array<string>} lines
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} visitor
+ * @param {!Array<number>} ptrs
+ * @param {number} count
+ * @param {number} indent
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSubWalkedExpressions_ = function (
+  lines,
+  wasmModule,
+  binaryen,
+  funcInfo,
+  visitor,
+  ptrs,
+  count,
+  indent
+) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const */ subWalk = Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_;
+  var /** @const */ subStr = Wasm2Lang.Backend.AbstractCodegen.subWalkString_;
+  for (var /** number */ i = 0; i < count; ++i) {
+    var /** @const {string} */ code = subStr(subWalk(wasmModule, binaryen, funcInfo, visitor, ptrs[i]));
+    if ('' !== code) {
+      if (-1 === code.indexOf('\n')) {
+        lines[lines.length] = pad(indent) + code + ';\n';
+      } else {
+        lines[lines.length] = code;
+      }
+    }
+  }
+};
+
+/**
  * Renders sub-walked action expressions as switch-case body lines, using the
  * same formatting as the BlockId child rendering (single-line gets pad+semi,
  * multi-line used as-is).
@@ -307,9 +363,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSwitchCaseActions
   caseIndent,
   opt_terminalBreakTarget
 ) {
-  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
-  var /** @const */ subWalk = Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_;
-  var /** @const */ subStr = Wasm2Lang.Backend.AbstractCodegen.subWalkString_;
   var /** @type {number} */ actionCount = actionPtrs.length;
   var /** @type {boolean} */ strippedTerminalBreak = false;
 
@@ -343,16 +396,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSwitchCaseActions
     }
   }
 
-  for (var /** number */ i = 0; i < actionCount; ++i) {
-    var /** @const {string} */ code = subStr(subWalk(wasmModule, binaryen, funcInfo, visitor, actionPtrs[i]));
-    if ('' !== code) {
-      if (-1 === code.indexOf('\n')) {
-        lines[lines.length] = pad(caseIndent) + code + ';\n';
-      } else {
-        lines[lines.length] = code;
-      }
-    }
-  }
+  Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSubWalkedExpressions_(
+    lines,
+    wasmModule,
+    binaryen,
+    funcInfo,
+    visitor,
+    actionPtrs,
+    actionCount,
+    caseIndent
+  );
 
   return strippedTerminalBreak;
 };
@@ -381,28 +434,22 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitRootSwitchExitCod
   exitPtrs,
   indent
 ) {
-  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
-  var /** @const */ subWalk = Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_;
-  var /** @const */ subStr = Wasm2Lang.Backend.AbstractCodegen.subWalkString_;
-  var /** @type {boolean} */ isTerminal = false;
-
-  for (var /** number */ i = 0; i < exitPtrs.length; ++i) {
-    var /** @const {string} */ code = subStr(subWalk(wasmModule, binaryen, funcInfo, visitor, exitPtrs[i]));
-    if ('' !== code) {
-      if (-1 === code.indexOf('\n')) {
-        lines[lines.length] = pad(indent) + code + ';\n';
-      } else {
-        lines[lines.length] = code;
-      }
-    }
-  }
+  Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSubWalkedExpressions_(
+    lines,
+    wasmModule,
+    binaryen,
+    funcInfo,
+    visitor,
+    exitPtrs,
+    exitPtrs.length,
+    indent
+  );
 
   if (0 < exitPtrs.length) {
     var /** @const {number} */ lastId = /** @type {number} */ (binaryen.getExpressionInfo(exitPtrs[exitPtrs.length - 1])['id']);
-    isTerminal = lastId === binaryen.ReturnId || lastId === binaryen.UnreachableId;
+    return lastId === binaryen.ReturnId || lastId === binaryen.UnreachableId;
   }
-
-  return isTerminal;
+  return false;
 };
 
 // ---------------------------------------------------------------------------
@@ -484,14 +531,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
       Object.create(null)
     );
 
-  for (var /** number */ j = 1; j < chain.length; ++j) {
+  for (var /** number */ j = 1, /** @const {number} */ chainLen = chain.length; j < chainLen; ++j) {
     var /** @const {string} */ targetName = /** @type {string} */ (chain[j]['n']);
     var /** @const {!Array<number>} */ exitPtrs = [];
     var /** @type {boolean} */ hitTerminal = false;
 
     for (var /** number */ k = j - 1; 0 <= k && !hitTerminal; --k) {
       var /** @const {!Array<number>} */ levelPtrs = /** @type {!Array<number>} */ (chain[k]['c']);
-      for (var /** number */ p = 1; p < levelPtrs.length; ++p) {
+      for (var /** number */ p = 1, /** @const {number} */ ptrLen = levelPtrs.length; p < ptrLen; ++p) {
         exitPtrs[exitPtrs.length] = levelPtrs[p];
         var /** @const {number} */ ptrId = /** @type {number} */ (binaryen.getExpressionInfo(levelPtrs[p])['id']);
         if (ptrId === binaryen.ReturnId || ptrId === binaryen.UnreachableId) {
@@ -517,6 +564,81 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
 // ---------------------------------------------------------------------------
 
 /**
+ * Emits a case/default group's action code and exit statement for labeled-break
+ * backends.
+ *
+ * @suppress {accessControls}
+ * @param {!Array<string>} lines
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} codegen
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} vis
+ * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} group
+ * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} info
+ * @param {string} outerLabel
+ * @param {number} indent
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledGroupBody_ = function (
+  lines,
+  codegen,
+  state,
+  vis,
+  group,
+  info,
+  outerLabel,
+  indent
+) {
+  var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication;
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @type {?Object<string, !Array<number>>} */ rsExitMap = state.rootSwitchExitMap;
+  var /** @type {string} */ rsRsName = state.rootSwitchRsName;
+  var /** @type {string} */ rsLoopName = state.rootSwitchLoopName;
+
+  var /** @const {number} */ savedIndent = state.indent;
+  state.indent = indent;
+  var /** @const {boolean} */ strippedBreak = S.emitSwitchCaseActions(
+      lines,
+      state.wasmModule,
+      binaryen,
+      state.functionInfo,
+      vis,
+      group.actionPtrs,
+      indent,
+      info.outerName
+    );
+  state.indent = savedIndent;
+
+  if (group.externalTarget) {
+    if (rsExitMap && group.externalTarget in rsExitMap) {
+      var /** @const {number} */ savedInd2 = state.indent;
+      state.indent = indent;
+      var /** @const {boolean} */ terminal = S.emitRootSwitchExitCode(
+          lines,
+          state.wasmModule,
+          binaryen,
+          state.functionInfo,
+          vis,
+          rsExitMap[group.externalTarget],
+          indent
+        );
+      state.indent = savedInd2;
+      if (!terminal) {
+        lines[lines.length] = pad(indent) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
+      }
+    } else if (rsRsName && group.externalTarget === rsRsName) {
+      lines[lines.length] = pad(indent) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
+    } else {
+      lines[lines.length] =
+        pad(indent) +
+        codegen.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, group.externalTarget);
+    }
+  } else if (group.needsBreak || strippedBreak) {
+    S.emitFlatSwitchBreak(lines, indent, outerLabel, info);
+  }
+};
+
+/**
  * Emits a flat switch statement for backends using labeled break semantics
  * (asm.js, Java).  PHP overrides {@code emitFlatSwitch_} entirely because
  * it uses numeric break depths instead of labels.
@@ -525,7 +647,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
  * @param {!Wasm2Lang.Backend.AbstractCodegen} codegen
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {{result: string, hasDefault: boolean}}
+ * @return {{emittedString: string, hasDefault: boolean}}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch = function (codegen, state, nodeCtx) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
@@ -543,116 +665,30 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
     );
   var /** @const {string} */ outerLabel = codegen.labelN_(state.labelMap, info.outerName);
 
-  var /** @const {string} */ condStr = codegen.coerceSwitchCondition_(
-      A.subWalkString_(A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.conditionPtr))
-    );
+  var /** @const {string} */ condStr = codegen.coerceSwitchCondition_(A.subWalkExpressionString_(state, info.conditionPtr));
 
   var /** @const {!Array<string>} */ lines = [];
   S.emitFlatSwitchHeader(lines, ind, condStr, outerLabel, info);
 
-  var /** @type {?Object<string, !Array<number>>} */ rsExitMap = state.rootSwitchExitMap;
-  var /** @type {string} */ rsRsName = state.rootSwitchRsName;
-  var /** @type {string} */ rsLoopName = state.rootSwitchLoopName;
-
-  // --- Case groups (shared iteration) ---
   var /** @const {!Array<!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup>} */ groups =
       info.caseGroups;
-  for (var /** number */ gi = 0; gi < groups.length; ++gi) {
+  for (var /** number */ gi = 0, /** @const {number} */ groupLen = groups.length; gi < groupLen; ++gi) {
     var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */ group = groups[gi];
-    var /** @const {!Array<number>} */ indices = group.indices;
-    for (var /** number */ ii = 0; ii < indices.length; ++ii) {
+    var /** @const {!Array<number>} */ indices = group.caseIndices;
+    for (var /** number */ ii = 0, /** @const {number} */ idxLen = indices.length; ii < idxLen; ++ii) {
       lines[lines.length] = pad(ind + 1) + 'case ' + indices[ii] + ':\n';
     }
-    var /** @const {number} */ savedIndent = state.indent;
-    state.indent = ind + 2;
-    var /** @const {boolean} */ strippedBreak = S.emitSwitchCaseActions(
-        lines,
-        state.wasmModule,
-        binaryen,
-        state.functionInfo,
-        vis,
-        group.actionPtrs,
-        ind + 2,
-        info.outerName
-      );
-    state.indent = savedIndent;
-    if (group.externalTarget) {
-      if (rsExitMap && group.externalTarget in rsExitMap) {
-        var /** @const {number} */ rsSavedInd = state.indent;
-        state.indent = ind + 2;
-        var /** @const {boolean} */ rsEtTerminal = S.emitRootSwitchExitCode(
-            lines,
-            state.wasmModule,
-            binaryen,
-            state.functionInfo,
-            vis,
-            rsExitMap[group.externalTarget],
-            ind + 2
-          );
-        state.indent = rsSavedInd;
-        if (!rsEtTerminal) {
-          lines[lines.length] = pad(ind + 2) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
-        }
-      } else if (rsRsName && group.externalTarget === rsRsName) {
-        lines[lines.length] = pad(ind + 2) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
-      } else {
-        lines[lines.length] =
-          pad(ind + 2) +
-          codegen.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, group.externalTarget);
-      }
-    } else if (group.needsBreak || strippedBreak) {
-      S.emitFlatSwitchBreak(lines, ind + 2, outerLabel, info);
-    }
+    S.emitLabeledGroupBody_(lines, codegen, state, vis, group, info, outerLabel, ind + 2);
   }
 
-  // --- Default group ---
   var /** @type {?Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */ defGroup = info.defaultGroup;
   if (defGroup) {
     lines[lines.length] = pad(ind + 1) + 'default:\n';
-    var /** @const {number} */ savedIndent2 = state.indent;
-    state.indent = ind + 2;
-    var /** @const {boolean} */ strippedDefBreak = S.emitSwitchCaseActions(
-        lines,
-        state.wasmModule,
-        binaryen,
-        state.functionInfo,
-        vis,
-        defGroup.actionPtrs,
-        ind + 2,
-        info.outerName
-      );
-    state.indent = savedIndent2;
-    if (defGroup.externalTarget) {
-      if (rsExitMap && defGroup.externalTarget in rsExitMap) {
-        var /** @const {number} */ rsSavedDefInd = state.indent;
-        state.indent = ind + 2;
-        var /** @const {boolean} */ rsDefEtTerminal = S.emitRootSwitchExitCode(
-            lines,
-            state.wasmModule,
-            binaryen,
-            state.functionInfo,
-            vis,
-            rsExitMap[defGroup.externalTarget],
-            ind + 2
-          );
-        state.indent = rsSavedDefInd;
-        if (!rsDefEtTerminal) {
-          lines[lines.length] = pad(ind + 2) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
-        }
-      } else if (rsRsName && defGroup.externalTarget === rsRsName) {
-        lines[lines.length] = pad(ind + 2) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
-      } else {
-        lines[lines.length] =
-          pad(ind + 2) +
-          codegen.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, defGroup.externalTarget);
-      }
-    } else if (defGroup.needsBreak || strippedDefBreak) {
-      S.emitFlatSwitchBreak(lines, ind + 2, outerLabel, info);
-    }
+    S.emitLabeledGroupBody_(lines, codegen, state, vis, defGroup, info, outerLabel, ind + 2);
   }
 
   lines[lines.length] = pad(ind) + '}\n';
-  return {result: lines.join(''), hasDefault: !!defGroup};
+  return {emittedString: lines.join(''), hasDefault: !!defGroup};
 };
 
 /**
@@ -670,9 +706,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledRootSwitch
   var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
   // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
-    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
-  // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.RootSwitchInfo} */ info =
     /** @type {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.RootSwitchInfo} */ (
       S.extractRootSwitchStructure(binaryen, nodeCtx.expressionPointer)
@@ -687,9 +720,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledRootSwitch
     state.labelKinds[exitName] = 'block';
   }
 
-  var /** @const {string} */ loopCode = A.subWalkString_(
-      A.subWalkExpression_(state.wasmModule, binaryen, state.functionInfo, vis, info.loopPtr)
-    );
+  var /** @const {string} */ loopCode = A.subWalkExpressionString_(state, info.loopPtr);
 
   state.rootSwitchExitMap = null;
   state.rootSwitchRsName = '';

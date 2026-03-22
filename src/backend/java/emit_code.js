@@ -27,15 +27,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Import fields — stored as Object, cast at call sites.
   for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
     outputParts[outputParts.length] =
-      pad1 +
-      'Object ' +
-      this.n_('$if_' + Wasm2Lang.Backend.JavaCodegen.javaSafeName_(moduleInfo.impFuncs[i].importBaseName)) +
-      ';';
+      pad1 + 'Object ' + this.n_('$if_' + this.safeName_(moduleInfo.impFuncs[i].importBaseName)) + ';';
   }
 
   // Global fields.
   for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
-    var /** @const {string} */ gName = Wasm2Lang.Backend.JavaCodegen.javaSafeName_(moduleInfo.globals[gi].globalName);
+    var /** @const {string} */ gName = this.safeName_(moduleInfo.globals[gi].globalName);
     var /** @const {string} */ gType = Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, moduleInfo.globals[gi].globalType);
     outputParts[outputParts.length] =
       pad1 + gType + ' ' + this.n_('$g_' + gName) + ' = ' + moduleInfo.globals[gi].globalInitValue + ';';
@@ -47,7 +44,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     pad1 + className + '(java.util.Map<String, Object> foreign, java.nio.ByteBuffer ' + bufferParamName + ') {';
   outputParts[outputParts.length] = pad2 + 'this.' + bufferParamName + ' = ' + bufferParamName + ';';
   for (var /** number */ ci = 0; ci !== importCount; ++ci) {
-    var /** @const {string} */ importSafe = Wasm2Lang.Backend.JavaCodegen.javaSafeName_(moduleInfo.impFuncs[ci].importBaseName);
+    var /** @const {string} */ importSafe = this.safeName_(moduleInfo.impFuncs[ci].importBaseName);
     outputParts[outputParts.length] =
       pad2 + 'this.' + this.n_('$if_' + importSafe) + ' = foreign.get("' + moduleInfo.impFuncs[ci].importBaseName + '");';
   }

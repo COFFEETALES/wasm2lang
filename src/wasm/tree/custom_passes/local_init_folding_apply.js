@@ -23,12 +23,24 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingApplication = {};
  * @return {?Object<string, number>}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingApplication.getLocalInitOverrides = function (passRunResultIndex, funcName) {
-  if (!passRunResultIndex) {
-    return null;
-  }
-  var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm = passRunResultIndex[funcName];
-  if (!fm) {
-    return null;
-  }
-  return /** @type {?Object<string, number>} */ (fm.localInitOverrides || null);
+  return /** @type {?Object<string, number>} */ (
+    Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadataValue(
+      passRunResultIndex,
+      funcName,
+      /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+        return fm.localInitOverrides;
+      }
+    )
+  );
 };
+
+// ---------------------------------------------------------------------------
+// Analysis descriptor
+// ---------------------------------------------------------------------------
+
+Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+  'localInitFolding',
+  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+    return fm.localInitOverrides;
+  }
+);

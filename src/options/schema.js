@@ -36,6 +36,28 @@ Wasm2Lang.Options.Schema.OptionKey = {
 Wasm2Lang.Options.Schema.NormalizedOptions;
 
 /**
+ * External options object passed to {@code Wasm2Lang.Processor.transpile}.
+ * All fields are optional; missing fields fall back to
+ * {@code defaultOptions}.  Keys are read with bracket notation so that
+ * external callers survive Closure property renaming.
+ *
+ * Emit flags accept {@code true} for default names, or a string for
+ * custom names.
+ *
+ * @typedef {{
+ *   languageOut: (string|undefined),
+ *   normalizeWasm: (!Array<string>|undefined),
+ *   definitions: (!Object<string, string>|undefined),
+ *   inputData: (string|!Uint8Array|undefined),
+ *   emitMetadata: (boolean|string|undefined),
+ *   emitCode: (boolean|string|undefined),
+ *   emitWebAssembly: (boolean|string|undefined),
+ *   mangler: (string|undefined)
+ * }}
+ */
+Wasm2Lang.Options.Schema.UserOptions;
+
+/**
  * @const {!Array<string>}
  */
 Wasm2Lang.Options.Schema.languages = ['asmjs', 'php64', 'java'];

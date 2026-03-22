@@ -76,60 +76,46 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   var /** @const {!Object<string, boolean>} */ ub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
   this.usedBindings_ = null;
   var /** @const {!Array<string>} */ bindingLines = [];
-  if (ub['HEAP8']) {
-    bindingLines[bindingLines.length] =
-      pad1 + 'var ' + this.n_('HEAP8') + ' = new ' + stdlibName + '.Int8Array(' + bufferName_ + ');';
+  var /** @const {!Array<!Array<string>>} */ heapBindings = [
+      ['HEAP8', 'Int8Array'],
+      ['HEAPU8', 'Uint8Array'],
+      ['HEAP16', 'Int16Array'],
+      ['HEAPU16', 'Uint16Array'],
+      ['HEAP32', 'Int32Array'],
+      ['HEAPF32', 'Float32Array'],
+      ['HEAPF64', 'Float64Array']
+    ];
+  for (var /** number */ hbi = 0, /** @const {number} */ hbLen = heapBindings.length; hbi !== hbLen; ++hbi) {
+    if (ub[heapBindings[hbi][0]]) {
+      bindingLines[bindingLines.length] =
+        pad1 +
+        'var ' +
+        this.n_(heapBindings[hbi][0]) +
+        ' = new ' +
+        stdlibName +
+        '.' +
+        heapBindings[hbi][1] +
+        '(' +
+        bufferName_ +
+        ');';
+    }
   }
-  if (ub['HEAPU8']) {
-    bindingLines[bindingLines.length] =
-      pad1 + 'var ' + this.n_('HEAPU8') + ' = new ' + stdlibName + '.Uint8Array(' + bufferName_ + ');';
-  }
-  if (ub['HEAP16']) {
-    bindingLines[bindingLines.length] =
-      pad1 + 'var ' + this.n_('HEAP16') + ' = new ' + stdlibName + '.Int16Array(' + bufferName_ + ');';
-  }
-  if (ub['HEAPU16']) {
-    bindingLines[bindingLines.length] =
-      pad1 + 'var ' + this.n_('HEAPU16') + ' = new ' + stdlibName + '.Uint16Array(' + bufferName_ + ');';
-  }
-  if (ub['HEAP32']) {
-    bindingLines[bindingLines.length] =
-      pad1 + 'var ' + this.n_('HEAP32') + ' = new ' + stdlibName + '.Int32Array(' + bufferName_ + ');';
-  }
-  if (ub['HEAPF32']) {
-    bindingLines[bindingLines.length] =
-      pad1 + 'var ' + this.n_('HEAPF32') + ' = new ' + stdlibName + '.Float32Array(' + bufferName_ + ');';
-  }
-  if (ub['HEAPF64']) {
-    bindingLines[bindingLines.length] =
-      pad1 + 'var ' + this.n_('HEAPF64') + ' = new ' + stdlibName + '.Float64Array(' + bufferName_ + ');';
-  }
-  if (ub['Math_imul']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_imul') + ' = ' + stdlibName + '.Math.imul;';
-  }
-  if (ub['Math_clz32']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_clz32') + ' = ' + stdlibName + '.Math.clz32;';
-  }
-  if (ub['Math_fround']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_fround') + ' = ' + stdlibName + '.Math.fround;';
-  }
-  if (ub['Math_abs']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_abs') + ' = ' + stdlibName + '.Math.abs;';
-  }
-  if (ub['Math_ceil']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_ceil') + ' = ' + stdlibName + '.Math.ceil;';
-  }
-  if (ub['Math_floor']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_floor') + ' = ' + stdlibName + '.Math.floor;';
-  }
-  if (ub['Math_min']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_min') + ' = ' + stdlibName + '.Math.min;';
-  }
-  if (ub['Math_max']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_max') + ' = ' + stdlibName + '.Math.max;';
-  }
-  if (ub['Math_sqrt']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('Math_sqrt') + ' = ' + stdlibName + '.Math.sqrt;';
+  var /** @const {!Array<string>} */ mathBindings = [
+      'Math_imul',
+      'Math_clz32',
+      'Math_fround',
+      'Math_abs',
+      'Math_ceil',
+      'Math_floor',
+      'Math_min',
+      'Math_max',
+      'Math_sqrt'
+    ];
+  for (var /** number */ mbi = 0, /** @const {number} */ mbLen = mathBindings.length; mbi !== mbLen; ++mbi) {
+    if (ub[mathBindings[mbi]]) {
+      bindingLines[bindingLines.length] =
+        pad1 + 'var ' + this.n_(mathBindings[mbi]) + ' = ' + stdlibName + '.Math.' + mathBindings[mbi].substring(5) + ';';
+    }
   }
   // Splice binding declarations into the reserved position.
   for (var /** number */ bi = bindingLines.length - 1; bi >= 0; --bi) {
@@ -149,9 +135,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   var /** @const {!Array<string>} */ returnEntries = [];
   for (var /** number */ r = 0, /** @const {number} */ exportCount = moduleInfo.expFuncs.length; r !== exportCount; ++r) {
     returnEntries[returnEntries.length] =
-      moduleInfo.expFuncs[r].exportName +
-      ': ' +
-      this.n_(Wasm2Lang.Backend.AsmjsCodegen.asmjsSafeName_(moduleInfo.expFuncs[r].internalName));
+      moduleInfo.expFuncs[r].exportName + ': ' + this.n_(this.safeName_(moduleInfo.expFuncs[r].internalName));
   }
   outputParts[outputParts.length] = pad1 + 'return { ' + returnEntries.join(', ') + ' };';
   outputParts[outputParts.length] = '};';

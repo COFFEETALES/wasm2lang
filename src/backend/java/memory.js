@@ -93,7 +93,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderStore_ = function (binaryen, ptrEx
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.renderImportCallExpr_ = function (binaryen, importBaseName, callArgs, callType) {
-  var /** @const {string} */ field = 'this.' + this.n_('$if_' + Wasm2Lang.Backend.JavaCodegen.javaSafeName_(importBaseName));
+  var /** @const {string} */ field = 'this.' + this.n_('$if_' + this.safeName_(importBaseName));
   var /** @const {boolean} */ isVoid = callType === binaryen.none || 0 === callType;
   var /** @const {number} */ numArgs = callArgs.length;
 

@@ -49,12 +49,3 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderLocalInit_ = function (binaryen, w
   }
   return '0';
 };
-
-/**
- * @override
- * @protected
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.prototype.getRuntimeHelperPrefix_ = function () {
-  return '$w2l_';
-};

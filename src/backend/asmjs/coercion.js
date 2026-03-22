@@ -108,15 +108,6 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderConst_ = function (binaryen, valu
 };
 
 /**
- * @override
- * @protected
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.getRuntimeHelperPrefix_ = function () {
-  return '$w2l_';
-};
-
-/**
  * @param {!Binaryen} binaryen
  * @param {number} wasmType
  * @return {string}

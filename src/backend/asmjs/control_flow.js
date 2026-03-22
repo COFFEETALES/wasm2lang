@@ -99,7 +99,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numericBinInfo =
             Wasm2Lang.Backend.NumericOps.classifyBinaryOp(binaryen, binaryOp);
         if (numericBinInfo) {
-          result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1));
+          result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1), cc(0), cc(1));
           resultCat = numericBinInfo.isComparison ? C.FIXNUM : A.catForCoercedType_(binaryen, numericBinInfo.retType);
         } else {
           result = '__unknown_binop_' + expr['op'] + '(' + cr(0) + ', ' + cr(1) + ')';
@@ -189,7 +189,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           cr(0),
           cc(0)
         );
-      result = lsResult.result;
+      result = lsResult.emittedString;
       resultCat = lsResult.resultCat;
       break;
     }
@@ -203,7 +203,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
       var /** @const {string} */ importBase = state.importedNames[callTarget] || '';
       var /** @type {string} */ callName =
-          '' !== importBase ? this.n_('$if_' + importBase) : this.n_(Wasm2Lang.Backend.AsmjsCodegen.asmjsSafeName_(callTarget));
+          '' !== importBase ? this.n_('$if_' + importBase) : this.n_(this.safeName_(callTarget));
       var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
           binaryen,
           expr,
@@ -273,51 +273,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
-        if ('for' === loopPlan.loopKind) {
-          if (loopPlan.needsLabel) {
-            result = pad(ind) + this.labelN_(state.labelMap, loopName) + ': for (;;) {\n' + cr(0) + pad(ind) + '}\n';
-          } else {
-            result = pad(ind) + 'for (;;) {\n' + cr(0) + pad(ind) + '}\n';
-          }
-        } else if ('dowhile' === loopPlan.loopKind) {
-          var /** @const {string} */ dwCond = A.subWalkString_(
-              A.subWalkExpression_(
-                state.wasmModule,
-                binaryen,
-                state.functionInfo,
-                /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor),
-                loopPlan.conditionPtr
-              )
-            );
-          if (loopPlan.needsLabel) {
-            result =
-              pad(ind) + this.labelN_(state.labelMap, loopName) + ': do {\n' + cr(0) + pad(ind) + '} while (' + dwCond + ');\n';
-          } else {
-            result = pad(ind) + 'do {\n' + cr(0) + pad(ind) + '} while (' + dwCond + ');\n';
-          }
+        var /** @const {string} */ loopLabel = loopPlan.needsLabel ? this.labelN_(state.labelMap, loopName) + ': ' : '';
+        if ('for' === loopPlan.simplifiedLoopKind) {
+          result = pad(ind) + loopLabel + 'for (;;) {\n' + cr(0) + pad(ind) + '}\n';
+        } else if ('dowhile' === loopPlan.simplifiedLoopKind) {
+          var /** @const {string} */ dwCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
+          result = pad(ind) + loopLabel + 'do {\n' + cr(0) + pad(ind) + '} while (' + dwCond + ');\n';
         } else {
-          var /** @const {string} */ whCond = A.subWalkString_(
-              A.subWalkExpression_(
-                state.wasmModule,
-                binaryen,
-                state.functionInfo,
-                /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor),
-                loopPlan.conditionPtr
-              )
-            );
-          if (loopPlan.needsLabel) {
-            result =
-              pad(ind) +
-              this.labelN_(state.labelMap, loopName) +
-              ': while ' +
-              this.formatCondition_(whCond) +
-              ' {\n' +
-              cr(0) +
-              pad(ind) +
-              '}\n';
-          } else {
-            result = pad(ind) + 'while ' + this.formatCondition_(whCond) + ' {\n' + cr(0) + pad(ind) + '}\n';
-          }
+          var /** @const {string} */ whCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
+          result = pad(ind) + loopLabel + 'while ' + this.formatCondition_(whCond) + ' {\n' + cr(0) + pad(ind) + '}\n';
         }
       } else {
         result =
@@ -336,76 +300,24 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
       break;
     case binaryen.BreakId: {
-      var /** @const {string} */ brName = /** @type {string} */ (expr['name']);
-      var /** @const {number} */ brCondPtr = /** @type {number} */ (expr['condition']);
-      // Root-switch exit interception.
-      if (state.rootSwitchExitMap) {
-        if (brName in state.rootSwitchExitMap) {
-          var /** @const {!Array<number>} */ rsExitPtrs = state.rootSwitchExitMap[brName];
-          var /** @const {!Array<string>} */ rsExitLines = [];
-          // prettier-ignore
-          var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ rsVis =
-            /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
-          var /** @const {boolean} */ rsIsTerminal = A.emitRootSwitchExitCode_(
-              rsExitLines,
-              state.wasmModule,
-              binaryen,
-              state.functionInfo,
-              rsVis,
-              rsExitPtrs,
-              ind
-            );
-          if (!rsIsTerminal) {
-            rsExitLines[rsExitLines.length] =
-              pad(ind) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-          }
-          if (0 !== brCondPtr) {
-            result = pad(ind) + 'if ' + this.formatCondition_(cr(0)) + ' {\n' + rsExitLines.join('') + pad(ind) + '}\n';
-          } else {
-            result = rsExitLines.join('');
-          }
-          break;
-        }
-        if (brName === state.rootSwitchRsName) {
-          var /** @const {string} */ rsBreakStmt = this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
-          result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), rsBreakStmt);
-          break;
-        }
-      }
-      var /** @const {string} */ brStmt = this.resolveBreakTarget_(
-          state.labelKinds,
-          state.fusedBlockToLoop,
-          state.labelMap,
-          brName
-        );
-      result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), brStmt);
+      result = this.emitBreakStatement_(
+        state,
+        ind,
+        /** @type {string} */ (expr['name']),
+        /** @type {number} */ (expr['condition']),
+        cr(0)
+      ).emittedString;
       break;
     }
-    case binaryen.SwitchId: {
-      var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (expr['names'] || []);
-      var /** @const {string} */ switchDefault = /** @type {string} */ (expr['defaultName'] || '');
-      var /** @const {string} */ switchCond = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(cr(0));
-      var /** @const {!Array<string>} */ switchLines = [];
-      switchLines[switchLines.length] = pad(ind) + 'switch (' + switchCond + ') {\n';
-      var /** @type {number} */ si = 0;
-      while (si < switchNames.length) {
-        var /** @const {string} */ switchTarget = switchNames[si];
-        while (si < switchNames.length && switchNames[si] === switchTarget) {
-          switchLines[switchLines.length] = pad(ind + 1) + 'case ' + si + ':\n';
-          ++si;
-        }
-        switchLines[switchLines.length] =
-          pad(ind + 2) + this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, switchTarget);
-      }
-      if ('' !== switchDefault) {
-        switchLines[switchLines.length] = pad(ind + 1) + 'default:\n';
-        switchLines[switchLines.length] =
-          pad(ind + 2) + this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, switchDefault);
-      }
-      switchLines[switchLines.length] = pad(ind) + '}\n';
-      result = switchLines.join('');
+    case binaryen.SwitchId:
+      result = this.emitSwitchStatement_(
+        state,
+        ind,
+        cr(0),
+        /** @type {!Array<string>} */ (expr['names'] || []),
+        /** @type {string} */ (expr['defaultName'] || '')
+      ).emittedString;
       break;
-    }
     default:
       result = '/* unknown expr id=' + id + ' */';
       break;
@@ -415,40 +327,4 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     return {decisionValue: {'s': result, 'c': resultCat}};
   }
   return {decisionValue: result};
-};
-
-/**
- * Emits a flat switch statement for a br_table dispatch block annotated by the
- * SwitchDispatchDetectionPass.  Called from emitLeave_ when the BlockId name
- * starts with {@code sw$}.
- *
- * @param {!Wasm2Lang.Backend.AsmjsCodegen.EmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
-  return this.emitLabeledFlatSwitch_(state, nodeCtx).result;
-};
-
-/**
- * Emits a root-switch-loop structure where the outer block wrappers are
- * eliminated and exit code is inlined into the switch cases.
- *
- * @param {!Wasm2Lang.Backend.AsmjsCodegen.EmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.emitRootSwitch_ = function (state, nodeCtx) {
-  return this.emitLabeledRootSwitch_(state, nodeCtx);
-};
-
-/**
- * Enter callback: records label kinds and adjusts indent for scope nodes.
- *
- * @param {!Wasm2Lang.Backend.AsmjsCodegen.EmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.emitEnter_ = function (state, nodeCtx) {
-  return this.emitLabeledEnter_(state, nodeCtx);
 };

@@ -16,10 +16,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
   var /** @const {string} */ nF32 = this.n_('_w2l_f32');
 
   if ('abs' === name || 'ceil' === name || 'floor' === name || 'sqrt' === name) {
+    // prettier-ignore
+    var /** @const {string} */ coerced = opt_valueCat != null
+      ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, info.operandType)
+      : this.renderCoercionByType_(binaryen, valueExpr, info.operandType);
     if (isF32) {
-      return nF32 + '(' + name + '(' + this.renderCoercionByType_(binaryen, valueExpr, info.operandType) + '))';
+      return nF32 + '(' + name + '(' + coerced + '))';
     }
-    return name + '(' + this.renderCoercionByType_(binaryen, valueExpr, info.operandType) + ')';
+    return name + '(' + coerced + ')';
   }
 
   if ('convert_s_i32_to_f32' === name) {
@@ -30,7 +34,11 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
   }
 
   if ('demote_f64_to_f32' === name) {
-    return nF32 + '(' + this.renderCoercionByType_(binaryen, valueExpr, info.operandType) + ')';
+    // prettier-ignore
+    var /** @const {string} */ demoted = opt_valueCat != null
+      ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, info.operandType)
+      : this.renderCoercionByType_(binaryen, valueExpr, info.operandType);
+    return nF32 + '(' + demoted + ')';
   }
   if ('promote_f32_to_f64' === name) {
     // PHP float is f64 — the f32 operand is already a PHP float, promotion is a no-op.
@@ -54,22 +62,25 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
  * @param {!Wasm2Lang.Backend.NumericOps.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
+ * @param {number=} opt_catL
+ * @param {number=} opt_catR
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R) {
+Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R, opt_catL, opt_catR) {
+  var /** @const */ self = this;
+  /** @param {string} expr @param {number=} cat @return {string} */
+  var coerce = function (expr, cat) {
+    return cat != null
+      ? self.coerceToType_(binaryen, expr, /** @type {number} */ (cat), info.retType)
+      : self.renderCoercionByType_(binaryen, expr, info.retType);
+  };
+
   if ('min' === info.opName || 'max' === info.opName) {
     var /** @const {string} */ fn = info.opName;
     if (Wasm2Lang.Backend.ValueType.isF32(binaryen, info.retType)) {
-      return this.n_('_w2l_f32') + '(' + fn + '((float)(' + L + '), (float)(' + R + ')))';
+      return this.n_('_w2l_f32') + '(' + fn + '(' + coerce(L, opt_catL) + ', ' + coerce(R, opt_catR) + '))';
     }
-    return (
-      fn +
-      '(' +
-      this.renderCoercionByType_(binaryen, L, info.retType) +
-      ', ' +
-      this.renderCoercionByType_(binaryen, R, info.retType) +
-      ')'
-    );
+    return fn + '(' + coerce(L, opt_catL) + ', ' + coerce(R, opt_catR) + ')';
   }
 
   // f64 arithmetic: coerce operands individually — PHP float arithmetic
@@ -80,12 +91,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericBinaryOp_ = function (bina
     if ('mul' === info.opName || 'div' === info.opName) {
       precedence = P.PREC_MULTIPLICATIVE_;
     }
-    return P.renderInfix(
-      this.renderCoercionByType_(binaryen, L, info.retType),
-      info.opStr,
-      this.renderCoercionByType_(binaryen, R, info.retType),
-      precedence
-    );
+    return P.renderInfix(coerce(L, opt_catL), info.opStr, coerce(R, opt_catR), precedence);
   }
 
   return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_.call(this, binaryen, info, L, R);

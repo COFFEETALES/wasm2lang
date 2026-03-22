@@ -92,7 +92,7 @@ Wasm2Lang.Backend.getManglerProfile = function (languageId) {
  */
 Wasm2Lang.Backend.buildReservedSet = function (words) {
   var /** @const {!Object<string, boolean>} */ set = /** @type {!Object<string, boolean>} */ (Object.create(null));
-  for (var /** number */ i = 0; i < words.length; ++i) {
+  for (var /** number */ i = 0, /** @const {number} */ wordLen = words.length; i < wordLen; ++i) {
     set[words[i]] = true;
   }
   return set;
@@ -932,56 +932,6 @@ Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_;
 Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_;
 
 /**
- * Extracts the flat-switch structure from a br_table dispatch block.
- * Delegates to SwitchDispatchApplication.
- *
- * @protected
- * @param {!Binaryen} binaryen
- * @param {number} outerBlockPtr
- * @return {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_}
- */
-Wasm2Lang.Backend.AbstractCodegen.extractSwitchDispatchStructure_ = function (binaryen, outerBlockPtr) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure(binaryen, outerBlockPtr);
-};
-
-/**
- * Appends the flat-switch opening line.
- * Delegates to SwitchDispatchApplication.
- *
- * @protected
- * @param {!Array<string>} lines
- * @param {number} indent
- * @param {string} conditionExpr
- * @param {string} switchLabel
- * @param {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} info
- * @return {void}
- */
-Wasm2Lang.Backend.AbstractCodegen.emitFlatSwitchHeader_ = function (lines, indent, conditionExpr, switchLabel, info) {
-  Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitFlatSwitchHeader(
-    lines,
-    indent,
-    conditionExpr,
-    switchLabel,
-    info
-  );
-};
-
-/**
- * Appends the exit statement for a flat-switch case group.
- * Delegates to SwitchDispatchApplication.
- *
- * @protected
- * @param {!Array<string>} lines
- * @param {number} indent
- * @param {string} switchLabel
- * @param {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} info
- * @return {void}
- */
-Wasm2Lang.Backend.AbstractCodegen.emitFlatSwitchBreak_ = function (lines, indent, switchLabel, info) {
-  Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitFlatSwitchBreak(lines, indent, switchLabel, info);
-};
-
-/**
  * Coerces the flat-switch condition expression before emission.
  * Default returns the expression unchanged; asm.js overrides to apply
  * signed coercion ({@code |0}).
@@ -992,32 +942,6 @@ Wasm2Lang.Backend.AbstractCodegen.emitFlatSwitchBreak_ = function (lines, indent
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.coerceSwitchCondition_ = function (condStr) {
   return condStr;
-};
-
-/**
- * Emits a flat switch statement for backends using labeled break semantics.
- * Delegates to SwitchDispatchApplication.
- *
- * @protected
- * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {{result: string, hasDefault: boolean}}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledFlatSwitch_ = function (state, nodeCtx) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch(this, state, nodeCtx);
-};
-
-/**
- * Emits a root-switch-loop structure for backends using labeled break semantics.
- * Delegates to SwitchDispatchApplication.
- *
- * @protected
- * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledRootSwitch_ = function (state, nodeCtx) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledRootSwitch(this, state, nodeCtx);
 };
 
 /**
@@ -1044,7 +968,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledEnter_ = function (state,
       var /** @const {string} */ fName = state.functionInfo.name;
       var /** @const {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ fusionPlan = this.getBlockFusionPlan_(fName, bName);
       if (fusionPlan) {
-        if ('a' === fusionPlan.fusionPattern) {
+        if ('a' === fusionPlan.fusionVariant) {
           state.pendingBlockFusion = bName;
         } else {
           state.fusedBlockToLoop[bName] = state.currentLoopName;
@@ -1085,6 +1009,44 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledEnter_ = function (state,
   }
 
   return null;
+};
+
+/**
+ * Default flat-switch emitter for labeled-break backends.
+ * Java overrides to also set {@code lastExprIsTerminal}.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch(this, state, nodeCtx).emittedString;
+};
+
+/**
+ * Default root-switch emitter for labeled-break backends.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitRootSwitch_ = function (state, nodeCtx) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledRootSwitch(this, state, nodeCtx);
+};
+
+/**
+ * Default enter callback for labeled-break backends.
+ * PHP overrides entirely (uses labelStack).
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCtx) {
+  return this.emitLabeledEnter_(state, nodeCtx);
 };
 
 /**
@@ -1163,6 +1125,109 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitConditionalStatement_ = function
     return pad(ind) + 'if ' + this.formatCondition_(condExpr) + ' {\n' + pad(ind + 1) + stmt + pad(ind) + '}\n';
   }
   return pad(ind) + stmt;
+};
+
+/**
+ * Emits a BreakId with root-switch exit interception for labeled-break backends.
+ * Returns the rendered result string and whether the break is terminal (needed
+ * by Java to suppress unreachable trailing break statements).
+ *
+ * @suppress {accessControls}
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {number} indent
+ * @param {string} brName
+ * @param {number} brCondPtr
+ * @param {string} condExpr
+ * @return {{emittedString: string, isTerminal: boolean}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (state, indent, brName, brCondPtr, condExpr) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+
+  if (state.rootSwitchExitMap) {
+    if (brName in state.rootSwitchExitMap) {
+      var /** @const {!Array<string>} */ rsExitLines = [];
+      // prettier-ignore
+      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ rsVis =
+        /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+      var /** @const */ SDA = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication;
+      var /** @const {boolean} */ rsIsTerminal = SDA.emitRootSwitchExitCode(
+          rsExitLines,
+          state.wasmModule,
+          binaryen,
+          state.functionInfo,
+          rsVis,
+          state.rootSwitchExitMap[brName],
+          indent
+        );
+      if (!rsIsTerminal) {
+        rsExitLines[rsExitLines.length] =
+          pad(indent) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
+      }
+      var /** @type {string} */ rsResult;
+      if (0 !== brCondPtr) {
+        rsResult = pad(indent) + 'if ' + this.formatCondition_(condExpr) + ' {\n' + rsExitLines.join('') + pad(indent) + '}\n';
+      } else {
+        rsResult = rsExitLines.join('');
+      }
+      return {emittedString: rsResult, isTerminal: true};
+    }
+    if (brName === state.rootSwitchRsName) {
+      var /** @const {string} */ rsBreakStmt = this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
+      return {
+        emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, rsBreakStmt),
+        isTerminal: 0 === brCondPtr
+      };
+    }
+  }
+
+  var /** @const {string} */ brStmt = this.resolveBreakTarget_(
+      state.labelKinds,
+      state.fusedBlockToLoop,
+      state.labelMap,
+      brName
+    );
+  return {emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, brStmt), isTerminal: 0 === brCondPtr};
+};
+
+/**
+ * Emits a raw SwitchId (br_table not detected as flat-switch dispatch) for
+ * labeled-break backends.  Returns the rendered switch and whether a default
+ * case is present (needed by Java to track terminal state).
+ *
+ * @suppress {accessControls}
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {number} indent
+ * @param {string} condExpr
+ * @param {!Array<string>} names
+ * @param {string} defaultName
+ * @return {{emittedString: string, hasDefault: boolean}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitSwitchStatement_ = function (state, indent, condExpr, names, defaultName) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const {!Array<string>} */ lines = [];
+  lines[lines.length] = pad(indent) + 'switch (' + this.coerceSwitchCondition_(condExpr) + ') {\n';
+  var /** @type {number} */ si = 0;
+  var /** @const {number} */ nameLen = names.length;
+  while (si < nameLen) {
+    var /** @const {string} */ target = names[si];
+    while (si < nameLen && names[si] === target) {
+      lines[lines.length] = pad(indent + 1) + 'case ' + si + ':\n';
+      ++si;
+    }
+    lines[lines.length] =
+      pad(indent + 2) + this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, target);
+  }
+  if ('' !== defaultName) {
+    lines[lines.length] = pad(indent + 1) + 'default:\n';
+    lines[lines.length] =
+      pad(indent + 2) + this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, defaultName);
+  }
+  lines[lines.length] = pad(indent) + '}\n';
+  return {emittedString: lines.join(''), hasDefault: '' !== defaultName};
 };
 
 /**
@@ -1245,91 +1310,23 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkString_ = function (result) {
 };
 
 /**
- * Renders sub-walked action expressions as switch-case body lines.
- * Delegates to SwitchDispatchApplication.
+ * Sub-walks an expression pointer and returns its string form.
+ * Convenience wrapper combining subWalkExpression_ and subWalkString_.
  *
  * @protected
- * @param {!Array<string>} lines  Output array to append to.
- * @param {!BinaryenModule} wasmModule
- * @param {!Binaryen} binaryen
- * @param {!BinaryenFunctionInfo} funcInfo
- * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} visitor
- * @param {!Array<number>} actionPtrs
- * @param {number} caseIndent
- * @param {string=} opt_terminalBreakTarget
- * @return {boolean}  True when a terminal break-to-target was stripped.
+ * @param {{wasmModule: !BinaryenModule, binaryen: !Binaryen, functionInfo: !BinaryenFunctionInfo, visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor}} state
+ * @param {number} conditionPtr
+ * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.emitSwitchCaseActions_ = function (
-  lines,
-  wasmModule,
-  binaryen,
-  funcInfo,
-  visitor,
-  actionPtrs,
-  caseIndent,
-  opt_terminalBreakTarget
-) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSwitchCaseActions(
-    lines,
-    wasmModule,
-    binaryen,
-    funcInfo,
-    visitor,
-    actionPtrs,
-    caseIndent,
-    opt_terminalBreakTarget
-  );
-};
-
-// ---------------------------------------------------------------------------
-// Root-switch extraction (shared by all backends).
-// ---------------------------------------------------------------------------
-
-/**
- * Walks the first-child chain from an {@code rs$}-prefixed block to locate
- * the inner loop and collect exit-code expression pointers.
- * Delegates to SwitchDispatchApplication.
- *
- * @protected
- * @param {!Binaryen} binaryen
- * @param {number} rsBlockPtr
- * @return {!Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_}
- */
-Wasm2Lang.Backend.AbstractCodegen.extractRootSwitchStructure_ = function (binaryen, rsBlockPtr) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStructure(binaryen, rsBlockPtr);
-};
-
-/**
- * Sub-walks root-switch exit-code expression pointers.
- * Delegates to SwitchDispatchApplication.
- *
- * @protected
- * @param {!Array<string>} lines
- * @param {!BinaryenModule} wasmModule
- * @param {!Binaryen} binaryen
- * @param {!BinaryenFunctionInfo} funcInfo
- * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} visitor
- * @param {!Array<number>} exitPtrs
- * @param {number} indent
- * @return {boolean}
- */
-Wasm2Lang.Backend.AbstractCodegen.emitRootSwitchExitCode_ = function (
-  lines,
-  wasmModule,
-  binaryen,
-  funcInfo,
-  visitor,
-  exitPtrs,
-  indent
-) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitRootSwitchExitCode(
-    lines,
-    wasmModule,
-    binaryen,
-    funcInfo,
-    visitor,
-    exitPtrs,
-    indent
+Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionString_ = function (state, conditionPtr) {
+  return Wasm2Lang.Backend.AbstractCodegen.subWalkString_(
+    Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_(
+      state.wasmModule,
+      state.binaryen,
+      state.functionInfo,
+      /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor),
+      conditionPtr
+    )
   );
 };
 
@@ -1456,13 +1453,14 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
     var /** @type {boolean} */ escaped = false;
     var /** @type {number} */ lowest = P.PREC_PRIMARY_;
     var /** @type {number} */ i = 0;
+    var /** @const {number} */ sLen = s.length;
     var /** @type {string} */ next = '';
 
     if ('' === s || P.isFullyParenthesized(s)) {
       return P.PREC_PRIMARY_;
     }
 
-    for (i = 0; i < s.length; ++i) {
+    for (i = 0; i < sLen; ++i) {
       var /** @const {string} */ ch = s.charAt(i);
 
       // --- string literal pass-through ---
@@ -1704,7 +1702,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitIfStatement_ = function (
  * @param {number} localIndex
  * @param {string} valueExpr
  * @param {number} valueCat
- * @return {{result: string, resultCat: number}}
+ * @return {{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitLocalSet_ = function (
   binaryen,
@@ -1721,11 +1719,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLocalSet_ = function (
   var /** @const {string} */ setValue = this.coerceToType_(binaryen, valueExpr, valueCat, localType);
   if (isTee) {
     return {
-      result: '(' + this.localN_(localIndex) + ' = ' + setValue + ')',
+      emittedString: '(' + this.localN_(localIndex) + ' = ' + setValue + ')',
       resultCat: A.catForCoercedType_(binaryen, localType)
     };
   }
-  return {result: pad(indent) + this.localN_(localIndex) + ' = ' + setValue + ';\n', resultCat: A.CAT_VOID};
+  return {emittedString: pad(indent) + this.localN_(localIndex) + ' = ' + setValue + ';\n', resultCat: A.CAT_VOID};
 };
 
 /**
@@ -1832,40 +1830,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectGlobals_ = function (wasmModu
 };
 
 /**
- * Builds a lookup table from internal wasm function name to import base name.
- *
- * @protected
- * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} imports
- * @return {!Object<string, string>}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.collectImportedNameMap_ = function (imports) {
-  var /** @const {!Object<string, string>} */ importedNames = /** @type {!Object<string, string>} */ (Object.create(null));
-
-  for (var /** number */ i = 0, /** @const {number} */ importCount = imports.length; i !== importCount; ++i) {
-    importedNames[imports[i].wasmFuncName] = imports[i].importBaseName;
-  }
-
-  return importedNames;
-};
-
-/**
- * Builds a lookup table from global name to wasm value type.
- *
- * @protected
- * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} globals
- * @return {!Object<string, number>}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.collectGlobalTypeMap_ = function (globals) {
-  var /** @const {!Object<string, number>} */ globalTypes = /** @type {!Object<string, number>} */ (Object.create(null));
-
-  for (var /** number */ i = 0, /** @const {number} */ globalCount = globals.length; i !== globalCount; ++i) {
-    globalTypes[globals[i].globalName] = globals[i].globalType;
-  }
-
-  return globalTypes;
-};
-
-/**
  * Collects the module-level metadata shared by concrete emitters.
  *
  * @protected
@@ -1877,12 +1841,22 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
       this.collectImportedFunctions_(wasmModule);
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = this.collectGlobals_(wasmModule);
 
+  var /** @const {!Object<string, string>} */ importedNames = /** @type {!Object<string, string>} */ (Object.create(null));
+  for (var /** number */ i = 0, /** @const {number} */ importCount = imports.length; i !== importCount; ++i) {
+    importedNames[imports[i].wasmFuncName] = imports[i].importBaseName;
+  }
+
+  var /** @const {!Object<string, number>} */ globalTypes = /** @type {!Object<string, number>} */ (Object.create(null));
+  for (var /** number */ gi = 0, /** @const {number} */ globalCount = globals.length; gi !== globalCount; ++gi) {
+    globalTypes[globals[gi].globalName] = globals[gi].globalType;
+  }
+
   return {
     impFuncs: imports,
-    importedNames: this.collectImportedNameMap_(imports),
+    importedNames: importedNames,
     functionSignatures: this.collectFunctionSignatures_(wasmModule),
     globals: globals,
-    globalTypes: this.collectGlobalTypeMap_(globals),
+    globalTypes: globalTypes,
     expFuncs: this.collectExportedFunctions_(wasmModule),
     functions: this.collectDefinedFunctions_(wasmModule)
   };
@@ -2149,17 +2123,17 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
 
   // 2. Globals (module order).
   for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
-    keys[keys.length] = this.buildGlobalIdentifier_(moduleInfo.globals[gi].globalName);
+    keys[keys.length] = '$g_' + this.safeName_(moduleInfo.globals[gi].globalName);
   }
 
   // 3. Import bindings (module order).
   for (var /** number */ ii = 0, /** @const {number} */ iLen = moduleInfo.impFuncs.length; ii !== iLen; ++ii) {
-    keys[keys.length] = this.buildImportIdentifier_(moduleInfo.impFuncs[ii].importBaseName);
+    keys[keys.length] = '$if_' + this.safeName_(moduleInfo.impFuncs[ii].importBaseName);
   }
 
   // 4. Internal function names (module order).
   for (var /** number */ fn = 0, /** @const {number} */ fnLen = moduleInfo.functions.length; fn !== fnLen; ++fn) {
-    keys[keys.length] = this.buildFunctionIdentifier_(moduleInfo.functions[fn].name);
+    keys[keys.length] = this.safeName_(moduleInfo.functions[fn].name);
   }
 
   // 5. All possible helper function names (sorted for determinism).
@@ -2193,50 +2167,27 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
 };
 
 /**
- * Backend hook: builds the global-variable identifier as it appears in
- * unmangled output.  Default is {@code "$g_" + name}.
+ * Backend hook: sanitises a raw binaryen name for the target language,
+ * applying invalid-character replacement, leading-digit guard, and
+ * reserved-word resolution.  Backends override with their own rules.
  *
  * @protected
- * @param {string} globalName
+ * @param {string} name
  * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.buildGlobalIdentifier_ = function (globalName) {
-  return '$g_' + globalName;
+Wasm2Lang.Backend.AbstractCodegen.prototype.safeName_ = function (name) {
+  return Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name);
 };
 
 /**
- * Backend hook: builds the import-binding identifier as it appears in
- * unmangled output.  Default is {@code "$if_" + baseName}.
- *
- * @protected
- * @param {string} importBaseName
- * @return {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.buildImportIdentifier_ = function (importBaseName) {
-  return '$if_' + importBaseName;
-};
-
-/**
- * Backend hook: builds the function identifier as it appears in unmangled
- * output.  Default delegates to {@code safeIdentifier_}.
- *
- * @protected
- * @param {string} funcName
- * @return {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.buildFunctionIdentifier_ = function (funcName) {
-  return Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(funcName);
-};
-
-/**
- * Backend hook returning the runtime helper prefix (for example {@code "$w2l_"}
- * in asm.js and {@code "_w2l_"} in PHP).
+ * Backend hook returning the runtime helper prefix.
+ * Default: {@code "$w2l_"} (used by asm.js and Java); PHP overrides to {@code "_w2l_"}.
  *
  * @protected
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.getRuntimeHelperPrefix_ = function () {
-  return '';
+  return '$w2l_';
 };
 
 /**
@@ -2258,9 +2209,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericComparisonResult_ = fun
  * @param {!Wasm2Lang.Backend.NumericOps.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
+ * @param {number=} opt_catL
+ * @param {number=} opt_catR
  * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R, opt_catL, opt_catR) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @type {number} */ precedence = P.PREC_ADDITIVE_;
 

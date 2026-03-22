@@ -71,7 +71,7 @@ Wasm2Lang.Backend.IdentifierMangler.ENCODER_MAX_CHARS_ = 4;
  */
 Wasm2Lang.Backend.IdentifierMangler.buildCharsetIndex_ = function (charset) {
   var /** @type {!Object<string, number>} */ indexByChar = Object.create(null);
-  for (var /** number */ i = 0; i < charset.length; ++i) {
+  for (var /** number */ i = 0, /** @const {number} */ charLen = charset.length; i < charLen; ++i) {
     indexByChar[charset.charAt(i)] = i;
   }
   return indexByChar;
@@ -264,7 +264,7 @@ Wasm2Lang.Backend.IdentifierMangler.feistelPermute_ = function (value, tier, key
  * @return {!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_}
  */
 Wasm2Lang.Backend.IdentifierMangler.getTierByNumber_ = function (numberValue, spec) {
-  for (var /** number */ i = 0; i < spec.tiers.length; ++i) {
+  for (var /** number */ i = 0, /** @const {number} */ tierLen = spec.tiers.length; i < tierLen; ++i) {
     var /** @const {!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_} */ tier = spec.tiers[i];
     if (numberValue < tier.ofs + tier.tierSize) {
       return tier;

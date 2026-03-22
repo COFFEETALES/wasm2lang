@@ -199,7 +199,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_
   }
   if (id === binaryen.SwitchId) {
     var /** @const {!Array<string>} */ sNames = /** @type {!Array<string>} */ (info.names || []);
-    for (var /** @type {number} */ si = 0; si < sNames.length; ++si) {
+    for (var /** @type {number} */ si = 0, /** @const {number} */ sNamesLen = sNames.length; si < sNamesLen; ++si) {
       if (sNames[si] === targetName) {
         return true;
       }
@@ -303,7 +303,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.storePlan_ = function (s
   if (loopPlansRef) {
     /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (loopPlansRef)[marker + loopName] =
       /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ ({
-        loopKind: S.loopKindForVariant_(kind),
+        simplifiedLoopKind: S.loopKindForVariant_(kind),
         needsLabel: S.needsLabelForVariant_(kind),
         conditionPtr: conditionPtr
       });
@@ -433,7 +433,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
     var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (lastInfo['names'] || []);
     var /** @const {string} */ switchDefault = /** @type {string} */ (lastInfo['defaultName'] || '');
     var /** @type {boolean} */ hasSelfContinue = false;
-    for (var /** @type {number} */ si = 0; si < switchNames.length; ++si) {
+    for (var /** @type {number} */ si = 0, /** @const {number} */ swNamesLen = switchNames.length; si < swNamesLen; ++si) {
       if (switchNames[si] === loopName) {
         hasSelfContinue = true;
         break;
@@ -534,66 +534,37 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     var /** @const {number} */ len = children.length;
     var /** @type {number} */ planCondPtr = 0;
 
+    // Compute trimmed children and condition pointer per variant.
+    var /** @type {!Array<number>} */ bodyChildren = children;
+
     if ('lw' === kind || 'ly' === kind) {
-      // While loop: first child is br_if $exit cond, last is trailing br $loop.
-      // Remove both and invert the condition.
       var /** @const {!BinaryenExpressionInfo} */ brIfInfo = /** @type {!BinaryenExpressionInfo} */ (
           binaryen.getExpressionInfo(children[0])
         );
-      var /** @const {number} */ whileCondPtr = /** @type {number} */ (brIfInfo.condition || 0);
-      planCondPtr = S.invertCondition_(binaryen, module, whileCondPtr);
-      var /** @const {!Array<number>} */ whileChildren = children.slice(1, len - 1);
-      var /** @const {number} */ newBodyW = module.block(bodyInfo.name || null, whileChildren, binaryen.none);
-      S.storePlan_(state, marker, loopName, kind, planCondPtr);
-      return {
-        decisionAction: REPLACE_NODE,
-        expressionPointer: module.loop(marker + loopName, newBodyW)
-      };
-    }
-
-    if ('lc' === kind || 'lf' === kind) {
-      // Remove the trailing unconditional self-continue.
+      planCondPtr = S.invertCondition_(binaryen, module, /** @type {number} */ (brIfInfo.condition || 0));
+      bodyChildren = children.slice(1, len - 1);
+    } else if ('lc' === kind || 'lf' === kind) {
       children.length = len - 1;
-      var /** @const {number} */ newBody = module.block(bodyInfo.name || null, children, binaryen.none);
-      S.storePlan_(state, marker, loopName, kind, 0);
-      return {
-        decisionAction: REPLACE_NODE,
-        expressionPointer: module.loop(marker + loopName, newBody)
-      };
-    }
-
-    if ('lcs' === kind || 'lfs' === kind || 'lct' === kind || 'lft' === kind) {
-      // SwitchId-terminated or terminal-exit for(;;): keep all children.
-      var /** @const {number} */ newBodyFull = module.block(bodyInfo.name || null, children, binaryen.none);
-      S.storePlan_(state, marker, loopName, kind, 0);
-      return {
-        decisionAction: REPLACE_NODE,
-        expressionPointer: module.loop(marker + loopName, newBodyFull)
-      };
-    }
-
-    // Do-while: extract condition and rebuild body without it.
-    if ('ldb' === kind || 'leb' === kind) {
-      // Variant B: last child is conditional br_if.
+    } else if ('ldb' === kind || 'leb' === kind) {
       var /** @const {!BinaryenExpressionInfo} */ brIfB = /** @type {!BinaryenExpressionInfo} */ (
           binaryen.getExpressionInfo(children[len - 1])
         );
       planCondPtr = /** @type {number} */ (brIfB.condition || 0);
       children.length = len - 1;
-    } else {
-      // Variant A: second-to-last is conditional br_if, last is exit br.
+    } else if ('lda' === kind || 'lea' === kind) {
       var /** @const {!BinaryenExpressionInfo} */ brIfA = /** @type {!BinaryenExpressionInfo} */ (
           binaryen.getExpressionInfo(children[len - 2])
         );
       planCondPtr = /** @type {number} */ (brIfA.condition || 0);
       children.length = len - 2;
     }
+    // else: lcs/lfs/lct/lft — keep all children as-is.
 
-    var /** @const {number} */ newBodyDW = module.block(bodyInfo.name || null, children, binaryen.none);
+    var /** @const {number} */ newBody = module.block(bodyInfo.name || null, bodyChildren, binaryen.none);
     S.storePlan_(state, marker, loopName, kind, planCondPtr);
     return {
       decisionAction: REPLACE_NODE,
-      expressionPointer: module.loop(marker + loopName, newBodyDW)
+      expressionPointer: module.loop(marker + loopName, newBody)
     };
   }
 

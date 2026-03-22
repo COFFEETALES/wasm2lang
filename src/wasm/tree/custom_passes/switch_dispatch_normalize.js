@@ -49,29 +49,23 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.State_;
 
 /**
  * Detects whether a named Block is the outermost block of a br_table dispatch
- * pattern.  Returns true only when:
- *   - The block is named and has >= 2 children.
- *   - A chain of first-child named blocks leads to a block whose sole child
- *     is a Switch.
- *   - Every Switch case target (names array) is one of the blocks in the chain.
- *   - Every non-outermost intermediate block ends with an unconditional Break
- *     (to any target — not required to be the outermost block name).
- *   - The Switch default target may be outside the chain (external exit).
+ * pattern and, when it is, returns the set of all block names in the chain.
+ * Returns null when the pattern is not matched.
  *
  * @private
  * @param {!Binaryen} binaryen
  * @param {!BinaryenExpressionInfo} blockExpr
- * @return {boolean}
+ * @return {?Object<string, boolean>}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTableDispatch_ = function (binaryen, blockExpr) {
   var /** @const {?string} */ outerName = /** @type {?string} */ (blockExpr.name);
   if (!outerName) {
-    return false;
+    return null;
   }
 
   var /** @const {!Array<number>|void} */ outerChildren = /** @type {!Array<number>|void} */ (blockExpr.children);
   if (!outerChildren || 2 > outerChildren.length) {
-    return false;
+    return null;
   }
 
   var /** @const {!Object<string, boolean>} */ blockNameSet = /** @type {!Object<string, boolean>} */ (Object.create(null));
@@ -84,19 +78,19 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
     var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (current.children);
     var /** @const {number} */ firstChildPtr = children[0];
     if (!firstChildPtr) {
-      return false;
+      return null;
     }
 
     var /** @const {!BinaryenExpressionInfo} */ firstChild = /** @type {!BinaryenExpressionInfo} */ (
         binaryen.getExpressionInfo(firstChildPtr)
       );
     if (firstChild.id !== binaryen.BlockId) {
-      return false;
+      return null;
     }
 
     var /** @const {?string} */ childName = /** @type {?string} */ (firstChild.name);
     if (!childName) {
-      return false;
+      return null;
     }
     blockNameSet[childName] = true;
 
@@ -108,7 +102,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
           binaryen.getExpressionInfo(lastPtr)
         );
       if (lastExpr.id !== binaryen.BreakId || 0 !== /** @type {number} */ (lastExpr.condition || 0)) {
-        return false;
+        return null;
       }
     }
 
@@ -120,53 +114,18 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
         );
       if (sole.id === binaryen.SwitchId) {
         var /** @const {!Array<string>} */ names = /** @type {!Array<string>} */ (sole.names || []);
-        for (var /** number */ i = 0; i < names.length; ++i) {
+        for (var /** number */ i = 0, /** @const {number} */ nameLen = names.length; i < nameLen; ++i) {
           if (!(names[i] in blockNameSet)) {
-            return false;
+            return null;
           }
         }
         // Default target is allowed to be outside the chain (external exit).
-        return true;
+        return blockNameSet;
       }
     }
 
     isOutermost = false;
     current = firstChild;
-  }
-};
-
-/**
- * Collects the names of all blocks in a dispatch chain (including the
- * innermost wrapper) into the provided set.  This prevents intermediate
- * chain blocks from being independently detected as dispatch outers.
- *
- * @private
- * @param {!Binaryen} binaryen
- * @param {!BinaryenExpressionInfo} blockExpr
- * @param {!Object<string, boolean>} out
- * @return {void}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.collectChainBlockNames_ = function (
-  binaryen,
-  blockExpr,
-  out
-) {
-  var /** @type {!BinaryenExpressionInfo} */ current = blockExpr;
-  for (;;) {
-    var /** @const {?string} */ curName = /** @type {?string} */ (current.name);
-    if (curName) {
-      out[curName] = true;
-    }
-    var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (current.children);
-    var /** @const {number} */ fcPtr = children[0];
-    if (!fcPtr) {
-      return;
-    }
-    var /** @const {!BinaryenExpressionInfo} */ fc = /** @type {!BinaryenExpressionInfo} */ (binaryen.getExpressionInfo(fcPtr));
-    if (fc.id !== binaryen.BlockId) {
-      return;
-    }
-    current = fc;
   }
 };
 
@@ -189,7 +148,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.enter_ = 
     return null;
   }
 
-  if (!this.isBrTableDispatch_(binaryen, expr)) {
+  var /** @const {?Object<string, boolean>} */ chainNames = this.isBrTableDispatch_(binaryen, expr);
+  if (!chainNames) {
     return null;
   }
 
@@ -203,7 +163,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.enter_ = 
   }
 
   // Mark all chain block names so intermediate blocks are not re-detected.
-  this.collectChainBlockNames_(binaryen, expr, state.chainBlocks);
+  for (var /** @type {string} */ cn in chainNames) {
+    state.chainBlocks[cn] = true;
+  }
 
   // Check if the dispatch chain needs parent wrapping: the chain is the first
   // child of a parent block that has additional trailing children (the

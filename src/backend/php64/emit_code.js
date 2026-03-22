@@ -16,7 +16,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   // Collect internal function names (safe identifiers, unmangled keys).
   var /** @const {!Array<string>} */ internalFuncNames = [];
   for (var /** number */ fn = 0, /** @const {number} */ fnCount = moduleInfo.functions.length; fn !== fnCount; ++fn) {
-    internalFuncNames[internalFuncNames.length] = Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.functions[fn].name);
+    internalFuncNames[internalFuncNames.length] = this.safeName_(moduleInfo.functions[fn].name);
   }
 
   // Emit function bodies first to discover which helpers are needed.
@@ -261,7 +261,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
     outputParts[outputParts.length] =
       pad1 +
-      this.phpVar_('$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.impFuncs[i].importBaseName)) +
+      this.phpVar_('$if_' + this.safeName_(moduleInfo.impFuncs[i].importBaseName)) +
       " = $foreign['" +
       moduleInfo.impFuncs[i].importBaseName +
       "'] ?? null;";
@@ -271,7 +271,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
     outputParts[outputParts.length] =
       pad1 +
-      this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.globals[gi].globalName)) +
+      this.phpVar_('$g_' + this.safeName_(moduleInfo.globals[gi].globalName)) +
       ' = ' +
       moduleInfo.globals[gi].globalInitValue +
       ';';
@@ -291,10 +291,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   var /** @const {!Array<string>} */ returnEntries = [];
   for (var /** number */ r = 0, /** @const {number} */ exportCount = moduleInfo.expFuncs.length; r !== exportCount; ++r) {
     returnEntries[returnEntries.length] =
-      "'" +
-      moduleInfo.expFuncs[r].exportName +
-      "' => " +
-      this.phpVar_(Wasm2Lang.Backend.Php64Codegen.phpSafeName_(moduleInfo.expFuncs[r].internalName));
+      "'" + moduleInfo.expFuncs[r].exportName + "' => " + this.phpVar_(this.safeName_(moduleInfo.expFuncs[r].internalName));
   }
   outputParts[outputParts.length] = pad1 + 'return [' + returnEntries.join(', ') + '];';
   outputParts[outputParts.length] = '};';

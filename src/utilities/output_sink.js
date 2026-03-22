@@ -30,6 +30,45 @@ Wasm2Lang.OutputSink.WriteFn;
 // ---------------------------------------------------------------------------
 
 /**
+ * Walks {@code chunks} from {@code startIndex}, invoking {@code onChunk}
+ * for each resolved entry and returning the final value from {@code doneFn}.
+ *
+ * @private
+ * @param {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} chunks
+ * @param {number} startIndex
+ * @param {function(!Wasm2Lang.OutputSink.Chunk):void} onChunk
+ * @param {function():*} doneFn
+ * @return {!Promise<*>}
+ */
+Wasm2Lang.OutputSink.walkChunksAsync_ = function (chunks, startIndex, onChunk, doneFn) {
+  /**
+   * Resolves one chunk and advances to the next.
+   *
+   * @param {number} idx
+   * @return {!Promise<*>}
+   */
+  function step(idx) {
+    if (idx >= chunks.length) {
+      return Promise.resolve(doneFn());
+    }
+    var /** @const {*} */ chunk = chunks[idx];
+    if (chunk instanceof Promise) {
+      return /** @type {!Promise<!Wasm2Lang.OutputSink.Chunk>} */ (chunk).then(
+        /** @param {!Wasm2Lang.OutputSink.Chunk} resolved @return {!Promise<*>} */
+        function (resolved) {
+          onChunk(resolved);
+          return step(idx + 1);
+        }
+      );
+    }
+    onChunk(/** @type {!Wasm2Lang.OutputSink.Chunk} */ (chunk));
+    return step(idx + 1);
+  }
+
+  return step(startIndex);
+};
+
+/**
  * Continues draining {@code chunks} through {@code writeFn} starting at
  * index {@code startIndex}, using {@code Promise.then()} chaining for
  * every remaining entry.
@@ -41,31 +80,16 @@ Wasm2Lang.OutputSink.WriteFn;
  * @return {!Promise<void>}
  */
 Wasm2Lang.OutputSink.drainAsync_ = function (chunks, writeFn, startIndex) {
-  /**
-   * Resolves one chunk and advances to the next.
-   *
-   * @param {number} idx
-   * @return {!Promise<void>}
-   */
-  function step(idx) {
-    if (idx >= chunks.length) {
-      return Promise.resolve(void 0);
-    }
-    var /** @const {*} */ chunk = chunks[idx];
-    if (chunk instanceof Promise) {
-      return /** @type {!Promise<!Wasm2Lang.OutputSink.Chunk>} */ (chunk).then(
-        /** @param {!Wasm2Lang.OutputSink.Chunk} resolved @return {!Promise<void>} */
-        function (resolved) {
-          writeFn(resolved);
-          return step(idx + 1);
-        }
-      );
-    }
-    writeFn(/** @type {!Wasm2Lang.OutputSink.Chunk} */ (chunk));
-    return step(idx + 1);
-  }
-
-  return step(startIndex);
+  return /** @type {!Promise<void>} */ (
+    Wasm2Lang.OutputSink.walkChunksAsync_(
+      chunks,
+      startIndex,
+      writeFn,
+      /** @return {void} */ function () {
+        return void 0;
+      }
+    )
+  );
 };
 
 /**
@@ -81,14 +105,15 @@ Wasm2Lang.OutputSink.drainAsync_ = function (chunks, writeFn, startIndex) {
  * @return {!Promise<void>|void}
  */
 Wasm2Lang.OutputSink.drainChunks = function (chunks, writeFn) {
-  for (var /** number */ i = 0, /** @const {number} */ len = chunks.length; i !== len; ++i) {
-    var /** @const {*} */ chunk = chunks[i];
-    if (chunk instanceof Promise) {
-      return Wasm2Lang.OutputSink.drainAsync_(chunks, writeFn, i);
-    }
-    writeFn(/** @type {!Wasm2Lang.OutputSink.Chunk} */ (chunk));
-  }
-  return void 0;
+  return /** @type {(!Promise<void>|void)} */ (
+    Wasm2Lang.OutputSink.scanChunks_(
+      chunks,
+      writeFn,
+      /** @param {number} index @return {!Promise<void>} */ function (index) {
+        return Wasm2Lang.OutputSink.drainAsync_(chunks, writeFn, index);
+      }
+    )
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -106,31 +131,18 @@ Wasm2Lang.OutputSink.drainChunks = function (chunks, writeFn) {
  * @return {!Promise<string>}
  */
 Wasm2Lang.OutputSink.collectAsync_ = function (chunks, parts, startIndex) {
-  /**
-   * Resolves one chunk and advances to the next.
-   *
-   * @param {number} idx
-   * @return {!Promise<string>}
-   */
-  function step(idx) {
-    if (idx >= chunks.length) {
-      return Promise.resolve(parts.join(''));
-    }
-    var /** @const {*} */ chunk = chunks[idx];
-    if (chunk instanceof Promise) {
-      return /** @type {!Promise<!Wasm2Lang.OutputSink.Chunk>} */ (chunk).then(
-        /** @param {!Wasm2Lang.OutputSink.Chunk} resolved @return {!Promise<string>} */
-        function (resolved) {
-          parts[parts.length] = /** @type {string} */ (resolved);
-          return step(idx + 1);
-        }
-      );
-    }
-    parts[parts.length] = /** @type {string} */ (chunk);
-    return step(idx + 1);
-  }
-
-  return step(startIndex);
+  return /** @type {!Promise<string>} */ (
+    Wasm2Lang.OutputSink.walkChunksAsync_(
+      chunks,
+      startIndex,
+      /** @param {!Wasm2Lang.OutputSink.Chunk} chunk */ function (chunk) {
+        parts[parts.length] = /** @type {string} */ (chunk);
+      },
+      /** @return {string} */ function () {
+        return parts.join('');
+      }
+    )
+  );
 };
 
 /**
@@ -151,14 +163,39 @@ Wasm2Lang.OutputSink.collectAsync_ = function (chunks, parts, startIndex) {
 Wasm2Lang.OutputSink.collectChunks = function (chunks) {
   /** @type {!Array<string>} */
   var parts = [];
+  var /** @const {*} */ result = Wasm2Lang.OutputSink.scanChunks_(
+      chunks,
+      /** @param {!Wasm2Lang.OutputSink.Chunk} chunk */ function (chunk) {
+        parts[parts.length] = /** @type {string} */ (chunk);
+      },
+      /** @param {number} index @return {!Promise<string>} */ function (index) {
+        return Wasm2Lang.OutputSink.collectAsync_(chunks, parts, index);
+      }
+    );
+  if (result) {
+    return /** @type {!Promise<string>} */ (result);
+  }
+  return parts.join('');
+};
+
+/**
+ * Walks resolved chunks synchronously until a Promise is encountered.
+ *
+ * @private
+ * @param {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} chunks
+ * @param {function(!Wasm2Lang.OutputSink.Chunk):void} onChunk
+ * @param {function(number):*} onAsync
+ * @return {*}
+ */
+Wasm2Lang.OutputSink.scanChunks_ = function (chunks, onChunk, onAsync) {
   for (var /** number */ i = 0, /** @const {number} */ len = chunks.length; i !== len; ++i) {
     var /** @const {*} */ chunk = chunks[i];
     if (chunk instanceof Promise) {
-      return Wasm2Lang.OutputSink.collectAsync_(chunks, parts, i);
+      return onAsync(i);
     }
-    parts[parts.length] = /** @type {string} */ (chunk);
+    onChunk(/** @type {!Wasm2Lang.OutputSink.Chunk} */ (chunk));
   }
-  return parts.join('');
+  return void 0;
 };
 
 // ---------------------------------------------------------------------------

@@ -66,9 +66,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericUnaryOp_ = function (binar
  * @param {!Wasm2Lang.Backend.NumericOps.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
+ * @param {number=} opt_catL
+ * @param {number=} opt_catR
  * @return {string}
  */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R) {
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R, opt_catL, opt_catR) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
 
   if ('min' === info.opName || 'max' === info.opName) {

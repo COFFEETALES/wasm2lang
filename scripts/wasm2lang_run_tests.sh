@@ -146,6 +146,15 @@ if [ ${#0} -ne ${#prefix} ]; then
       #
     done
 
+    # ------------------------------------------------------------------
+    # Pass-family tests (compiled artifact, Node-only)
+    # ------------------------------------------------------------------
+    echo "----------------------------------------"
+    echo -e "\033[1;34mRunning pass-family tests (compiled artifact)\033[0m"
+    node "./wasm2lang_pass_tests.js" \
+      --artifact "${SH_SOURCE}/../dist_artifacts/wasmxlang.js"
+    [ $? -eq 0 ] || retcode=1
+
     echo "----------------------------------------"
     if [ $retcode -ne 0 ]; then
       echo -e "Some tests: \033[0;31mFAILED\033[0m"

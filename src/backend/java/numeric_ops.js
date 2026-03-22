@@ -66,9 +66,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericUnaryOp_ = function (binary
  * @param {!Wasm2Lang.Backend.NumericOps.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
+ * @param {number=} opt_catL
+ * @param {number=} opt_catR
  * @return {string}
  */
-Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R) {
+Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R, opt_catL, opt_catR) {
   var /** @const {boolean} */ isF32 = Wasm2Lang.Backend.ValueType.isF32(binaryen, info.retType);
 
   if ('min' === info.opName) {

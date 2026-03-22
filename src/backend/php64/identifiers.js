@@ -94,45 +94,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.localN_ = function (index) {
 
 /**
  * @override
- * @param {string} globalName
- * @return {string}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.buildGlobalIdentifier_ = function (globalName) {
-  return '$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globalName);
-};
-
-/**
- * @override
- * @param {string} importBaseName
- * @return {string}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.buildImportIdentifier_ = function (importBaseName) {
-  return '$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(importBaseName);
-};
-
-/**
- * @override
- * @param {string} funcName
- * @return {string}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.buildFunctionIdentifier_ = function (funcName) {
-  return Wasm2Lang.Backend.Php64Codegen.phpSafeName_(funcName);
-};
-
-// ---------------------------------------------------------------------------
-// PHP-safe identifiers.
-// ---------------------------------------------------------------------------
-
-/**
- * PHP identifiers may only contain {@code [a-zA-Z0-9_\x80-\xff]}.  Binaryen
- * names can contain {@code $}, {@code .} and other characters invalid in PHP.
- * This helper replaces every such character with {@code _} and applies the
- * standard leading-digit guard.
- *
  * @param {string} name
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.phpSafeName_ = function (name) {
+Wasm2Lang.Backend.Php64Codegen.prototype.safeName_ = function (name) {
   return Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_(
     Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name.replace(/[^a-zA-Z0-9_]/g, '_')),
     Wasm2Lang.Backend.Php64Codegen.RESERVED_,

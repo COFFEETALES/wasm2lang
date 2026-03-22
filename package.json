@@ -1,4 +1,26 @@
 {
+  "name": "@coffeetales.net/wasm2lang",
+  "version": "0.1.0",
+  "description": "CLI tool that transpiles WebAssembly modules into equivalent asm.js, PHP, or Java source code.",
+  "main": "wasm2lang.js",
+  "bin": {
+    "wasm2lang": "wasm2lang.js"
+  },
+  "license": "Apache-2.0",
+  "files": [
+    "LICENSE",
+    "README.md",
+    "dist_artifacts/wasmxlang.js",
+    "wasm2lang.js"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/COFFEETALES/wasm2lang.git"
+  },
+  "bugs": {
+    "url": "https://github.com/COFFEETALES/wasm2lang/issues"
+  },
+  "homepage": "https://github.com/COFFEETALES/wasm2lang#readme",
   "dependencies": {
     "binaryen": "^125.0.0"
   },

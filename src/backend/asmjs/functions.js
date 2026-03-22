@@ -20,7 +20,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
   globalTypes
 ) {
   var /** @const {!Array<string>} */ parts = [];
-  var /** @const {string} */ fnName = this.n_(Wasm2Lang.Backend.AsmjsCodegen.asmjsSafeName_(funcInfo.name));
+  var /** @const {string} */ fnName = this.n_(this.safeName_(funcInfo.name));
   var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(funcInfo.params);
   var /** @const {number} */ numParams = paramTypes.length;
   var /** @const {!Array<number>} */ varTypes = /** @type {!Array<number>} */ (funcInfo.vars) || [];

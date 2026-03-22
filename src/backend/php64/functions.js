@@ -16,11 +16,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.buildUseClause_ = function (globals, im
   var /** @const {!Array<string>} */ entries = [];
   entries[entries.length] = '&' + this.phpVar_('buffer');
   for (var /** number */ gi = 0, /** @const {number} */ gLen = globals.length; gi !== gLen; ++gi) {
-    entries[entries.length] = '&' + this.phpVar_('$g_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(globals[gi].globalName));
+    entries[entries.length] = '&' + this.phpVar_('$g_' + this.safeName_(globals[gi].globalName));
   }
   for (var /** number */ ii = 0, /** @const {number} */ iLen = imports.length; ii !== iLen; ++ii) {
-    entries[entries.length] =
-      '&' + this.phpVar_('$if_' + Wasm2Lang.Backend.Php64Codegen.phpSafeName_(imports[ii].importBaseName));
+    entries[entries.length] = '&' + this.phpVar_('$if_' + this.safeName_(imports[ii].importBaseName));
   }
   for (var /** number */ fi = 0, /** @const {number} */ fLen = internalFuncNames.length; fi !== fLen; ++fi) {
     entries[entries.length] = '&' + this.phpVar_(internalFuncNames[fi]);
@@ -54,7 +53,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   globalTypes
 ) {
   var /** @const {!Array<string>} */ parts = [];
-  var /** @const {string} */ fnName = this.phpVar_(Wasm2Lang.Backend.Php64Codegen.phpSafeName_(funcInfo.name));
+  var /** @const {string} */ fnName = this.phpVar_(this.safeName_(funcInfo.name));
   var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(funcInfo.params);
   var /** @const {number} */ numParams = paramTypes.length;
   var /** @const {!Array<number>} */ varTypes = /** @type {!Array<number>} */ (funcInfo.vars) || [];
