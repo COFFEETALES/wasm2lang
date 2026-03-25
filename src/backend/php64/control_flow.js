@@ -22,6 +22,8 @@ Wasm2Lang.Backend.Php64Codegen.LabelEntry_;
  *   inlineTempOffset: number,
  *   labelStack: !Array<!Wasm2Lang.Backend.Php64Codegen.LabelEntry_>,
  *   importedNames: !Object<string, string>,
+ *   stdlibNames: ?Object<string, string>,
+ *   stdlibGlobals: ?Object<string, string>,
  *   indent: number,
  *   wasmModule: !BinaryenModule,
  *   visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor,
@@ -161,9 +163,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.GlobalGetId: {
       var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
-      var /** @const {string} */ globalGetVar = this.phpVar_('$g_' + this.safeName_(globalGetName));
-      state.usedCaptures[globalGetVar] = true;
-      result = globalGetVar;
+      var /** @const {string} */ stdlibGlobal = state.stdlibGlobals ? state.stdlibGlobals[globalGetName] || '' : '';
+      if ('' !== stdlibGlobal) {
+        result = stdlibGlobal;
+      } else {
+        var /** @const {string} */ globalGetVar = this.phpVar_('$g_' + this.safeName_(globalGetName));
+        state.usedCaptures[globalGetVar] = true;
+        result = globalGetVar;
+      }
       resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
         ? A.CAT_F64
         : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
@@ -324,10 +331,18 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.CallId: {
       var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
-      var /** @const {string} */ importBase = state.importedNames[callTarget] || '';
-      var /** @type {string} */ callName =
-          '' !== importBase ? this.phpVar_('$if_' + this.safeName_(importBase)) : this.phpVar_(this.safeName_(callTarget));
-      state.usedCaptures[callName] = true;
+      var /** @const {string} */ phpStdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
+      var /** @const {string} */ importBase = phpStdlibName ? '' : state.importedNames[callTarget] || '';
+      var /** @type {string} */ callName;
+      if ('' !== phpStdlibName) {
+        callName = phpStdlibName;
+      } else if ('' !== importBase) {
+        callName = this.phpVar_('$if_' + this.safeName_(importBase));
+        state.usedCaptures[callName] = true;
+      } else {
+        callName = this.phpVar_(this.safeName_(callTarget));
+        state.usedCaptures[callName] = true;
+      }
       var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
           binaryen,
           expr,

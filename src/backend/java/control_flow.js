@@ -9,6 +9,8 @@
  *   labelKinds: !Object<string, string>,
  *   labelMap: !Object<string, number>,
  *   importedNames: !Object<string, string>,
+ *   stdlibNames: ?Object<string, string>,
+ *   stdlibGlobals: ?Object<string, string>,
  *   exportNameMap: !Object<string, string>,
  *   functionTables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>,
  *   indent: number,
@@ -97,7 +99,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     case binaryen.GlobalGetId: {
       var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
-      result = 'this.' + this.n_('$g_' + this.safeName_(globalGetName));
+      var /** @const {string} */ javaStdlibGlobal = state.stdlibGlobals ? state.stdlibGlobals[globalGetName] || '' : '';
+      result = '' !== javaStdlibGlobal ? javaStdlibGlobal : 'this.' + this.n_('$g_' + this.safeName_(globalGetName));
       resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
         ? A.CAT_F64
         : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
@@ -207,7 +210,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     }
     case binaryen.CallId: {
       var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
-      var /** @const {string} */ importBase = state.importedNames[callTarget] || '';
+      var /** @const {string} */ javaStdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
+      var /** @const {string} */ importBase = javaStdlibName ? '' : state.importedNames[callTarget] || '';
       var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
           binaryen,
           expr,
@@ -216,7 +220,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         );
       var /** @const {number} */ callType = /** @type {number} */ (expr['type']);
       var /** @type {string} */ callExpr;
-      if ('' !== importBase) {
+      if ('' !== javaStdlibName) {
+        callExpr = javaStdlibName + '(' + callArgs.join(', ') + ')';
+      } else if ('' !== importBase) {
         callExpr = this.renderImportCallExpr_(binaryen, importBase, callArgs, callType);
       } else {
         var /** @const {boolean} */ callIsExported = callTarget in state.exportNameMap;

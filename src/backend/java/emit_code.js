@@ -43,8 +43,67 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Buffer field.
   outputParts[outputParts.length] = pad1 + 'java.nio.ByteBuffer ' + this.n_('buffer') + ';';
 
-  // Import fields — stored as Object, cast at call sites.
+  // Classify imports as stdlib or foreign.
+  var /** @const {!Object<string, string>} */ javaStdlibNames = /** @type {!Object<string, string>} */ (Object.create(null));
+  var /** @const {!Object<string, string>} */ javaStdlibGlobals = /** @type {!Object<string, string>} */ (Object.create(null));
+  var /** @const */ classify = Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport;
+  /** @const {!Object<string, string>} */
+  var JAVA_MATH_FUNCS_ = {
+    'acos': 'Math.acos',
+    'asin': 'Math.asin',
+    'atan': 'Math.atan',
+    'cos': 'Math.cos',
+    'sin': 'Math.sin',
+    'tan': 'Math.tan',
+    'exp': 'Math.exp',
+    'log': 'Math.log',
+    'ceil': 'Math.ceil',
+    'floor': 'Math.floor',
+    'sqrt': 'Math.sqrt',
+    'abs': 'Math.abs',
+    'atan2': 'Math.atan2',
+    'pow': 'Math.pow',
+    'min': 'Math.min',
+    'max': 'Math.max'
+  };
+  /** @const {!Object<string, string>} */
+  var JAVA_MATH_CONSTS_ = {
+    'E': 'Math.E',
+    'LN10': '2.302585092994046',
+    'LN2': '0.6931471805599453',
+    'LOG2E': '1.4426950408889634',
+    'LOG10E': '0.4342944819032518',
+    'PI': 'Math.PI',
+    'SQRT1_2': '0.7071067811865476',
+    'SQRT2': '1.4142135623730951'
+  };
+  for (var /** number */ jsi = 0, /** @const {number} */ jsiLen = moduleInfo.impFuncs.length; jsi !== jsiLen; ++jsi) {
+    var /** @const {string} */ jsiKind = classify(
+        moduleInfo.impFuncs[jsi].importModule,
+        moduleInfo.impFuncs[jsi].importBaseName
+      );
+    if ('math_func' === jsiKind && JAVA_MATH_FUNCS_[moduleInfo.impFuncs[jsi].importBaseName]) {
+      javaStdlibNames[moduleInfo.impFuncs[jsi].wasmFuncName] = JAVA_MATH_FUNCS_[moduleInfo.impFuncs[jsi].importBaseName];
+    }
+  }
+  for (var /** number */ jgi = 0, /** @const {number} */ jgiLen = moduleInfo.impGlobals.length; jgi !== jgiLen; ++jgi) {
+    var /** @const {string} */ jgiKind = classify(
+        moduleInfo.impGlobals[jgi].importModule,
+        moduleInfo.impGlobals[jgi].importBaseName
+      );
+    if ('math_const' === jgiKind && JAVA_MATH_CONSTS_[moduleInfo.impGlobals[jgi].importBaseName]) {
+      javaStdlibGlobals[moduleInfo.impGlobals[jgi].globalName] = JAVA_MATH_CONSTS_[moduleInfo.impGlobals[jgi].importBaseName];
+    } else if ('global_value' === jgiKind) {
+      javaStdlibGlobals[moduleInfo.impGlobals[jgi].globalName] =
+        'Infinity' === moduleInfo.impGlobals[jgi].importBaseName ? 'Double.POSITIVE_INFINITY' : 'Double.NaN';
+    }
+  }
+
+  // Import fields — stored as Object, cast at call sites. Skip stdlib.
   for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
+    if (moduleInfo.impFuncs[i].wasmFuncName in javaStdlibNames) {
+      continue;
+    }
     outputParts[outputParts.length] =
       pad1 + 'Object ' + this.n_('$if_' + this.safeName_(moduleInfo.impFuncs[i].importBaseName)) + ';';
   }
@@ -71,6 +130,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     pad1 + className + '(java.util.Map<String, Object> foreign, java.nio.ByteBuffer ' + bufferParamName + ') {';
   outputParts[outputParts.length] = pad2 + 'this.' + bufferParamName + ' = ' + bufferParamName + ';';
   for (var /** number */ ci = 0; ci !== importCount; ++ci) {
+    if (moduleInfo.impFuncs[ci].wasmFuncName in javaStdlibNames) {
+      continue;
+    }
     var /** @const {string} */ importSafe = this.safeName_(moduleInfo.impFuncs[ci].importBaseName);
     outputParts[outputParts.length] =
       pad2 + 'this.' + this.n_('$if_' + importSafe) + ' = foreign.get("' + moduleInfo.impFuncs[ci].importBaseName + '");';
@@ -102,7 +164,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
       moduleInfo.functionSignatures,
       moduleInfo.globalTypes,
       exportNameMap,
-      moduleInfo.functionTables
+      moduleInfo.functionTables,
+      javaStdlibNames,
+      javaStdlibGlobals
     );
   }
 

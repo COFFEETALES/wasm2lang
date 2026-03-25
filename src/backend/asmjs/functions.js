@@ -10,6 +10,8 @@
  * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
  * @param {!Object<string, number>} globalTypes
  * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>} functionTables
+ * @param {?Object<string, string>=} opt_stdlibNames
+ * @param {?Object<string, string>=} opt_stdlibGlobals
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
@@ -19,7 +21,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
   importedNames,
   functionSignatures,
   globalTypes,
-  functionTables
+  functionTables,
+  opt_stdlibNames,
+  opt_stdlibGlobals
 ) {
   var /** @const {!Array<string>} */ parts = [];
   var /** @const {string} */ fnName = this.n_(this.safeName_(funcInfo.name));
@@ -71,6 +75,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
         labelKinds: /** @type {!Object<string, string>} */ (Object.create(null)),
         labelMap: /** @type {!Object<string, number>} */ (Object.create(null)),
         importedNames: importedNames,
+        stdlibNames: opt_stdlibNames || null,
+        stdlibGlobals: opt_stdlibGlobals || null,
         indent: 2,
         wasmModule: wasmModule,
         visitor: null,

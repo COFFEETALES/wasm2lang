@@ -67,6 +67,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.buildUseClause_ = function (
  * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
  * @param {!Object<string, number>} globalTypes
  * @param {boolean} hasFunctionTable
+ * @param {?Object<string, string>=} opt_stdlibNames
+ * @param {?Object<string, string>=} opt_stdlibGlobals
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
@@ -79,7 +81,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   internalFuncNames,
   functionSignatures,
   globalTypes,
-  hasFunctionTable
+  hasFunctionTable,
+  opt_stdlibNames,
+  opt_stdlibGlobals
 ) {
   var /** @const {!Array<string>} */ parts = [];
   var /** @const {string} */ fnName = this.phpVar_(this.safeName_(funcInfo.name));
@@ -135,6 +139,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
         inlineTempOffset: numParams + numVars,
         labelStack: [],
         importedNames: importedNames,
+        stdlibNames: opt_stdlibNames || null,
+        stdlibGlobals: opt_stdlibGlobals || null,
         indent: 2,
         usedCaptures: usedCaptures,
         wasmModule: wasmModule,

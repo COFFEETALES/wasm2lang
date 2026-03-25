@@ -46,7 +46,9 @@ const wasm = !!obj['wasm'];
     } else {
       sharedData = JSON.parse(read(dataPath));
     }
-  } catch (e) { /* data file optional */ }
+  } catch (e) {
+    /* data file optional */
+  }
 
   let instanceMemoryBuffer = null;
 
@@ -59,9 +61,8 @@ const wasm = !!obj['wasm'];
       throw new Error('WASM input via stdin not supported in this environment.');
     }
 
-    const instance = new WebAssembly.Instance(new WebAssembly.Module(bin), {
-      'module': harness.moduleImports
-    });
+    const wasmImportObject = harness.wasmImports || {'module': harness.moduleImports};
+    const instance = new WebAssembly.Instance(new WebAssembly.Module(bin), wasmImportObject);
     instanceMemoryBuffer = instance.exports.memory.buffer;
     harness.runTest(instanceMemoryBuffer, stdoutWrite, instance.exports, sharedData);
   }

@@ -582,6 +582,116 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectImportedFunctions_ = function
   return imports;
 };
 
+// ---------------------------------------------------------------------------
+// asm.js standard library symbol classification.
+// ---------------------------------------------------------------------------
+
+/**
+ * Known asm.js stdlib Math functions.  Key: import base name,
+ * value: arity (unused at classification time but available for backends).
+ * @const {!Object<string, number>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.STDLIB_MATH_FUNCTIONS_ = {
+  'acos': 1,
+  'asin': 1,
+  'atan': 1,
+  'cos': 1,
+  'sin': 1,
+  'tan': 1,
+  'exp': 1,
+  'log': 1,
+  'ceil': 1,
+  'floor': 1,
+  'sqrt': 1,
+  'abs': 1,
+  'atan2': 2,
+  'pow': 2,
+  'min': 2,
+  'max': 2,
+  'imul': 2,
+  'fround': 1,
+  'clz32': 1
+};
+
+/**
+ * Known asm.js stdlib Math constants.
+ * @const {!Object<string, boolean>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.STDLIB_MATH_CONSTANTS_ = {
+  'E': true,
+  'LN10': true,
+  'LN2': true,
+  'LOG2E': true,
+  'LOG10E': true,
+  'PI': true,
+  'SQRT1_2': true,
+  'SQRT2': true
+};
+
+/**
+ * Classifies a WASM import as an asm.js stdlib symbol.
+ *
+ * @param {string} importModule  The WASM import module name.
+ * @param {string} importBaseName  The WASM import base name.
+ * @return {string}  One of {@code 'math_func'}, {@code 'math_const'},
+ *     {@code 'global_value'}, or empty string if not a stdlib symbol.
+ */
+Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport = function (importModule, importBaseName) {
+  if ('Math' === importModule) {
+    if (importBaseName in Wasm2Lang.Backend.AbstractCodegen.STDLIB_MATH_FUNCTIONS_) {
+      return 'math_func';
+    }
+    if (importBaseName in Wasm2Lang.Backend.AbstractCodegen.STDLIB_MATH_CONSTANTS_) {
+      return 'math_const';
+    }
+  }
+  if ('Infinity' === importBaseName || 'NaN' === importBaseName) {
+    return 'global_value';
+  }
+  return '';
+};
+
+/**
+ * Descriptor for a single wasm-level imported global.
+ *
+ * @protected
+ * @typedef {{
+ *   globalName: string,
+ *   importBaseName: string,
+ *   importModule: string,
+ *   globalType: number
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_;
+
+/**
+ * Collects every imported global from the wasm module.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @return {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.collectImportedGlobals_ = function (wasmModule) {
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @const {number} */ numGlobals = wasmModule.getNumGlobals();
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>} */ imports = [];
+
+  for (var /** number */ i = 0; i !== numGlobals; ++i) {
+    var /** @const {number} */ globalPtr = wasmModule.getGlobalByIndex(i);
+    var /** @const {!BinaryenGlobalInfo} */ globalInfo = binaryen.getGlobalInfo(globalPtr);
+    if ('' !== globalInfo.base) {
+      imports[imports.length] = {
+        globalName: globalInfo.name,
+        importBaseName: globalInfo.base,
+        importModule: globalInfo.module,
+        globalType: globalInfo.type
+      };
+    }
+  }
+
+  return imports;
+};
+
 /**
  * Collects the full signature of every wasm function, keyed by internal name.
  *
@@ -663,6 +773,7 @@ Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_;
  * @protected
  * @typedef {{
  *   impFuncs: !Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>,
+ *   impGlobals: !Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>,
  *   importedNames: !Object<string, string>,
  *   functionSignatures: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>,
  *   globals: !Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>,
@@ -1930,6 +2041,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectGlobals_ = function (wasmModu
 Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function (wasmModule) {
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} */ imports =
       this.collectImportedFunctions_(wasmModule);
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>} */ impGlobals =
+      this.collectImportedGlobals_(wasmModule);
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = this.collectGlobals_(wasmModule);
 
   var /** @const {!Object<string, string>} */ importedNames = /** @type {!Object<string, string>} */ (Object.create(null));
@@ -1941,6 +2054,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   for (var /** number */ gi = 0, /** @const {number} */ globalCount = globals.length; gi !== globalCount; ++gi) {
     globalTypes[globals[gi].globalName] = globals[gi].globalType;
   }
+  // Include imported global types so GlobalGetId/GlobalSetId resolve correctly.
+  for (var /** number */ igi = 0, /** @const {number} */ igLen = impGlobals.length; igi !== igLen; ++igi) {
+    globalTypes[impGlobals[igi].globalName] = impGlobals[igi].globalType;
+  }
 
   var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ functionSignatures =
       this.collectFunctionSignatures_(wasmModule);
@@ -1949,6 +2066,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
 
   return {
     impFuncs: imports,
+    impGlobals: impGlobals,
     importedNames: importedNames,
     functionSignatures: functionSignatures,
     globals: globals,
@@ -1970,27 +2088,15 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.buildSignatureKey_ = function (binaryen, paramTypes, retType) {
+  /** @param {number} t @return {string} */
+  var c = function (t) {
+    return binaryen.f32 === t ? 'f' : binaryen.f64 === t ? 'd' : 'i';
+  };
   var /** @type {string} */ key = '';
   for (var /** number */ i = 0, /** @const {number} */ len = paramTypes.length; i !== len; ++i) {
-    if (binaryen.f32 === paramTypes[i]) {
-      key += 'f';
-    } else if (binaryen.f64 === paramTypes[i]) {
-      key += 'd';
-    } else {
-      key += 'i';
-    }
+    key += c(paramTypes[i]);
   }
-  key += '_';
-  if (binaryen.none === retType || 0 === retType) {
-    key += 'v';
-  } else if (binaryen.f32 === retType) {
-    key += 'f';
-  } else if (binaryen.f64 === retType) {
-    key += 'd';
-  } else {
-    key += 'i';
-  }
-  return key;
+  return key + '_' + (binaryen.none === retType || 0 === retType ? 'v' : c(retType));
 };
 
 /**

@@ -32,17 +32,41 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   // so the declarations appear in the correct position.
   var /** @const {number} */ bindingsInsertIndex = outputParts.length;
 
-  // Imported function bindings.
+  // Classify imports as stdlib or foreign.
+  var /** @const {!Object<string, string>} */ stdlibNames = /** @type {!Object<string, string>} */ (Object.create(null));
+  var /** @const {!Object<string, string>} */ stdlibGlobals = /** @type {!Object<string, string>} */ (Object.create(null));
+  var /** @const */ classify = Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport;
+
+  // Imported function bindings — stdlib functions go through stdlib.Math,
+  // everything else goes through foreign.
   for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
-    outputParts[outputParts.length] =
-      pad1 +
-      'var ' +
-      this.n_('$if_' + moduleInfo.impFuncs[i].importBaseName) +
-      ' = ' +
-      foreignName +
-      '.' +
-      moduleInfo.impFuncs[i].importBaseName +
-      ';';
+    var /** @const {string} */ impKind = classify(moduleInfo.impFuncs[i].importModule, moduleInfo.impFuncs[i].importBaseName);
+    if ('math_func' === impKind) {
+      stdlibNames[moduleInfo.impFuncs[i].wasmFuncName] = 'Math_' + moduleInfo.impFuncs[i].importBaseName;
+    } else {
+      outputParts[outputParts.length] =
+        pad1 +
+        'var ' +
+        this.n_('$if_' + moduleInfo.impFuncs[i].importBaseName) +
+        ' = ' +
+        foreignName +
+        '.' +
+        moduleInfo.impFuncs[i].importBaseName +
+        ';';
+    }
+  }
+
+  // Imported globals — stdlib constants and Infinity/NaN.
+  for (var /** number */ ig = 0, /** @const {number} */ igLen = moduleInfo.impGlobals.length; ig !== igLen; ++ig) {
+    var /** @const {string} */ igKind = classify(
+        moduleInfo.impGlobals[ig].importModule,
+        moduleInfo.impGlobals[ig].importBaseName
+      );
+    if ('math_const' === igKind) {
+      stdlibGlobals[moduleInfo.impGlobals[ig].globalName] = 'Math_' + moduleInfo.impGlobals[ig].importBaseName;
+    } else if ('global_value' === igKind) {
+      stdlibGlobals[moduleInfo.impGlobals[ig].globalName] = '$g_' + moduleInfo.impGlobals[ig].importBaseName;
+    }
   }
 
   // Module-level globals.
@@ -64,7 +88,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       moduleInfo.importedNames,
       moduleInfo.functionSignatures,
       moduleInfo.globalTypes,
-      moduleInfo.functionTables
+      moduleInfo.functionTables,
+      stdlibNames,
+      stdlibGlobals
     );
   }
 
@@ -76,6 +102,22 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   // Insert conditional heap views and stdlib imports at the reserved position.
   var /** @const {!Object<string, boolean>} */ ub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
   this.usedBindings_ = null;
+
+  // Mark stdlib function imports as used so their bindings are emitted.
+  var /** @const {!Array<string>} */ stdlibFuncKeys = Object.keys(stdlibNames);
+  for (var /** number */ sf = 0, /** @const {number} */ sfLen = stdlibFuncKeys.length; sf !== sfLen; ++sf) {
+    ub[stdlibNames[stdlibFuncKeys[sf]]] = true;
+  }
+
+  // Build set of stdlib global binding names for constant emission.
+  var /** @const {!Object<string, boolean>} */ usedStdlibGlobalSet = /** @type {!Object<string, boolean>} */ (
+      Object.create(null)
+    );
+  var /** @const {!Array<string>} */ sgKeys = Object.keys(stdlibGlobals);
+  for (var /** number */ sg = 0, /** @const {number} */ sgLen = sgKeys.length; sg !== sgLen; ++sg) {
+    usedStdlibGlobalSet[stdlibGlobals[sgKeys[sg]]] = true;
+  }
+
   var /** @const {!Array<string>} */ bindingLines = [];
   var /** @const {!Array<!Array<string>>} */ heapBindings = [
       ['HEAP8', 'Int8Array'],
@@ -106,17 +148,59 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       'Math_clz32',
       'Math_fround',
       'Math_abs',
+      'Math_acos',
+      'Math_asin',
+      'Math_atan',
+      'Math_atan2',
       'Math_ceil',
+      'Math_cos',
+      'Math_exp',
       'Math_floor',
+      'Math_log',
       'Math_min',
       'Math_max',
-      'Math_sqrt'
+      'Math_pow',
+      'Math_sin',
+      'Math_sqrt',
+      'Math_tan'
     ];
   for (var /** number */ mbi = 0, /** @const {number} */ mbLen = mathBindings.length; mbi !== mbLen; ++mbi) {
     if (ub[mathBindings[mbi]]) {
       bindingLines[bindingLines.length] =
         pad1 + 'var ' + this.n_(mathBindings[mbi]) + ' = ' + stdlibName + '.Math.' + mathBindings[mbi].substring(5) + ';';
     }
+  }
+  // Math constants and Infinity/NaN: imported via the foreign parameter
+  // because +stdlib.Math.E is not supported by V8/SpiderMonkey asm.js
+  // validators (the spec allows it but engines reject it).
+  var /** @const {!Array<string>} */ mathConstBindings = [
+      'Math_E',
+      'Math_LN10',
+      'Math_LN2',
+      'Math_LOG2E',
+      'Math_LOG10E',
+      'Math_PI',
+      'Math_SQRT1_2',
+      'Math_SQRT2'
+    ];
+  for (var /** number */ mci = 0, /** @const {number} */ mcLen = mathConstBindings.length; mci !== mcLen; ++mci) {
+    if (usedStdlibGlobalSet[mathConstBindings[mci]]) {
+      bindingLines[bindingLines.length] =
+        pad1 +
+        'var ' +
+        this.n_(mathConstBindings[mci]) +
+        ' = +' +
+        foreignName +
+        '.' +
+        mathConstBindings[mci].substring(5) +
+        ';';
+    }
+  }
+  if (usedStdlibGlobalSet['$g_Infinity']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('$g_Infinity') + ' = +' + foreignName + '.Infinity;';
+  }
+  if (usedStdlibGlobalSet['$g_NaN']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('$g_NaN') + ' = +' + foreignName + '.NaN;';
   }
   // Splice binding declarations into the reserved position.
   for (var /** number */ bi = bindingLines.length - 1; bi >= 0; --bi) {

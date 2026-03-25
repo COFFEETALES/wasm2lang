@@ -13,6 +13,8 @@
  *   labelKinds: !Object<string, string>,
  *   labelMap: !Object<string, number>,
  *   importedNames: !Object<string, string>,
+ *   stdlibNames: ?Object<string, string>,
+ *   stdlibGlobals: ?Object<string, string>,
  *   indent: number,
  *   wasmModule: !BinaryenModule,
  *   visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor,
@@ -77,10 +79,20 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       resultCat = C.SIGNED;
       break;
 
-    case binaryen.GlobalGetId:
-      result = this.n_('$g_' + /** @type {string} */ (expr['name']));
-      resultCat = C.SIGNED;
+    case binaryen.GlobalGetId: {
+      var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
+      var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
+      result =
+        state.stdlibGlobals && state.stdlibGlobals[globalGetName]
+          ? this.n_(state.stdlibGlobals[globalGetName])
+          : this.n_('$g_' + globalGetName);
+      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
+        ? A.CAT_F64
+        : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
+          ? A.CAT_F32
+          : C.SIGNED;
       break;
+    }
 
     case binaryen.BinaryId: {
       var /** @const {number} */ binaryOp = /** @type {number} */ (expr['op']);
@@ -202,9 +214,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.CallId: {
       var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
-      var /** @const {string} */ importBase = state.importedNames[callTarget] || '';
+      var /** @const {string} */ stdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
+      var /** @const {string} */ importBase = stdlibName ? '' : state.importedNames[callTarget] || '';
       var /** @type {string} */ callName =
-          '' !== importBase ? this.n_('$if_' + importBase) : this.n_(this.safeName_(callTarget));
+          '' !== stdlibName
+            ? this.n_(stdlibName)
+            : '' !== importBase
+              ? this.n_('$if_' + importBase)
+              : this.n_(this.safeName_(callTarget));
       var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
           binaryen,
           expr,

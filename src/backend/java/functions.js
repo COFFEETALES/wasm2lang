@@ -11,6 +11,8 @@
  * @param {!Object<string, number>} globalTypes
  * @param {!Object<string, string>} exportNameMap
  * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>} functionTables
+ * @param {?Object<string, string>=} opt_stdlibNames
+ * @param {?Object<string, string>=} opt_stdlibGlobals
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
@@ -21,7 +23,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
   functionSignatures,
   globalTypes,
   exportNameMap,
-  functionTables
+  functionTables,
+  opt_stdlibNames,
+  opt_stdlibGlobals
 ) {
   var /** @const {!Array<string>} */ parts = [];
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
@@ -79,6 +83,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
         labelKinds: /** @type {!Object<string, string>} */ (Object.create(null)),
         labelMap: /** @type {!Object<string, number>} */ (Object.create(null)),
         importedNames: importedNames,
+        stdlibNames: opt_stdlibNames || null,
+        stdlibGlobals: opt_stdlibGlobals || null,
         exportNameMap: exportNameMap,
         indent: 2,
         lastExprIsTerminal: false,
