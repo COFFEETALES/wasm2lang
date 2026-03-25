@@ -68,6 +68,16 @@ and reliable lowering. Longer term, its ambition is broader: support more
 advanced WebAssembly features such as SIMD and threads, especially for backends
 where those features could map well to the host platform — including Java.
 
+## Try it now
+
+> **[Launch the Playground](https://coffeetales.github.io/wasm2lang/)**
+>
+> The playground runs `wasm2lang` entirely in your browser — no install, no
+> server. Pick a sample, choose a backend and normalization pipeline, and see
+> the generated code instantly. It is the fastest way to explore what
+> `wasm2lang` produces for each backend (asm.js, PHP, Java), test different
+> normalization strategies, and experiment with identifier mangling.
+
 ## Installation
 
 ```bash
@@ -341,6 +351,26 @@ The test harness:
 
 All backends must produce byte-identical output and matching memory checksums
 to pass.
+
+## Browser Playground
+
+**Live version: https://coffeetales.github.io/wasm2lang/**
+
+The `web/` directory contains the browser playground that runs
+`wasm2lang` entirely client-side. Both `wasm2lang` and Binaryen are
+loaded from CDN — no build step or backend server required.
+
+To run it locally from a clone, serve the `web/` directory over HTTP:
+
+```bash
+npx serve web/
+# then open http://localhost:3000/
+```
+
+The playground includes selectable WAT samples (including data-segment
+examples that showcase metadata output), backend and normalization
+selectors, identifier mangling, and shows both the generated
+metadata + code and normalized WAT output.
 
 ## Contributing
 
