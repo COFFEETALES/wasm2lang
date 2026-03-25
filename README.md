@@ -4,6 +4,7 @@
 
 **WebAssembly to target-language code generator**
 
+[![npm](https://img.shields.io/npm/v/@coffeetales.net/wasm2lang?style=for-the-badge)](https://www.npmjs.com/package/@coffeetales.net/wasm2lang)
 [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-pink?style=for-the-badge)](https://github.com/sponsors/COFFEETALES)
 [![GitHub stars](https://img.shields.io/github/stars/COFFEETALES/wasm2lang?style=for-the-badge)](../../stargazers)
 
@@ -67,6 +68,20 @@ and reliable lowering. Longer term, its ambition is broader: support more
 advanced WebAssembly features such as SIMD and threads, especially for backends
 where those features could map well to the host platform — including Java.
 
+## Installation
+
+```bash
+npm install @coffeetales.net/wasm2lang
+```
+
+Or run directly without installing:
+
+```bash
+npx @coffeetales.net/wasm2lang --input-file module.wast --emit-code
+```
+
+For development, clone the repo and build from source (see [Building](#building)).
+
 ## Backends
 
 | Backend     | `--language-out`  | Strength                                            |Status                                                                   |
@@ -79,14 +94,16 @@ where those features could map well to the host platform — including Java.
 
 ```bash
 # Inline a .wast module and emit PHP:
-node wasm2lang.js                                                                                                 \
- --dev                                                                                                            \
+npx @coffeetales.net/wasm2lang                                                                                    \
  --language-out php64                                                                                             \
  --input-data '(module (func (export "add") (param i32 i32) (result i32) (i32.add (local.get 0) (local.get 1))))' \
  --normalize-wasm binaryen:min                                                                                    \
  --mangler secret                                                                                                 \
  --emit-code
 ```
+
+When developing from a local clone, use `node wasm2lang.js --dev` instead (see
+[CLI reference](#cli-reference)).
 
 ## CLI reference
 

@@ -12,3 +12,10 @@ jobs:
     name: '🟢 CI · Test'
     needs: build
     uses: ./.github/workflows/wasm2lang_test.yml
+
+  publish:
+    name: '🟠 CI · Publish'
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/wasm2lang_publish.yml
+    secrets: inherit

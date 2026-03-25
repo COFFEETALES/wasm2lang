@@ -31,6 +31,13 @@ jobs:
         run: |
           ../scripts/wasm2lang_build_tests.sh
 
+      - name: '🧰 Upload artifacts-dist artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-dist
+          path: ./dist_artifacts
+          if-no-files-found: error
+
       - name: '🧰 Upload artifacts-tests artifact'
         uses: actions/upload-artifact@v4
         with:

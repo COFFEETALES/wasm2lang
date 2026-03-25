@@ -1,0 +1,35 @@
+on:
+  workflow_call:
+
+jobs:
+  publish:
+    name: '📦 Publish'
+    runs-on: ubuntu-latest
+    container:
+      image: node:24-alpine
+    steps:
+      - name: '✅ Checkout repo'
+        uses: actions/checkout@v4
+
+      - name: 'Download artifacts-dist artifact'
+        uses: actions/download-artifact@v4
+        with:
+          name: artifacts-dist
+          path: ./dist_artifacts
+
+      - name: '🔢 Set version from tag'
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          major=$(echo "${TAG}" | cut -d. -f1)
+          minor=$(echo "${TAG}" | cut -d. -f2)
+          patch=$(echo "${TAG}" | cut -d. -f3)
+          VERSION="$((major)).$((minor)).$((patch))"
+          echo "Tag: v${TAG} → npm version: ${VERSION}"
+          npm version "${VERSION}" --no-git-tag-version
+
+      - name: '🚀 Publish to npm'
+        run: |
+          npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

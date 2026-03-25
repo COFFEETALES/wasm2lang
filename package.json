@@ -1,6 +1,6 @@
 {
   "name": "@coffeetales.net/wasm2lang",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "CLI tool that transpiles WebAssembly modules into equivalent asm.js, PHP, or Java source code.",
   "main": "wasm2lang.js",
   "bin": {
