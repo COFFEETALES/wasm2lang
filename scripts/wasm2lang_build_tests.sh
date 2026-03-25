@@ -131,8 +131,6 @@ if [ ${#0} -ne ${#prefix} ]; then
       done
     done
 
-    cp '../tests/wasm2lang_pass_tests.js' .
-
     echo "Build complete."
     return 0
   }

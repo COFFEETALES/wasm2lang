@@ -240,7 +240,7 @@ function loadBinaryen() {
 var families = [localInitFolding, blockLoopFusion, switchDispatch, loopSimplification];
 
 loadBinaryen().then(function (binaryen) {
-  var fixtureDir = path.resolve(__dirname, '../tests/pass_fixtures');
+  var fixtureDir = path.resolve(__dirname, 'fixtures');
   var failures = 0;
   var passes = 0;
 
