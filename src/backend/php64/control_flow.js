@@ -448,9 +448,16 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
 
-    case binaryen.IfId:
-      result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
+    case binaryen.IfId: {
+      var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
+      if (ifType !== binaryen.none && 0 !== ifType) {
+        result = this.renderCoercionByType_(binaryen, '(' + cr(0) + ' ? ' + cr(1) + ' : ' + cr(2) + ')', ifType);
+        resultCat = A.catForCoercedType_(binaryen, ifType);
+      } else {
+        result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
+      }
       break;
+    }
     case binaryen.BreakId: {
       var /** @const {string} */ brName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ brCondPtr = /** @type {number} */ (expr['condition']);

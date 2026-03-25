@@ -334,9 +334,20 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       }
       break;
     }
-    case binaryen.IfId:
-      result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
+    case binaryen.IfId: {
+      var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
+      if (ifType !== binaryen.none && 0 !== ifType) {
+        result = this.renderCoercionByType_(
+          binaryen,
+          '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
+          ifType
+        );
+        resultCat = A.catForCoercedType_(binaryen, ifType);
+      } else {
+        result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
+      }
       break;
+    }
     case binaryen.BreakId: {
       result = this.emitBreakStatement_(
         state,

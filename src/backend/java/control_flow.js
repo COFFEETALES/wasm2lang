@@ -350,9 +350,21 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       }
       break;
     }
-    case binaryen.IfId:
-      result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
+    case binaryen.IfId: {
+      var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
+      if (ifType !== binaryen.none && 0 !== ifType) {
+        var /** @const */ IfPs = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+        result = this.renderCoercionByType_(
+          binaryen,
+          '(' + IfPs.renderInfix(cr(0), '!=', '0', IfPs.PREC_EQUALITY_) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
+          ifType
+        );
+        resultCat = A.catForCoercedType_(binaryen, ifType);
+      } else {
+        result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
+      }
       break;
+    }
     case binaryen.BreakId: {
       var /** @const */ brResult = this.emitBreakStatement_(
           state,
