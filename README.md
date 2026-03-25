@@ -12,6 +12,16 @@
 
 ---
 
+## Try it now
+
+> **[Launch the Playground](https://coffeetales.github.io/wasm2lang/)**
+>
+> The playground runs `wasm2lang` entirely in your browser — no install, no
+> server. Pick a sample, choose a backend and normalization pipeline, and see
+> the generated code instantly. It is the fastest way to explore what
+> `wasm2lang` produces for each backend (asm.js, PHP, Java), test different
+> normalization strategies, and experiment with identifier mangling.
+
 `wasm2lang` is a CLI tool that reads WebAssembly modules and emits equivalent
 source code in other languages. The pipeline normalizes the input through
 configurable passes, traverses the IR, and emits code for a selected backend.
@@ -68,16 +78,6 @@ and reliable lowering. Longer term, its ambition is broader: support more
 advanced WebAssembly features such as SIMD and threads, especially for backends
 where those features could map well to the host platform — including Java.
 
-## Try it now
-
-> **[Launch the Playground](https://coffeetales.github.io/wasm2lang/)**
->
-> The playground runs `wasm2lang` entirely in your browser — no install, no
-> server. Pick a sample, choose a backend and normalization pipeline, and see
-> the generated code instantly. It is the fastest way to explore what
-> `wasm2lang` produces for each backend (asm.js, PHP, Java), test different
-> normalization strategies, and experiment with identifier mangling.
-
 ## Installation
 
 ```bash
@@ -112,17 +112,15 @@ npx @coffeetales.net/wasm2lang                                                  
  --emit-code
 ```
 
-When developing from a local clone, use `node wasm2lang.js --dev` instead (see
-[CLI reference](#cli-reference)).
-
 ## CLI reference
 
 ```
-node wasm2lang.js [--dev] [options]
+wasm2lang [options]
 ```
 
-`--dev` loads source files directly from `src/`; without it, the compiled
-artifact `dist_artifacts/wasmxlang.js` is used.
+After `npm install`, the `wasm2lang` command is available in your project.
+When developing from a local clone, use `node wasm2lang.js --dev` to load
+source files directly from `src/`.
 
 ### Options
 
@@ -173,7 +171,7 @@ parameters.
 ### Emit asm.js with memory initialization
 
 ```bash
-node wasm2lang.js --dev              \
+wasm2lang                            \
   --input-file module.wast           \
   --normalize-wasm binaryen:min      \
   --language-out ASMJS               \
@@ -188,7 +186,7 @@ followed by `var module = function asmjsModule(stdlib, foreign, buffer) { ... }`
 ### Emit PHP code
 
 ```bash
-node wasm2lang.js --dev                            \
+wasm2lang                                          \
   --input-file module.wast                         \
   --normalize-wasm binaryen:none,wasm2lang:codegen \
   --language-out PHP64                             \
@@ -204,7 +202,7 @@ buffer and other function references by reference.
 ### Emit Java code
 
 ```bash
-node wasm2lang.js --dev                            \
+wasm2lang                                          \
   --input-file module.wast                         \
   --normalize-wasm binaryen:none,wasm2lang:codegen \
   --language-out JAVA                              \
@@ -219,8 +217,7 @@ Java output is a class wrapping all exported functions as methods, with a
 ### Inline WebAssembly text
 
 ```bash
-node wasm2lang.js                                                                   \
- --dev                                                                              \
+wasm2lang                                                                            \
  --language-out java                                                                \
  --input-data '(module (func (export "f") (param i32) (result i32) (local.get 0)))' \
  --normalize-wasm binaryen:min                                                      \
@@ -239,13 +236,13 @@ fail on some platforms (e.g. MINGW/Git Bash on Windows reports
 
 ```bash
 # Emit normalized WAT (text):
-node wasm2lang.js --dev                 \
+wasm2lang                               \
   --input-file module.wasm              \
   --normalize-wasm binaryen:min         \
   --emit-web-assembly text
 
 # Emit normalized WASM (binary):
-node wasm2lang.js --dev                 \
+wasm2lang                               \
   --input-file module.wasm              \
   --normalize-wasm binaryen:min         \
   --emit-web-assembly > normalized.wasm
@@ -254,7 +251,7 @@ node wasm2lang.js --dev                 \
 ### Use identifier mangling
 
 ```bash
-node wasm2lang.js --dev                            \
+wasm2lang                                          \
   --input-file module.wast                         \
   --normalize-wasm binaryen:none,wasm2lang:codegen \
   --language-out JAVA                              \
@@ -271,7 +268,7 @@ key. The same key always produces the same output.
 (memory initialization) is emitted first, followed by the code.
 
 ```bash
-node wasm2lang.js --dev           \
+wasm2lang                         \
   --input-file app.wast           \
   --normalize-wasm binaryen:min   \
   --language-out ASMJS            \
@@ -295,7 +292,7 @@ var myModule = function asmjsModule(stdlib, foreign, buffer) {
 `--define` is repeatable:
 
 ```bash
-node wasm2lang.js --dev           \
+wasm2lang                         \
   --input-file app.wast           \
   --define ASMJS_HEAP_SIZE=262144 \
   --define CUSTOM_FLAG=true       \
@@ -305,7 +302,7 @@ node wasm2lang.js --dev           \
 ### Compile from `.wasm` binary
 
 ```bash
-node wasm2lang.js --dev         \
+wasm2lang                       \
   --input-file module.wasm      \
   --normalize-wasm binaryen:min \
   --language-out PHP64          \
@@ -321,12 +318,6 @@ yarn closure-make # produces dist_artifacts/wasmxlang.js
 ```
 
 The project targets Closure Compiler ADVANCED_OPTIMIZATIONS (ES5 strict).
-
-Once built, the compiled artifact can be used without `--dev`:
-
-```bash
-node wasm2lang.js --input-file module.wast --emit-code
-```
 
 ## Testing
 

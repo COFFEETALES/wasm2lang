@@ -1,17 +1,10 @@
+#!/usr/bin/env node
 'use strict';
 
 (async function () {
   var path = await import('path');
 
-  var url = await import('url');
-
-  var binaryen = (
-    await import(
-      url.pathToFileURL(path.join(process.env.NODE_PATH || path.join(process.cwd(), 'node_modules'), 'binaryen', 'index.js'))[
-        'href'
-      ]
-    )
-  ).default;
+  var binaryen = (await import('binaryen')).default;
 
   if (
     process.argv.some(function (arg) {
