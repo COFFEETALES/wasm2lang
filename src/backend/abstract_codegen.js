@@ -120,7 +120,25 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
    * @protected @type {boolean}
    */
   this.f32WidensToF64_ = false;
+
+  /**
+   * Per-category binary-op renderers, populated by each backend constructor.
+   * Indexed by {@code Wasm2Lang.Backend.I32Coercion.OP_*} constants.
+   * @protected @type {!Array<!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined>}
+   */
+  this.binaryRenderers_ = [];
 };
+
+/**
+ * A binary-op rendering function.  Receives the backend instance as the
+ * first argument because the functions are stored as static references
+ * (not bound to a prototype), avoiding Closure Compiler's @override
+ * output-ordering issue with Object.create prototype chains.
+ *
+ * @typedef {function(!Wasm2Lang.Backend.AbstractCodegen,
+ *     !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_;
 
 /**
  * Stores the pass-run result so backends can read per-function metadata
@@ -617,6 +635,29 @@ Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_;
 Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_;
 
 /**
+ * A single entry in a function table.
+ *
+ * @protected
+ * @typedef {{ functionName: (string|null) }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_;
+
+/**
+ * Describes one signature-specific function table.
+ *
+ * @protected
+ * @typedef {{
+ *   signatureKey: string,
+ *   signatureParams: !Array<number>,
+ *   signatureReturnType: number,
+ *   tableEntries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>,
+ *   tableMask: number,
+ *   stubNeeded: boolean
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_;
+
+/**
  * Shared module-level metadata used by concrete backend emitters.
  *
  * @protected
@@ -627,7 +668,9 @@ Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_;
  *   globals: !Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>,
  *   globalTypes: !Object<string, number>,
  *   expFuncs: !Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>,
- *   functions: !Array<!BinaryenFunctionInfo>
+ *   functions: !Array<!BinaryenFunctionInfo>,
+ *   functionTables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>,
+ *   flatTableEntries: !Array<string|null>
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_;
@@ -728,6 +771,54 @@ Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) 
     if ('' !== lines[i]) {
       parts[parts.length] = lines[i];
     }
+  }
+};
+
+/**
+ * Renders the coerced return expression for an implicit return statement.
+ * The default implementation extracts the expression category and delegates
+ * to {@code coerceToType_}.  Asm.js overrides to use
+ * {@code renderCoercionByType_} which always applies the type annotation
+ * regardless of category (required by the asm.js validator).
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {*} bodyResult  The traversal result (typed expression object).
+ * @param {number} resultType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderImplicitReturn_ = function (binaryen, bodyResult, resultType) {
+  var /** @const {string} */ implicitExpr = /** @type {string} */ (bodyResult['s']);
+  var /** @const {number} */ implicitCat =
+      'number' === typeof bodyResult['c']
+        ? /** @type {number} */ (bodyResult['c'])
+        : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+  return this.coerceToType_(binaryen, implicitExpr, implicitCat, resultType);
+};
+
+/**
+ * Appends a function body traversal result to the output parts array.
+ * If the result is a typed expression and the function has a return type,
+ * emits an implicit return statement.  Otherwise appends non-empty lines.
+ *
+ * @protected
+ * @param {!Array<string>} parts
+ * @param {*} bodyResult
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {string} padStr  Indentation string for the return statement.
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts, bodyResult, binaryen, funcInfo, padStr) {
+  if (
+    bodyResult &&
+    'string' !== typeof bodyResult &&
+    'string' === typeof bodyResult['s'] &&
+    funcInfo.results !== binaryen.none &&
+    0 !== funcInfo.results
+  ) {
+    parts[parts.length] = padStr + 'return ' + this.renderImplicitReturn_(binaryen, bodyResult, funcInfo.results) + ';';
+  } else {
+    Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, bodyResult);
   }
 };
 
@@ -1851,15 +1942,196 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
     globalTypes[globals[gi].globalName] = globals[gi].globalType;
   }
 
+  var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ functionSignatures =
+      this.collectFunctionSignatures_(wasmModule);
+  var /** @const {{tables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>, flatEntries: !Array<string|null>}} */ tableResult =
+      this.collectFunctionTables_(wasmModule, functionSignatures);
+
   return {
     impFuncs: imports,
     importedNames: importedNames,
-    functionSignatures: this.collectFunctionSignatures_(wasmModule),
+    functionSignatures: functionSignatures,
     globals: globals,
     globalTypes: globalTypes,
     expFuncs: this.collectExportedFunctions_(wasmModule),
-    functions: this.collectDefinedFunctions_(wasmModule)
+    functions: this.collectDefinedFunctions_(wasmModule),
+    functionTables: tableResult.tables,
+    flatTableEntries: tableResult.flatEntries
   };
+};
+
+/**
+ * Builds a signature key string from parameter types and return type.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Array<number>} paramTypes
+ * @param {number} retType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.buildSignatureKey_ = function (binaryen, paramTypes, retType) {
+  var /** @type {string} */ key = '';
+  for (var /** number */ i = 0, /** @const {number} */ len = paramTypes.length; i !== len; ++i) {
+    if (binaryen.f32 === paramTypes[i]) {
+      key += 'f';
+    } else if (binaryen.f64 === paramTypes[i]) {
+      key += 'd';
+    } else {
+      key += 'i';
+    }
+  }
+  key += '_';
+  if (binaryen.none === retType || 0 === retType) {
+    key += 'v';
+  } else if (binaryen.f32 === retType) {
+    key += 'f';
+  } else if (binaryen.f64 === retType) {
+    key += 'd';
+  } else {
+    key += 'i';
+  }
+  return key;
+};
+
+/**
+ * Collects function table information from the module's element segments.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
+ * @return {{tables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>, flatEntries: !Array<string|null>}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (wasmModule, functionSignatures) {
+  var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>} */ tables =
+      /** @type {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>} */ (Object.create(null));
+  var /** @type {!Array<string|null>} */ flatEntries = [];
+
+  var /** @const {number} */ numSegments = wasmModule.getNumElementSegments();
+  if (0 === numSegments) {
+    return {tables: tables, flatEntries: flatEntries};
+  }
+
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @const {number} */ segPtr = wasmModule.getElementSegmentByIndex(0);
+  var /** @const {!BinaryenElementSegmentInfo} */ segInfo = binaryen.getElementSegmentInfo(segPtr);
+  var /** @const {!Array<string>} */ data = segInfo.data;
+
+  // Evaluate offset expression to get base index.
+  var /** @const {!Object<string, *>} */ offsetExpr = /** @type {!Object<string, *>} */ (
+      binaryen.getExpressionInfo(segInfo.offset)
+    );
+  var /** @type {number} */ baseOffset = 0;
+  if (
+    /** @type {number} */ (offsetExpr['id']) === binaryen.ConstId &&
+    Wasm2Lang.Backend.ValueType.isI32(binaryen, /** @type {number} */ (offsetExpr['type']))
+  ) {
+    baseOffset = /** @type {number} */ (offsetExpr['value']);
+  }
+
+  // Build flat entries array.
+  for (var /** number */ p = 0; p < baseOffset; ++p) {
+    flatEntries[flatEntries.length] = null;
+  }
+  for (var /** number */ d = 0, /** @const {number} */ dLen = data.length; d !== dLen; ++d) {
+    flatEntries[flatEntries.length] = data[d];
+  }
+
+  // Group entries by signature.
+  /** @type {!Object<string, {params: !Array<number>, retType: number, entries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}>} */
+  var sigGroups =
+    /** @type {!Object<string, {params: !Array<number>, retType: number, entries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}>} */ (
+      Object.create(null)
+    );
+
+  for (var /** number */ e = 0, /** @const {number} */ eLen = flatEntries.length; e !== eLen; ++e) {
+    var /** @const {string|null} */ funcName = flatEntries[e];
+    if (null === funcName) continue;
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_|void} */ sig = functionSignatures[funcName];
+    if (!sig) continue;
+    var /** @const {string} */ sigKey = Wasm2Lang.Backend.AbstractCodegen.buildSignatureKey_(
+        binaryen,
+        sig.sigParams,
+        sig.sigRetType
+      );
+    if (!sigGroups[sigKey]) {
+      sigGroups[sigKey] = {params: sig.sigParams, retType: sig.sigRetType, entries: []};
+    }
+    var /** @const {{params: !Array<number>, retType: number, entries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}} */ group =
+        sigGroups[sigKey];
+    // Pad with nulls up to index e.
+    while (group.entries.length < e) {
+      group.entries[group.entries.length] = {functionName: null};
+    }
+    group.entries[group.entries.length] = {functionName: funcName};
+  }
+
+  // Trim trailing nulls, pad to power-of-2, compute mask and stubNeeded.
+  var /** @const {!Array<string>} */ sigKeys = Object.keys(sigGroups);
+  for (var /** number */ s = 0, /** @const {number} */ sLen = sigKeys.length; s !== sLen; ++s) {
+    var /** @const {string} */ sk = sigKeys[s];
+    var /** @const {{params: !Array<number>, retType: number, entries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}} */ sg =
+        sigGroups[sk];
+    // Trim trailing nulls.
+    while (sg.entries.length > 0 && null === sg.entries[sg.entries.length - 1].functionName) {
+      sg.entries.length--;
+    }
+    // Pad to next power of 2.
+    var /** @type {number} */ size = 1;
+    while (size < sg.entries.length) {
+      size *= 2;
+    }
+    var /** @type {boolean} */ hasNulls = false;
+    while (sg.entries.length < size) {
+      sg.entries[sg.entries.length] = {functionName: null};
+      hasNulls = true;
+    }
+    if (!hasNulls) {
+      for (var /** number */ ni = 0, /** @const {number} */ niLen = sg.entries.length; ni !== niLen; ++ni) {
+        if (null === sg.entries[ni].functionName) {
+          hasNulls = true;
+          break;
+        }
+      }
+    }
+    tables[sk] = {
+      signatureKey: sk,
+      signatureParams: sg.params,
+      signatureReturnType: sg.retType,
+      tableEntries: sg.entries,
+      tableMask: size - 1,
+      stubNeeded: hasNulls
+    };
+  }
+
+  return {tables: tables, flatEntries: flatEntries};
+};
+
+/**
+ * Builds coerced argument strings for a call_indirect expression.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Object<string, *>} expr
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallIndirectArgs_ = function (binaryen, expr, childResults) {
+  var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(/** @type {number} */ (expr['params']));
+  var /** @const {!Array<string>} */ callArgs = [];
+  var /** @const */ getInfo = Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_;
+
+  // childResults[0] = target index expression, operands start at 1.
+  for (var /** number */ ai = 0, /** @const {number} */ alen = paramTypes.length; ai !== alen; ++ai) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ argInfo = getInfo(childResults, ai + 1);
+    callArgs[callArgs.length] = this.coerceToType_(
+      binaryen,
+      argInfo.expressionString,
+      argInfo.expressionCategory,
+      paramTypes[ai]
+    );
+  }
+
+  return callArgs;
 };
 
 /**
@@ -2143,6 +2415,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
     keys[keys.length] = helpers[hi];
   }
 
+  // 6. Function table bindings (per-signature table, stub, and interface names).
+  var /** @const {!Array<string>} */ ftBindingKeys = Object.keys(moduleInfo.functionTables);
+  if (0 !== ftBindingKeys.length) {
+    keys[keys.length] = 'ftable';
+    for (var /** number */ fbi = 0, /** @const {number} */ fbLen = ftBindingKeys.length; fbi !== fbLen; ++fbi) {
+      var /** @const {string} */ fbSigKey = ftBindingKeys[fbi];
+      keys[keys.length] = '$ftable_' + fbSigKey;
+      keys[keys.length] = '$ftable_' + fbSigKey + '_stub';
+      keys[keys.length] = '$ftsig_' + fbSigKey;
+    }
+  }
+
   this.mangler_.registerModuleBindings(keys);
 
   // Compute local pool size: max(params + vars + labels) across all
@@ -2305,56 +2589,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
 };
 
 /**
- * Backend-provided renderers for i32 binary-op categories.
- *
- * Concrete backends supply target-language syntax for each category while the
- * shared dispatcher keeps the {@code I32Coercion.OP_*} switch in one place.
- *
- * @protected
- * @typedef {{
- *   renderArithmetic: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
- *   renderMultiply: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
- *   renderDivision: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
- *   renderBitwise: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
- *   renderRotate: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
- *   renderComparison: function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string,
- *   renderUnknown: (function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string|void)
- * }}
- */
-Wasm2Lang.Backend.AbstractCodegen.BinaryOpRenderer_;
-
-/**
- * Dispatches a classified i32 binary operation to backend-specific renderers.
+ * Dispatches a classified i32 binary operation to the backend-specific
+ * renderer registered in {@code binaryRenderers_}.
  *
  * @protected
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
- * @param {!Wasm2Lang.Backend.AbstractCodegen.BinaryOpRenderer_} renderer
  * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOpByCategory_ = function (info, L, R, renderer) {
-  // OP_* constants are 0–5 — direct index into dispatch table.
-  var /** @const {!Array<function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string>} */ dispatch =
-      [
-        renderer.renderArithmetic,
-        renderer.renderMultiply,
-        renderer.renderDivision,
-        renderer.renderBitwise,
-        renderer.renderRotate,
-        renderer.renderComparison
-      ];
-
-  var /** @const {function(this:Wasm2Lang.Backend.AbstractCodegen, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string|void} */ fn =
-      dispatch[info.category];
-  if (fn) {
-    return fn.call(this, info, L, R);
-  }
-
-  if ('function' === typeof renderer.renderUnknown) {
-    return renderer.renderUnknown.call(this, info, L, R);
-  }
-  return '(__unknown_binop(' + L + ', ' + R + '))';
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOp_ = function (info, L, R) {
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined} */ fn = this.binaryRenderers_[info.category];
+  return fn ? fn(this, info, L, R) : '(__unknown_binop(' + L + ', ' + R + '))';
 };
 
 /**

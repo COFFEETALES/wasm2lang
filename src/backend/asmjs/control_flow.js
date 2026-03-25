@@ -16,6 +16,7 @@
  *   indent: number,
  *   wasmModule: !BinaryenModule,
  *   visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor,
+ *   functionTables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>,
  *   fusedBlockToLoop: !Object<string, string>,
  *   pendingBlockFusion: string,
  *   currentLoopName: string,
@@ -73,12 +74,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.LocalGetId:
       result = this.localN_(/** @type {number} */ (expr['index']));
-      resultCat = A.CAT_RAW;
+      resultCat = C.SIGNED;
       break;
 
     case binaryen.GlobalGetId:
       result = this.n_('$g_' + /** @type {string} */ (expr['name']));
-      resultCat = A.CAT_RAW;
+      resultCat = C.SIGNED;
       break;
 
     case binaryen.BinaryId: {
@@ -220,9 +221,29 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       }
       break;
     }
+    case binaryen.CallIndirectId: {
+      var /** @const {!Array<number>} */ ciParamTypes = binaryen.expandType(/** @type {number} */ (expr['params']));
+      var /** @const {number} */ ciRetType = /** @type {number} */ (expr['type']);
+      var /** @const {string} */ ciSigKey = A.buildSignatureKey_(binaryen, ciParamTypes, ciRetType);
+      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_|void} */ ciDesc =
+          state.functionTables[ciSigKey];
+      var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
+      var /** @const {number} */ ciMask = ciDesc ? ciDesc.tableMask : 0;
+      var /** @const {string} */ ciTableName = this.n_('$ftable_' + ciSigKey);
+      // asm.js requires the table index to be exactly (expr) & mask form.
+      // Use the raw expression without |0 coercion since & mask serves as int coercion.
+      var /** @const {string} */ ciCallExpr = ciTableName + '[(' + cr(0) + ') & ' + ciMask + '](' + ciArgs.join(', ') + ')';
+      if (ciRetType === binaryen.none || 0 === ciRetType) {
+        result = pad(ind) + ciCallExpr + ';\n';
+      } else {
+        result = this.renderCoercionByType_(binaryen, ciCallExpr, ciRetType);
+        resultCat = A.catForCoercedType_(binaryen, ciRetType);
+      }
+      break;
+    }
     case binaryen.ReturnId:
       if (childResultAt(0).hasExpression) {
-        result = pad(ind) + 'return ' + this.coerceToType_(binaryen, cr(0), cc(0), state.functionInfo.results) + ';\n';
+        result = pad(ind) + 'return ' + this.renderCoercionByType_(binaryen, cr(0), state.functionInfo.results) + ';\n';
       } else {
         result = pad(ind) + 'return;\n';
       }

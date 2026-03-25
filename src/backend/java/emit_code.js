@@ -21,6 +21,25 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   var /** @const {string} */ className = 'Wasm' + moduleName.charAt(0).toUpperCase() + moduleName.substring(1);
   outputParts[outputParts.length] = 'class ' + className + ' {';
 
+  // Functional interfaces for function table signatures.
+  var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
+  for (var /** number */ fti = 0, /** @const {number} */ ftLen = ftKeys.length; fti !== ftLen; ++fti) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDescI =
+        moduleInfo.functionTables[ftKeys[fti]];
+    var /** @const {string} */ ifaceName = this.n_('$ftsig_' + ftDescI.signatureKey);
+    var /** @const {string} */ ifaceRetType = Wasm2Lang.Backend.JavaCodegen.javaTypeName_(
+        binaryen,
+        ftDescI.signatureReturnType
+      );
+    var /** @const {!Array<string>} */ ifaceParams = [];
+    for (var /** number */ ip = 0, /** @const {number} */ ipLen = ftDescI.signatureParams.length; ip !== ipLen; ++ip) {
+      ifaceParams[ifaceParams.length] =
+        Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, ftDescI.signatureParams[ip]) + ' ' + this.localN_(ip);
+    }
+    outputParts[outputParts.length] =
+      pad1 + '@FunctionalInterface interface ' + ifaceName + ' { ' + ifaceRetType + ' call(' + ifaceParams.join(', ') + '); }';
+  }
+
   // Buffer field.
   outputParts[outputParts.length] = pad1 + 'java.nio.ByteBuffer ' + this.n_('buffer') + ';';
 
@@ -38,6 +57,14 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
       pad1 + gType + ' ' + this.n_('$g_' + gName) + ' = ' + moduleInfo.globals[gi].globalInitValue + ';';
   }
 
+  // Function table array fields.
+  for (var /** number */ ftf = 0; ftf !== ftLen; ++ftf) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDescF =
+        moduleInfo.functionTables[ftKeys[ftf]];
+    outputParts[outputParts.length] =
+      pad1 + this.n_('$ftsig_' + ftDescF.signatureKey) + '[] ' + this.n_('$ftable_' + ftDescF.signatureKey) + ';';
+  }
+
   // Constructor accepting foreign imports and buffer.
   var /** @const {string} */ bufferParamName = this.n_('buffer');
   outputParts[outputParts.length] =
@@ -48,6 +75,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     outputParts[outputParts.length] =
       pad2 + 'this.' + this.n_('$if_' + importSafe) + ' = foreign.get("' + moduleInfo.impFuncs[ci].importBaseName + '");';
   }
+  // Reserve a slot for function table array initialisation — method
+  // references resolve against methods defined later in the class, but the
+  // export-name map is not yet built at this point, so actual init is
+  // spliced in after the function bodies have been emitted.
+  var /** @const {number} */ ftInitInsertIndex = outputParts.length;
   outputParts[outputParts.length] = pad1 + '}';
 
   // Build internalName → exportName map so exported methods use their
@@ -69,7 +101,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
       moduleInfo.importedNames,
       moduleInfo.functionSignatures,
       moduleInfo.globalTypes,
-      exportNameMap
+      exportNameMap,
+      moduleInfo.functionTables
     );
   }
 
@@ -78,6 +111,51 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   this.usedHelpers_ = null;
   for (var /** number */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
     outputParts[outputParts.length] = helperLines[hi];
+  }
+
+  // Function table array initialisation — splice into constructor now that
+  // the export-name map exists and method references can be resolved.
+  var /** @const {!Array<string>} */ ftInitLines = [];
+  for (var /** number */ fta = 0; fta !== ftLen; ++fta) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDescA =
+        moduleInfo.functionTables[ftKeys[fta]];
+    var /** @const {string} */ ftaSigKey = ftDescA.signatureKey;
+    var /** @const {string} */ ftaIfaceName = this.n_('$ftsig_' + ftaSigKey);
+    var /** @const {string} */ ftaArrayName = this.n_('$ftable_' + ftaSigKey);
+    var /** @const {boolean} */ ftaHasReturn =
+        ftDescA.signatureReturnType !== binaryen.none && 0 !== ftDescA.signatureReturnType;
+    // Build stub lambda for null entries.
+    var /** @const {!Array<string>} */ lambdaParams = [];
+    for (var /** number */ lp = 0, /** @const {number} */ lpLen = ftDescA.signatureParams.length; lp !== lpLen; ++lp) {
+      lambdaParams[lambdaParams.length] = this.localN_(lp);
+    }
+    var /** @type {string} */ stubLambda;
+    if (ftaHasReturn) {
+      stubLambda = '(' + lambdaParams.join(', ') + ') -> ' + this.renderLocalInit_(binaryen, ftDescA.signatureReturnType);
+    } else {
+      stubLambda = '(' + lambdaParams.join(', ') + ') -> {}';
+    }
+    // Build array entries.
+    var /** @const {!Array<string>} */ entryExprs = [];
+    for (var /** number */ te = 0, /** @const {number} */ teLen = ftDescA.tableEntries.length; te !== teLen; ++te) {
+      var /** @const {string|null} */ funcName = ftDescA.tableEntries[te].functionName;
+      if (null === funcName) {
+        entryExprs[entryExprs.length] = stubLambda;
+      } else {
+        var /** @const {boolean} */ fnIsExported = funcName in exportNameMap;
+        var /** @const {string} */ resolvedName = fnIsExported ? exportNameMap[funcName] : funcName;
+        var /** @const {string} */ methodRefName = fnIsExported
+            ? this.safeName_(resolvedName)
+            : this.n_(this.safeName_(resolvedName));
+        entryExprs[entryExprs.length] = 'this::' + methodRefName;
+      }
+    }
+    ftInitLines[ftInitLines.length] =
+      pad2 + 'this.' + ftaArrayName + ' = new ' + ftaIfaceName + '[] { ' + entryExprs.join(', ') + ' };';
+  }
+  // Splice init lines into the constructor (just before the closing brace).
+  for (var /** number */ fts = ftInitLines.length - 1; fts >= 0; --fts) {
+    outputParts.splice(ftInitInsertIndex, 0, ftInitLines[fts]);
   }
 
   // Append function bodies.

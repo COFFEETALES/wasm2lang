@@ -26,6 +26,7 @@ Wasm2Lang.Backend.Php64Codegen.LabelEntry_;
  *   wasmModule: !BinaryenModule,
  *   visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor,
  *   pendingBlockFusion: string,
+ *   usedCaptures: !Object<string, boolean>,
  *   rootSwitchExitMap: ?Object<string, !Array<number>>,
  *   rootSwitchRsName: string,
  *   rootSwitchLoopName: string
@@ -153,19 +154,21 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
         ? A.CAT_F64
         : Wasm2Lang.Backend.ValueType.isF32(binaryen, localGetType)
           ? A.CAT_F32
-          : A.CAT_RAW;
+          : C.SIGNED;
       break;
     }
 
     case binaryen.GlobalGetId: {
       var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
-      result = this.phpVar_('$g_' + this.safeName_(globalGetName));
+      var /** @const {string} */ globalGetVar = this.phpVar_('$g_' + this.safeName_(globalGetName));
+      state.usedCaptures[globalGetVar] = true;
+      result = globalGetVar;
       resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
         ? A.CAT_F64
         : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
           ? A.CAT_F32
-          : A.CAT_RAW;
+          : C.SIGNED;
       break;
     }
 
@@ -231,6 +234,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {boolean} */ loadSigned = !!expr['isSigned'];
       var /** @const {number} */ loadType = /** @type {number} */ (expr['type']);
       var /** @const {string} */ nBuf = this.phpVar_('buffer');
+      state.usedCaptures[nBuf] = true;
 
       if (Wasm2Lang.Backend.ValueType.isF64(binaryen, loadType)) {
         result = "unpack('e', " + nBuf + ', ' + loadPtr + ')[1]';
@@ -262,6 +266,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ storeBytes = /** @type {number} */ (expr['bytes']);
       var /** @const {number} */ storeType = /** @type {number} */ (expr['valueType']) || binaryen.i32;
       var /** @const {string} */ sBuf = this.phpVar_('buffer');
+      state.usedCaptures[sBuf] = true;
 
       var /** @const {string} */ tP = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_P_);
       var /** @const {string} */ tS = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_S_);
@@ -269,7 +274,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       if (Wasm2Lang.Backend.ValueType.isF64(binaryen, storeType)) {
         result = rps(pad(ind), tP, storePtr, tS, "'e'", this.coerceToType_(binaryen, cr(1), cc(1), storeType), sBuf, 8);
       } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, storeType)) {
-        result = rps(pad(ind), tP, storePtr, tS, "'g'", this.n_('_w2l_f32') + '(' + cr(1) + ')', sBuf, 4);
+        result = rps(pad(ind), tP, storePtr, tS, "'g'", this.coerceToType_(binaryen, cr(1), cc(1), storeType), sBuf, 4);
       } else if (4 === storeBytes) {
         result = rps(pad(ind), tP, storePtr, tS, "'V'", this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32), sBuf, 4);
       } else if (2 === storeBytes) {
@@ -312,12 +317,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.GlobalSetId: {
       var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
-      result =
-        pad(ind) +
-        this.phpVar_('$g_' + this.safeName_(globalName)) +
-        ' = ' +
-        this.coerceToType_(binaryen, cr(0), cc(0), globalType) +
-        ';\n';
+      var /** @const {string} */ globalSetVar = this.phpVar_('$g_' + this.safeName_(globalName));
+      state.usedCaptures[globalSetVar] = true;
+      result = pad(ind) + globalSetVar + ' = ' + this.coerceToType_(binaryen, cr(0), cc(0), globalType) + ';\n';
       break;
     }
     case binaryen.CallId: {
@@ -325,6 +327,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ importBase = state.importedNames[callTarget] || '';
       var /** @type {string} */ callName =
           '' !== importBase ? this.phpVar_('$if_' + this.safeName_(importBase)) : this.phpVar_(this.safeName_(callTarget));
+      state.usedCaptures[callName] = true;
       var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
           binaryen,
           expr,
@@ -338,6 +341,21 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       } else {
         result = this.renderCoercionByType_(binaryen, callExpr, callType);
         resultCat = A.catForCoercedType_(binaryen, callType);
+      }
+      break;
+    }
+    case binaryen.CallIndirectId: {
+      var /** @const {string} */ ftableVar = this.phpVar_('ftable');
+      state.usedCaptures[ftableVar] = true;
+      var /** @const {number} */ ciRetType = /** @type {number} */ (expr['type']);
+      var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
+      var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
+      var /** @const {string} */ ciCallExpr = this.phpVar_('ftable') + '[' + ciIndexExpr + '](' + ciArgs.join(', ') + ')';
+      if (ciRetType === binaryen.none || 0 === ciRetType) {
+        result = pad(ind) + ciCallExpr + ';\n';
+      } else {
+        result = this.renderCoercionByType_(binaryen, ciCallExpr, ciRetType);
+        resultCat = A.catForCoercedType_(binaryen, ciRetType);
       }
       break;
     }

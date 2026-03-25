@@ -5,40 +5,40 @@
 // ---------------------------------------------------------------------------
 
 /**
- * @this {!Wasm2Lang.Backend.Php64Codegen}
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderArithmeticBinaryOp_ = function (info, L, R) {
+Wasm2Lang.Backend.Php64Codegen.renderArithmeticBinary_ = function (self, info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return this.n_('_w2l_i') + '(' + P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_) + ')';
+  return self.n_('_w2l_i') + '(' + P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_) + ')';
 };
 
 /**
- * @this {!Wasm2Lang.Backend.Php64Codegen}
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderMultiplyBinaryOp_ = function (info, L, R) {
+Wasm2Lang.Backend.Php64Codegen.renderMultiplyBinary_ = function (self, info, L, R) {
   void info;
-  this.markHelper_('_w2l_imul');
-  return this.n_('_w2l_imul') + '(' + L + ', ' + R + ')';
+  self.markHelper_('_w2l_imul');
+  return self.n_('_w2l_imul') + '(' + L + ', ' + R + ')';
 };
 
 /**
- * @this {!Wasm2Lang.Backend.Php64Codegen}
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderDivisionBinaryOp_ = function (info, L, R) {
+Wasm2Lang.Backend.Php64Codegen.renderDivisionBinary_ = function (self, info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ nI = this.n_('_w2l_i');
+  var /** @const {string} */ nI = self.n_('_w2l_i');
   if ('/' === info.opStr) {
     if (info.unsigned) {
       return (
@@ -70,15 +70,15 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderDivisionBinaryOp_ = function (inf
 };
 
 /**
- * @this {!Wasm2Lang.Backend.Php64Codegen}
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderBitwiseBinaryOp_ = function (info, L, R) {
+Wasm2Lang.Backend.Php64Codegen.renderBitwiseBinary_ = function (self, info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ nI = this.n_('_w2l_i');
+  var /** @const {string} */ nI = self.n_('_w2l_i');
   if ('>>>' === info.opStr) {
     // Unsigned right shift (not native in PHP).
     return (
@@ -110,15 +110,15 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderBitwiseBinaryOp_ = function (info
 };
 
 /**
- * @this {!Wasm2Lang.Backend.Php64Codegen}
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderRotateBinaryOp_ = function (info, L, R) {
+Wasm2Lang.Backend.Php64Codegen.renderRotateBinary_ = function (self, info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ nI = this.n_('_w2l_i');
+  var /** @const {string} */ nI = self.n_('_w2l_i');
   var /** @const {string} */ shiftMask = Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R);
   var /** @const {string} */ reverseShift = P.renderInfix('32', '-', shiftMask, P.PREC_ADDITIVE_);
 
@@ -151,12 +151,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderRotateBinaryOp_ = function (info,
 };
 
 /**
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
  * @param {string} R
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderComparisonBinaryOp_ = function (info, L, R) {
+Wasm2Lang.Backend.Php64Codegen.renderComparisonBinary_ = function (self, info, L, R) {
+  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @type {string} */ leftExpr = L;
   var /** @type {string} */ rightExpr = R;
@@ -166,27 +168,4 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderComparisonBinaryOp_ = function (i
     rightExpr = P.wrap(Wasm2Lang.Backend.Php64Codegen.renderMask32_(R), P.PREC_RELATIONAL_, false);
   }
   return '(' + P.renderInfix(leftExpr, info.opStr, rightExpr, P.PREC_RELATIONAL_) + ' ? 1 : 0)';
-};
-
-/**
- * @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryOpRenderer_}
- */
-Wasm2Lang.Backend.Php64Codegen.binaryOpRenderer_ = {
-  renderArithmetic: Wasm2Lang.Backend.Php64Codegen.prototype.renderArithmeticBinaryOp_,
-  renderMultiply: Wasm2Lang.Backend.Php64Codegen.prototype.renderMultiplyBinaryOp_,
-  renderDivision: Wasm2Lang.Backend.Php64Codegen.prototype.renderDivisionBinaryOp_,
-  renderBitwise: Wasm2Lang.Backend.Php64Codegen.prototype.renderBitwiseBinaryOp_,
-  renderRotate: Wasm2Lang.Backend.Php64Codegen.prototype.renderRotateBinaryOp_,
-  renderComparison: Wasm2Lang.Backend.Php64Codegen.prototype.renderComparisonBinaryOp_
-};
-
-/**
- * @this {!Wasm2Lang.Backend.Php64Codegen}
- * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
- * @param {string} L
- * @param {string} R
- * @return {string}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderBinaryOp_ = function (info, L, R) {
-  return this.renderBinaryOpByCategory_(info, L, R, Wasm2Lang.Backend.Php64Codegen.binaryOpRenderer_);
 };

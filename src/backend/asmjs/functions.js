@@ -9,6 +9,7 @@
  * @param {!Object<string, string>} importedNames
  * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
  * @param {!Object<string, number>} globalTypes
+ * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>} functionTables
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
@@ -17,7 +18,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
   funcInfo,
   importedNames,
   functionSignatures,
-  globalTypes
+  globalTypes,
+  functionTables
 ) {
   var /** @const {!Array<string>} */ parts = [];
   var /** @const {string} */ fnName = this.n_(this.safeName_(funcInfo.name));
@@ -65,6 +67,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
         functionInfo: funcInfo,
         functionSignatures: functionSignatures,
         globalTypes: globalTypes,
+        functionTables: functionTables,
         labelKinds: /** @type {!Object<string, string>} */ (Object.create(null)),
         labelMap: /** @type {!Object<string, number>} */ (Object.create(null)),
         importedNames: importedNames,
@@ -91,7 +94,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
       });
     emitState.visitor = visitor;
     var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
-    Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, bodyResult);
+    this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, pad(2));
   }
 
   parts[parts.length] = pad(1) + '}';

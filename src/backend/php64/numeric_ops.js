@@ -27,10 +27,18 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
   }
 
   if ('convert_s_i32_to_f32' === name) {
-    return nF32 + '(' + nI + '(' + valueExpr + '))';
+    // prettier-ignore
+    var /** @const {string} */ csf32 = opt_valueCat != null
+      ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, binaryen.i32)
+      : nI + '(' + valueExpr + ')';
+    return nF32 + '(' + csf32 + ')';
   }
   if ('convert_s_i32_to_f64' === name) {
-    return '(float)' + nI + '(' + valueExpr + ')';
+    // prettier-ignore
+    var /** @const {string} */ csf64 = opt_valueCat != null
+      ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, binaryen.i32)
+      : nI + '(' + valueExpr + ')';
+    return '(float)' + csf64;
   }
 
   if ('demote_f64_to_f32' === name) {

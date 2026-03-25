@@ -5,24 +5,51 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Builds the PHP {@code use} clause entries for a function closure.
+ * Builds the PHP {@code use} clause entries for a function closure,
+ * including only variables that the function body actually references.
  *
+ * @param {!Object<string, boolean>} usedCaptures
  * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} globals
  * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} imports
  * @param {!Array<string>} internalFuncNames
+ * @param {boolean} hasFunctionTable
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.buildUseClause_ = function (globals, imports, internalFuncNames) {
+Wasm2Lang.Backend.Php64Codegen.prototype.buildUseClause_ = function (
+  usedCaptures,
+  globals,
+  imports,
+  internalFuncNames,
+  hasFunctionTable
+) {
   var /** @const {!Array<string>} */ entries = [];
-  entries[entries.length] = '&' + this.phpVar_('buffer');
+  var /** @const {string} */ bufVar = this.phpVar_('buffer');
+  if (usedCaptures[bufVar]) {
+    entries[entries.length] = '&' + bufVar;
+  }
   for (var /** number */ gi = 0, /** @const {number} */ gLen = globals.length; gi !== gLen; ++gi) {
-    entries[entries.length] = '&' + this.phpVar_('$g_' + this.safeName_(globals[gi].globalName));
+    var /** @const {string} */ gVar = this.phpVar_('$g_' + this.safeName_(globals[gi].globalName));
+    if (usedCaptures[gVar]) {
+      entries[entries.length] = '&' + gVar;
+    }
   }
   for (var /** number */ ii = 0, /** @const {number} */ iLen = imports.length; ii !== iLen; ++ii) {
-    entries[entries.length] = '&' + this.phpVar_('$if_' + this.safeName_(imports[ii].importBaseName));
+    var /** @const {string} */ iVar = this.phpVar_('$if_' + this.safeName_(imports[ii].importBaseName));
+    if (usedCaptures[iVar]) {
+      entries[entries.length] = '&' + iVar;
+    }
   }
   for (var /** number */ fi = 0, /** @const {number} */ fLen = internalFuncNames.length; fi !== fLen; ++fi) {
-    entries[entries.length] = '&' + this.phpVar_(internalFuncNames[fi]);
+    var /** @const {string} */ fVar = this.phpVar_(internalFuncNames[fi]);
+    if (usedCaptures[fVar]) {
+      entries[entries.length] = '&' + fVar;
+    }
+  }
+  if (hasFunctionTable) {
+    var /** @const {string} */ ftVar = this.phpVar_('ftable');
+    if (usedCaptures[ftVar]) {
+      entries[entries.length] = '&' + ftVar;
+    }
   }
   return entries.join(', ');
 };
@@ -39,6 +66,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.buildUseClause_ = function (globals, im
  * @param {!Array<string>} internalFuncNames
  * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
  * @param {!Object<string, number>} globalTypes
+ * @param {boolean} hasFunctionTable
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
@@ -50,7 +78,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   imports,
   internalFuncNames,
   functionSignatures,
-  globalTypes
+  globalTypes,
+  hasFunctionTable
 ) {
   var /** @const {!Array<string>} */ parts = [];
   var /** @const {string} */ fnName = this.phpVar_(this.safeName_(funcInfo.name));
@@ -59,16 +88,17 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   var /** @const {!Array<number>} */ varTypes = /** @type {!Array<number>} */ (funcInfo.vars) || [];
   var /** @const {number} */ numVars = varTypes.length;
 
-  // Build use clause.
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
-  var /** @const {string} */ useClause = this.buildUseClause_(globals, imports, internalFuncNames);
 
   // Parameter list.
   var /** @const {!Array<string>} */ paramNames = [];
   for (var /** number */ pi = 0; pi !== numParams; ++pi) {
     paramNames[paramNames.length] = this.localN_(pi);
   }
-  parts[parts.length] = pad(1) + fnName + ' = function(' + paramNames.join(', ') + ') use (' + useClause + ') {';
+  // Reserve slot for the function header; the use clause is finalised after
+  // the body walk so that &$ftable is only captured when actually needed.
+  var /** @const {number} */ headerIndex = parts.length;
+  parts[parts.length] = '';
 
   // Coerce parameters to their wasm types.
   for (var /** number */ pa = 0; pa !== numParams; ++pa) {
@@ -94,6 +124,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   }
 
   // Walk the body with the code-gen visitor.
+  /** @type {!Object<string, boolean>} */
+  var usedCaptures = /** @type {!Object<string, boolean>} */ (Object.create(null));
   if (0 !== funcInfo.body) {
     var /** @const {!Wasm2Lang.Backend.Php64Codegen.EmitState_} */ emitState = {
         binaryen: binaryen,
@@ -104,6 +136,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
         labelStack: [],
         importedNames: importedNames,
         indent: 2,
+        usedCaptures: usedCaptures,
         wasmModule: wasmModule,
         visitor: null,
         pendingBlockFusion: '',
@@ -141,8 +174,19 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
       });
     emitState.visitor = visitor;
     var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
-    Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, bodyResult);
+    this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, pad(2));
   }
+
+  // Finalise the function header now that we know which captures are needed.
+  var /** @const {string} */ useClause = this.buildUseClause_(
+      usedCaptures,
+      globals,
+      imports,
+      internalFuncNames,
+      hasFunctionTable
+    );
+  var /** @const {string} */ usePart = '' !== useClause ? ' use (' + useClause + ')' : '';
+  parts[headerIndex] = pad(1) + fnName + ' = function(' + paramNames.join(', ') + ')' + usePart + ' {';
 
   parts[parts.length] = pad(1) + '};';
   return parts.join('\n');

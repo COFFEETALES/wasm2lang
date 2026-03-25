@@ -33,7 +33,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
       moduleInfo.impFuncs,
       internalFuncNames,
       moduleInfo.functionSignatures,
-      moduleInfo.globalTypes
+      moduleInfo.globalTypes,
+      moduleInfo.flatTableEntries.length > 0
     );
   }
   var /** @const {!Object<string, boolean>} */ used = this.usedHelpers_;
@@ -282,9 +283,28 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     outputParts[outputParts.length] = pad1 + this.phpVar_(internalFuncNames[fi]) + ' = null;';
   }
 
+  // Function table forward declaration.
+  if (moduleInfo.flatTableEntries.length > 0) {
+    outputParts[outputParts.length] = pad1 + this.phpVar_('ftable') + ' = [];';
+  }
+
   // Append function bodies.
   for (var /** number */ fp = 0, /** @const {number} */ fpLen = functionParts.length; fp !== fpLen; ++fp) {
     outputParts[outputParts.length] = functionParts[fp];
+  }
+
+  // Function table population.
+  if (moduleInfo.flatTableEntries.length > 0) {
+    var /** @const {!Array<string>} */ ftEntries = [];
+    for (var /** number */ fte = 0, /** @const {number} */ fteLen = moduleInfo.flatTableEntries.length; fte !== fteLen; ++fte) {
+      var /** @const {string|null} */ fteName = moduleInfo.flatTableEntries[fte];
+      if (null === fteName) {
+        ftEntries[ftEntries.length] = 'null';
+      } else {
+        ftEntries[ftEntries.length] = this.phpVar_(this.safeName_(fteName));
+      }
+    }
+    outputParts[outputParts.length] = pad1 + this.phpVar_('ftable') + ' = [' + ftEntries.join(', ') + '];';
   }
 
   // Return array.

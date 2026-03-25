@@ -63,7 +63,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       funcInfo,
       moduleInfo.importedNames,
       moduleInfo.functionSignatures,
-      moduleInfo.globalTypes
+      moduleInfo.globalTypes,
+      moduleInfo.functionTables
     );
   }
 
@@ -129,6 +130,59 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   // Append function bodies.
   for (var /** number */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
     outputParts[outputParts.length] = functionParts[fi];
+  }
+
+  // Function table stubs (must come before table var declarations in asm.js).
+  var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
+  for (var /** number */ fti = 0, /** @const {number} */ ftLen = ftKeys.length; fti !== ftLen; ++fti) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc =
+        moduleInfo.functionTables[ftKeys[fti]];
+    if (ftDesc.stubNeeded) {
+      var /** @const {string} */ ftSigKey = ftDesc.signatureKey;
+      var /** @const {string} */ stubName = this.n_('$ftable_' + ftSigKey + '_stub');
+      var /** @const {!Array<string>} */ stubParams = [];
+      var /** @const {!Array<string>} */ stubAnnotations = [];
+      for (var /** number */ sp = 0, /** @const {number} */ spLen = ftDesc.signatureParams.length; sp !== spLen; ++sp) {
+        var /** @const {string} */ spName = this.localN_(sp);
+        stubParams[stubParams.length] = spName;
+        stubAnnotations[stubAnnotations.length] =
+          pad1 + pad1 + spName + ' = ' + this.renderCoercionByType_(binaryen, spName, ftDesc.signatureParams[sp]) + ';';
+      }
+      var /** @type {string} */ stubReturn = '';
+      if (ftDesc.signatureReturnType !== binaryen.none && 0 !== ftDesc.signatureReturnType) {
+        stubReturn = pad1 + pad1 + 'return ' + this.renderCoercionByType_(binaryen, '0', ftDesc.signatureReturnType) + ';\n';
+      }
+      outputParts[outputParts.length] =
+        pad1 +
+        'function ' +
+        stubName +
+        '(' +
+        stubParams.join(', ') +
+        ') {\n' +
+        stubAnnotations.join('\n') +
+        (stubAnnotations.length ? '\n' : '') +
+        stubReturn +
+        pad1 +
+        '}';
+    }
+  }
+
+  // Function table var declarations (after all function definitions).
+  for (var /** number */ ftv = 0; ftv !== ftLen; ++ftv) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc2 =
+        moduleInfo.functionTables[ftKeys[ftv]];
+    var /** @const {string} */ ftSigKey2 = ftDesc2.signatureKey;
+    var /** @const {string} */ ftTableName = this.n_('$ftable_' + ftSigKey2);
+    var /** @const {!Array<string>} */ tableEntryNames = [];
+    for (var /** number */ te = 0, /** @const {number} */ teLen = ftDesc2.tableEntries.length; te !== teLen; ++te) {
+      var /** @const {string|null} */ funcName = ftDesc2.tableEntries[te].functionName;
+      if (null === funcName) {
+        tableEntryNames[tableEntryNames.length] = this.n_('$ftable_' + ftSigKey2 + '_stub');
+      } else {
+        tableEntryNames[tableEntryNames.length] = this.n_(this.safeName_(funcName));
+      }
+    }
+    outputParts[outputParts.length] = pad1 + 'var ' + ftTableName + ' = [' + tableEntryNames.join(', ') + '];';
   }
 
   // Return object.

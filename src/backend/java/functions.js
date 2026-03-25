@@ -10,6 +10,7 @@
  * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
  * @param {!Object<string, number>} globalTypes
  * @param {!Object<string, string>} exportNameMap
+ * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>} functionTables
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
@@ -19,7 +20,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
   importedNames,
   functionSignatures,
   globalTypes,
-  exportNameMap
+  exportNameMap,
+  functionTables
 ) {
   var /** @const {!Array<string>} */ parts = [];
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
@@ -73,6 +75,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
         functionInfo: funcInfo,
         functionSignatures: functionSignatures,
         globalTypes: globalTypes,
+        functionTables: functionTables,
         labelKinds: /** @type {!Object<string, string>} */ (Object.create(null)),
         labelMap: /** @type {!Object<string, number>} */ (Object.create(null)),
         importedNames: importedNames,
@@ -101,7 +104,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
       });
     emitState.visitor = visitor;
     var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
-    Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, bodyResult);
+    this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, pad2);
   }
 
   parts[parts.length] = pad1 + '}';

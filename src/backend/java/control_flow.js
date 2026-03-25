@@ -10,6 +10,7 @@
  *   labelMap: !Object<string, number>,
  *   importedNames: !Object<string, string>,
  *   exportNameMap: !Object<string, string>,
+ *   functionTables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>,
  *   indent: number,
  *   lastExprIsTerminal: boolean,
  *   wasmModule: !BinaryenModule,
@@ -90,7 +91,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         ? A.CAT_F64
         : Wasm2Lang.Backend.ValueType.isF32(binaryen, localGetType)
           ? A.CAT_F32
-          : A.CAT_RAW;
+          : C.SIGNED;
       break;
     }
     case binaryen.GlobalGetId: {
@@ -101,7 +102,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         ? A.CAT_F64
         : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
           ? A.CAT_F32
-          : A.CAT_RAW;
+          : C.SIGNED;
       break;
     }
 
@@ -230,6 +231,22 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       } else {
         result = this.renderCoercionByType_(binaryen, callExpr, callType);
         resultCat = A.catForCoercedType_(binaryen, callType);
+      }
+      break;
+    }
+    case binaryen.CallIndirectId: {
+      var /** @const {!Array<number>} */ ciParamTypes = binaryen.expandType(/** @type {number} */ (expr['params']));
+      var /** @const {number} */ ciRetType = /** @type {number} */ (expr['type']);
+      var /** @const {string} */ ciSigKey = A.buildSignatureKey_(binaryen, ciParamTypes, ciRetType);
+      var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
+      var /** @const {string} */ ciTableName = this.n_('$ftable_' + ciSigKey);
+      var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
+      var /** @const {string} */ ciCallExpr = 'this.' + ciTableName + '[' + ciIndexExpr + '].call(' + ciArgs.join(', ') + ')';
+      if (ciRetType === binaryen.none || 0 === ciRetType) {
+        result = pad(ind) + ciCallExpr + ';\n';
+      } else {
+        result = this.renderCoercionByType_(binaryen, ciCallExpr, ciRetType);
+        resultCat = A.catForCoercedType_(binaryen, ciRetType);
       }
       break;
     }

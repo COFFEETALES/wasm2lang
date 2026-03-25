@@ -504,6 +504,21 @@ BinaryenExpressionInfo.prototype.isTee;
 BinaryenExpressionInfo.prototype.isReturn;
 
 /**
+ * @type {(string|undefined)}
+ */
+BinaryenExpressionInfo.prototype.table;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.params;
+
+/**
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.results;
+
+/**
  * @typedef {{
  *   name: string,
  *   module: string,
@@ -533,6 +548,33 @@ var BinaryenExportInfo;
  * }}
  */
 var BinaryenMemorySegmentInfo;
+
+/**
+ * @return {number}
+ */
+BinaryenModule.prototype.getNumElementSegments = function () {};
+
+/**
+ * @param {number} index
+ * @return {number}
+ */
+BinaryenModule.prototype.getElementSegmentByIndex = function (index) {};
+
+/**
+ * @param {number} segPtr
+ * @return {!BinaryenElementSegmentInfo}
+ */
+Binaryen.prototype.getElementSegmentInfo = function (segPtr) {};
+
+/**
+ * @typedef {{
+ *   name: string,
+ *   table: string,
+ *   offset: number,
+ *   data: !Array<string>
+ * }}
+ */
+var BinaryenElementSegmentInfo;
 
 // ---------------------------------------------------------------------------
 // Missing expression-type IDs
