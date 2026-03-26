@@ -54,7 +54,7 @@ Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_ = function (expr) {
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderFloatCoercion_ = function (expr) {
   this.markBinding_('Math_fround');
-  return this.n_('Math_fround') + '(' + expr + ')';
+  return this.n_('Math_fround') + '(' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
 };
 
 /**

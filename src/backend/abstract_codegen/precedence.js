@@ -27,7 +27,8 @@
  *   wrap: function(string, number, boolean): string,
  *   renderPrefix: function(string, string): string,
  *   renderInfix: function(string, string, string, number, boolean=): string,
- *   formatCondition: function(string): string
+ *   formatCondition: function(string): string,
+ *   stripOuter: function(string): string
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_;
@@ -319,6 +320,19 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
       return expr;
     }
     return '(' + expr + ')';
+  },
+
+  /**
+   * Strips redundant outer parentheses from a fully-parenthesized expression.
+   * Use when the expression will be placed inside a grouping context (function
+   * call, cast operand, etc.) that already provides its own boundaries.
+   *
+   * @param {string} expr
+   * @return {string}
+   */
+  stripOuter: function (expr) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    return P.isFullyParenthesized(expr) ? expr.slice(1, -1) : expr;
   }
 });
 

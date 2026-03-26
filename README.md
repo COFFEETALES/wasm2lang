@@ -2,81 +2,79 @@
 
 <div align="center">
 
-**WebAssembly to target-language code generator**
+**Compile once to WebAssembly. Ship everywhere as source code.**
 
 [![npm](https://img.shields.io/npm/v/@coffeetales.net/wasm2lang?style=for-the-badge)](https://www.npmjs.com/package/@coffeetales.net/wasm2lang)
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-pink?style=for-the-badge)](https://github.com/sponsors/COFFEETALES)
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-%E2%9D%A4%EF%B8%8F%20GitHub%20Sponsors-pink?style=for-the-badge)](https://github.com/sponsors/COFFEETALES)
 [![GitHub stars](https://img.shields.io/github/stars/COFFEETALES/wasm2lang?style=for-the-badge)](../../stargazers)
 
 </div>
 
 ---
 
-## Try it now
+> **[Launch the Playground](https://coffeetales.github.io/wasm2lang/)** -- no
+> install, no server. Pick a sample, choose a backend, and see generated
+> asm.js, PHP, or Java code instantly in your browser.
 
-> **[Launch the Playground](https://coffeetales.github.io/wasm2lang/)**
->
-> The playground runs `wasm2lang` entirely in your browser — no install, no
-> server. Pick a sample, choose a backend and normalization pipeline, and see
-> the generated code instantly. It is the fastest way to explore what
-> `wasm2lang` produces for each backend (asm.js, PHP, Java), test different
-> normalization strategies, and experiment with identifier mangling.
+---
 
-`wasm2lang` is a CLI tool that reads WebAssembly modules and emits equivalent
-source code in other languages. The pipeline normalizes the input through
-configurable passes, traverses the IR, and emits code for a selected backend.
+`wasm2lang` reads WebAssembly modules and emits equivalent, human-readable
+source code. Not an interpreter. Not a runtime bridge. Actual source code that
+compiles, runs, and optimizes like anything else written in the target language.
 
-## Why wasm2lang exists
+One logic base. Multiple ecosystems. Zero runtime dependencies.
 
-`wasm2lang` was created around a simple idea: if your code already compiles to
-WebAssembly, you should be able to reuse that investment across multiple
-languages without rewriting the same core logic again and again.
+## The problem
 
-Instead of treating WebAssembly only as a runtime format, `wasm2lang` treats it
-as a portable intermediate representation for source-code generation. This makes
-it possible to share one logic base, then emit equivalent code for ecosystems
-such as Java, PHP, and asm.js.
+You already compile to WebAssembly. That investment is real: tested algorithms,
+validated correctness, portable IR. But then you hit a wall.
 
-### When a WebAssembly runtime isn't an option
+**Your target environment refuses to run WASM.** A WordPress plugin on shared
+hosting cannot load a WebAssembly module. A managed PHP platform forbids native
+extensions. An enterprise Java application server locks down its classloader.
+Your portable bytecode is suddenly not portable at all.
 
-Embedding a WebAssembly runtime is not always possible — or even desirable.
+**Your WASM runtime is the bottleneck.** Running WebAssembly inside a
+host-language interpreter adds an abstraction layer the platform optimizer
+cannot see through. In Java, a WASM runtime is a JIT-over-JIT -- HotSpot never
+touches your actual logic. In PHP, it is an opaque extension the OPcache/JIT
+cannot reason about. For compute-intensive workloads -- cryptography, codecs,
+compression, numerical kernels -- the performance gap between interpreted WASM
+and natively optimized host code can be substantial.
 
-**Environments where WASM simply cannot run.** Shared hosting providers,
-managed PHP platforms, and restrictive application servers often forbid native
-extensions and custom runtimes. A WordPress plugin on a $5/month shared host
-cannot load a WASM module. `wasm2lang` bridges that gap: it emits pure PHP (or
-Java, or asm.js) source code with zero runtime dependencies, so the output runs
-anywhere the target language runs.
+**You are rewriting the same logic for every platform.** Without a
+transpilation path, each target language gets its own hand-rolled
+implementation. Bugs are fixed in one place and rediscovered in another.
+Behavior drifts. Maintenance compounds.
 
-**Performance-critical paths where native optimization matters.** Running WASM
-inside a host-language interpreter means an extra abstraction layer between your
-code and the platform's optimizer. In Java, a WASM runtime is an interpreter or
-a JIT-over-JIT — the bytecode never reaches HotSpot directly. `wasm2lang`
-emits plain Java source code that the JVM compiles, inlines, and optimizes like
-any other Java class. For compute-intensive workloads — cryptography, codecs,
-compression, numerical kernels — the difference between interpreted WASM and
-HotSpot-optimized Java bytecode can be substantial. The same principle applies
-to PHP 8+ with OPcache/JIT: transpiled PHP that the JIT can reason about
-directly will outperform opaque calls into a WASM interpreter extension.
+## The solution
 
-**The asm.js backend and its relationship to WebAssembly.** WebAssembly was
-designed as the binary evolution of asm.js — they share the same linear memory
-model, integer coercion semantics, and structured control flow. asm.js is not
-merely a JavaScript subset; it is a formally specified typed bytecode that
-happens to be syntactically valid JavaScript, and engines such as V8 still
-recognize the `"use asm"` directive and apply ahead-of-time compilation. This
-makes asm.js the most semantically natural transpilation target for WASM: the
-mapping is nearly a round-trip. It serves both as a proven foundation for the
-transpilation architecture and as a practical output format in its own right.
+`wasm2lang` treats WebAssembly not just as a runtime format, but as a portable
+intermediate representation for source-code generation.
 
-`wasm2lang` is designed for all of these situations: preserve the benefits of a
-shared WebAssembly-based codebase while generating output that is easier to
-adopt, integrate, and operate in the target ecosystem.
+Write once. Compile to `.wasm`. Run `wasm2lang`. Get native-feeling source code
+that each platform's toolchain can compile, inline, and optimize directly.
+
+## Backends
+
+| Backend     | `--language-out`  | Strength                                            |Status                                                                    |
+|-------------|-------------------|-----------------------------------------------------|--------------------------------------------------------------------------|
+| **asm.js**  | `ASMJS`           | Closest semantic match to WASM; AOT-compiled by V8  | Active -- full function-body emission, validated by V8 and SpiderMonkey  |
+| **PHP**     | `PHP64`           | Runs on shared hosting with no extensions           | Active -- full function-body emission, validated by PHP CLI              |
+| **Java**    | `JAVA`            | HotSpot/Graal optimize the output directly          | Active -- full function-body emission, validated by jshell               |
+
+**Why asm.js?** WebAssembly was designed as the binary evolution of asm.js --
+they share the same linear memory model, integer coercion semantics, and
+structured control flow. asm.js is not merely a JavaScript subset; it is a
+formally specified typed bytecode that happens to be syntactically valid
+JavaScript, and engines such as V8 still recognize the `"use asm"` directive
+and apply ahead-of-time compilation. This makes asm.js the most semantically
+natural transpilation target for WASM: the mapping is nearly a round-trip.
 
 The project currently focuses on WebAssembly MVP features for straightforward
-and reliable lowering. Longer term, its ambition is broader: support more
-advanced WebAssembly features such as SIMD and threads, especially for backends
-where those features could map well to the host platform — including Java.
+and reliable lowering. The longer-term ambition is broader: more WASM features,
+more backends, and deeper optimization passes -- especially where host
+capabilities like Java's SIMD intrinsics could map directly to WASM proposals.
 
 ## Installation
 
@@ -91,14 +89,6 @@ npx @coffeetales.net/wasm2lang --input-file module.wast --emit-code
 ```
 
 For development, clone the repo and build from source (see [Building](#building)).
-
-## Backends
-
-| Backend     | `--language-out`  | Strength                                            |Status                                                                   |
-|-------------|-------------------|-----------------------------------------------------|-------------------------------------------------------------------------|
-| **asm.js**  | `ASMJS`           | Closest semantic match to WASM; AOT-compiled by V8  | Active — full function-body emission, validated by V8 and SpiderMonkey  |
-| **PHP**     | `PHP64`           | Runs on shared hosting with no extensions           | Active — full function-body emission, validated by PHP CLI              |
-| **Java**    | `JAVA`            | HotSpot/Graal optimize the output directly          | Active — full function-body emission, validated by jshell               |
 
 ## Quick start
 
@@ -135,7 +125,7 @@ source files directly from `src/`.
 | `--emit-web-assembly [text]`  | `string`  | Emit the (normalized) WebAssembly module. Defaults to binary format; pass `text` for WAT output.                                                                     |
 | `--define <K=V>`              | `string`  | Set a compile-time define (repeatable). Used to configure backend constants.                                                                                         |
 | `--mangler <key>`             | `string`  | Enable deterministic identifier mangling. Same key = same output; different keys = different names.                                                                  |
-| `--help`                      | —         | Print option descriptions to stderr and exit.                                                                                                                        |
+| `--help`                      | --        | Print option descriptions to stderr and exit.                                                                                                                        |
 
 ### Normalization bundles
 
@@ -151,9 +141,9 @@ control how the WebAssembly IR is transformed before code emission.
 
 Common combinations:
 
-- **`binaryen:none`** — useful when the input is already in the shape you want.
-- **`binaryen:min,wasm2lang:codegen`** — recommended for general code generation.
-- **`binaryen:none,wasm2lang:codegen`** — skip Binaryen but still apply wasm2lang's structural passes.
+- **`binaryen:none`** -- useful when the input is already in the shape you want.
+- **`binaryen:min,wasm2lang:codegen`** -- recommended for general code generation.
+- **`binaryen:none,wasm2lang:codegen`** -- skip Binaryen but still apply wasm2lang's structural passes.
 
 ### Backend defines
 
@@ -225,7 +215,7 @@ wasm2lang                                                                       
  --emit-code
 ```
 
-`--input-data` passes the WAT source directly as a CLI argument — no pipe or
+`--input-data` passes the WAT source directly as a CLI argument -- no pipe or
 temp file needed.
 
 `--input-file wast:-` can also read WAT from stdin, but note that piping may
@@ -334,7 +324,7 @@ mkdir test_artifacts && cd test_artifacts
 The test harness:
 
 1. Generates `.wast` test fixtures from `tests/*.build.js` scripts.
-2. Builds each fixture in two variants — `codegen` (with `wasm2lang:codegen` passes + mangling) and `none` (raw, no codegen passes).
+2. Builds each fixture in two variants -- `codegen` (with `wasm2lang:codegen` passes + mangling) and `none` (raw, no codegen passes).
 3. For each variant, transpiles to all three backends (asm.js, PHP, Java).
 4. Runs the original `.wasm` through V8 as a reference.
 5. Runs each backend's output through its runtime (V8, SpiderMonkey, PHP CLI, jshell).
@@ -346,17 +336,6 @@ to pass.
 ## Browser Playground
 
 **Live version: https://coffeetales.github.io/wasm2lang/**
-
-The `web/` directory contains the browser playground that runs
-`wasm2lang` entirely client-side. Both `wasm2lang` and Binaryen are
-loaded from CDN — no build step or backend server required.
-
-To run it locally from a clone, serve the `web/` directory over HTTP:
-
-```bash
-npx serve web/
-# then open http://localhost:3000/
-```
 
 The playground includes selectable WAT samples (including data-segment
 examples that showcase metadata output), backend and normalization
@@ -371,11 +350,40 @@ Bug reports, issues, and pull requests are welcome. Good starting points:
 - Traversal, schema, and pass behavior
 - Test fixtures and validation coverage
 
-## Sponsorship
+---
 
-If `wasm2lang` is useful to you, consider
-[sponsoring the project](https://github.com/sponsors/COFFEETALES).
-Sponsorship supports ongoing backend work, validation coverage, and
-long-term maintainability.
+## Support the project
 
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-pink?style=for-the-badge)](https://github.com/sponsors/COFFEETALES)
+<div align="center">
+
+`wasm2lang` is built and maintained as an independent, self-funded project.
+There is no company behind it, no venture backing, no grants -- just focused
+engineering work, sustained over time.
+
+Every backend, every optimization pass, every test fixture that validates
+byte-identical output across three runtimes represents hours of careful
+design. Sponsorship is what makes that level of rigor sustainable.
+
+**Your sponsorship directly funds:**
+
+**New backends and language targets** -- expanding where WebAssembly can ship
+as native source code.
+
+**Deeper optimization passes** -- better loop recognition, smarter coercion
+elimination, tighter generated code.
+
+**Broader WebAssembly coverage** -- moving beyond MVP toward SIMD, threads,
+and advanced proposals.
+
+**Validation infrastructure** -- the cross-runtime test harness that
+guarantees correctness is not free to build or maintain.
+
+If `wasm2lang` saves you from rewriting logic across languages, if it unlocks
+a deployment target that a WASM runtime cannot reach, or if you simply believe
+this kind of tool should exist -- consider sponsoring.
+
+### [Become a sponsor](https://github.com/sponsors/COFFEETALES)
+
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-%E2%9D%A4%EF%B8%8F%20GitHub%20Sponsors-pink?style=for-the-badge&logo=github)](https://github.com/sponsors/COFFEETALES)
+
+</div>

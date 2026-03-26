@@ -41,7 +41,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.wrapI32_ = function (expr) {
   ) {
     return expr;
   }
-  return prefix + expr + ')';
+  return prefix + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
 };
 
 /**
@@ -53,15 +53,16 @@ Wasm2Lang.Backend.Php64Codegen.prototype.wrapI32_ = function (expr) {
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderCoercionByType_ = function (binaryen, expr, wasmType) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
     return this.wrapI32_(expr);
   }
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return this.n_('_w2l_f32') + '(' + expr + ')';
+    return this.n_('_w2l_f32') + '(' + P.stripOuter(expr) + ')';
   }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     if (0 === expr.indexOf('(float)')) return expr;
-    return '(float)(' + expr + ')';
+    return '(float)' + P.wrap(expr, P.PREC_UNARY_, true);
   }
   return expr;
 };

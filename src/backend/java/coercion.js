@@ -9,15 +9,16 @@
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.renderCoercionByType_ = function (binaryen, expr, wasmType) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
     // Java int is 32-bit — no truncation needed.
     return expr;
   }
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return '(float)(' + expr + ')';
+    return '(float)' + P.wrap(expr, P.PREC_UNARY_, true);
   }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return '(double)(' + expr + ')';
+    return '(double)' + P.wrap(expr, P.PREC_UNARY_, true);
   }
   return expr;
 };

@@ -316,7 +316,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           result = pad(ind) + loopLabel + 'for (;;) {\n' + cr(0) + pad(ind) + '}\n';
         } else if ('dowhile' === loopPlan.simplifiedLoopKind) {
           var /** @const {string} */ dwCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
-          result = pad(ind) + loopLabel + 'do {\n' + cr(0) + pad(ind) + '} while (' + dwCond + ');\n';
+          result = pad(ind) + loopLabel + 'do {\n' + cr(0) + pad(ind) + '} while ' + this.formatCondition_(dwCond) + ';\n';
         } else {
           var /** @const {string} */ whCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
           result = pad(ind) + loopLabel + 'while ' + this.formatCondition_(whCond) + ' {\n' + cr(0) + pad(ind) + '}\n';

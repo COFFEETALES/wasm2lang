@@ -19,7 +19,8 @@ Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_ = function (baseExpr, offset)
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.formatCondition_ = function (expr) {
   if ('' === expr) return '(0 != 0)';
-  return '((' + expr + ') != 0)';
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  return '(' + P.wrap(expr, P.PREC_EQUALITY_, true) + ' != 0)';
 };
 
 /**
