@@ -16,46 +16,45 @@
     var moduleSpecs = [
       {'sourcePath': 'src/0-header.js', 'exportName': 'Wasm2Lang'},
       {'sourcePath': 'src/backend/abstract_codegen.js'},
+      {'sourcePath': 'src/backend/abstract_codegen/pass_state.js'},
+      {'sourcePath': 'src/backend/abstract_codegen/module_info.js'},
+      {'sourcePath': 'src/backend/abstract_codegen/identifiers.js'},
+      {'sourcePath': 'src/backend/abstract_codegen/precedence.js'},
+      {'sourcePath': 'src/backend/abstract_codegen/control_flow.js'},
+      {'sourcePath': 'src/backend/abstract_codegen/numeric_ops.js'},
+      {'sourcePath': 'src/backend/abstract_codegen/traversal.js'},
       {'sourcePath': 'src/backend/i32_coercion.js'},
       {'sourcePath': 'src/backend/value_types.js'},
       {'sourcePath': 'src/backend/numeric_ops.js'},
-      {'sourcePath': 'src/backend/identifier_mangler.js'},
-      {'sourcePath': 'src/backend/asmjs/codegen.js'},
-      {'sourcePath': 'src/backend/java/codegen.js'},
-      {'sourcePath': 'src/backend/php64/codegen.js'},
-      {'sourcePath': 'src/backend/asmjs/binary_ops.js'},
-      {'sourcePath': 'src/backend/asmjs/coercion.js'},
-      {'sourcePath': 'src/backend/asmjs/control_flow.js'},
-      {'sourcePath': 'src/backend/asmjs/emit_code.js'},
-      {'sourcePath': 'src/backend/asmjs/functions.js'},
-      {'sourcePath': 'src/backend/asmjs/helpers.js'},
-      {'sourcePath': 'src/backend/asmjs/identifiers.js'},
-      {'sourcePath': 'src/backend/asmjs/mangler_profile.js'},
-      {'sourcePath': 'src/backend/asmjs/memory.js'},
-      {'sourcePath': 'src/backend/asmjs/metadata.js'},
-      {'sourcePath': 'src/backend/asmjs/numeric_ops.js'},
-      {'sourcePath': 'src/backend/java/binary_ops.js'},
-      {'sourcePath': 'src/backend/java/coercion.js'},
-      {'sourcePath': 'src/backend/java/control_flow.js'},
-      {'sourcePath': 'src/backend/java/emit_code.js'},
-      {'sourcePath': 'src/backend/java/functions.js'},
-      {'sourcePath': 'src/backend/java/helpers.js'},
-      {'sourcePath': 'src/backend/java/identifiers.js'},
-      {'sourcePath': 'src/backend/java/mangler_profile.js'},
-      {'sourcePath': 'src/backend/java/memory.js'},
-      {'sourcePath': 'src/backend/java/metadata.js'},
-      {'sourcePath': 'src/backend/java/numeric_ops.js'},
-      {'sourcePath': 'src/backend/php64/binary_ops.js'},
-      {'sourcePath': 'src/backend/php64/coercion.js'},
-      {'sourcePath': 'src/backend/php64/control_flow.js'},
-      {'sourcePath': 'src/backend/php64/emit_code.js'},
-      {'sourcePath': 'src/backend/php64/functions.js'},
-      {'sourcePath': 'src/backend/php64/helpers.js'},
-      {'sourcePath': 'src/backend/php64/identifiers.js'},
-      {'sourcePath': 'src/backend/php64/mangler_profile.js'},
-      {'sourcePath': 'src/backend/php64/memory.js'},
-      {'sourcePath': 'src/backend/php64/metadata.js'},
-      {'sourcePath': 'src/backend/php64/numeric_ops.js'},
+      {'sourcePath': 'src/backend/identifier_mangler.js'}
+    ];
+
+    // Backend files: codegen.js (constructors) must load first for all
+    // backends, then the remaining per-backend extension files.
+    var backendIds = ['asmjs', 'java', 'php64'];
+    var backendFiles = [
+      'binary_ops.js',
+      'coercion.js',
+      'control_flow.js',
+      'emit_code.js',
+      'functions.js',
+      'helpers.js',
+      'identifiers.js',
+      'mangler_profile.js',
+      'memory.js',
+      'metadata.js',
+      'numeric_ops.js'
+    ];
+    for (var bi = 0; bi < backendIds.length; ++bi) {
+      moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/' + backendIds[bi] + '/codegen.js'};
+    }
+    for (var bi2 = 0; bi2 < backendIds.length; ++bi2) {
+      for (var bf = 0; bf < backendFiles.length; ++bf) {
+        moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/' + backendIds[bi2] + '/' + backendFiles[bf]};
+      }
+    }
+
+    moduleSpecs = moduleSpecs.concat([
       {'sourcePath': 'src/cli/command_line_parser.js'},
       {'sourcePath': 'src/options/schema.js'},
       {'sourcePath': 'src/utilities/environment.js'},
@@ -79,7 +78,7 @@
       {'sourcePath': 'src/wasm/wasm_normalization.js'},
       {'sourcePath': 'src/1-processor.js'},
       {'sourcePath': 'src/2-footer.js'}
-    ];
+    ]);
     for (var i = 0, specCount = moduleSpecs.length; i !== specCount; ++i) {
       const code = fs.readFileSync(path.resolve(__dirname, moduleSpecs[i]['sourcePath']), {
         encoding: 'utf-8'
