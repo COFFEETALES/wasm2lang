@@ -28,7 +28,8 @@
  *   renderPrefix: function(string, string): string,
  *   renderInfix: function(string, string, string, number, boolean=): string,
  *   formatCondition: function(string): string,
- *   stripOuter: function(string): string
+ *   stripOuter: function(string): string,
+ *   bitwiseInfo: function(string): {bitwisePrecedence: number, bitwiseAllowRightEqual: boolean}
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_;
@@ -333,6 +334,22 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
   stripOuter: function (expr) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
     return P.isFullyParenthesized(expr) ? expr.slice(1, -1) : expr;
+  },
+
+  /**
+   * Returns the precedence level and allowRightEqual flag for a bitwise
+   * operator string.  Shared by asm.js and Java renderBitwiseBinary_.
+   *
+   * @param {string} opStr
+   * @return {{bitwisePrecedence: number, bitwiseAllowRightEqual: boolean}}
+   */
+  bitwiseInfo: function (opStr) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    if ('&' === opStr) return {bitwisePrecedence: P.PREC_BIT_AND_, bitwiseAllowRightEqual: true};
+    if ('^' === opStr) return {bitwisePrecedence: P.PREC_BIT_XOR_, bitwiseAllowRightEqual: true};
+    if ('<<' === opStr || '>>' === opStr || '>>>' === opStr)
+      return {bitwisePrecedence: P.PREC_SHIFT_, bitwiseAllowRightEqual: false};
+    return {bitwisePrecedence: P.PREC_BIT_OR_, bitwiseAllowRightEqual: true};
   }
 });
 

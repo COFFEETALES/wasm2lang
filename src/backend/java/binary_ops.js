@@ -56,17 +56,8 @@ Wasm2Lang.Backend.JavaCodegen.renderDivisionBinary_ = function (self, info, L, R
 Wasm2Lang.Backend.JavaCodegen.renderBitwiseBinary_ = function (self, info, L, R) {
   void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @type {number} */ precedence = P.PREC_BIT_OR_;
-
-  if ('&' === info.opStr) {
-    precedence = P.PREC_BIT_AND_;
-  } else if ('^' === info.opStr) {
-    precedence = P.PREC_BIT_XOR_;
-  } else if ('<<' === info.opStr || '>>' === info.opStr || '>>>' === info.opStr) {
-    precedence = P.PREC_SHIFT_;
-  }
-
-  return P.renderInfix(L, info.opStr, R, precedence, true);
+  var /** @const */ bi = P.bitwiseInfo(info.opStr);
+  return P.renderInfix(L, info.opStr, R, bi.bitwisePrecedence, true);
 };
 
 /**
@@ -95,7 +86,7 @@ Wasm2Lang.Backend.JavaCodegen.renderComparisonBinary_ = function (self, info, L,
   void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (info.unsigned) {
-    return '(Integer.compareUnsigned(' + L + ', ' + R + ') ' + info.opStr + ' 0 ? 1 : 0)';
+    return 'Integer.compareUnsigned(' + L + ', ' + R + ') ' + info.opStr + ' 0 ? 1 : 0';
   }
-  return '(' + P.renderInfix(L, info.opStr, R, P.PREC_RELATIONAL_) + ' ? 1 : 0)';
+  return P.renderInfix(L, info.opStr, R, P.PREC_RELATIONAL_) + ' ? 1 : 0';
 };

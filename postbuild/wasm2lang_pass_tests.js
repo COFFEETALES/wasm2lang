@@ -219,6 +219,16 @@ var loopSimplification = new PassFamily('loop-simplification', 'loop_simplificat
   var wlPlan = wl['loopSimplification'][wlKeys[0]];
   assertNotNull(wlPlan, '$whileLoop plan must be non-null');
   assertEqual(wlPlan['loopKind'], 'while', '$whileLoop loopKind should be while');
+
+  // $doWhileDirectBrIf: direct br_if body (no block wrapper) → loopKind 'dowhile'
+  assertHasKey(result, 'doWhileDirectBrIf', '$doWhileDirectBrIf must exist');
+  var dwb = result['doWhileDirectBrIf'];
+  assertNotNull(dwb['loopSimplification'], '$doWhileDirectBrIf loopSimplification must be non-null');
+  var dwbKeys = Object.keys(dwb['loopSimplification']);
+  assert(dwbKeys.length > 0, '$doWhileDirectBrIf must have at least one loop plan');
+  var dwbPlan = dwb['loopSimplification'][dwbKeys[0]];
+  assertNotNull(dwbPlan, '$doWhileDirectBrIf plan must be non-null');
+  assertEqual(dwbPlan['loopKind'], 'dowhile', '$doWhileDirectBrIf loopKind should be dowhile');
 });
 
 // ---------------------------------------------------------------------------

@@ -34,4 +34,18 @@
         (br $loop)))
     (local.get $i)
   )
+
+  ;; Do-while with direct br_if body (no block wrapper).
+  ;; After binaryen optimization, loops with a single conditional self-continue
+  ;; have the br_if as the direct body without a block wrapper.
+  ;; Loop $loop should become le$ with loopKind 'dowhile'.
+  (func $doWhileDirectBrIf (param $limit i32) (result i32)
+    (local $i i32)
+    (loop $loop
+      (br_if $loop
+        (i32.lt_s
+          (local.tee $i (i32.add (local.get $i) (i32.const 1)))
+          (local.get $limit))))
+    (local.get $i)
+  )
 )

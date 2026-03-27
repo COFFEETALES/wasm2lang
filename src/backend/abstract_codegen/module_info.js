@@ -430,7 +430,7 @@ Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_;
  * A single entry in a function table.
  *
  * @protected
- * @typedef {{ functionName: (string|null) }}
+ * @typedef {{ boundName: (string|null) }}
  */
 Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_;
 
@@ -683,9 +683,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
   }
 
   // Group entries by signature.
-  /** @type {!Object<string, {params: !Array<number>, retType: number, entries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}>} */
+  /** @type {!Object<string, {sigParamTypes: !Array<number>, retType: number, slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}>} */
   var sigGroups =
-    /** @type {!Object<string, {params: !Array<number>, retType: number, entries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}>} */ (
+    /** @type {!Object<string, {sigParamTypes: !Array<number>, retType: number, slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}>} */ (
       Object.create(null)
     );
 
@@ -700,40 +700,40 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
         sig.sigRetType
       );
     if (!sigGroups[sigKey]) {
-      sigGroups[sigKey] = {params: sig.sigParams, retType: sig.sigRetType, entries: []};
+      sigGroups[sigKey] = {sigParamTypes: sig.sigParams, retType: sig.sigRetType, slots: []};
     }
-    var /** @const {{params: !Array<number>, retType: number, entries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}} */ group =
+    var /** @const {{sigParamTypes: !Array<number>, retType: number, slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}} */ group =
         sigGroups[sigKey];
     // Pad with nulls up to index e.
-    while (group.entries.length < e) {
-      group.entries[group.entries.length] = {functionName: null};
+    while (group.slots.length < e) {
+      group.slots[group.slots.length] = {boundName: null};
     }
-    group.entries[group.entries.length] = {functionName: funcName};
+    group.slots[group.slots.length] = {boundName: funcName};
   }
 
   // Trim trailing nulls, pad to power-of-2, compute mask and stubNeeded.
   var /** @const {!Array<string>} */ sigKeys = Object.keys(sigGroups);
   for (var /** number */ s = 0, /** @const {number} */ sLen = sigKeys.length; s !== sLen; ++s) {
     var /** @const {string} */ sk = sigKeys[s];
-    var /** @const {{params: !Array<number>, retType: number, entries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}} */ sg =
+    var /** @const {{sigParamTypes: !Array<number>, retType: number, slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}} */ sg =
         sigGroups[sk];
     // Trim trailing nulls.
-    while (sg.entries.length > 0 && null === sg.entries[sg.entries.length - 1].functionName) {
-      sg.entries.length--;
+    while (sg.slots.length > 0 && null === sg.slots[sg.slots.length - 1].boundName) {
+      sg.slots.length--;
     }
     // Pad to next power of 2.
     var /** @type {number} */ size = 1;
-    while (size < sg.entries.length) {
+    while (size < sg.slots.length) {
       size *= 2;
     }
     var /** @type {boolean} */ hasNulls = false;
-    while (sg.entries.length < size) {
-      sg.entries[sg.entries.length] = {functionName: null};
+    while (sg.slots.length < size) {
+      sg.slots[sg.slots.length] = {boundName: null};
       hasNulls = true;
     }
     if (!hasNulls) {
-      for (var /** number */ ni = 0, /** @const {number} */ niLen = sg.entries.length; ni !== niLen; ++ni) {
-        if (null === sg.entries[ni].functionName) {
+      for (var /** number */ ni = 0, /** @const {number} */ niLen = sg.slots.length; ni !== niLen; ++ni) {
+        if (null === sg.slots[ni].boundName) {
           hasNulls = true;
           break;
         }
@@ -741,9 +741,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
     }
     tables[sk] = {
       signatureKey: sk,
-      signatureParams: sg.params,
+      signatureParams: sg.sigParamTypes,
       signatureReturnType: sg.retType,
-      tableEntries: sg.entries,
+      tableEntries: sg.slots,
       tableMask: size - 1,
       stubNeeded: hasNulls
     };

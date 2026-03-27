@@ -72,13 +72,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     case binaryen.ConstId: {
       var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
       result = this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType);
-      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, constType)
-        ? C.FIXNUM
-        : Wasm2Lang.Backend.ValueType.isF32(binaryen, constType)
-          ? A.CAT_F32
-          : Wasm2Lang.Backend.ValueType.isF64(binaryen, constType)
-            ? A.CAT_F64
-            : A.CAT_RAW;
+      resultCat = A.catForConstType_(binaryen, constType);
       break;
     }
     case binaryen.LocalGetId: {
@@ -89,11 +83,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           localGetIdx
         );
       result = this.localN_(localGetIdx);
-      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, localGetType)
-        ? A.CAT_F64
-        : Wasm2Lang.Backend.ValueType.isF32(binaryen, localGetType)
-          ? A.CAT_F32
-          : C.SIGNED;
+      resultCat = A.catForCoercedType_(binaryen, localGetType);
       break;
     }
     case binaryen.GlobalGetId: {
@@ -101,65 +91,27 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
       var /** @const {string} */ javaStdlibGlobal = state.stdlibGlobals ? state.stdlibGlobals[globalGetName] || '' : '';
       result = '' !== javaStdlibGlobal ? javaStdlibGlobal : 'this.' + this.n_('$g_' + this.safeName_(globalGetName));
-      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
-        ? A.CAT_F64
-        : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
-          ? A.CAT_F32
-          : C.SIGNED;
+      resultCat = A.catForCoercedType_(binaryen, globalGetType);
       break;
     }
 
     case binaryen.BinaryId: {
-      var /** @const {number} */ binaryOp = /** @type {number} */ (expr['op']);
-      var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = Wasm2Lang.Backend.I32Coercion.classifyBinaryOp(
+      var /** @const */ binResult = this.emitBinaryId_(
           binaryen,
-          binaryOp
+          /** @type {number} */ (expr['op']),
+          cr(0),
+          cr(1),
+          cc(0),
+          cc(1)
         );
-      if (binInfo) {
-        result = this.renderBinaryOp_(binInfo, cr(0), cr(1));
-        resultCat = C.SIGNED;
-      } else {
-        var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numericBinInfo =
-            Wasm2Lang.Backend.NumericOps.classifyBinaryOp(binaryen, binaryOp);
-        if (numericBinInfo) {
-          result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1), cc(0), cc(1));
-          resultCat = A.catForCoercedType_(binaryen, numericBinInfo.retType);
-        } else {
-          result = '0 /* unknown binop ' + expr['op'] + ' */';
-          resultCat = A.CAT_RAW;
-        }
-      }
+      result = binResult.emittedString;
+      resultCat = binResult.resultCat;
       break;
     }
     case binaryen.UnaryId: {
-      var /** @const {number} */ unCat = Wasm2Lang.Backend.I32Coercion.classifyUnaryOp(
-          binaryen,
-          /** @type {number} */ (expr['op'])
-        );
-      if (C.UNARY_EQZ === unCat) {
-        var /** @const */ Pe = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-        result = '(' + Pe.renderInfix(cr(0), '==', '0', Pe.PREC_EQUALITY_) + ' ? 1 : 0)';
-        resultCat = C.SIGNED;
-      } else if (C.UNARY_CLZ === unCat) {
-        result = 'Integer.numberOfLeadingZeros(' + cr(0) + ')';
-        resultCat = C.SIGNED;
-      } else if (C.UNARY_CTZ === unCat) {
-        result = 'Integer.numberOfTrailingZeros(' + cr(0) + ')';
-        resultCat = C.SIGNED;
-      } else if (C.UNARY_POPCNT === unCat) {
-        result = 'Integer.bitCount(' + cr(0) + ')';
-        resultCat = C.SIGNED;
-      } else {
-        var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numericUnInfo =
-            Wasm2Lang.Backend.NumericOps.classifyUnaryOp(binaryen, /** @type {number} */ (expr['op']));
-        if (numericUnInfo) {
-          result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0), cc(0));
-          resultCat = A.catForCoercedType_(binaryen, numericUnInfo.retType);
-        } else {
-          result = '0 /* unknown unop ' + expr['op'] + ' */';
-          resultCat = A.CAT_RAW;
-        }
-      }
+      var /** @const */ unResult = this.emitUnaryId_(binaryen, /** @type {number} */ (expr['op']), cr(0), cc(0));
+      result = unResult.emittedString;
+      resultCat = unResult.resultCat;
       break;
     }
     case binaryen.LoadId: {
@@ -319,15 +271,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
         var /** @const {string} */ loopLabel = loopPlan.needsLabel ? this.labelN_(state.labelMap, loopName) + ': ' : '';
-        if ('for' === loopPlan.simplifiedLoopKind) {
-          result = pad(ind) + loopLabel + 'for (;;) {\n' + loopBody + pad(ind) + '}\n';
-        } else if ('dowhile' === loopPlan.simplifiedLoopKind) {
-          var /** @const {string} */ dwCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
-          result = pad(ind) + loopLabel + 'do {\n' + loopBody + pad(ind) + '} while ' + this.formatCondition_(dwCond) + ';\n';
-        } else {
-          var /** @const {string} */ whCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
-          result = pad(ind) + loopLabel + 'while ' + this.formatCondition_(whCond) + ' {\n' + loopBody + pad(ind) + '}\n';
-        }
+        result = this.emitSimplifiedLoop_(state, loopPlan, ind, loopLabel, loopBody);
       } else {
         // Raw loop fallback (unsimplified): named body blocks can complete
         // normally via `break $blockName`, so the trailing `break;` is
@@ -356,7 +300,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         var /** @const */ IfPs = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         result = this.renderCoercionByType_(
           binaryen,
-          '(' + IfPs.renderInfix(cr(0), '!=', '0', IfPs.PREC_EQUALITY_) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
+          IfPs.renderInfix(cr(0), '!=', '0', IfPs.PREC_EQUALITY_) + ' ? ' + cr(1) + ' : ' + cr(2),
           ifType
         );
         resultCat = A.catForCoercedType_(binaryen, ifType);

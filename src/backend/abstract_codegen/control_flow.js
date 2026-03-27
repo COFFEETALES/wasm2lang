@@ -607,6 +607,44 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
 };
 
 /**
+ * Returns the infinite-loop header keyword.  Default is {@code 'for (;;)'}
+ * for asm.js and Java; PHP overrides to {@code 'while (true)'}.
+ *
+ * @protected
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.infiniteLoopKeyword_ = function () {
+  return 'for (;;)';
+};
+
+/**
+ * Emits a simplified loop (for/dowhile/while) from a LoopPlan.
+ * All three backends share this structure; the only variation is the label
+ * prefix (labeled-break backends use {@code labelN_ + ': '}, PHP omits it)
+ * and the raw-loop fallback (handled by each backend after this returns null).
+ *
+ * @protected
+ * @param {{wasmModule: !BinaryenModule, binaryen: !Binaryen, functionInfo: !BinaryenFunctionInfo, visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor}} state
+ * @param {!Wasm2Lang.Wasm.Tree.LoopPlan} loopPlan
+ * @param {number} ind   Current indentation level.
+ * @param {string} label  Label prefix string (e.g. {@code 'L0: '}) or empty for unlabeled.
+ * @param {string} bodyCode  The rendered body from the child result.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoop_ = function (state, loopPlan, ind, label, bodyCode) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  if ('for' === loopPlan.simplifiedLoopKind) {
+    return pad(ind) + label + this.infiniteLoopKeyword_() + ' {\n' + bodyCode + pad(ind) + '}\n';
+  }
+  var /** @const {string} */ cond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
+  if ('dowhile' === loopPlan.simplifiedLoopKind) {
+    return pad(ind) + label + 'do {\n' + bodyCode + pad(ind) + '} while ' + this.formatCondition_(cond) + ';\n';
+  }
+  return pad(ind) + label + 'while ' + this.formatCondition_(cond) + ' {\n' + bodyCode + pad(ind) + '}\n';
+};
+
+/**
  * Sub-walks a single expression pointer through the given visitor, reusing the
  * same enter/leave callbacks as the main code-gen traversal.
  *

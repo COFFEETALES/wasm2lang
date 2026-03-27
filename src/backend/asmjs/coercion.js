@@ -124,6 +124,77 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLocalInit_ = function (binaryen, 
 };
 
 /**
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} unaryCategory
+ * @param {string} operandExpr
+ * @return {?{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.emitI32Unary_ = function (binaryen, unaryCategory, operandExpr) {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  if (C.UNARY_EQZ === unaryCategory) {
+    return {
+      emittedString: Wasm2Lang.Backend.AbstractCodegen.Precedence_.renderPrefix('!', operandExpr),
+      resultCat: C.FIXNUM
+    };
+  }
+  if (C.UNARY_CLZ === unaryCategory) {
+    this.markBinding_('Math_clz32');
+    return {
+      emittedString: Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(this.n_('Math_clz32') + '(' + operandExpr + ')'),
+      resultCat: C.SIGNED
+    };
+  }
+  if (C.UNARY_CTZ === unaryCategory) {
+    return {emittedString: this.renderHelperCall_(binaryen, '$w2l_ctz', [operandExpr], binaryen.i32), resultCat: C.SIGNED};
+  }
+  if (C.UNARY_POPCNT === unaryCategory) {
+    return {emittedString: this.renderHelperCall_(binaryen, '$w2l_popcnt', [operandExpr], binaryen.i32), resultCat: C.SIGNED};
+  }
+  return null;
+};
+
+/**
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} binaryOp
+ * @param {string} L
+ * @param {string} R
+ * @param {number} catL
+ * @param {number} catR
+ * @return {{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.emitBinaryId_ = function (binaryen, binaryOp, L, R, catL, catR) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = C.classifyBinaryOp(binaryen, binaryOp);
+  if (binInfo) {
+    return {
+      emittedString: this.renderBinaryOp_(binInfo, L, R),
+      resultCat:
+        C.OP_COMPARISON === binInfo.category
+          ? C.FIXNUM
+          : C.OP_BITWISE === binInfo.category && binInfo.unsigned
+            ? C.UNSIGNED
+            : C.SIGNED
+    };
+  }
+  var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numInfo = Wasm2Lang.Backend.NumericOps.classifyBinaryOp(
+      binaryen,
+      binaryOp
+    );
+  if (numInfo) {
+    return {
+      emittedString: this.renderNumericBinaryOp_(binaryen, numInfo, L, R, catL, catR),
+      resultCat: numInfo.isComparison ? C.FIXNUM : A.catForCoercedType_(binaryen, numInfo.retType)
+    };
+  }
+  return {emittedString: '__unknown_binop_' + binaryOp + '(' + L + ', ' + R + ')', resultCat: A.CAT_RAW};
+};
+
+/**
  * asm.js requires explicit type annotations on implicit return values.
  * Override to use {@code renderCoercionByType_} instead of
  * {@code coerceToType_} so the annotation is always present.

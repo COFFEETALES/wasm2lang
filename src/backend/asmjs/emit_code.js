@@ -259,7 +259,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
     var /** @const {string} */ ftTableName = this.n_('$ftable_' + ftSigKey2);
     var /** @const {!Array<string>} */ tableEntryNames = [];
     for (var /** number */ te = 0, /** @const {number} */ teLen = ftDesc2.tableEntries.length; te !== teLen; ++te) {
-      var /** @const {string|null} */ funcName = ftDesc2.tableEntries[te].functionName;
+      var /** @const {string|null} */ funcName = ftDesc2.tableEntries[te].boundName;
       if (null === funcName) {
         tableEntryNames[tableEntryNames.length] = this.n_('$ftable_' + ftSigKey2 + '_stub');
       } else {

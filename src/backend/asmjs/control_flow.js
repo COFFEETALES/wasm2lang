@@ -67,11 +67,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.ConstId: {
       var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
       result = this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType);
-      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, constType)
-        ? C.FIXNUM
-        : Wasm2Lang.Backend.ValueType.isF32(binaryen, constType)
-          ? A.CAT_F32
-          : A.CAT_RAW;
+      resultCat = A.catForConstType_(binaryen, constType);
       break;
     }
     case binaryen.LocalGetId:
@@ -86,71 +82,27 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         state.stdlibGlobals && state.stdlibGlobals[globalGetName]
           ? this.n_(state.stdlibGlobals[globalGetName])
           : this.n_('$g_' + globalGetName);
-      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
-        ? A.CAT_F64
-        : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
-          ? A.CAT_F32
-          : C.SIGNED;
+      resultCat = A.catForCoercedType_(binaryen, globalGetType);
       break;
     }
 
     case binaryen.BinaryId: {
-      var /** @const {number} */ binaryOp = /** @type {number} */ (expr['op']);
-      var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = Wasm2Lang.Backend.I32Coercion.classifyBinaryOp(
+      var /** @const */ binResult = this.emitBinaryId_(
           binaryen,
-          binaryOp
+          /** @type {number} */ (expr['op']),
+          cr(0),
+          cr(1),
+          cc(0),
+          cc(1)
         );
-      if (binInfo) {
-        result = this.renderBinaryOp_(binInfo, cr(0), cr(1));
-        resultCat =
-          C.OP_COMPARISON === binInfo.category
-            ? C.FIXNUM
-            : C.OP_BITWISE === binInfo.category && binInfo.unsigned
-              ? C.UNSIGNED
-              : C.SIGNED;
-      } else {
-        var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numericBinInfo =
-            Wasm2Lang.Backend.NumericOps.classifyBinaryOp(binaryen, binaryOp);
-        if (numericBinInfo) {
-          result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1), cc(0), cc(1));
-          resultCat = numericBinInfo.isComparison ? C.FIXNUM : A.catForCoercedType_(binaryen, numericBinInfo.retType);
-        } else {
-          result = '__unknown_binop_' + expr['op'] + '(' + cr(0) + ', ' + cr(1) + ')';
-          resultCat = A.CAT_RAW;
-        }
-      }
+      result = binResult.emittedString;
+      resultCat = binResult.resultCat;
       break;
     }
     case binaryen.UnaryId: {
-      var /** @const {number} */ unCat = Wasm2Lang.Backend.I32Coercion.classifyUnaryOp(
-          binaryen,
-          /** @type {number} */ (expr['op'])
-        );
-      if (C.UNARY_EQZ === unCat) {
-        // !expr produces fixnum (0 or 1) in asm.js — no |0 coercion needed.
-        result = Wasm2Lang.Backend.AbstractCodegen.Precedence_.renderPrefix('!', cr(0));
-        resultCat = C.FIXNUM;
-      } else if (C.UNARY_CLZ === unCat) {
-        this.markBinding_('Math_clz32');
-        result = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(this.n_('Math_clz32') + '(' + cr(0) + ')');
-        resultCat = C.SIGNED;
-      } else if (C.UNARY_CTZ === unCat) {
-        result = this.renderHelperCall_(binaryen, '$w2l_ctz', [cr(0)], binaryen.i32);
-        resultCat = C.SIGNED;
-      } else if (C.UNARY_POPCNT === unCat) {
-        result = this.renderHelperCall_(binaryen, '$w2l_popcnt', [cr(0)], binaryen.i32);
-        resultCat = C.SIGNED;
-      } else {
-        var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numericUnInfo =
-            Wasm2Lang.Backend.NumericOps.classifyUnaryOp(binaryen, /** @type {number} */ (expr['op']));
-        if (numericUnInfo) {
-          result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0));
-          resultCat = A.catForCoercedType_(binaryen, numericUnInfo.retType);
-        } else {
-          result = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_('__unknown_unop_' + expr['op'] + '(' + cr(0) + ')');
-          resultCat = C.SIGNED;
-        }
-      }
+      var /** @const */ unResult = this.emitUnaryId_(binaryen, /** @type {number} */ (expr['op']), cr(0), cc(0));
+      result = unResult.emittedString;
+      resultCat = unResult.resultCat;
       break;
     }
     case binaryen.LoadId: {
@@ -312,15 +264,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
         var /** @const {string} */ loopLabel = loopPlan.needsLabel ? this.labelN_(state.labelMap, loopName) + ': ' : '';
-        if ('for' === loopPlan.simplifiedLoopKind) {
-          result = pad(ind) + loopLabel + 'for (;;) {\n' + cr(0) + pad(ind) + '}\n';
-        } else if ('dowhile' === loopPlan.simplifiedLoopKind) {
-          var /** @const {string} */ dwCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
-          result = pad(ind) + loopLabel + 'do {\n' + cr(0) + pad(ind) + '} while ' + this.formatCondition_(dwCond) + ';\n';
-        } else {
-          var /** @const {string} */ whCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
-          result = pad(ind) + loopLabel + 'while ' + this.formatCondition_(whCond) + ' {\n' + cr(0) + pad(ind) + '}\n';
-        }
+        result = this.emitSimplifiedLoop_(state, loopPlan, ind, loopLabel, cr(0));
       } else {
         result =
           pad(ind) +
@@ -339,7 +283,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       if (ifType !== binaryen.none && 0 !== ifType) {
         result = this.renderCoercionByType_(
           binaryen,
-          '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
+          this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + cr(1) + ' : ' + cr(2),
           ifType
         );
         resultCat = A.catForCoercedType_(binaryen, ifType);

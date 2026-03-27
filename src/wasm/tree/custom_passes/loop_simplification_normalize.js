@@ -336,6 +336,18 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
   }
 
   var /** @const {!Object<string, *>} */ bodyInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(bodyPtr));
+
+  // Direct conditional br_if body (no block wrapper): do-while with empty body.
+  // Side effects (local.tee, calls) live inside the condition expression.
+  if (/** @type {number} */ (bodyInfo['id']) === binaryen.BreakId) {
+    if (/** @type {?string} */ (bodyInfo['name']) === loopName && 0 !== /** @type {number} */ (bodyInfo['condition'] || 0)) {
+      // No block wrapper ⇒ no nested breakable constructs ⇒ unlabeled.
+      state.simplifiedLoops[loopName] = 'leb';
+      return null;
+    }
+    return null;
+  }
+
   if (/** @type {number} */ (bodyInfo['id']) !== binaryen.BlockId) {
     return null;
   }
@@ -546,11 +558,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     } else if ('lc' === kind || 'lf' === kind) {
       children.length = len - 1;
     } else if ('ldb' === kind || 'leb' === kind) {
-      var /** @const {!BinaryenExpressionInfo} */ brIfB = /** @type {!BinaryenExpressionInfo} */ (
-          binaryen.getExpressionInfo(children[len - 1])
-        );
-      planCondPtr = /** @type {number} */ (brIfB.condition || 0);
-      children.length = len - 1;
+      if (len > 0) {
+        var /** @const {!BinaryenExpressionInfo} */ brIfB = /** @type {!BinaryenExpressionInfo} */ (
+            binaryen.getExpressionInfo(children[len - 1])
+          );
+        planCondPtr = /** @type {number} */ (brIfB.condition || 0);
+        children.length = len - 1;
+      } else {
+        // Body is directly a conditional br_if (no block wrapper).
+        planCondPtr = /** @type {number} */ (bodyInfo.condition || 0);
+      }
     } else if ('lda' === kind || 'lea' === kind) {
       var /** @const {!BinaryenExpressionInfo} */ brIfA = /** @type {!BinaryenExpressionInfo} */ (
           binaryen.getExpressionInfo(children[len - 2])
@@ -560,7 +577,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     }
     // else: lcs/lfs/lct/lft — keep all children as-is.
 
-    var /** @const {number} */ newBody = module.block(bodyInfo.name || null, bodyChildren, binaryen.none);
+    var /** @const {?string} */ bodyBlockName = bodyInfo.id === binaryen.BlockId ? bodyInfo.name || null : null;
+    var /** @const {number} */ newBody = module.block(bodyBlockName, bodyChildren, binaryen.none);
     S.storePlan_(state, marker, loopName, kind, planCondPtr);
     return {
       decisionAction: REPLACE_NODE,

@@ -106,6 +106,11 @@ Wasm2Lang.Backend.Php64Codegen.prototype.getRuntimeHelperPrefix_ = function () {
   return '_w2l_';
 };
 
+/** @override @protected @return {string} */
+Wasm2Lang.Backend.Php64Codegen.prototype.infiniteLoopKeyword_ = function () {
+  return 'while (true)';
+};
+
 /**
  * @param {!Binaryen} binaryen
  * @param {number} wasmType
@@ -134,3 +139,32 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderPtrWithOffset_ = function (baseEx
 };
 
 // formatCondition_: inherited from AbstractCodegen (delegates to Precedence_).
+
+/**
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} unaryCategory
+ * @param {string} operandExpr
+ * @return {?{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.emitI32Unary_ = function (binaryen, unaryCategory, operandExpr) {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  if (C.UNARY_EQZ === unaryCategory) {
+    return {emittedString: '(' + P.renderInfix('0', '===', operandExpr, P.PREC_EQUALITY_) + ' ? 1 : 0)', resultCat: C.SIGNED};
+  }
+  if (C.UNARY_CLZ === unaryCategory) {
+    this.markHelper_('_w2l_clz');
+    return {emittedString: this.n_('_w2l_clz') + '(' + operandExpr + ')', resultCat: C.SIGNED};
+  }
+  if (C.UNARY_CTZ === unaryCategory) {
+    this.markHelper_('_w2l_ctz');
+    return {emittedString: this.n_('_w2l_ctz') + '(' + operandExpr + ')', resultCat: C.SIGNED};
+  }
+  if (C.UNARY_POPCNT === unaryCategory) {
+    this.markHelper_('_w2l_popcnt');
+    return {emittedString: this.n_('_w2l_popcnt') + '(' + operandExpr + ')', resultCat: C.SIGNED};
+  }
+  return null;
+};

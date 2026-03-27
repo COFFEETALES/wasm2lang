@@ -137,11 +137,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.ConstId: {
       var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
       result = this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType);
-      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, constType)
-        ? C.FIXNUM
-        : Wasm2Lang.Backend.ValueType.isF32(binaryen, constType)
-          ? A.CAT_F32
-          : A.CAT_F64;
+      resultCat = A.catForConstType_(binaryen, constType);
       break;
     }
     case binaryen.LocalGetId: {
@@ -152,11 +148,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
           localGetIdx
         );
       result = this.localN_(localGetIdx);
-      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, localGetType)
-        ? A.CAT_F64
-        : Wasm2Lang.Backend.ValueType.isF32(binaryen, localGetType)
-          ? A.CAT_F32
-          : C.SIGNED;
+      resultCat = A.catForCoercedType_(binaryen, localGetType);
       break;
     }
 
@@ -171,68 +163,27 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
         state.usedCaptures[globalGetVar] = true;
         result = globalGetVar;
       }
-      resultCat = Wasm2Lang.Backend.ValueType.isF64(binaryen, globalGetType)
-        ? A.CAT_F64
-        : Wasm2Lang.Backend.ValueType.isF32(binaryen, globalGetType)
-          ? A.CAT_F32
-          : C.SIGNED;
+      resultCat = A.catForCoercedType_(binaryen, globalGetType);
       break;
     }
 
     case binaryen.BinaryId: {
-      var /** @const {number} */ binaryOp = /** @type {number} */ (expr['op']);
-      var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = Wasm2Lang.Backend.I32Coercion.classifyBinaryOp(
+      var /** @const */ binResult = this.emitBinaryId_(
           binaryen,
-          binaryOp
+          /** @type {number} */ (expr['op']),
+          cr(0),
+          cr(1),
+          cc(0),
+          cc(1)
         );
-      if (binInfo) {
-        result = this.renderBinaryOp_(binInfo, cr(0), cr(1));
-        resultCat = C.SIGNED;
-      } else {
-        var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numericBinInfo =
-            Wasm2Lang.Backend.NumericOps.classifyBinaryOp(binaryen, binaryOp);
-        if (numericBinInfo) {
-          result = this.renderNumericBinaryOp_(binaryen, numericBinInfo, cr(0), cr(1), cc(0), cc(1));
-          resultCat = numericBinInfo.isComparison ? C.FIXNUM : A.catForCoercedType_(binaryen, numericBinInfo.retType);
-        } else {
-          result = '0 /* unknown binop ' + expr['op'] + ' */';
-          resultCat = A.CAT_RAW;
-        }
-      }
+      result = binResult.emittedString;
+      resultCat = binResult.resultCat;
       break;
     }
     case binaryen.UnaryId: {
-      var /** @const {number} */ unCat = Wasm2Lang.Backend.I32Coercion.classifyUnaryOp(
-          binaryen,
-          /** @type {number} */ (expr['op'])
-        );
-      if (C.UNARY_EQZ === unCat) {
-        var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-        result = '(' + P.renderInfix('0', '===', cr(0), P.PREC_EQUALITY_) + ' ? 1 : 0)';
-        resultCat = C.SIGNED;
-      } else if (C.UNARY_CLZ === unCat) {
-        this.markHelper_('_w2l_clz');
-        result = this.n_('_w2l_clz') + '(' + cr(0) + ')';
-        resultCat = C.SIGNED;
-      } else if (C.UNARY_CTZ === unCat) {
-        this.markHelper_('_w2l_ctz');
-        result = this.n_('_w2l_ctz') + '(' + cr(0) + ')';
-        resultCat = C.SIGNED;
-      } else if (C.UNARY_POPCNT === unCat) {
-        this.markHelper_('_w2l_popcnt');
-        result = this.n_('_w2l_popcnt') + '(' + cr(0) + ')';
-        resultCat = C.SIGNED;
-      } else {
-        var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numericUnInfo =
-            Wasm2Lang.Backend.NumericOps.classifyUnaryOp(binaryen, /** @type {number} */ (expr['op']));
-        if (numericUnInfo) {
-          result = this.renderNumericUnaryOp_(binaryen, numericUnInfo, cr(0), cc(0));
-          resultCat = A.catForCoercedType_(binaryen, numericUnInfo.retType);
-        } else {
-          result = '0 /* unknown unop ' + expr['op'] + ' */';
-          resultCat = A.CAT_RAW;
-        }
-      }
+      var /** @const */ unResult = this.emitUnaryId_(binaryen, /** @type {number} */ (expr['op']), cr(0), cc(0));
+      result = unResult.emittedString;
+      resultCat = unResult.resultCat;
       break;
     }
     case binaryen.LoadId: {
@@ -392,7 +343,18 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
-      result = this.renderCoercionByType_(binaryen, '(' + cr(0) + ' ? ' + cr(1) + ' : ' + cr(2) + ')', selectType);
+      var /** @const */ selP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+      result = this.renderCoercionByType_(
+        binaryen,
+        '(' +
+          selP.wrap(cr(0), selP.PREC_CONDITIONAL_, false) +
+          ' ? ' +
+          cr(1) +
+          ' : ' +
+          selP.wrap(cr(2), selP.PREC_CONDITIONAL_, false) +
+          ')',
+        selectType
+      );
       resultCat = A.catForCoercedType_(binaryen, selectType);
       break;
     }
@@ -433,15 +395,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
-        if ('for' === loopPlan.simplifiedLoopKind) {
-          result = pad(ind) + 'while (true) {\n' + cr(0) + pad(ind) + '}\n';
-        } else if ('dowhile' === loopPlan.simplifiedLoopKind) {
-          var /** @const {string} */ dwCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
-          result = pad(ind) + 'do {\n' + cr(0) + pad(ind) + '} while ' + this.formatCondition_(dwCond) + ';\n';
-        } else {
-          var /** @const {string} */ whCond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
-          result = pad(ind) + 'while ' + this.formatCondition_(whCond) + ' {\n' + cr(0) + pad(ind) + '}\n';
-        }
+        result = this.emitSimplifiedLoop_(state, loopPlan, ind, '', cr(0));
       } else {
         result = pad(ind) + 'while (true) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
       }
@@ -451,7 +405,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.IfId: {
       var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
       if (ifType !== binaryen.none && 0 !== ifType) {
-        result = this.renderCoercionByType_(binaryen, '(' + cr(0) + ' ? ' + cr(1) + ' : ' + cr(2) + ')', ifType);
+        var /** @const */ ifP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+        result = this.renderCoercionByType_(
+          binaryen,
+          ifP.wrap(cr(0), ifP.PREC_CONDITIONAL_, false) + ' ? ' + cr(1) + ' : ' + ifP.wrap(cr(2), ifP.PREC_CONDITIONAL_, false),
+          ifType
+        );
         resultCat = A.catForCoercedType_(binaryen, ifType);
       } else {
         result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));

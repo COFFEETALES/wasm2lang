@@ -202,7 +202,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     // Build array entries.
     var /** @const {!Array<string>} */ entryExprs = [];
     for (var /** number */ te = 0, /** @const {number} */ teLen = ftDescA.tableEntries.length; te !== teLen; ++te) {
-      var /** @const {string|null} */ funcName = ftDescA.tableEntries[te].functionName;
+      var /** @const {string|null} */ funcName = ftDescA.tableEntries[te].boundName;
       if (null === funcName) {
         entryExprs[entryExprs.length] = stubLambda;
       } else {

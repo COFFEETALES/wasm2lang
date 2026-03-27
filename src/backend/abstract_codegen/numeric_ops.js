@@ -101,7 +101,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallIndirectArgs_ = func
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
-  return '(' + conditionExpr + ' ? 1 : 0)';
+  return conditionExpr + ' ? 1 : 0';
 };
 
 /**
@@ -220,4 +220,92 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOp_ = function (info, L, R) {
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined} */ fn = this.binaryRenderers_[info.category];
   return fn ? fn(this, info, L, R) : '(__unknown_binop(' + L + ', ' + R + '))';
+};
+
+/**
+ * Backend hook for i32 unary operations (eqz, clz, ctz, popcnt).
+ * Returns the rendered expression and category, or null if the unary
+ * category is not an i32 unary.  Concrete backends override this.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} unaryCategory  Result of {@code I32Coercion.classifyUnaryOp}.
+ * @param {string} operandExpr
+ * @return {?{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitI32Unary_ = function (binaryen, unaryCategory, operandExpr) {
+  void binaryen;
+  void unaryCategory;
+  void operandExpr;
+  return null;
+};
+
+/**
+ * Shared UnaryId dispatch.  Classifies as i32 unary, numeric unary,
+ * or unknown; renders accordingly.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} unaryOp
+ * @param {string} operandExpr
+ * @param {number} operandCat
+ * @return {{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, unaryOp, operandExpr, operandCat) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const {number} */ unCat = C.classifyUnaryOp(binaryen, unaryOp);
+  if (-1 !== unCat) {
+    var /** @const {?{emittedString: string, resultCat: number}} */ i32Result = this.emitI32Unary_(
+        binaryen,
+        unCat,
+        operandExpr
+      );
+    if (i32Result) return i32Result;
+  }
+  var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numInfo = Wasm2Lang.Backend.NumericOps.classifyUnaryOp(
+      binaryen,
+      unaryOp
+    );
+  if (numInfo) {
+    return {
+      emittedString: this.renderNumericUnaryOp_(binaryen, numInfo, operandExpr, operandCat),
+      resultCat: A.catForCoercedType_(binaryen, numInfo.retType)
+    };
+  }
+  return {emittedString: '0 /* unknown unop ' + unaryOp + ' */', resultCat: A.CAT_RAW};
+};
+
+/**
+ * Shared BinaryId dispatch.  Classifies the op as either i32 or numeric,
+ * renders it, and returns the result string and category.
+ * Asm.js overrides to use different resultCat for i32 binary ops.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} binaryOp
+ * @param {string} L
+ * @param {string} R
+ * @param {number} catL
+ * @param {number} catR
+ * @return {{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, binaryOp, L, R, catL, catR) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = C.classifyBinaryOp(binaryen, binaryOp);
+  if (binInfo) {
+    return {emittedString: this.renderBinaryOp_(binInfo, L, R), resultCat: C.SIGNED};
+  }
+  var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numInfo = Wasm2Lang.Backend.NumericOps.classifyBinaryOp(
+      binaryen,
+      binaryOp
+    );
+  if (numInfo) {
+    return {
+      emittedString: this.renderNumericBinaryOp_(binaryen, numInfo, L, R, catL, catR),
+      resultCat: numInfo.isComparison ? C.FIXNUM : A.catForCoercedType_(binaryen, numInfo.retType)
+    };
+  }
+  return {emittedString: '0 /* unknown binop ' + binaryOp + ' */', resultCat: A.CAT_RAW};
 };

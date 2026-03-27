@@ -100,13 +100,8 @@ Wasm2Lang.Backend.Php64Codegen.renderBitwiseBinary_ = function (self, info, L, R
     return nI + '(' + P.renderInfix(L, '>>', Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R), P.PREC_SHIFT_) + ')';
   }
   // &, |, ^
-  return P.renderInfix(
-    L,
-    info.opStr,
-    R,
-    '&' === info.opStr ? P.PREC_BIT_AND_ : '^' === info.opStr ? P.PREC_BIT_XOR_ : P.PREC_BIT_OR_,
-    true
-  );
+  var /** @const */ bi = P.bitwiseInfo(info.opStr);
+  return P.renderInfix(L, info.opStr, R, bi.bitwisePrecedence, true);
 };
 
 /**
@@ -167,5 +162,5 @@ Wasm2Lang.Backend.Php64Codegen.renderComparisonBinary_ = function (self, info, L
     leftExpr = P.wrap(Wasm2Lang.Backend.Php64Codegen.renderMask32_(L), P.PREC_RELATIONAL_, false);
     rightExpr = P.wrap(Wasm2Lang.Backend.Php64Codegen.renderMask32_(R), P.PREC_RELATIONAL_, false);
   }
-  return '(' + P.renderInfix(leftExpr, info.opStr, rightExpr, P.PREC_RELATIONAL_) + ' ? 1 : 0)';
+  return P.renderInfix(leftExpr, info.opStr, rightExpr, P.PREC_RELATIONAL_) + ' ? 1 : 0';
 };
