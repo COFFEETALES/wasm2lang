@@ -665,7 +665,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
     );
   var /** @const {string} */ outerLabel = codegen.labelN_(state.labelMap, info.outerName);
 
-  var /** @const {string} */ condStr = codegen.coerceSwitchCondition_(A.subWalkExpressionString_(state, info.conditionPtr));
+  var /** @const {{s: string, c: number}} */ condResult = A.subWalkExpressionWithCategory_(state, info.conditionPtr);
+  var /** @type {string} */ condInput = condResult.s;
+  if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === condResult.c) {
+    condInput = codegen.renderNumericComparisonResult_(condInput);
+  }
+  var /** @const {string} */ condStr = codegen.coerceSwitchCondition_(condInput);
 
   var /** @const {!Array<string>} */ lines = [];
   S.emitFlatSwitchHeader(lines, ind, condStr, outerLabel, info);

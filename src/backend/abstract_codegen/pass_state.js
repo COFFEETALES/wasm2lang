@@ -144,6 +144,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.markBinding_ = function (name) {
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_F32 = 5;
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_F64 = 6;
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_RAW = 7;
+/** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 = 8;
 
 /**
  * Shared type→category dispatch.  {@code catForCoercedType_} and

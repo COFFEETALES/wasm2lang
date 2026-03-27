@@ -360,8 +360,10 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
  *
  * @protected
  * @param {string} expr
+ * @param {number=} opt_condCat  Expression category of the condition.
  * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.formatCondition_ = function (expr) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.formatCondition_ = function (expr, opt_condCat) {
+  void opt_condCat;
   return Wasm2Lang.Backend.AbstractCodegen.Precedence_.formatCondition(expr);
 };

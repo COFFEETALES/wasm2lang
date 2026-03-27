@@ -446,7 +446,15 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
         );
         resultCat = A.catForCoercedType_(binaryen, ifType);
       } else {
-        result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
+        result = this.emitIfStatement_(
+          ind,
+          cr(0),
+          cr(1),
+          /** @type {number} */ (expr['ifFalse']),
+          childResults.length,
+          cr(2),
+          cc(0)
+        );
       }
       break;
     }
@@ -479,7 +487,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
             rsExitLines[rsExitLines.length] = pad(ind) + 'break' + (1 < rsLoopDepth ? ' ' + rsLoopDepth : '') + ';\n';
           }
           if (0 !== brCondPtr) {
-            result = pad(ind) + 'if ' + this.formatCondition_(cr(0)) + ' {\n' + rsExitLines.join('') + pad(ind) + '}\n';
+            result = pad(ind) + 'if ' + this.formatCondition_(cr(0), cc(0)) + ' {\n' + rsExitLines.join('') + pad(ind) + '}\n';
           } else {
             result = rsExitLines.join('');
           }
@@ -491,12 +499,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
               state.rootSwitchLoopName
             ).resolvedDepth;
           var /** @const {string} */ rsBrStmt = 'break' + (1 < rsBreakDepth ? ' ' + rsBreakDepth : '') + ';\n';
-          result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), rsBrStmt);
+          result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), rsBrStmt, cc(0));
           break;
         }
       }
       var /** @const {string} */ brStmt = Wasm2Lang.Backend.Php64Codegen.renderPhpJump_(state.labelStack, brName, 0);
-      result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), brStmt);
+      result = this.emitConditionalStatement_(ind, brCondPtr, cr(0), brStmt, cc(0));
       break;
     }
     case binaryen.SwitchId: {

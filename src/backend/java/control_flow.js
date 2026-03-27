@@ -234,11 +234,13 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
       var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-      result = this.renderCoercionByType_(
-        binaryen,
-        '(' + Ps.renderInfix(cr(0), '!=', '0', Ps.PREC_EQUALITY_) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
-        selectType
-      );
+      var /** @type {string} */ selCondStr;
+      if (A.CAT_BOOL_I32 === cc(0)) {
+        selCondStr = Ps.wrap(cr(0), Ps.PREC_CONDITIONAL_, false);
+      } else {
+        selCondStr = Ps.renderInfix(cr(0), '!=', '0', Ps.PREC_EQUALITY_);
+      }
+      result = this.renderCoercionByType_(binaryen, '(' + selCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')', selectType);
       resultCat = A.catForCoercedType_(binaryen, selectType);
       break;
     }
@@ -298,14 +300,24 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
       if (ifType !== binaryen.none && 0 !== ifType) {
         var /** @const */ IfPs = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-        result = this.renderCoercionByType_(
-          binaryen,
-          IfPs.renderInfix(cr(0), '!=', '0', IfPs.PREC_EQUALITY_) + ' ? ' + cr(1) + ' : ' + cr(2),
-          ifType
-        );
+        var /** @type {string} */ ifCondStr;
+        if (A.CAT_BOOL_I32 === cc(0)) {
+          ifCondStr = IfPs.wrap(cr(0), IfPs.PREC_CONDITIONAL_, false);
+        } else {
+          ifCondStr = IfPs.renderInfix(cr(0), '!=', '0', IfPs.PREC_EQUALITY_);
+        }
+        result = this.renderCoercionByType_(binaryen, ifCondStr + ' ? ' + cr(1) + ' : ' + cr(2), ifType);
         resultCat = A.catForCoercedType_(binaryen, ifType);
       } else {
-        result = this.emitIfStatement_(ind, cr(0), cr(1), /** @type {number} */ (expr['ifFalse']), childResults.length, cr(2));
+        result = this.emitIfStatement_(
+          ind,
+          cr(0),
+          cr(1),
+          /** @type {number} */ (expr['ifFalse']),
+          childResults.length,
+          cr(2),
+          cc(0)
+        );
       }
       break;
     }
@@ -315,7 +327,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           ind,
           /** @type {string} */ (expr['name']),
           /** @type {number} */ (expr['condition']),
-          cr(0)
+          cr(0),
+          cc(0)
         );
       result = brResult.emittedString;
       if (brResult.isTerminal) {
@@ -329,7 +342,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           ind,
           cr(0),
           /** @type {!Array<string>} */ (expr['names'] || []),
-          /** @type {string} */ (expr['defaultName'] || '')
+          /** @type {string} */ (expr['defaultName'] || ''),
+          cc(0)
         );
       result = swResult.emittedString;
       state.lastExprIsTerminal = swResult.hasDefault;

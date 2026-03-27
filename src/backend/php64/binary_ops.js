@@ -162,5 +162,5 @@ Wasm2Lang.Backend.Php64Codegen.renderComparisonBinary_ = function (self, info, L
     leftExpr = P.wrap(Wasm2Lang.Backend.Php64Codegen.renderMask32_(L), P.PREC_RELATIONAL_, false);
     rightExpr = P.wrap(Wasm2Lang.Backend.Php64Codegen.renderMask32_(R), P.PREC_RELATIONAL_, false);
   }
-  return P.renderInfix(leftExpr, info.opStr, rightExpr, P.PREC_RELATIONAL_) + ' ? 1 : 0';
+  return P.renderInfix(leftExpr, info.opStr, rightExpr, P.PREC_RELATIONAL_);
 };

@@ -38,6 +38,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_ = function (binaryen, 
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
     if (C.SIGNED === cat || C.FIXNUM === cat) return expr;
+    if (A.CAT_BOOL_I32 === cat) return this.renderNumericComparisonResult_(expr);
   } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
     if (A.CAT_F32 === cat) return expr;
   } else if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
@@ -121,7 +122,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_ = function (b
   var /** @type {number} */ precedence = P.PREC_ADDITIVE_;
 
   if (info.isComparison) {
-    return this.renderNumericComparisonResult_(P.renderInfix(L, info.opStr, R, P.PREC_RELATIONAL_));
+    return P.renderInfix(L, info.opStr, R, P.PREC_RELATIONAL_);
   }
 
   if ('mul' === info.opName || 'div' === info.opName) {
@@ -254,6 +255,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitI32Unary_ = function (binaryen, 
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, unaryOp, operandExpr, operandCat) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  if (A.CAT_BOOL_I32 === operandCat) operandExpr = this.renderNumericComparisonResult_(operandExpr);
   var /** @const {number} */ unCat = C.classifyUnaryOp(binaryen, unaryOp);
   if (-1 !== unCat) {
     var /** @const {?{emittedString: string, resultCat: number}} */ i32Result = this.emitI32Unary_(
@@ -293,9 +295,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, u
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, binaryOp, L, R, catL, catR) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  if (A.CAT_BOOL_I32 === catL) L = this.renderNumericComparisonResult_(L);
+  if (A.CAT_BOOL_I32 === catR) R = this.renderNumericComparisonResult_(R);
   var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = C.classifyBinaryOp(binaryen, binaryOp);
   if (binInfo) {
-    return {emittedString: this.renderBinaryOp_(binInfo, L, R), resultCat: C.SIGNED};
+    return {
+      emittedString: this.renderBinaryOp_(binInfo, L, R),
+      resultCat: C.OP_COMPARISON === binInfo.category ? A.CAT_BOOL_I32 : C.SIGNED
+    };
   }
   var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numInfo = Wasm2Lang.Backend.NumericOps.classifyBinaryOp(
       binaryen,
@@ -304,7 +311,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, 
   if (numInfo) {
     return {
       emittedString: this.renderNumericBinaryOp_(binaryen, numInfo, L, R, catL, catR),
-      resultCat: numInfo.isComparison ? C.FIXNUM : A.catForCoercedType_(binaryen, numInfo.retType)
+      resultCat: numInfo.isComparison ? A.CAT_BOOL_I32 : A.catForCoercedType_(binaryen, numInfo.retType)
     };
   }
   return {emittedString: '0 /* unknown binop ' + binaryOp + ' */', resultCat: A.CAT_RAW};

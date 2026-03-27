@@ -460,12 +460,13 @@ Wasm2Lang.Backend.AbstractCodegen.assembleBlockChildren_ = function (childResult
  * @param {number} condPtr  Condition pointer (0 = unconditional).
  * @param {string} condExpr  Rendered condition expression (from child result).
  * @param {string} stmt  The break/continue statement string (including trailing newline).
+ * @param {number=} opt_condCat  Expression category of the condition.
  * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitConditionalStatement_ = function (ind, condPtr, condExpr, stmt) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitConditionalStatement_ = function (ind, condPtr, condExpr, stmt, opt_condCat) {
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   if (0 !== condPtr) {
-    return pad(ind) + 'if ' + this.formatCondition_(condExpr) + ' {\n' + pad(ind + 1) + stmt + pad(ind) + '}\n';
+    return pad(ind) + 'if ' + this.formatCondition_(condExpr, opt_condCat) + ' {\n' + pad(ind + 1) + stmt + pad(ind) + '}\n';
   }
   return pad(ind) + stmt;
 };
@@ -482,9 +483,17 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitConditionalStatement_ = function
  * @param {string} brName
  * @param {number} brCondPtr
  * @param {string} condExpr
+ * @param {number=} opt_condCat  Expression category of the condition.
  * @return {{emittedString: string, isTerminal: boolean}}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (state, indent, brName, brCondPtr, condExpr) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
+  state,
+  indent,
+  brName,
+  brCondPtr,
+  condExpr,
+  opt_condCat
+) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ pad = A.pad_;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
@@ -511,7 +520,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (stat
       }
       var /** @type {string} */ rsResult;
       if (0 !== brCondPtr) {
-        rsResult = pad(indent) + 'if ' + this.formatCondition_(condExpr) + ' {\n' + rsExitLines.join('') + pad(indent) + '}\n';
+        rsResult =
+          pad(indent) +
+          'if ' +
+          this.formatCondition_(condExpr, opt_condCat) +
+          ' {\n' +
+          rsExitLines.join('') +
+          pad(indent) +
+          '}\n';
       } else {
         rsResult = rsExitLines.join('');
       }
@@ -520,7 +536,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (stat
     if (brName === state.rootSwitchRsName) {
       var /** @const {string} */ rsBreakStmt = this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
       return {
-        emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, rsBreakStmt),
+        emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, rsBreakStmt, opt_condCat),
         isTerminal: 0 === brCondPtr
       };
     }
@@ -532,7 +548,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (stat
       state.labelMap,
       brName
     );
-  return {emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, brStmt), isTerminal: 0 === brCondPtr};
+  return {
+    emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, brStmt, opt_condCat),
+    isTerminal: 0 === brCondPtr
+  };
 };
 
 /**
@@ -547,12 +566,24 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (stat
  * @param {string} condExpr
  * @param {!Array<string>} names
  * @param {string} defaultName
+ * @param {number=} opt_condCat  Expression category of the condition.
  * @return {{emittedString: string, hasDefault: boolean}}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitSwitchStatement_ = function (state, indent, condExpr, names, defaultName) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitSwitchStatement_ = function (
+  state,
+  indent,
+  condExpr,
+  names,
+  defaultName,
+  opt_condCat
+) {
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const {!Array<string>} */ lines = [];
-  lines[lines.length] = pad(indent) + 'switch (' + this.coerceSwitchCondition_(condExpr) + ') {\n';
+  var /** @type {string} */ switchCond = condExpr;
+  if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === opt_condCat) {
+    switchCond = this.renderNumericComparisonResult_(switchCond);
+  }
+  lines[lines.length] = pad(indent) + 'switch (' + this.coerceSwitchCondition_(switchCond) + ') {\n';
   var /** @type {number} */ si = 0;
   var /** @const {number} */ nameLen = names.length;
   while (si < nameLen) {
@@ -636,11 +667,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoop_ = function (stat
   if ('for' === loopPlan.simplifiedLoopKind) {
     return pad(ind) + label + this.infiniteLoopKeyword_() + ' {\n' + bodyCode + pad(ind) + '}\n';
   }
-  var /** @const {string} */ cond = A.subWalkExpressionString_(state, loopPlan.conditionPtr);
+  var /** @const {{s: string, c: number}} */ condResult = A.subWalkExpressionWithCategory_(state, loopPlan.conditionPtr);
   if ('dowhile' === loopPlan.simplifiedLoopKind) {
-    return pad(ind) + label + 'do {\n' + bodyCode + pad(ind) + '} while ' + this.formatCondition_(cond) + ';\n';
+    return (
+      pad(ind) + label + 'do {\n' + bodyCode + pad(ind) + '} while ' + this.formatCondition_(condResult.s, condResult.c) + ';\n'
+    );
   }
-  return pad(ind) + label + 'while ' + this.formatCondition_(cond) + ' {\n' + bodyCode + pad(ind) + '}\n';
+  return pad(ind) + label + 'while ' + this.formatCondition_(condResult.s, condResult.c) + ' {\n' + bodyCode + pad(ind) + '}\n';
 };
 
 /**
@@ -691,6 +724,34 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkString_ = function (result) {
 };
 
 /**
+ * Sub-walks an expression pointer and returns both string and category.
+ *
+ * @protected
+ * @param {{wasmModule: !BinaryenModule, binaryen: !Binaryen, functionInfo: !BinaryenFunctionInfo, visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor}} state
+ * @param {number} conditionPtr
+ * @return {{s: string, c: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_ = function (state, conditionPtr) {
+  var /** @const {*} */ raw = Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_(
+      state.wasmModule,
+      state.binaryen,
+      state.functionInfo,
+      /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor),
+      conditionPtr
+    );
+  if (raw && 'object' === typeof raw && 'string' === typeof raw['s']) {
+    return {
+      s: /** @type {string} */ (raw['s']),
+      c: 'number' === typeof raw['c'] ? /** @type {number} */ (raw['c']) : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+    };
+  }
+  if ('string' === typeof raw) {
+    return {s: /** @type {string} */ (raw), c: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID};
+  }
+  return {s: '', c: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID};
+};
+
+/**
  * Sub-walks an expression pointer and returns its string form.
  * Convenience wrapper combining subWalkExpression_ and subWalkString_.
  *
@@ -722,6 +783,7 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionString_ = function (state, co
  * @param {number} ifFalsePtr     Binaryen pointer to else branch (0 if none).
  * @param {number} childCount     Number of child results.
  * @param {string=} opt_falseCode False-branch child result string.
+ * @param {number=} opt_condCat   Expression category of the condition.
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitIfStatement_ = function (
@@ -730,10 +792,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitIfStatement_ = function (
   trueCode,
   ifFalsePtr,
   childCount,
-  opt_falseCode
+  opt_falseCode,
+  opt_condCat
 ) {
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
-  var /** @const {string} */ cond = this.formatCondition_(conditionExpr);
+  var /** @const {string} */ cond = this.formatCondition_(conditionExpr, opt_condCat);
   if (0 !== ifFalsePtr && 2 < childCount) {
     return pad(indent) + 'if ' + cond + ' {\n' + trueCode + pad(indent) + '} else {\n' + opt_falseCode + pad(indent) + '}\n';
   }

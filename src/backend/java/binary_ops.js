@@ -86,7 +86,7 @@ Wasm2Lang.Backend.JavaCodegen.renderComparisonBinary_ = function (self, info, L,
   void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (info.unsigned) {
-    return 'Integer.compareUnsigned(' + L + ', ' + R + ') ' + info.opStr + ' 0 ? 1 : 0';
+    return P.renderInfix('Integer.compareUnsigned(' + L + ', ' + R + ')', info.opStr, '0', P.PREC_RELATIONAL_);
   }
-  return P.renderInfix(L, info.opStr, R, P.PREC_RELATIONAL_) + ' ? 1 : 0';
+  return P.renderInfix(L, info.opStr, R, P.PREC_RELATIONAL_);
 };

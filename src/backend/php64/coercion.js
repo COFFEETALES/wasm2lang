@@ -152,7 +152,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitI32Unary_ = function (binaryen, una
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (C.UNARY_EQZ === unaryCategory) {
-    return {emittedString: '(' + P.renderInfix('0', '===', operandExpr, P.PREC_EQUALITY_) + ' ? 1 : 0)', resultCat: C.SIGNED};
+    return {
+      emittedString: P.renderInfix('0', '===', operandExpr, P.PREC_EQUALITY_),
+      resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32
+    };
   }
   if (C.UNARY_CLZ === unaryCategory) {
     this.markHelper_('_w2l_clz');

@@ -15,11 +15,15 @@ Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_ = function (baseExpr, offset)
  * @override
  * @protected
  * @param {string} expr
+ * @param {number=} opt_condCat
  * @return {string}
  */
-Wasm2Lang.Backend.JavaCodegen.prototype.formatCondition_ = function (expr) {
+Wasm2Lang.Backend.JavaCodegen.prototype.formatCondition_ = function (expr, opt_condCat) {
   if ('' === expr) return '(0 != 0)';
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === opt_condCat) {
+    return P.isFullyParenthesized(expr) ? expr : '(' + expr + ')';
+  }
   return '(' + P.wrap(expr, P.PREC_EQUALITY_, true) + ' != 0)';
 };
 
