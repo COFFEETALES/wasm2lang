@@ -131,7 +131,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   /** @type {!Object<string, boolean>} */
   var usedCaptures = /** @type {!Object<string, boolean>} */ (Object.create(null));
   if (0 !== funcInfo.body) {
-    var /** @const {!Wasm2Lang.Backend.Php64Codegen.EmitState_} */ emitState = {
+    this.walkAndAppendBody_(
+      parts,
+      wasmModule,
+      binaryen,
+      funcInfo,
+      /** @type {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} */ ({
         binaryen: binaryen,
         functionInfo: funcInfo,
         functionSignatures: functionSignatures,
@@ -149,38 +154,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
         rootSwitchExitMap: null,
         rootSwitchRsName: '',
         rootSwitchLoopName: ''
-      };
-
-    var /** @const */ self = this;
-    var /** @const */ hp = Wasm2Lang.Backend.AbstractCodegen.hasPrefix_;
-    // prettier-ignore
-    var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor =
-      /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-        enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { return self.emitEnter_(emitState, nc); },
-        leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) {
-          var /** @const {!Object<string, *>} */ e = /** @type {!Object<string, *>} */ (nc.expression);
-          var /** @const {number} */ eId = /** @type {number} */ (e['id']);
-          var /** @const {boolean} */ isFusedBlock = binaryen.BlockId === eId && !!e['name'] &&
-              hp(/** @type {string} */ (e['name']), Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_);
-          var /** @const {boolean} */ isRsBlock = binaryen.BlockId === eId && !!e['name'] &&
-              hp(/** @type {string} */ (e['name']), Wasm2Lang.Backend.AbstractCodegen.RS_ROOT_SWITCH_PREFIX_);
-          if (binaryen.LoopId === eId || binaryen.IfId === eId) {
-            --emitState.indent;
-          } else if (binaryen.BlockId === eId && e['name'] && !isFusedBlock && !isRsBlock) {
-            --emitState.indent;
-          }
-          // Pop label stack for blocks/loops after adjusting indent.
-          if (binaryen.LoopId === eId) {
-            emitState.labelStack.pop();
-          } else if (binaryen.BlockId === eId && e['name'] && !isFusedBlock && !isRsBlock) {
-            emitState.labelStack.pop();
-          }
-          return self.emitLeave_(emitState, nc, cr || []);
-        }
-      });
-    emitState.visitor = visitor;
-    var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
-    this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, pad(2));
+      }),
+      pad(2)
+    );
   }
 
   // Finalise the function header now that we know which captures are needed.

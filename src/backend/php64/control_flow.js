@@ -95,6 +95,39 @@ Wasm2Lang.Backend.Php64Codegen.renderPhpJump_ = function (labelStack, targetName
 };
 
 // ---------------------------------------------------------------------------
+// Leave-callback indent and label-stack adjustment (overrides base class).
+// ---------------------------------------------------------------------------
+
+/**
+ * @suppress {checkTypes}
+ * @override
+ * @param {!Wasm2Lang.Backend.Php64Codegen.EmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.adjustLeaveIndent_ = function (state, nodeCtx) {
+  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
+  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+
+  if (binaryen.LoopId === id) {
+    --state.indent;
+    state.labelStack.pop();
+  } else if (binaryen.IfId === id) {
+    --state.indent;
+  } else if (binaryen.BlockId === id && expr['name']) {
+    var /** @const {string} */ bn = /** @type {string} */ (expr['name']);
+    var /** @const {string} */ fn = state.functionInfo.name;
+    var /** @const {boolean} */ isFused = !!this.getBlockFusionPlan_(fn, bn) || A.hasPrefix_(bn, A.LB_FUSION_PREFIX_);
+    var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn) || A.hasPrefix_(bn, A.RS_ROOT_SWITCH_PREFIX_);
+    if (!isFused && !isRootSwitch) {
+      --state.indent;
+      state.labelStack.pop();
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
 // Expression emitter (leave callback).
 // ---------------------------------------------------------------------------
 

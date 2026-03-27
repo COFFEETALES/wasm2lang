@@ -65,8 +65,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
 
   // Walk the body with the code-gen visitor.
   if (0 !== funcInfo.body) {
-    // indent 2 = inside module + inside function
-    var /** @const {!Wasm2Lang.Backend.AsmjsCodegen.EmitState_} */ emitState = {
+    this.walkAndAppendBody_(
+      parts,
+      wasmModule,
+      binaryen,
+      funcInfo,
+      {
         binaryen: binaryen,
         functionInfo: funcInfo,
         functionSignatures: functionSignatures,
@@ -86,21 +90,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
         rootSwitchExitMap: null,
         rootSwitchRsName: '',
         rootSwitchLoopName: ''
-      };
-
-    var /** @const */ self = this;
-    // prettier-ignore
-    var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor =
-      /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-        enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { return self.emitEnter_(emitState, nc); },
-        leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) {
-          self.adjustLeaveIndent_(emitState, nc);
-          return self.emitLeave_(emitState, nc, cr || []);
-        }
-      });
-    emitState.visitor = visitor;
-    var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
-    this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, pad(2));
+      },
+      pad(2)
+    );
   }
 
   parts[parts.length] = pad(1) + '}';

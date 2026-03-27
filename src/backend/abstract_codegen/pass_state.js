@@ -146,48 +146,51 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.markBinding_ = function (name) {
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_RAW = 7;
 
 /**
- * Returns the expression category that {@code renderCoercionByType_} produces
- * for the given wasm type.
+ * Shared type→category dispatch.  {@code catForCoercedType_} and
+ * {@code catForConstType_} differ only in the i32 and fallback returns.
  *
+ * @private
+ * @param {!Binaryen} binaryen
+ * @param {number} wasmType
+ * @param {number} i32Cat
+ * @param {number} defaultCat
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.catForType_ = function (binaryen, wasmType, i32Cat, defaultCat) {
+  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) return i32Cat;
+  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) return Wasm2Lang.Backend.AbstractCodegen.CAT_F32;
+  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) return Wasm2Lang.Backend.AbstractCodegen.CAT_F64;
+  return defaultCat;
+};
+
+/**
  * @protected
  * @param {!Binaryen} binaryen
  * @param {number} wasmType
  * @return {number}
  */
 Wasm2Lang.Backend.AbstractCodegen.catForCoercedType_ = function (binaryen, wasmType) {
-  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.I32Coercion.SIGNED;
-  }
-  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.AbstractCodegen.CAT_F32;
-  }
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.AbstractCodegen.CAT_F64;
-  }
-  return Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+  return Wasm2Lang.Backend.AbstractCodegen.catForType_(
+    binaryen,
+    wasmType,
+    Wasm2Lang.Backend.I32Coercion.SIGNED,
+    Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+  );
 };
 
 /**
- * Returns the category for a constant literal of the given wasm type.
- * i32 constants are FIXNUM (they are always integer literals); floats
- * get the same categories as catForCoercedType_.
- *
  * @protected
  * @param {!Binaryen} binaryen
  * @param {number} wasmType
  * @return {number}
  */
 Wasm2Lang.Backend.AbstractCodegen.catForConstType_ = function (binaryen, wasmType) {
-  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.I32Coercion.FIXNUM;
-  }
-  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.AbstractCodegen.CAT_F32;
-  }
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.AbstractCodegen.CAT_F64;
-  }
-  return Wasm2Lang.Backend.AbstractCodegen.CAT_RAW;
+  return Wasm2Lang.Backend.AbstractCodegen.catForType_(
+    binaryen,
+    wasmType,
+    Wasm2Lang.Backend.I32Coercion.FIXNUM,
+    Wasm2Lang.Backend.AbstractCodegen.CAT_RAW
+  );
 };
 
 /**

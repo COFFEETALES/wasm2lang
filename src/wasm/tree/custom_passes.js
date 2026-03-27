@@ -198,17 +198,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor = function (ext
 };
 
 /**
- * Returns the PassMetadata for a function, or null when absent.
- *
- * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
- * @param {string} funcName
- * @return {?Wasm2Lang.Wasm.Tree.PassMetadata}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadata = function (passRunResultIndex, funcName) {
-  return passRunResultIndex ? passRunResultIndex[funcName] || null : null;
-};
-
-/**
  * Returns one extracted PassMetadata value for a function, or null when absent.
  *
  * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
@@ -217,10 +206,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadata = function (passRunResultIn
  * @return {*}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadataValue = function (passRunResultIndex, funcName, extractFn) {
-  var /** @const {?Wasm2Lang.Wasm.Tree.PassMetadata} */ fm = Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadata(
-      passRunResultIndex,
-      funcName
-    );
+  var /** @const {?Wasm2Lang.Wasm.Tree.PassMetadata} */ fm = passRunResultIndex ? passRunResultIndex[funcName] || null : null;
   return fm ? extractFn(fm) : null;
 };
 

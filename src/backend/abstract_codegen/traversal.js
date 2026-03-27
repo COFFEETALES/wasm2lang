@@ -6,6 +6,44 @@
 // ---------------------------------------------------------------------------
 
 /**
+ * Creates a code-gen visitor, walks the function body, and appends the
+ * result to the output parts array.  Shared by all backends — the per-
+ * backend behavior is dispatched through emitEnter_, adjustLeaveIndent_,
+ * and emitLeave_ virtual methods.
+ *
+ * @suppress {checkTypes, reportUnknownTypes}
+ * @protected
+ * @param {!Array<string>} parts
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} emitState
+ * @param {string} padStr
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.walkAndAppendBody_ = function (
+  parts,
+  wasmModule,
+  binaryen,
+  funcInfo,
+  emitState,
+  padStr
+) {
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ self = this;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor =
+    /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
+      enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { return self.emitEnter_(emitState, nc); },
+      leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) {
+        self.adjustLeaveIndent_(emitState, nc);
+        return self.emitLeave_(emitState, nc, cr || []);
+      }
+    });
+  emitState.visitor = visitor;
+  var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
+  this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, padStr);
+};
+
+/**
  * Lazily-built reverse map from Binaryen expression-ID numbers to readable
  * names.  Populated once on first call to {@code idName_}.
  *

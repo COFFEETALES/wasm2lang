@@ -412,10 +412,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.adjustLeaveIndent_ = function (state
   } else if (binaryen.BlockId === id && expr['name']) {
     var /** @const {string} */ bn = /** @type {string} */ (expr['name']);
     var /** @const {string} */ fn = state.functionInfo.name;
-    var /** @const {boolean} */ isFused =
-        !!this.getBlockFusionPlan_(fn, bn) || 0 === bn.indexOf(Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_);
-    var /** @const {boolean} */ isRootSwitch =
-        this.isBlockRootSwitch_(fn, bn) || 0 === bn.indexOf(Wasm2Lang.Backend.AbstractCodegen.RS_ROOT_SWITCH_PREFIX_);
+    var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+    var /** @const {boolean} */ isFused = !!this.getBlockFusionPlan_(fn, bn) || A.hasPrefix_(bn, A.LB_FUSION_PREFIX_);
+    var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn) || A.hasPrefix_(bn, A.RS_ROOT_SWITCH_PREFIX_);
     if (!isFused && !isRootSwitch) {
       --state.indent;
     }

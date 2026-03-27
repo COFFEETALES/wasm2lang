@@ -229,24 +229,18 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
           var /** @const {!BinaryenExpressionInfo} */ lastInfo = /** @type {!BinaryenExpressionInfo} */ (
               binaryen.getExpressionInfo(allChildren[allChildren.length - 1])
             );
-          if (lastInfo.id === binaryen.BreakId && 0 === /** @type {number} */ (lastInfo.condition || 0)) {
-            wrapperChildren = allChildren.slice(0, allChildren.length - 1);
-          } else {
-            wrapperChildren = allChildren;
-          }
+          var /** @const {boolean} */ excludeLast =
+              lastInfo.id === binaryen.BreakId && 0 === /** @type {number} */ (lastInfo.condition || 0);
+          wrapperChildren = excludeLast ? allChildren.slice(0, allChildren.length - 1) : allChildren;
 
           var /** @const {number} */ wrapperBlock = module.block(M + fcName, wrapperChildren, binaryen.none);
           var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
-
-          if (wrapperChildren.length < allChildren.length) {
-            return {
-              decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE,
-              expressionPointer: module.block(blockName || null, [wrapperBlock, allChildren[allChildren.length - 1]], expr.type)
-            };
-          }
+          var /** @const {!Array<number>} */ outerChildren = excludeLast
+              ? [wrapperBlock, allChildren[allChildren.length - 1]]
+              : [wrapperBlock];
           return {
             decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE,
-            expressionPointer: module.block(blockName || null, [wrapperBlock], expr.type)
+            expressionPointer: module.block(blockName || null, outerChildren, expr.type)
           };
         }
       }

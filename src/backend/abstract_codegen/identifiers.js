@@ -233,8 +233,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.countFunctionLabels_ = function (was
           }
         }
         return null;
-      },
-      leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) { void nc; void cr; return null; }
+      }
     });
   this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
   return count;

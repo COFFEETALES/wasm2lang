@@ -233,36 +233,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectStaticMemory_ = function (was
  */
 Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_;
 
-/**
- * Collects every imported function from the wasm module.  A function is
- * considered imported when its {@code funcInfo.base} is non-empty.
- *
- * Returns descriptors in module index order so output is deterministic.
- *
- * @protected
- * @param {!BinaryenModule} wasmModule
- * @return {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.collectImportedFunctions_ = function (wasmModule) {
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {number} */ numFuncs = wasmModule.getNumFunctions();
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} */ imports = [];
-
-  for (var /** number */ f = 0; f !== numFuncs; ++f) {
-    var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(f);
-    var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
-
-    if ('' !== funcInfo.base) {
-      imports[imports.length] = {
-        wasmFuncName: funcInfo.name,
-        importBaseName: funcInfo.base,
-        importModule: funcInfo.module
-      };
-    }
-  }
-
-  return imports;
-};
+// collectImportedFunctions_: inlined into collectModuleCodegenInfo_.
 
 // ---------------------------------------------------------------------------
 // asm.js standard library symbol classification.
@@ -346,58 +317,9 @@ Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport = function (importModule,
  */
 Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_;
 
-/**
- * Collects every imported global from the wasm module.
- *
- * @protected
- * @param {!BinaryenModule} wasmModule
- * @return {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.collectImportedGlobals_ = function (wasmModule) {
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {number} */ numGlobals = wasmModule.getNumGlobals();
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>} */ imports = [];
+// collectImportedGlobals_: inlined into collectModuleCodegenInfo_.
 
-  for (var /** number */ i = 0; i !== numGlobals; ++i) {
-    var /** @const {number} */ globalPtr = wasmModule.getGlobalByIndex(i);
-    var /** @const {!BinaryenGlobalInfo} */ globalInfo = binaryen.getGlobalInfo(globalPtr);
-    if ('' !== globalInfo.base) {
-      imports[imports.length] = {
-        globalName: globalInfo.name,
-        importBaseName: globalInfo.base,
-        importModule: globalInfo.module,
-        globalType: globalInfo.type
-      };
-    }
-  }
-
-  return imports;
-};
-
-/**
- * Collects the full signature of every wasm function, keyed by internal name.
- *
- * @protected
- * @param {!BinaryenModule} wasmModule
- * @return {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionSignatures_ = function (wasmModule) {
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {number} */ numFuncs = wasmModule.getNumFunctions();
-  var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ signatures =
-      /** @type {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ (Object.create(null));
-
-  for (var /** number */ f = 0; f !== numFuncs; ++f) {
-    var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(f);
-    var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
-    signatures[funcInfo.name] = {
-      sigParams: binaryen.expandType(funcInfo.params),
-      sigRetType: funcInfo.results
-    };
-  }
-
-  return signatures;
-};
+// collectFunctionSignatures_: inlined into collectModuleCodegenInfo_.
 
 /**
  * Descriptor for a single wasm-level function export.
@@ -468,40 +390,7 @@ Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_;
  */
 Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_;
 
-/**
- * Collects every function export from the wasm module.  Non-function exports
- * (memories, globals, tables) are silently skipped.
- *
- * Returns descriptors in export index order so output is deterministic.
- * Multiple exports that target the same internal function will appear as
- * separate entries — callers handle deduplication.
- *
- * @protected
- * @param {!BinaryenModule} wasmModule
- * @return {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.collectExportedFunctions_ = function (wasmModule) {
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {number} */ numExports = wasmModule.getNumExports();
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>} */ exports = [];
-
-  for (var /** number */ e = 0; e !== numExports; ++e) {
-    var /** @const {number} */ exportPtr = wasmModule.getExportByIndex(e);
-    var /** @const {!BinaryenExportInfo} */ exportInfo = binaryen.getExportInfo(exportPtr);
-
-    if (binaryen.ExternalFunction !== exportInfo.kind) {
-      continue;
-    }
-
-    exports[exports.length] = {
-      exportName: exportInfo.name,
-      internalName: exportInfo.value,
-      stubName: Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(exportInfo.value)
-    };
-  }
-
-  return exports;
-};
+// collectExportedFunctions_: inlined into collectModuleCodegenInfo_.
 
 /**
  * Collects every non-imported function from the wasm module in module index
@@ -541,78 +430,91 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectDefinedFunctions_ = function 
  */
 Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_;
 
-/**
- * Collects every non-imported global variable from the wasm module.
- *
- * @protected
- * @param {!BinaryenModule} wasmModule
- * @return {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.collectGlobals_ = function (wasmModule) {
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {number} */ numGlobals = wasmModule.getNumGlobals();
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = [];
-
-  for (var /** number */ i = 0; i !== numGlobals; ++i) {
-    var /** @const {number} */ globalPtr = wasmModule.getGlobalByIndex(i);
-    var /** @const {!BinaryenGlobalInfo} */ globalInfo = binaryen.getGlobalInfo(globalPtr);
-    if ('' !== globalInfo.base) {
-      continue;
-    }
-    var /** @const {!BinaryenExpressionInfo} */ initExpr = binaryen.getExpressionInfo(globalInfo.init);
-    globals[globals.length] = {
-      globalName: globalInfo.name,
-      globalType: globalInfo.type,
-      globalMutable: !!globalInfo.mutable,
-      globalInitValue: /** @type {number} */ (initExpr.value) || 0
-    };
-  }
-
-  return globals;
-};
+// collectGlobals_: inlined into collectModuleCodegenInfo_.
 
 /**
  * Collects the module-level metadata shared by concrete emitters.
+ * Iterates functions, globals, and exports once each to build all index
+ * structures in a single pass (previously split across five standalone
+ * methods that each re-iterated the same module data).
  *
  * @protected
  * @param {!BinaryenModule} wasmModule
  * @return {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function (wasmModule) {
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} */ imports =
-      this.collectImportedFunctions_(wasmModule);
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>} */ impGlobals =
-      this.collectImportedGlobals_(wasmModule);
-  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = this.collectGlobals_(wasmModule);
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
 
-  var /** @const {!Object<string, string>} */ importedNames = /** @type {!Object<string, string>} */ (Object.create(null));
-  for (var /** number */ i = 0, /** @const {number} */ importCount = imports.length; i !== importCount; ++i) {
-    importedNames[imports[i].wasmFuncName] = imports[i].importBaseName;
-  }
-
-  var /** @const {!Object<string, number>} */ globalTypes = /** @type {!Object<string, number>} */ (Object.create(null));
-  for (var /** number */ gi = 0, /** @const {number} */ globalCount = globals.length; gi !== globalCount; ++gi) {
-    globalTypes[globals[gi].globalName] = globals[gi].globalType;
-  }
-  // Include imported global types so GlobalGetId/GlobalSetId resolve correctly.
-  for (var /** number */ igi = 0, /** @const {number} */ igLen = impGlobals.length; igi !== igLen; ++igi) {
-    globalTypes[impGlobals[igi].globalName] = impGlobals[igi].globalType;
-  }
-
+  // -- Functions: imports, defined, signatures in one pass. --
+  var /** @const {number} */ numFuncs = wasmModule.getNumFunctions();
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} */ impFuncs = [];
+  var /** @const {!Array<!BinaryenFunctionInfo>} */ functions = [];
+  // prettier-ignore
   var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ functionSignatures =
-      this.collectFunctionSignatures_(wasmModule);
-  var /** @const {{tables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>, flatEntries: !Array<string|null>}} */ tableResult =
-      this.collectFunctionTables_(wasmModule, functionSignatures);
+      /** @type {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ (Object.create(null));
+  var /** @const {!Object<string, string>} */ importedNames = /** @type {!Object<string, string>} */ (Object.create(null));
+  for (var /** number */ f = 0; f !== numFuncs; ++f) {
+    var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(wasmModule.getFunctionByIndex(f));
+    functionSignatures[funcInfo.name] = {sigParams: binaryen.expandType(funcInfo.params), sigRetType: funcInfo.results};
+    if ('' !== funcInfo.base) {
+      impFuncs[impFuncs.length] = {wasmFuncName: funcInfo.name, importBaseName: funcInfo.base, importModule: funcInfo.module};
+      importedNames[funcInfo.name] = funcInfo.base;
+    } else {
+      functions[functions.length] = funcInfo;
+    }
+  }
 
+  // -- Globals: imported + defined in one pass. --
+  var /** @const {number} */ numGlobals = wasmModule.getNumGlobals();
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>} */ impGlobals = [];
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = [];
+  var /** @const {!Object<string, number>} */ globalTypes = /** @type {!Object<string, number>} */ (Object.create(null));
+  for (var /** number */ gi = 0; gi !== numGlobals; ++gi) {
+    var /** @const {!BinaryenGlobalInfo} */ globalInfo = binaryen.getGlobalInfo(wasmModule.getGlobalByIndex(gi));
+    globalTypes[globalInfo.name] = globalInfo.type;
+    if ('' !== globalInfo.base) {
+      impGlobals[impGlobals.length] = {
+        globalName: globalInfo.name,
+        importBaseName: globalInfo.base,
+        importModule: globalInfo.module,
+        globalType: globalInfo.type
+      };
+    } else {
+      var /** @const {!BinaryenExpressionInfo} */ initExpr = binaryen.getExpressionInfo(globalInfo.init);
+      globals[globals.length] = {
+        globalName: globalInfo.name,
+        globalType: globalInfo.type,
+        globalMutable: !!globalInfo.mutable,
+        globalInitValue: /** @type {number} */ (initExpr.value) || 0
+      };
+    }
+  }
+
+  // -- Exports. --
+  var /** @const {number} */ numExports = wasmModule.getNumExports();
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>} */ expFuncs = [];
+  for (var /** number */ e = 0; e !== numExports; ++e) {
+    var /** @const {!BinaryenExportInfo} */ exportInfo = binaryen.getExportInfo(wasmModule.getExportByIndex(e));
+    if (binaryen.ExternalFunction === exportInfo.kind) {
+      expFuncs[expFuncs.length] = {
+        exportName: exportInfo.name,
+        internalName: exportInfo.value,
+        stubName: Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(exportInfo.value)
+      };
+    }
+  }
+
+  // prettier-ignore
+  var /** @const */ tableResult = this.collectFunctionTables_(wasmModule, functionSignatures);
   return {
-    impFuncs: imports,
+    impFuncs: impFuncs,
     impGlobals: impGlobals,
     importedNames: importedNames,
     functionSignatures: functionSignatures,
     globals: globals,
     globalTypes: globalTypes,
-    expFuncs: this.collectExportedFunctions_(wasmModule),
-    functions: this.collectDefinedFunctions_(wasmModule),
+    expFuncs: expFuncs,
+    functions: functions,
     functionTables: tableResult.tables,
     flatTableEntries: tableResult.flatEntries
   };

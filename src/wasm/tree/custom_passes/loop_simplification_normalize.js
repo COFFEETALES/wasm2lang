@@ -40,41 +40,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass = function () {
   );
 };
 
-/**
- * Label prefix for trailing-continue loops (emitted as labeled for(;;)).
- * @const {string}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.LC_MARKER = 'lc$';
-
-/**
- * Label prefix for do-while loops (labeled).
- * @const {string}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.LD_MARKER = 'ld$';
-
-/**
- * Label prefix for trailing-continue loops that need no label (unlabeled for(;;)).
- * @const {string}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.LF_MARKER = 'lf$';
-
-/**
- * Label prefix for do-while loops that need no label (unlabeled do-while).
- * @const {string}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.LE_MARKER = 'le$';
-
-/**
- * Label prefix for while loops (labeled).
- * @const {string}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.LW_MARKER = 'lw$';
-
-/**
- * Label prefix for while loops that need no label (unlabeled while).
- * @const {string}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.LY_MARKER = 'ly$';
+// Marker prefixes: lc$/lf$ (for-loop, labeled/unlabeled), ld$/le$ (do-while),
+// lw$/ly$ (while).  Defined in VARIANT_INFO_ below.
 
 /**
  * Inverts a boolean condition expression at the IR level.
@@ -233,58 +200,23 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_
 };
 
 /**
- * Returns the label marker prefix for a given simplification kind.
- *
+ * Per-variant info: [marker, loopKind, needsLabel].
  * @private
- * @param {string} kind
- * @return {string}
+ * @const {!Object<string, !Array>}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.markerForKind_ = function (kind) {
-  var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
-  if ('lc' === kind || 'lcs' === kind || 'lct' === kind) {
-    return S.LC_MARKER;
-  }
-  if ('lf' === kind || 'lfs' === kind || 'lft' === kind) {
-    return S.LF_MARKER;
-  }
-  if ('lda' === kind || 'ldb' === kind) {
-    return S.LD_MARKER;
-  }
-  if ('lw' === kind) {
-    return S.LW_MARKER;
-  }
-  if ('ly' === kind) {
-    return S.LY_MARKER;
-  }
-  return S.LE_MARKER;
-};
-
-/**
- * Returns the LoopPlan loopKind for a given simplification variant.
- *
- * @private
- * @param {string} kind
- * @return {string}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.loopKindForVariant_ = function (kind) {
-  if ('lda' === kind || 'ldb' === kind || 'lea' === kind || 'leb' === kind) {
-    return 'dowhile';
-  }
-  if ('lw' === kind || 'ly' === kind) {
-    return 'while';
-  }
-  return 'for';
-};
-
-/**
- * Returns whether the loop variant needs a label in the output.
- *
- * @private
- * @param {string} kind
- * @return {boolean}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.needsLabelForVariant_ = function (kind) {
-  return 'lc' === kind || 'lcs' === kind || 'lct' === kind || 'lda' === kind || 'ldb' === kind || 'lw' === kind;
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.VARIANT_INFO_ = {
+  'lc': ['lc$', 'for', true],
+  'lcs': ['lc$', 'for', true],
+  'lct': ['lc$', 'for', true],
+  'lf': ['lf$', 'for', false],
+  'lfs': ['lf$', 'for', false],
+  'lft': ['lf$', 'for', false],
+  'lda': ['ld$', 'dowhile', true],
+  'ldb': ['ld$', 'dowhile', true],
+  'lea': ['le$', 'dowhile', false],
+  'leb': ['le$', 'dowhile', false],
+  'lw': ['lw$', 'while', true],
+  'ly': ['ly$', 'while', false]
 };
 
 /**
@@ -292,19 +224,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.needsLabelForVariant_ = 
  *
  * @private
  * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_} state
- * @param {string} marker
+ * @param {!Array} variantInfo
  * @param {string} loopName
- * @param {string} kind
  * @param {number} conditionPtr
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.storePlan_ = function (state, marker, loopName, kind, conditionPtr) {
-  var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.storePlan_ = function (state, variantInfo, loopName, conditionPtr) {
   var /** @const {*} */ loopPlansRef = state.funcMetadata.loopPlans;
   if (loopPlansRef) {
-    /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (loopPlansRef)[marker + loopName] =
+    /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (loopPlansRef)[variantInfo[0] + loopName] =
       /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ ({
-        simplifiedLoopKind: S.loopKindForVariant_(kind),
-        needsLabel: S.needsLabelForVariant_(kind),
+        simplifiedLoopKind: /** @type {string} */ (variantInfo[1]),
+        needsLabel: /** @type {boolean} */ (variantInfo[2]),
         conditionPtr: conditionPtr
       });
   }
@@ -483,7 +413,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
   if (id === binaryen.BreakId) {
     var /** @const {?string} */ breakName = /** @type {?string} */ (expr.name);
     if (breakName && breakName in state.simplifiedLoops) {
-      var /** @const {string} */ brM = S.markerForKind_(state.simplifiedLoops[breakName]);
+      var /** @const {string} */ brM = /** @type {string} */ (S.VARIANT_INFO_[state.simplifiedLoops[breakName]][0]);
       return {
         decisionAction: REPLACE_NODE,
         expressionPointer: module.break(
@@ -504,7 +434,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
 
     for (i = 0; i !== nameCount; ++i) {
       if (names[i] in state.simplifiedLoops) {
-        names[i] = S.markerForKind_(state.simplifiedLoops[names[i]]) + names[i];
+        names[i] = S.VARIANT_INFO_[state.simplifiedLoops[names[i]]][0] + names[i];
         hasChanges = true;
       }
     }
@@ -512,7 +442,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     var /** @const {string} */ defaultName = /** @type {string} */ (expr.defaultName || '');
     var /** @type {string} */ newDefault = defaultName;
     if ('' !== defaultName && defaultName in state.simplifiedLoops) {
-      newDefault = S.markerForKind_(state.simplifiedLoops[defaultName]) + defaultName;
+      newDefault = S.VARIANT_INFO_[state.simplifiedLoops[defaultName]][0] + defaultName;
       hasChanges = true;
     }
 
@@ -536,7 +466,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
       return null;
     }
     var /** @const {string} */ kind = state.simplifiedLoops[loopName];
-    var /** @const {string} */ marker = S.markerForKind_(kind);
+    var /** @const {!Array} */ variantInfo = S.VARIANT_INFO_[kind];
+    var /** @const {string} */ marker = /** @type {string} */ (variantInfo[0]);
 
     var /** @const {number} */ bodyPtr = /** @type {number} */ (expr.body);
     var /** @const {!BinaryenExpressionInfo} */ bodyInfo = /** @type {!BinaryenExpressionInfo} */ (
@@ -579,7 +510,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
 
     var /** @const {?string} */ bodyBlockName = bodyInfo.id === binaryen.BlockId ? bodyInfo.name || null : null;
     var /** @const {number} */ newBody = module.block(bodyBlockName, bodyChildren, binaryen.none);
-    S.storePlan_(state, marker, loopName, kind, planCondPtr);
+    S.storePlan_(state, variantInfo, loopName, planCondPtr);
     return {
       decisionAction: REPLACE_NODE,
       expressionPointer: module.loop(marker + loopName, newBody)
