@@ -48,7 +48,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getFixedModuleBindings_ = function (opt
       'Math_LOG10E',
       'Math_PI',
       'Math_SQRT1_2',
-      'Math_SQRT2'
+      'Math_SQRT2',
+      '$g_Infinity',
+      '$g_NaN'
     ];
   if ('string' === typeof options.emitMetadata) {
     bindings[bindings.length] = 'i32_array';
