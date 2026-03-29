@@ -4,9 +4,17 @@
 
 **Compile once to WebAssembly. Ship everywhere as source code.**
 
-[![npm](https://img.shields.io/npm/v/@coffeetales.net/wasm2lang?style=for-the-badge)](https://www.npmjs.com/package/@coffeetales.net/wasm2lang)
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-%E2%9D%A4%EF%B8%8F%20GitHub%20Sponsors-pink?style=for-the-badge)](https://github.com/sponsors/COFFEETALES)
-[![GitHub stars](https://img.shields.io/github/stars/COFFEETALES/wasm2lang?style=for-the-badge)](../../stargazers)
+<p align="center">
+  <a href="https://coffeetales.github.io/wasm2lang/"><img src="https://img.shields.io/badge/Try%20the%20Playground-Live%20Demo-111827?style=for-the-badge&logo=githubpages&logoColor=white" alt="Launch the Playground" /></a>
+  <a href="https://www.npmjs.com/package/@coffeetales.net/wasm2lang"><img src="https://img.shields.io/npm/v/%40coffeetales.net%2Fwasm2lang?style=for-the-badge&label=npm&color=2563eb&logo=npm" alt="npm version" /></a>
+  <a href="https://github.com/COFFEETALES/wasm2lang/actions/workflows/wasm2lang_ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/COFFEETALES/wasm2lang/wasm2lang_ci.yml?style=for-the-badge&label=CI&color=16a34a&logo=githubactions&logoColor=white" alt="CI status" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/COFFEETALES/wasm2lang/stargazers"><img src="https://img.shields.io/github/stars/COFFEETALES/wasm2lang?style=flat-square&label=stars&color=f59e0b&logo=github" alt="GitHub stars" /></a>
+  <a href="https://github.com/COFFEETALES/wasm2lang/issues"><img src="https://img.shields.io/github/issues/COFFEETALES/wasm2lang?style=flat-square&label=issues&color=0f766e&logo=github" alt="Open issues" /></a>
+  <a href="https://github.com/sponsors/COFFEETALES"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-db2777?style=flat-square&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" /></a>
+</p>
 
 </div>
 
@@ -57,11 +65,11 @@ that each platform's toolchain can compile, inline, and optimize directly.
 
 ## Backends
 
-| Backend     | `--language-out`  | Strength                                            |Status                                                                    |
-|-------------|-------------------|-----------------------------------------------------|--------------------------------------------------------------------------|
-| **asm.js**  | `ASMJS`           | Closest semantic match to WASM; AOT-compiled by V8  | Active -- full function-body emission, validated by V8 and SpiderMonkey  |
-| **PHP**     | `PHP64`           | Runs on shared hosting with no extensions           | Active -- full function-body emission, validated by PHP CLI              |
-| **Java**    | `JAVA`            | HotSpot/Graal optimize the output directly          | Active -- full function-body emission, validated by jshell               |
+| Backend    | `--language-out` | Strength                                           | Status                                                                  |
+| ---------- | ---------------- | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| **asm.js** | `ASMJS`          | Closest semantic match to WASM; AOT-compiled by V8 | Active -- full function-body emission, validated by V8 and SpiderMonkey |
+| **PHP**    | `PHP64`          | Runs on shared hosting with no extensions          | Active -- full function-body emission, validated by PHP CLI             |
+| **Java**   | `JAVA`           | HotSpot/Graal optimize the output directly         | Active -- full function-body emission, validated by jshell              |
 
 **Why asm.js?** WebAssembly was designed as the binary evolution of asm.js --
 they share the same linear memory model, integer coercion semantics, and
@@ -114,30 +122,30 @@ source files directly from `src/`.
 
 ### Options
 
-| Flag                          | Type      | Description                                                                                                                                                          |
-|-------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--input-file <path>`         | `string`  | Path to a WebAssembly file. Files ending in `.wat`/`.wast` (or prefixed with `wast:`) are read as text; all others as binary. Use `wast:-` to read text from stdin.  |
-| `--input-data <string>`       | `string`  | Inline WebAssembly text to compile (alternative to `--input-file`).                                                                                                  |
-| `--language-out <lang>`       | `enum`    | Output backend: `ASMJS` (default), `PHP64`, `JAVA`.                                                                                                                  |
-| `--normalize-wasm <bundles>`  | `list`    | Comma-separated normalization bundles (see below). Default: `binaryen:min`.                                                                                          |
-| `--emit-code [name]`          | `string`  | Emit generated source code. The name becomes the output variable/class name (default: `code`).                                                                       |
-| `--emit-metadata [name]`      | `string`  | Emit static memory initialization. The name becomes the output variable name (default: `metadata`).                                                                  |
-| `--emit-web-assembly [text]`  | `string`  | Emit the (normalized) WebAssembly module. Defaults to binary format; pass `text` for WAT output.                                                                     |
-| `--define <K=V>`              | `string`  | Set a compile-time define (repeatable). Used to configure backend constants.                                                                                         |
-| `--mangler <key>`             | `string`  | Enable deterministic identifier mangling. Same key = same output; different keys = different names.                                                                  |
-| `--help`                      | --        | Print option descriptions to stderr and exit.                                                                                                                        |
+| Flag                         | Type     | Description                                                                                                                                                         |
+| ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--input-file <path>`        | `string` | Path to a WebAssembly file. Files ending in `.wat`/`.wast` (or prefixed with `wast:`) are read as text; all others as binary. Use `wast:-` to read text from stdin. |
+| `--input-data <string>`      | `string` | Inline WebAssembly text to compile (alternative to `--input-file`).                                                                                                 |
+| `--language-out <lang>`      | `enum`   | Output backend: `ASMJS` (default), `PHP64`, `JAVA`.                                                                                                                 |
+| `--normalize-wasm <bundles>` | `list`   | Comma-separated normalization bundles (see below). Default: `binaryen:min`.                                                                                         |
+| `--emit-code [name]`         | `string` | Emit generated source code. The name becomes the output variable/class name (default: `code`).                                                                      |
+| `--emit-metadata [name]`     | `string` | Emit static memory initialization. The name becomes the output variable name (default: `metadata`).                                                                 |
+| `--emit-web-assembly [text]` | `string` | Emit the (normalized) WebAssembly module. Defaults to binary format; pass `text` for WAT output.                                                                    |
+| `--define <K=V>`             | `string` | Set a compile-time define (repeatable). Used to configure backend constants.                                                                                        |
+| `--mangler <key>`            | `string` | Enable deterministic identifier mangling. Same key = same output; different keys = different names.                                                                 |
+| `--help`                     | --       | Print option descriptions to stderr and exit.                                                                                                                       |
 
 ### Normalization bundles
 
 Bundles are passed as a comma-separated list to `--normalize-wasm` and
 control how the WebAssembly IR is transformed before code emission.
 
-| Bundle               | Phase      | Description                                                                                           |
-|----------------------|------------|-------------------------------------------------------------------------------------------------------|
-| `binaryen:none`      | binaryen   | No Binaryen normalization; raw input is used as-is.                                                   |
-| `binaryen:min`       | binaryen   | Minimal Binaryen passes (flatten, simplify-locals, reorder-locals, vacuum).                           |
-| `binaryen:max`       | binaryen   | Aggressive Binaryen optimization for code generation.                                                 |
-| `wasm2lang:codegen`  | wasm2lang  | Internal wasm2lang passes (loop simplification, block-loop fusion, switch dispatch detection, etc.).  |
+| Bundle              | Phase     | Description                                                                                          |
+| ------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
+| `binaryen:none`     | binaryen  | No Binaryen normalization; raw input is used as-is.                                                  |
+| `binaryen:min`      | binaryen  | Minimal Binaryen passes (flatten, simplify-locals, reorder-locals, vacuum).                          |
+| `binaryen:max`      | binaryen  | Aggressive Binaryen optimization for code generation.                                                |
+| `wasm2lang:codegen` | wasm2lang | Internal wasm2lang passes (loop simplification, block-loop fusion, switch dispatch detection, etc.). |
 
 Common combinations:
 
@@ -150,11 +158,11 @@ Common combinations:
 Each backend reads specific defines from `--define` to control output
 parameters.
 
-| Define             | Backend  | Default  | Description                              |
-|--------------------|----------|----------|------------------------------------------|
-| `ASMJS_HEAP_SIZE`  | asm.js   | 65536    | Size of the `ArrayBuffer` heap (bytes).  |
-| `PHP64_HEAP_SIZE`  | PHP      | 65536    | Size of the binary string heap (bytes).  |
-| `JAVA_HEAP_SIZE`   | Java     | 65536    | Size of the `ByteBuffer` heap (bytes).   |
+| Define            | Backend | Default | Description                             |
+| ----------------- | ------- | ------- | --------------------------------------- |
+| `ASMJS_HEAP_SIZE` | asm.js  | 65536   | Size of the `ArrayBuffer` heap (bytes). |
+| `PHP64_HEAP_SIZE` | PHP     | 65536   | Size of the binary string heap (bytes). |
+| `JAVA_HEAP_SIZE`  | Java    | 65536   | Size of the `ByteBuffer` heap (bytes).  |
 
 ## Usage examples
 
@@ -268,11 +276,12 @@ wasm2lang                         \
 ```
 
 Output:
+
 ```js
 var heapData = new ArrayBuffer(131072);
 var i32_array = new Int32Array(heapData);
 var myModule = function asmjsModule(stdlib, foreign, buffer) {
-  "use asm";
+  'use asm';
   // ...
 };
 ```
@@ -384,6 +393,6 @@ this kind of tool should exist -- consider sponsoring.
 
 ### [Become a sponsor](https://github.com/sponsors/COFFEETALES)
 
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-%E2%9D%A4%EF%B8%8F%20GitHub%20Sponsors-pink?style=for-the-badge&logo=github)](https://github.com/sponsors/COFFEETALES)
+<a href="https://github.com/sponsors/COFFEETALES"><img src="https://img.shields.io/badge/Become%20a%20Sponsor-GitHub%20Sponsors-db2777?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Become a sponsor on GitHub Sponsors" /></a>
 
 </div>
