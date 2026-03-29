@@ -58,7 +58,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass = function () {
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.invertCondition_ = function (binaryen, module, condPtr) {
   var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
-      binaryen.getExpressionInfo(condPtr)
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, condPtr)
     );
   var /** @const {!BinaryenI32Api} */ i32 = module.i32;
   if (info.id === binaryen.BinaryId) {
@@ -107,7 +107,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting
   if (!ptr) {
     return false;
   }
-  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (binaryen.getExpressionInfo(ptr));
+  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
+    );
   var /** @const {number} */ id = info.id;
   var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
 
@@ -157,7 +159,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_
   if (!ptr) {
     return false;
   }
-  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (binaryen.getExpressionInfo(ptr));
+  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
+    );
   var /** @const {number} */ id = info.id;
   var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
 
@@ -265,7 +269,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
     return null;
   }
 
-  var /** @const {!Object<string, *>} */ bodyInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(bodyPtr));
+  var /** @const {!Object<string, *>} */ bodyInfo = /** @type {!Object<string, *>} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyPtr)
+    );
 
   // Direct conditional br_if body (no block wrapper): do-while with empty body.
   // Side effects (local.tee, calls) live inside the condition expression.
@@ -289,7 +295,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
 
   var /** @const {number} */ len = children.length;
   var /** @const {!Object<string, *>} */ lastInfo = /** @type {!Object<string, *>} */ (
-      binaryen.getExpressionInfo(children[len - 1])
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[len - 1])
     );
   var /** @const {number} */ lastId = /** @type {number} */ (lastInfo['id']);
 
@@ -312,7 +318,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
     // last is unconditional br to something else (exit).
     if (lastName !== loopName && 0 === lastCond && len >= 2) {
       var /** @const {!Object<string, *>} */ prevInfo = /** @type {!Object<string, *>} */ (
-          binaryen.getExpressionInfo(children[len - 2])
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[len - 2])
         );
       if (
         /** @type {number} */ (prevInfo['id']) === binaryen.BreakId &&
@@ -344,7 +350,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
       // loop itself).  When matched, the loop becomes while(!exitCond) { body }.
       if (len >= 2) {
         var /** @const {!Object<string, *>} */ firstInfo = /** @type {!Object<string, *>} */ (
-            binaryen.getExpressionInfo(children[0])
+            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[0])
           );
         if (
           /** @type {number} */ (firstInfo['id']) === binaryen.BreakId &&
@@ -403,7 +409,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
   var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
   var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
-      binaryen.getExpressionInfo(nodeCtx.expressionPointer)
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, nodeCtx.expressionPointer)
     );
   var /** @const {number} */ id = expr.id;
   var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
@@ -471,7 +477,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
 
     var /** @const {number} */ bodyPtr = /** @type {number} */ (expr.body);
     var /** @const {!BinaryenExpressionInfo} */ bodyInfo = /** @type {!BinaryenExpressionInfo} */ (
-        binaryen.getExpressionInfo(bodyPtr)
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyPtr)
       );
     var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
     var /** @const {number} */ len = children.length;
@@ -482,7 +488,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
 
     if ('lw' === kind || 'ly' === kind) {
       var /** @const {!BinaryenExpressionInfo} */ brIfInfo = /** @type {!BinaryenExpressionInfo} */ (
-          binaryen.getExpressionInfo(children[0])
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[0])
         );
       planCondPtr = S.invertCondition_(binaryen, module, /** @type {number} */ (brIfInfo.condition || 0));
       bodyChildren = children.slice(1, len - 1);
@@ -491,7 +497,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     } else if ('ldb' === kind || 'leb' === kind) {
       if (len > 0) {
         var /** @const {!BinaryenExpressionInfo} */ brIfB = /** @type {!BinaryenExpressionInfo} */ (
-            binaryen.getExpressionInfo(children[len - 1])
+            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[len - 1])
           );
         planCondPtr = /** @type {number} */ (brIfB.condition || 0);
         children.length = len - 1;
@@ -501,7 +507,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
       }
     } else if ('lda' === kind || 'lea' === kind) {
       var /** @const {!BinaryenExpressionInfo} */ brIfA = /** @type {!BinaryenExpressionInfo} */ (
-          binaryen.getExpressionInfo(children[len - 2])
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[len - 2])
         );
       planCondPtr = /** @type {number} */ (brIfA.condition || 0);
       children.length = len - 2;

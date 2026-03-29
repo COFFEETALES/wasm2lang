@@ -40,7 +40,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.scanForLocalGets_ = functi
   }
   // prettier-ignore
   var /** @const {!BinaryenExpressionInfo} */ info =
-    /** @type {!BinaryenExpressionInfo} */ (binaryen.getExpressionInfo(ptr));
+    /** @type {!BinaryenExpressionInfo} */ (Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr));
 
   if (info.id === binaryen.LocalGetId) {
     readLocals[/** @type {number} */ (info.index || 0)] = true;
@@ -82,7 +82,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
 
   // prettier-ignore
   var /** @const {!BinaryenExpressionInfo} */ bodyInfo =
-    /** @type {!BinaryenExpressionInfo} */ (binaryen.getExpressionInfo(bodyPtr));
+    /** @type {!BinaryenExpressionInfo} */ (Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,bodyPtr));
 
   if (bodyInfo.id !== binaryen.BlockId) {
     return;
@@ -95,7 +95,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
   if (0 !== children.length) {
     // prettier-ignore
     var /** @const {!BinaryenExpressionInfo} */ firstChildInfo =
-      /** @type {!BinaryenExpressionInfo} */ (binaryen.getExpressionInfo(children[0]));
+      /** @type {!BinaryenExpressionInfo} */ (Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,children[0]));
     if (firstChildInfo.id === binaryen.BlockId && !firstChildInfo.name) {
       children = /** @type {!Array<number>} */ (firstChildInfo.children || []);
     }
@@ -125,7 +125,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
     var /** @const {number} */ childPtr = children[ci];
     // prettier-ignore
     var /** @const {!BinaryenExpressionInfo} */ childInfo =
-      /** @type {!BinaryenExpressionInfo} */ (binaryen.getExpressionInfo(childPtr));
+      /** @type {!BinaryenExpressionInfo} */ (Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,childPtr));
 
     if (childInfo.id === binaryen.LocalSetId && !childInfo.isTee) {
       var /** @const {number} */ localIdx = /** @type {number} */ (childInfo.index || 0);
@@ -134,7 +134,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
         if (0 !== valuePtr) {
           // prettier-ignore
           var /** @const {!BinaryenExpressionInfo} */ valueInfo =
-            /** @type {!BinaryenExpressionInfo} */ (binaryen.getExpressionInfo(valuePtr));
+            /** @type {!BinaryenExpressionInfo} */ (Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,valuePtr));
           if (valueInfo.id === binaryen.ConstId) {
             foldPtrs[String(childPtr)] = true;
             initOverrides[String(localIdx)] = /** @type {number} */ (valueInfo.value);

@@ -198,6 +198,26 @@ Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs = function (expressionId) {
 };
 
 /**
+ * Safe wrapper around {@code binaryen.getExpressionInfo()} that handles
+ * expression types missing from the binaryen 125 JS API's internal
+ * expression-class registry (NopId, UnreachableId).
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} exprPtr
+ * @return {!Wasm2Lang.Wasm.Tree.ExpressionInfo}
+ */
+Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo = function (binaryen, exprPtr) {
+  var /** @const {number} */ id = binaryen.getExpressionId(exprPtr);
+  if (id === binaryen.NopId || id === binaryen.UnreachableId) {
+    // prettier-ignore
+    return /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (
+      { id: id, type: binaryen.getExpressionType(exprPtr) }
+    );
+  }
+  return binaryen.getExpressionInfo(exprPtr);
+};
+
+/**
  * Patches expression info objects for expression IDs where
  * {@code binaryen.getExpressionInfo()} does not populate child pointer
  * properties.  Must be called before {@code iterChildren}.

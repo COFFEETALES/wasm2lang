@@ -67,6 +67,18 @@ var BinaryenModule = function () {};
 
 /**
  * @param {number} exprPtr
+ * @return {number}
+ */
+Binaryen.prototype.getExpressionId = function (exprPtr) {};
+
+/**
+ * @param {number} exprPtr
+ * @return {number}
+ */
+Binaryen.prototype.getExpressionType = function (exprPtr) {};
+
+/**
+ * @param {number} exprPtr
  * @return {!BinaryenExpressionInfo}
  */
 Binaryen.prototype.getExpressionInfo = function (exprPtr) {};

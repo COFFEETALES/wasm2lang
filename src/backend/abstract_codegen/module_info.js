@@ -480,7 +480,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
         globalType: globalInfo.type
       };
     } else {
-      var /** @const {!BinaryenExpressionInfo} */ initExpr = binaryen.getExpressionInfo(globalInfo.init);
+      var /** @const {!BinaryenExpressionInfo} */ initExpr = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+          binaryen,
+          globalInfo.init
+        );
       globals[globals.length] = {
         globalName: globalInfo.name,
         globalType: globalInfo.type,
@@ -566,7 +569,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
 
   // Evaluate offset expression to get base index.
   var /** @const {!Object<string, *>} */ offsetExpr = /** @type {!Object<string, *>} */ (
-      binaryen.getExpressionInfo(segInfo.offset)
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, segInfo.offset)
     );
   var /** @type {number} */ baseOffset = 0;
   if (

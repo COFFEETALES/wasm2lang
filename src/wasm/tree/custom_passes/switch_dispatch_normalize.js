@@ -82,7 +82,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
     }
 
     var /** @const {!BinaryenExpressionInfo} */ firstChild = /** @type {!BinaryenExpressionInfo} */ (
-        binaryen.getExpressionInfo(firstChildPtr)
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, firstChildPtr)
       );
     if (firstChild.id !== binaryen.BlockId) {
       return null;
@@ -99,7 +99,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
     if (!isOutermost) {
       var /** @const {number} */ lastPtr = children[children.length - 1];
       var /** @const {!BinaryenExpressionInfo} */ lastExpr = /** @type {!BinaryenExpressionInfo} */ (
-          binaryen.getExpressionInfo(lastPtr)
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, lastPtr)
         );
       if (lastExpr.id !== binaryen.BreakId || 0 !== /** @type {number} */ (lastExpr.condition || 0)) {
         return null;
@@ -110,7 +110,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
     var /** @const {!Array<number>|void} */ fcChildren = /** @type {!Array<number>|void} */ (firstChild.children);
     if (fcChildren && 1 === fcChildren.length) {
       var /** @const {!BinaryenExpressionInfo} */ sole = /** @type {!BinaryenExpressionInfo} */ (
-          binaryen.getExpressionInfo(fcChildren[0])
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcChildren[0])
         );
       if (sole.id === binaryen.SwitchId) {
         var /** @const {!Array<string>} */ names = /** @type {!Array<string>} */ (sole.names || []);
@@ -211,14 +211,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
   var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
   // prettier-ignore
   var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
-    binaryen.getExpressionInfo(nodeCtx.expressionPointer)
+    Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,nodeCtx.expressionPointer)
   );
   if (expr.id === binaryen.BlockId) {
     var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (expr.children || []);
     if (children.length > 1) {
       var /** @const {number} */ fcPtr = children[0];
       var /** @const {!BinaryenExpressionInfo} */ fcInfo = /** @type {!BinaryenExpressionInfo} */ (
-          binaryen.getExpressionInfo(fcPtr)
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr)
         );
       if (fcInfo.id === binaryen.BlockId) {
         var /** @const {?string} */ fcName = /** @type {?string} */ (fcInfo.name);
@@ -227,7 +227,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
           var /** @type {!Array<number>} */ wrapperChildren;
 
           var /** @const {!BinaryenExpressionInfo} */ lastInfo = /** @type {!BinaryenExpressionInfo} */ (
-              binaryen.getExpressionInfo(allChildren[allChildren.length - 1])
+              Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, allChildren[allChildren.length - 1])
             );
           var /** @const {boolean} */ excludeLast =
               lastInfo.id === binaryen.BreakId && 0 === /** @type {number} */ (lastInfo.condition || 0);
@@ -367,7 +367,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.isRootSwitchO
   for (;;) {
     var /** @const {!Array<number>} */ curChildren = /** @type {!Array<number>} */ (cur['children']);
     var /** @const {number} */ fcPtr = curChildren[0];
-    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(fcPtr));
+    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr)
+      );
     var /** @const {number} */ fcId = /** @type {number} */ (fcInfo['id']);
     var /** @const {?string} */ fcName = /** @type {?string} */ (fcInfo['name'] || null);
 
@@ -388,7 +390,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.isRootSwitchO
         return false;
       }
       var /** @const {!Object<string, *>} */ fusedChild = /** @type {!Object<string, *>} */ (
-          binaryen.getExpressionInfo(fusedChildren[0])
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fusedChildren[0])
         );
       if (/** @type {number} */ (fusedChild['id']) !== binaryen.LoopId) {
         return false;
@@ -424,7 +426,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.checkLoopBody
   if (0 === bodyPtr) {
     return false;
   }
-  var /** @const {!Object<string, *>} */ bodyInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(bodyPtr));
+  var /** @const {!Object<string, *>} */ bodyInfo = /** @type {!Object<string, *>} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyPtr)
+    );
   if (/** @type {number} */ (bodyInfo['id']) !== binaryen.BlockId) {
     return false;
   }
@@ -435,7 +439,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.checkLoopBody
 
   // First child must be a sw$-prefixed block.
   var /** @const {!Object<string, *>} */ firstChild = /** @type {!Object<string, *>} */ (
-      binaryen.getExpressionInfo(bodyChildren[0])
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyChildren[0])
     );
   if (/** @type {number} */ (firstChild['id']) !== binaryen.BlockId) {
     return false;
@@ -447,7 +451,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.checkLoopBody
 
   // Last child must be an unconditional br targeting one of the chain blocks.
   var /** @const {!Object<string, *>} */ lastChild = /** @type {!Object<string, *>} */ (
-      binaryen.getExpressionInfo(bodyChildren[bodyChildren.length - 1])
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyChildren[bodyChildren.length - 1])
     );
   if (/** @type {number} */ (lastChild['id']) !== binaryen.BreakId) {
     return false;

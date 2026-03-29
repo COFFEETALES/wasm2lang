@@ -98,12 +98,39 @@ Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_ = function (wasmMo
  * @return {void}
  */
 Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmModule, aggressive) {
-  // "flatten" inserts explicit returns at block ends so later codegen sees concrete control flow.
-  // "simplify-locals-notee" merges redundant local set patterns to reduce local noise
-  //   without reintroducing local.tee instructions that flatten removed.
+  if (aggressive) {
+    var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+    var /** @const {!BinaryenFeatures} */ features = binaryen.Features;
+    // Set the feature mask so binaryen's optimizer recognizes post-MVP ops.
+    wasmModule.setFeatures(0 | features.NontrappingFPToInt | features.BulkMemory | features.BulkMemoryOpt | features.SignExt);
+    // Run a full optimization pass before i64 lowering to inline small
+    // functions, eliminate duplicates, and simplify instructions.
+    binaryen.setOptimizeLevel(2);
+    binaryen.setShrinkLevel(1);
+    wasmModule.optimize();
+    // Lower i64 to pairs of i32 so backends only need to handle i32/f32/f64.
+    // "remove-non-js-ops" converts i64 selects to if/else which the lowering
+    // pass requires; both passes need flat IR so "flatten" runs before each.
+    wasmModule.runPasses(['flatten', 'remove-non-js-ops', 'flatten', 'i64-to-i32-lowering']);
+    // Cleanup passes before the final flatten to reduce dead code and simplify.
+    wasmModule.runPasses([
+      'optimize-instructions',
+      'precompute',
+      'dce',
+      'remove-unused-brs',
+      'remove-unused-names',
+      'simplify-globals',
+      'duplicate-function-elimination'
+    ]);
+  }
+  // "flatten" inserts explicit returns at block ends so later codegen sees
+  // concrete control flow.
+  // "simplify-locals-nostructure" merges redundant local set/get patterns
+  // without restructuring control flow — unlike "simplify-locals-notee" it
+  // never re-nests blocks/ifs with result values, so the flat invariant holds.
   // "reorder-locals" compacts local indices to a tighter layout.
   // "vacuum" removes unreachable code left by earlier passes.
-  wasmModule.runPasses(['flatten', 'simplify-locals-notee', 'reorder-locals', 'vacuum']);
+  wasmModule.runPasses(['flatten', 'simplify-locals-nostructure', 'reorder-locals', 'vacuum']);
 };
 
 /**

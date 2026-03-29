@@ -131,7 +131,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = function (binaryen, outerBlockPtr) {
   var /** @const {!Object<string, *>} */ outerInfo = /** @type {!Object<string, *>} */ (
-      binaryen.getExpressionInfo(outerBlockPtr)
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, outerBlockPtr)
     );
   var /** @const {string} */ outerName = /** @type {string} */ (outerInfo['name']);
 
@@ -148,14 +148,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
     chain[chain.length] = [curName, curChildPtrs];
 
     var /** @const {number} */ fcPtr = curChildPtrs[0];
-    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(fcPtr));
+    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr)
+      );
     if (/** @type {number} */ (fcInfo['id']) !== binaryen.BlockId) {
       break;
     }
     var /** @const {!Array<number>} */ fcChildren = /** @type {!Array<number>} */ (fcInfo['children'] || []);
     if (1 === fcChildren.length) {
       var /** @const {!Object<string, *>} */ soleInfo = /** @type {!Object<string, *>} */ (
-          binaryen.getExpressionInfo(fcChildren[0])
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcChildren[0])
         );
       if (/** @type {number} */ (soleInfo['id']) === binaryen.SwitchId) {
         // Record innermost wrapper.
@@ -193,7 +195,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
             // terminated — no additional switch break is needed.
             if (nb && aPtrs.length > 0) {
               var /** @const {!Object<string, *>} */ lastAct = /** @type {!Object<string, *>} */ (
-                  binaryen.getExpressionInfo(aPtrs[aPtrs.length - 1])
+                  Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,aPtrs[aPtrs.length - 1])
                 );
               if (
                 /** @type {number} */ (lastAct['id']) === binaryen.BreakId &&
@@ -368,7 +370,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSwitchCaseActions
 
   if (0 < actionCount && 'string' === typeof opt_terminalBreakTarget) {
     var /** @const {!Object<string, *>} */ terminalInfo = /** @type {!Object<string, *>} */ (
-        binaryen.getExpressionInfo(actionPtrs[actionCount - 1])
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, actionPtrs[actionCount - 1])
       );
     if (
       terminalInfo['id'] === binaryen.BreakId &&
@@ -384,7 +386,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSwitchCaseActions
       // emitting unreachable code (Java rejects unreachable statements).
       if (0 < actionCount) {
         var /** @const {!Object<string, *>} */ prevInfo = /** @type {!Object<string, *>} */ (
-            binaryen.getExpressionInfo(actionPtrs[actionCount - 1])
+            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, actionPtrs[actionCount - 1])
           );
         if (
           /** @type {number} */ (prevInfo['id']) === binaryen.BreakId &&
@@ -446,7 +448,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitRootSwitchExitCod
   );
 
   if (0 < exitPtrs.length) {
-    var /** @const {number} */ lastId = /** @type {number} */ (binaryen.getExpressionInfo(exitPtrs[exitPtrs.length - 1])['id']);
+    var /** @const {number} */ lastId = /** @type {number} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, exitPtrs[exitPtrs.length - 1])['id']
+      );
     return lastId === binaryen.ReturnId || lastId === binaryen.UnreachableId;
   }
   return false;
@@ -467,7 +471,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitRootSwitchExitCod
  * @return {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.RootSwitchInfo}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStructure = function (binaryen, rsBlockPtr) {
-  var /** @const {!Object<string, *>} */ outerInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(rsBlockPtr));
+  var /** @const {!Object<string, *>} */ outerInfo = /** @type {!Object<string, *>} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, rsBlockPtr)
+    );
   var /** @const {string} */ rsBlockName = /** @type {string} */ (outerInfo['name']);
 
   // chain[i] = {name: blockName, childPtrs: Array<number>}
@@ -486,7 +492,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
     }
 
     var /** @const {number} */ fcPtr = curChildPtrs[0];
-    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (binaryen.getExpressionInfo(fcPtr));
+    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr)
+      );
     var /** @const {number} */ fcId = /** @type {number} */ (fcInfo['id']);
 
     // Direct loop child.
@@ -507,7 +515,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
       var /** @const {!Array<number>} */ fusedCh = /** @type {!Array<number>} */ (fcInfo['children'] || []);
       if (1 === fusedCh.length) {
         var /** @const {!Object<string, *>} */ fusedChild = /** @type {!Object<string, *>} */ (
-            binaryen.getExpressionInfo(fusedCh[0])
+            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fusedCh[0])
           );
         if (/** @type {number} */ (fusedChild['id']) === binaryen.LoopId) {
           // Add lb$ block to the chain so that br $lb$... targets inside
@@ -540,7 +548,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
       var /** @const {!Array<number>} */ levelPtrs = /** @type {!Array<number>} */ (chain[k]['c']);
       for (var /** number */ p = 1, /** @const {number} */ ptrLen = levelPtrs.length; p < ptrLen; ++p) {
         exitPtrs[exitPtrs.length] = levelPtrs[p];
-        var /** @const {number} */ ptrId = /** @type {number} */ (binaryen.getExpressionInfo(levelPtrs[p])['id']);
+        var /** @const {number} */ ptrId = /** @type {number} */ (
+            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, levelPtrs[p])['id']
+          );
         if (ptrId === binaryen.ReturnId || ptrId === binaryen.UnreachableId) {
           hitTerminal = true;
           break;

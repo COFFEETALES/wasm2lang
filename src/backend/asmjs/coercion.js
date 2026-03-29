@@ -231,7 +231,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.buildCoercedCallArgs_ = function (binar
   for (var /** number */ ai = 0, /** @const {number} */ alen = childResults.length; ai !== alen; ++ai) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ argInfo = getInfo(childResults, ai);
     var /** @const {number} */ argType =
-        ai < callSig.sigParams.length ? callSig.sigParams[ai] : binaryen.getExpressionInfo(operands[ai]).type;
+        ai < callSig.sigParams.length
+          ? callSig.sigParams[ai]
+          : Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, operands[ai]).type;
     callArgs[callArgs.length] = this.renderCoercionByType_(binaryen, argInfo.expressionString, argType);
   }
 

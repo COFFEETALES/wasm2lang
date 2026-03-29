@@ -185,7 +185,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       // Java only allows method calls, assignments, etc. as expression statements.
       // Emit only when the child is a call (side-effectful); skip pure expressions.
       var /** @const {number} */ dropValuePtr = /** @type {number} */ (expr['value']);
-      var /** @const {number} */ dropValueId = dropValuePtr ? binaryen.getExpressionInfo(dropValuePtr).id : 0;
+      var /** @const {number} */ dropValueId = dropValuePtr
+          ? Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, dropValuePtr).id
+          : 0;
       if (dropValueId === binaryen.CallId || dropValueId === binaryen.CallIndirectId) {
         result = pad(ind) + cr(0) + ';\n';
       }
@@ -261,7 +263,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         // always reachable and required.
         var /** @const {number} */ loopBodyPtr = /** @type {number} */ (expr['body']);
         var /** @const {!Object<string, *>} */ loopBodyInfo = /** @type {!Object<string, *>} */ (
-            binaryen.getExpressionInfo(loopBodyPtr)
+            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, loopBodyPtr)
           );
         var /** @const {boolean} */ bodyBlockIsNamed =
             /** @type {number} */ (loopBodyInfo['id']) === binaryen.BlockId && !!loopBodyInfo['name'];

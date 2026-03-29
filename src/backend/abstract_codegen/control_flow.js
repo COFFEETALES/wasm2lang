@@ -325,7 +325,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledEnter_ = function (state,
       } else if (hp(bName, A.LB_FUSION_PREFIX_)) {
         // Prefix fallback for when plans are not available.
         var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr['children']);
-        if (ch && 1 === ch.length && binaryen.getExpressionInfo(ch[0]).id === binaryen.LoopId) {
+        if (
+          ch &&
+          1 === ch.length &&
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[0]).id === binaryen.LoopId
+        ) {
           state.pendingBlockFusion = bName;
         } else {
           state.fusedBlockToLoop[bName] = state.currentLoopName;

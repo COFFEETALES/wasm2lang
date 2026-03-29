@@ -38,7 +38,10 @@ Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass.prototype.enter_ = functio
     return null;
   }
 
-  var /** @const {!BinaryenExpressionInfo} */ valueInfo = binaryen.getExpressionInfo(valuePtr);
+  var /** @const {!BinaryenExpressionInfo} */ valueInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+      binaryen,
+      valuePtr
+    );
   if (valueInfo.id !== binaryen.ConstId) {
     return null;
   }
