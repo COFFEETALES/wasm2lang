@@ -119,8 +119,58 @@
 
   module.addFunction('exerciseStdlibConstants', binaryen.none, binaryen.none, [], module.block(null, constBody));
 
+  // -----------------------------------------------------------------
+  // exerciseStdlibMath3(): more 1-arg calls with exact IEEE 754 results.
+  // 10 storeF64 = 80 bytes.
+  // -----------------------------------------------------------------
+  module.addFunction(
+    'exerciseStdlibMath3',
+    binaryen.none,
+    binaryen.none,
+    [],
+    module.block(null, [
+      storeF64(module.call('$Math_abs', [f64(-3.0)], binaryen.f64)), // = 3.0
+      storeF64(module.call('$Math_abs', [f64(0.0)], binaryen.f64)), // = 0.0
+      storeF64(module.call('$Math_sqrt', [f64(9.0)], binaryen.f64)), // = 3.0
+      storeF64(module.call('$Math_sqrt', [f64(0.0)], binaryen.f64)), // = 0.0
+      storeF64(module.call('$Math_sqrt', [f64(1.0)], binaryen.f64)), // = 1.0
+      storeF64(module.call('$Math_ceil', [f64(-2.5)], binaryen.f64)), // = -2.0
+      storeF64(module.call('$Math_ceil', [f64(0.0)], binaryen.f64)), // = 0.0
+      storeF64(module.call('$Math_floor', [f64(-2.5)], binaryen.f64)), // = -3.0
+      storeF64(module.call('$Math_floor', [f64(0.0)], binaryen.f64)), // = 0.0
+      storeF64(module.call('$Math_floor', [f64(7.0)], binaryen.f64)), // = 7.0
+      module.return()
+    ])
+  );
+
+  // -----------------------------------------------------------------
+  // exerciseStdlibMath4(): more 2-arg calls with exact IEEE 754 results.
+  // 10 storeF64 = 80 bytes.
+  // -----------------------------------------------------------------
+  module.addFunction(
+    'exerciseStdlibMath4',
+    binaryen.none,
+    binaryen.none,
+    [],
+    module.block(null, [
+      storeF64(module.call('$Math_pow', [f64(3.0), f64(3.0)], binaryen.f64)), // = 27.0
+      storeF64(module.call('$Math_pow', [f64(2.0), f64(20.0)], binaryen.f64)), // = 1048576.0
+      storeF64(module.call('$Math_pow', [f64(1.0), f64(100.0)], binaryen.f64)), // = 1.0
+      storeF64(module.call('$Math_min', [f64(-5.0), f64(3.0)], binaryen.f64)), // = -5.0
+      storeF64(module.call('$Math_min', [f64(0.0), f64(0.0)], binaryen.f64)), // = 0.0
+      storeF64(module.call('$Math_max', [f64(-5.0), f64(3.0)], binaryen.f64)), // = 3.0
+      storeF64(module.call('$Math_max', [f64(0.0), f64(0.0)], binaryen.f64)), // = 0.0
+      storeF64(module.call('$Math_atan2', [f64(0.0), f64(-1.0)], binaryen.f64)), // = PI
+      storeF64(module.call('$Math_atan2', [f64(1.0), f64(0.0)], binaryen.f64)), // = PI/2
+      storeF64(module.call('$Math_atan2', [f64(0.0), f64(1.0)], binaryen.f64)), // = 0.0
+      module.return()
+    ])
+  );
+
   module.addFunctionExport('exerciseStdlibMath1', 'exerciseStdlibMath1');
   module.addFunctionExport('exerciseStdlibMath2', 'exerciseStdlibMath2');
+  module.addFunctionExport('exerciseStdlibMath3', 'exerciseStdlibMath3');
+  module.addFunctionExport('exerciseStdlibMath4', 'exerciseStdlibMath4');
   module.addFunctionExport('exerciseStdlibConstants', 'exerciseStdlibConstants');
 
   common.finalizeAndOutput(module);

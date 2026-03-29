@@ -95,7 +95,14 @@ const rand = {
   f64: () => (Math.random() - 0.5) * 200,
   uF32: () => Math.fround(Math.random() * 100),
   uF64: () => Math.random() * 100,
-  uSmall: () => (Math.random() * 10) | 0
+  uSmall: () => (Math.random() * 10) | 0,
+  u8: () => (Math.random() * 256) | 0,
+  randString: function (maxLen) {
+    var len = (Math.random() * (maxLen + 1)) | 0;
+    var s = '';
+    for (var i = 0; i < len; i++) s += String.fromCharCode(32 + ((Math.random() * 95) | 0));
+    return s;
+  }
 };
 
 module.exports = {loadBinaryen, createTestModule, finalizeAndOutput, emitSharedData, rand};

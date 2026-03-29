@@ -4,9 +4,14 @@ const moduleImports = {};
 
 const runTest = function (buff, out, exports, data) {
   exports.alignHeapTop();
-  const scratch = 0;
-  const view = new Uint8Array(buff);
+  exports.initCrc32Tables();
 
+  for (const v of data.factorial_inputs) {
+    exports.exerciseFactorial(v);
+  }
+
+  const scratch = 1088;
+  const view = new Uint8Array(buff);
   for (const str of data.crc32_inputs) {
     for (let i = 0; i < str.length; i++) {
       view[scratch + i] = str.charCodeAt(i);
@@ -17,4 +22,4 @@ const runTest = function (buff, out, exports, data) {
 
 const dumpMemory = true;
 
-export { dumpMemory, moduleImports, runTest };
+export {dumpMemory, moduleImports, runTest};

@@ -8,11 +8,12 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
 ): void {
     $stdoutWrite = $out;
     $exports['alignHeapTop']();
-    $exports['exerciseStdlibMath1']();
-    $exports['exerciseStdlibMath2']();
-    $exports['exerciseStdlibMath3']();
-    $exports['exerciseStdlibMath4']();
-    $exports['exerciseStdlibConstants']();
+    $exports['exerciseBulkMemory']($exports['getHeapTop']());
+    $exports['exerciseMemoryGrow']();
+
+    foreach ($data['bulk_params'] as $p) {
+        $exports['exerciseBulkFillVerify']($exports['getHeapTop'](), $p[0], $p[1]);
+    }
 };
 
 $dumpMemory = true;

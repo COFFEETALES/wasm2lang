@@ -6,6 +6,8 @@
     mod.alignHeapTop();
     mod.exerciseStdlibMath1();
     mod.exerciseStdlibMath2();
+    mod.exerciseStdlibMath3();
+    mod.exerciseStdlibMath4();
     mod.exerciseStdlibConstants();
 
     w2lDumpCRC(memBuffer);

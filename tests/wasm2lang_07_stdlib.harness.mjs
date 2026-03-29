@@ -52,6 +52,8 @@ const runTest = function (buff, out, exports) {
   exports.alignHeapTop();
   exports.exerciseStdlibMath1();
   exports.exerciseStdlibMath2();
+  exports.exerciseStdlibMath3();
+  exports.exerciseStdlibMath4();
   exports.exerciseStdlibConstants();
 };
 

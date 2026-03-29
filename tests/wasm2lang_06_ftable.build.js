@@ -338,7 +338,7 @@
     [255, 8],
     [0x12345678, -0x12345678]
   ];
-  for (var r = 0; r < 3; ++r) {
+  for (var r = 0; r < 6; ++r) {
     i32Pairs.push([common.rand.smallI32(), common.rand.smallI32()]);
   }
 
@@ -351,7 +351,7 @@
     [1000, 1000],
     [-30000, 20000]
   ];
-  for (var r = 0; r < 2; ++r) {
+  for (var r = 0; r < 5; ++r) {
     floatPairs.push([common.rand.smallI32(), common.rand.smallI32()]);
   }
 
@@ -364,7 +364,7 @@
     [-1, 0x7fffffff, 1],
     [0, 0, -1]
   ];
-  for (var r = 0; r < 2; ++r) {
+  for (var r = 0; r < 5; ++r) {
     i32Triples.push([common.rand.smallI32(), common.rand.smallI32(), common.rand.smallI32()]);
   }
 
@@ -381,7 +381,7 @@
     [14, -8, 2],
     [15, 123, 456]
   ];
-  for (var r = 0; r < 2; ++r) {
+  for (var r = 0; r < 6; ++r) {
     var idx = validIiIIndices[(Math.random() * validIiIIndices.length) | 0];
     dynamicDispatch.push([idx, common.rand.smallI32(), common.rand.smallI32()]);
   }

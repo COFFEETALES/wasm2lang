@@ -595,13 +595,14 @@
 
   // Shared data
   const staticData = {
-    i32_values: [42, 0, -1, 2147483647, 1, 255, -100],
+    i32_values: [42, 0, -1, 2147483647, 1, 255, -100, -2147483648, 65535],
     i32_pairs: [
       [42, 7],
       [0, 0],
       [-1, 1],
       [305419896, -100],
-      [255, 256]
+      [255, 256],
+      [-2147483648, 2147483647]
     ],
     mixed_type_cases: [
       [42, 3.5, 2.75],
@@ -612,10 +613,10 @@
     ]
   };
   const data = {};
-  data.i32_values = staticData.i32_values.concat(Array.from({length: 4}, rand.i32));
-  data.i32_pairs = staticData.i32_pairs.concat(Array.from({length: 3}, () => [rand.i32(), rand.i32()]));
+  data.i32_values = staticData.i32_values.concat(Array.from({length: 7}, rand.i32));
+  data.i32_pairs = staticData.i32_pairs.concat(Array.from({length: 6}, () => [rand.i32(), rand.i32()]));
   data.mixed_type_cases = staticData.mixed_type_cases.concat(
-    Array.from({length: 3}, () => [rand.smallI32(), rand.f32(), rand.f64()])
+    Array.from({length: 6}, () => [rand.smallI32(), rand.f32(), rand.f64()])
   );
   common.emitSharedData(data);
 })();

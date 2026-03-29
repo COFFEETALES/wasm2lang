@@ -84,7 +84,7 @@
   };
   var data = {};
   data.i32_values = staticData.i32_values.concat(
-    Array.from({length: 4}, function () {
+    Array.from({length: 8}, function () {
       return common.rand.i32();
     })
   );

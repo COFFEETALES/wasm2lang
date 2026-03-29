@@ -982,10 +982,10 @@
     };
     const data = {};
     data.subword_cases = staticData.subword_cases.concat(
-      Array.from({length: 3}, () => [common.rand.smallI32(), common.rand.smallI32()])
+      Array.from({length: 6}, () => [common.rand.smallI32(), common.rand.smallI32()])
     );
     data.mixed_type_cases = staticData.mixed_type_cases.concat(
-      Array.from({length: 3}, () => [common.rand.smallI32(), common.rand.f32(), common.rand.f64()])
+      Array.from({length: 6}, () => [common.rand.smallI32(), common.rand.f32(), common.rand.f64()])
     );
     common.emitSharedData(data);
   }

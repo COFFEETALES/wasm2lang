@@ -654,14 +654,14 @@
       ]
     };
     const data = {};
-    data.branch_indices = staticData.branch_indices.concat(Array.from({length: 3}, () => common.rand.uSmall()));
+    data.branch_indices = staticData.branch_indices.concat(Array.from({length: 6}, () => common.rand.uSmall()));
     data.loop_pairs = staticData.loop_pairs.concat(
-      Array.from({length: 3}, () => [common.rand.smallI32(), common.rand.uSmall()])
+      Array.from({length: 6}, () => [common.rand.smallI32(), common.rand.uSmall()])
     );
-    data.loop_countdown_values = staticData.loop_countdown_values.concat(Array.from({length: 3}, () => common.rand.uSmall()));
-    data.do_while_values = staticData.do_while_values.concat(Array.from({length: 3}, () => common.rand.uSmall()));
+    data.loop_countdown_values = staticData.loop_countdown_values.concat(Array.from({length: 6}, () => common.rand.uSmall()));
+    data.do_while_values = staticData.do_while_values.concat(Array.from({length: 6}, () => common.rand.uSmall()));
     data.i32_triples = staticData.i32_triples.concat(
-      Array.from({length: 3}, () => [common.rand.uSmall(), common.rand.i32(), common.rand.uSmall()])
+      Array.from({length: 6}, () => [common.rand.uSmall(), common.rand.i32(), common.rand.uSmall()])
     );
     common.emitSharedData(data);
   }

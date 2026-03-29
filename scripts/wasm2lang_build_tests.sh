@@ -53,7 +53,12 @@ if [ ${#0} -ne ${#prefix} ]; then
         case "$variant_suffix" in
           codegen)
             normalize_wasm="binaryen:none,wasm2lang:codegen"
-            set -- --mangler wasm2lang-test
+            if [ -n "${UNIQUE_MANGLER_KEY:-}" ]; then
+              set -- --mangler "$UNIQUE_MANGLER_KEY"
+            else
+              MANGLER_LEN=$(( $(od -An -N1 -tu1 /dev/urandom | tr -d ' ') % 25 + 8 ))
+              set -- --mangler "$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c "$MANGLER_LEN")"
+            fi
             ;;
           none)
             normalize_wasm="binaryen:none"

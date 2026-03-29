@@ -448,12 +448,15 @@
       [1, 1.0, 1.0],
       [-2147483648, 3.0, 3.0],
       [255, 0.125, 0.125],
-      [16, 4.0, 4.0]
+      [16, 4.0, 4.0],
+      [65535, 0.0, 99.5],
+      [-100, 50.0, 0.0],
+      [1024, 1.0, 0.5]
     ]
   };
   const data = {};
   data.i32_f32_f64_triples = staticData.i32_f32_f64_triples.concat(
-    Array.from({length: 3}, () => [common.rand.i32(), common.rand.uF32(), common.rand.uF64()])
+    Array.from({length: 8}, () => [common.rand.i32(), common.rand.uF32(), common.rand.uF64()])
   );
   common.emitSharedData(data);
 })();
