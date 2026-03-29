@@ -154,6 +154,20 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitI32Unary_ = function (binaryen, una
   if (C.UNARY_POPCNT === unaryCategory) {
     return {emittedString: this.renderHelperCall_(binaryen, '$w2l_popcnt', [operandExpr], binaryen.i32), resultCat: C.SIGNED};
   }
+  if (C.UNARY_EXTEND8_S === unaryCategory) {
+    var /** @const */ P8 = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    return {
+      emittedString: P8.renderInfix(P8.renderInfix(operandExpr, '<<', '24', P8.PREC_SHIFT_), '>>', '24', P8.PREC_SHIFT_),
+      resultCat: C.SIGNED
+    };
+  }
+  if (C.UNARY_EXTEND16_S === unaryCategory) {
+    var /** @const */ P16 = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    return {
+      emittedString: P16.renderInfix(P16.renderInfix(operandExpr, '<<', '16', P16.PREC_SHIFT_), '>>', '16', P16.PREC_SHIFT_),
+      resultCat: C.SIGNED
+    };
+  }
   return null;
 };
 

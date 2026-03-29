@@ -36,7 +36,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.validate
   // Binaryen encodes MVP as the zero-feature baseline; only post-MVP
   // extensions have individual feature bits. Add explicitly supported
   // post-MVP features one by one here.
-  var /** @const {number} */ allowedMask = 0 | features.NontrappingFPToInt | features.BulkMemory | features.BulkMemoryOpt;
+  var /** @const {number} */ allowedMask =
+      0 | features.NontrappingFPToInt | features.BulkMemory | features.BulkMemoryOpt | features.SignExt;
   var /** @type {number} */ isValidAllowedProfile = 0;
 
   try {

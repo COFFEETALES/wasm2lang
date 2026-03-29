@@ -208,6 +208,8 @@ Wasm2Lang.Backend.I32Coercion.binaryResultType = function (info) {
 /** @const {number} */ Wasm2Lang.Backend.I32Coercion.UNARY_CLZ = 1;
 /** @const {number} */ Wasm2Lang.Backend.I32Coercion.UNARY_CTZ = 2;
 /** @const {number} */ Wasm2Lang.Backend.I32Coercion.UNARY_POPCNT = 3;
+/** @const {number} */ Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND8_S = 4;
+/** @const {number} */ Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND16_S = 5;
 
 /**
  * Classifies a binaryen i32 unary operation.
@@ -221,5 +223,7 @@ Wasm2Lang.Backend.I32Coercion.classifyUnaryOp = function (binaryen, op) {
   if (binaryen.ClzInt32 === op) return Wasm2Lang.Backend.I32Coercion.UNARY_CLZ;
   if (binaryen.CtzInt32 === op) return Wasm2Lang.Backend.I32Coercion.UNARY_CTZ;
   if (binaryen.PopcntInt32 === op) return Wasm2Lang.Backend.I32Coercion.UNARY_POPCNT;
+  if (binaryen.ExtendS8Int32 === op) return Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND8_S;
+  if (binaryen.ExtendS16Int32 === op) return Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND16_S;
   return -1;
 };

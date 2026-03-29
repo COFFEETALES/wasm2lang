@@ -171,5 +171,13 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitI32Unary_ = function (binaryen, una
     this.markHelper_('_w2l_popcnt');
     return {emittedString: this.n_('_w2l_popcnt') + '(' + operandExpr + ')', resultCat: C.SIGNED};
   }
+  if (C.UNARY_EXTEND8_S === unaryCategory) {
+    this.markHelper_('_w2l_extend8_s');
+    return {emittedString: this.n_('_w2l_extend8_s') + '(' + operandExpr + ')', resultCat: C.SIGNED};
+  }
+  if (C.UNARY_EXTEND16_S === unaryCategory) {
+    this.markHelper_('_w2l_extend16_s');
+    return {emittedString: this.n_('_w2l_extend16_s') + '(' + operandExpr + ')', resultCat: C.SIGNED};
+  }
   return null;
 };

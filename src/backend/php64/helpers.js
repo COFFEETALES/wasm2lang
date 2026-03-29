@@ -7,6 +7,8 @@
  * @const {!Object<string, !Array<string>>}
  */
 Wasm2Lang.Backend.Php64Codegen.HELPER_DEPS_ = {
+  '_w2l_extend8_s': [],
+  '_w2l_extend16_s': [],
   '_w2l_clz': [],
   '_w2l_ctz': [],
   '_w2l_popcnt': [],

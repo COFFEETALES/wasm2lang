@@ -79,5 +79,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitI32Unary_ = function (binaryen, unar
   if (C.UNARY_POPCNT === unaryCategory) {
     return {emittedString: 'Integer.bitCount(' + operandExpr + ')', resultCat: C.SIGNED};
   }
+  if (C.UNARY_EXTEND8_S === unaryCategory) {
+    return {emittedString: '(byte)' + P.wrap(operandExpr, P.PREC_UNARY_, true), resultCat: C.SIGNED};
+  }
+  if (C.UNARY_EXTEND16_S === unaryCategory) {
+    return {emittedString: '(short)' + P.wrap(operandExpr, P.PREC_UNARY_, true), resultCat: C.SIGNED};
+  }
   return null;
 };

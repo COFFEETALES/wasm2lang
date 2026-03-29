@@ -116,6 +116,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   outputParts[outputParts.length] = 'function ' + nF32 + "($v): float { return unpack('g', pack('g', (float)$v))[1]; }";
 
   // Opcode-specific helpers (only when referenced).
+  h('_w2l_extend8_s', '(int $v): int { $v &= 0xFF; return $v >= 0x80 ? $v - 0x100 : $v; }');
+  h('_w2l_extend16_s', '(int $v): int { $v &= 0xFFFF; return $v >= 0x8000 ? $v - 0x10000 : $v; }');
   h(
     '_w2l_clz',
     '(int $v): int { $v = ' +

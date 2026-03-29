@@ -169,6 +169,11 @@ BinaryenFeatures.prototype.BulkMemoryOpt;
 /**
  * @type {number}
  */
+BinaryenFeatures.prototype.SignExt;
+
+/**
+ * @type {number}
+ */
 BinaryenFeatures.prototype.All;
 
 /**
@@ -1252,6 +1257,8 @@ var BinaryenGlobalInfo;
 /** @type {number} */ Binaryen.prototype.ClzInt32;
 /** @type {number} */ Binaryen.prototype.CtzInt32;
 /** @type {number} */ Binaryen.prototype.PopcntInt32;
+/** @type {number} */ Binaryen.prototype.ExtendS8Int32;
+/** @type {number} */ Binaryen.prototype.ExtendS16Int32;
 
 // ---------------------------------------------------------------------------
 // Floating-point unary/binary operation constants (MVP subset used here)
