@@ -99,10 +99,11 @@ Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_ = function (wasmMo
  */
 Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmModule, aggressive) {
   // "flatten" inserts explicit returns at block ends so later codegen sees concrete control flow.
-  // "simplify-locals" merges redundant local set patterns to reduce local noise.
+  // "simplify-locals-notee" merges redundant local set patterns to reduce local noise
+  //   without reintroducing local.tee instructions that flatten removed.
   // "reorder-locals" compacts local indices to a tighter layout.
   // "vacuum" removes unreachable code left by earlier passes.
-  wasmModule.runPasses(['flatten', 'simplify-locals', 'reorder-locals', 'vacuum']);
+  wasmModule.runPasses(['flatten', 'simplify-locals-notee', 'reorder-locals', 'vacuum']);
 };
 
 /**
