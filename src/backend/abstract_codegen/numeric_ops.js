@@ -23,6 +23,23 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderCoercionByType_ = function (bi
 };
 
 /**
+ * Backend hook for rendering a constant value as a string literal.
+ *
+ * Concrete backends override this with target-language const formatting.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} value
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderConst_ = function (binaryen, value, wasmType) {
+  void binaryen;
+  void wasmType;
+  return String(value);
+};
+
+/**
  * Coerces {@code expr} to {@code wasmType}, skipping the coercion when
  * {@code cat} indicates the expression already satisfies the target type.
  *
@@ -224,6 +241,32 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOp_ = function (info, L,
 };
 
 /**
+ * Returns the expression category for an i32 binary operation result.
+ * Asm.js overrides this to return FIXNUM for comparisons and UNSIGNED
+ * for unsigned bitwise ops.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.i32BinaryResultCat_ = function (info) {
+  return Wasm2Lang.Backend.I32Coercion.OP_COMPARISON === info.category
+    ? Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32
+    : Wasm2Lang.Backend.I32Coercion.SIGNED;
+};
+
+/**
+ * Returns the expression category for a numeric comparison result.
+ * Asm.js overrides to FIXNUM; Java/PHP use CAT_BOOL_I32.
+ *
+ * @protected
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.numericComparisonCat_ = function () {
+  return Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32;
+};
+
+/**
  * Backend hook for i32 unary operations (eqz, clz, ctz, popcnt).
  * Returns the rendered expression and category, or null if the unary
  * category is not an i32 unary.  Concrete backends override this.
@@ -299,10 +342,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, 
   if (A.CAT_BOOL_I32 === catR) R = this.renderNumericComparisonResult_(R);
   var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = C.classifyBinaryOp(binaryen, binaryOp);
   if (binInfo) {
-    return {
-      emittedString: this.renderBinaryOp_(binInfo, L, R),
-      resultCat: C.OP_COMPARISON === binInfo.category ? A.CAT_BOOL_I32 : C.SIGNED
-    };
+    return {emittedString: this.renderBinaryOp_(binInfo, L, R), resultCat: this.i32BinaryResultCat_(binInfo)};
   }
   var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numInfo = Wasm2Lang.Backend.NumericOps.classifyBinaryOp(
       binaryen,
@@ -311,7 +351,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, 
   if (numInfo) {
     return {
       emittedString: this.renderNumericBinaryOp_(binaryen, numInfo, L, R, catL, catR),
-      resultCat: numInfo.isComparison ? A.CAT_BOOL_I32 : A.catForCoercedType_(binaryen, numInfo.retType)
+      resultCat: numInfo.isComparison ? this.numericComparisonCat_() : A.catForCoercedType_(binaryen, numInfo.retType)
     };
   }
   return {emittedString: '0 /* unknown binop ' + binaryOp + ' */', resultCat: A.CAT_RAW};

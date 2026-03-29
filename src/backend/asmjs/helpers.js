@@ -6,9 +6,15 @@
  * @param {number} scratchByteOffset
  * @param {number} scratchWordIndex
  * @param {number} scratchQwordIndex
+ * @param {number} heapPageCount
  * @return {!Array<string>}
  */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOffset, scratchWordIndex, scratchQwordIndex) {
+Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
+  scratchByteOffset,
+  scratchWordIndex,
+  scratchQwordIndex,
+  heapPageCount
+) {
   var /** @const {!Array<string>} */ lines = [];
   var /** @const {!Object<string, boolean>} */ used = this.usedHelpers_ || {};
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
@@ -311,6 +317,52 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (scratchByteOff
     pad2 + l1 + ' = ' + nMathFround + '(' + nHEAPF32 + '[' + scratchWordIndex + ']);\n' +
     pad2 + nHEAP32 + '[' + scratchWordIndex + '] = 0;\n' +
     pad2 + 'return ' + nMathFround + '(' + l1 + ');\n' +
+    pad1 + '}');
+
+  // prettier-ignore
+  h('$w2l_memory_fill', ['HEAPU8'],
+    pad1 + 'function ' + n('$w2l_memory_fill') + '(' + l0 + ', ' + l1 + ', ' + l2 + ') {\n' +
+    pad2 + l0 + ' = ' + l0 + '|0;\n' +
+    pad2 + l1 + ' = ' + l1 + '|0;\n' +
+    pad2 + l2 + ' = ' + l2 + '|0;\n' +
+    pad2 + 'var ' + l3 + ' = 0;\n' +
+    pad2 + l3 + ' = (' + l0 + ' + ' + l2 + ')|0;\n' +
+    pad2 + 'while ((' + l0 + '|0) < (' + l3 + '|0)) {\n' +
+    pad3 + nHEAPU8 + '[' + l0 + ' >> 0] = ' + l1 + ';\n' +
+    pad3 + l0 + ' = ' + l0 + ' + 1|0;\n' +
+    pad2 + '}\n' +
+    pad1 + '}');
+
+  // prettier-ignore
+  h('$w2l_memory_copy', ['HEAPU8'],
+    pad1 + 'function ' + n('$w2l_memory_copy') + '(' + l0 + ', ' + l1 + ', ' + l2 + ') {\n' +
+    pad2 + l0 + ' = ' + l0 + '|0;\n' +
+    pad2 + l1 + ' = ' + l1 + '|0;\n' +
+    pad2 + l2 + ' = ' + l2 + '|0;\n' +
+    pad2 + 'var ' + l3 + ' = 0;\n' +
+    pad2 + 'if ((' + l0 + '|0) <= (' + l1 + '|0)) {\n' +
+    pad3 + l3 + ' = 0;\n' +
+    pad3 + 'while ((' + l3 + '|0) < (' + l2 + '|0)) {\n' +
+    pad4 + nHEAPU8 + '[(' + l0 + ' + ' + l3 + '|0) >> 0] = ' + nHEAPU8 + '[(' + l1 + ' + ' + l3 + '|0) >> 0]|0;\n' +
+    pad4 + l3 + ' = ' + l3 + ' + 1|0;\n' +
+    pad3 + '}\n' +
+    pad2 + '} else {\n' +
+    pad3 + l3 + ' = (' + l2 + ' - 1)|0;\n' +
+    pad3 + 'while ((' + l3 + '|0) >= 0) {\n' +
+    pad4 + nHEAPU8 + '[(' + l0 + ' + ' + l3 + '|0) >> 0] = ' + nHEAPU8 + '[(' + l1 + ' + ' + l3 + '|0) >> 0]|0;\n' +
+    pad4 + l3 + ' = ' + l3 + ' - 1|0;\n' +
+    pad3 + '}\n' +
+    pad2 + '}\n' +
+    pad1 + '}');
+
+  // prettier-ignore
+  h('$w2l_memory_grow', [],
+    pad1 + 'function ' + n('$w2l_memory_grow') + '(' + l0 + ') {\n' +
+    pad2 + l0 + ' = ' + l0 + '|0;\n' +
+    pad2 + 'if ((' + l0 + '|0) == 0) {\n' +
+    pad3 + 'return ' + String(heapPageCount) + '|0;\n' +
+    pad2 + '}\n' +
+    pad2 + 'return -1;\n' +
     pad1 + '}');
 
   return lines;

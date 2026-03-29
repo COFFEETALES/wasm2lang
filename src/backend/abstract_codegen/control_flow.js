@@ -838,3 +838,85 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLocalSet_ = function (
   }
   return {emittedString: pad(indent) + this.localN_(localIndex) + ' = ' + setValue + ';\n', resultCat: A.CAT_VOID};
 };
+
+/**
+ * Wraps a result string and category into a TraversalDecisionInput suitable
+ * for return from an emitLeave_ callback.
+ *
+ * @protected
+ * @param {string} result
+ * @param {number} resultCat
+ * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
+ */
+Wasm2Lang.Backend.AbstractCodegen.buildLeaveResult_ = function (result, resultCat) {
+  if (resultCat !== Wasm2Lang.Backend.AbstractCodegen.CAT_VOID) {
+    return {decisionValue: {'s': result, 'c': resultCat}};
+  }
+  return {decisionValue: result};
+};
+
+/**
+ * Handles expression IDs whose emitLeave_ logic is identical across all
+ * backends: ConstId, BinaryId, UnaryId, LocalSetId, NopId, UnreachableId.
+ * Returns null for IDs that require backend-specific handling.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Object<string, *>} expr
+ * @param {number} id
+ * @param {number} indent
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {!BinaryenFunctionInfo} functionInfo
+ * @return {?{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
+  binaryen,
+  expr,
+  id,
+  indent,
+  childResults,
+  functionInfo
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ getInfo = A.getChildResultInfo_;
+
+  if (id === binaryen.ConstId) {
+    var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
+    return {
+      emittedString: this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType),
+      resultCat: A.catForConstType_(binaryen, constType)
+    };
+  }
+  if (id === binaryen.BinaryId) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ binL = getInfo(childResults, 0);
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ binR = getInfo(childResults, 1);
+    return this.emitBinaryId_(
+      binaryen,
+      /** @type {number} */ (expr['op']),
+      binL.expressionString,
+      binR.expressionString,
+      binL.expressionCategory,
+      binR.expressionCategory
+    );
+  }
+  if (id === binaryen.UnaryId) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ unOp = getInfo(childResults, 0);
+    return this.emitUnaryId_(binaryen, /** @type {number} */ (expr['op']), unOp.expressionString, unOp.expressionCategory);
+  }
+  if (id === binaryen.LocalSetId) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ lsOp = getInfo(childResults, 0);
+    return this.emitLocalSet_(
+      binaryen,
+      functionInfo,
+      indent,
+      !!expr['isTee'],
+      /** @type {number} */ (expr['index']),
+      lsOp.expressionString,
+      lsOp.expressionCategory
+    );
+  }
+  if (id === binaryen.NopId || id === binaryen.UnreachableId) {
+    return {emittedString: '', resultCat: A.CAT_VOID};
+  }
+  return null;
+};

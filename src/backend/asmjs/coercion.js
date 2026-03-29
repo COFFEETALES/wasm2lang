@@ -89,6 +89,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCoercionByType_ = function (binar
 };
 
 /**
+ * @override
+ * @protected
  * @param {!Binaryen} binaryen
  * @param {number} value
  * @param {number} wasmType
@@ -158,40 +160,19 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitI32Unary_ = function (binaryen, una
 /**
  * @override
  * @protected
- * @param {!Binaryen} binaryen
- * @param {number} binaryOp
- * @param {string} L
- * @param {string} R
- * @param {number} catL
- * @param {number} catR
- * @return {{emittedString: string, resultCat: number}}
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @return {number}
  */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.emitBinaryId_ = function (binaryen, binaryOp, L, R, catL, catR) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+Wasm2Lang.Backend.AsmjsCodegen.prototype.i32BinaryResultCat_ = function (info) {
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = C.classifyBinaryOp(binaryen, binaryOp);
-  if (binInfo) {
-    return {
-      emittedString: this.renderBinaryOp_(binInfo, L, R),
-      resultCat:
-        C.OP_COMPARISON === binInfo.category
-          ? C.FIXNUM
-          : C.OP_BITWISE === binInfo.category && binInfo.unsigned
-            ? C.UNSIGNED
-            : C.SIGNED
-    };
-  }
-  var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numInfo = Wasm2Lang.Backend.NumericOps.classifyBinaryOp(
-      binaryen,
-      binaryOp
-    );
-  if (numInfo) {
-    return {
-      emittedString: this.renderNumericBinaryOp_(binaryen, numInfo, L, R, catL, catR),
-      resultCat: numInfo.isComparison ? C.FIXNUM : A.catForCoercedType_(binaryen, numInfo.retType)
-    };
-  }
-  return {emittedString: '__unknown_binop_' + binaryOp + '(' + L + ', ' + R + ')', resultCat: A.CAT_RAW};
+  if (C.OP_COMPARISON === info.category) return C.FIXNUM;
+  if (C.OP_BITWISE === info.category && info.unsigned) return C.UNSIGNED;
+  return C.SIGNED;
+};
+
+/** @override @protected @return {number} */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
+  return Wasm2Lang.Backend.I32Coercion.FIXNUM;
 };
 
 /**

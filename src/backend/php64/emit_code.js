@@ -187,6 +187,18 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   h('_w2l_convert_u_i32_to_f64', '($x): float { $x = ' + nI + '($x); return $x < 0 ? $x + 4294967296.0 : (float)$x; }');
   h('_w2l_reinterpret_f32_to_i32', '($x): int { return ' + nI + "(unpack('V', pack('g', " + nF32 + '($x)))[1]); }');
   h('_w2l_reinterpret_i32_to_f32', '($x): float { return ' + nF32 + "(unpack('g', pack('V', " + nI + '($x)))[1]); }');
+  h(
+    '_w2l_memory_fill',
+    '(string &$buf, int $d, int $v, int $n): void { $buf = substr_replace($buf, str_repeat(chr($v & 0xFF), $n), $d, $n); }'
+  );
+  h(
+    '_w2l_memory_copy',
+    '(string &$buf, int $d, int $s, int $n): void { $buf = substr_replace($buf, substr($buf, $s, $n), $d, $n); }'
+  );
+  h(
+    '_w2l_memory_grow',
+    '(string &$buf, int $delta): int { $p = (int)(strlen($buf) / 65536); if ($delta === 0) return $p; $buf .= str_repeat("\\x00", $delta * 65536); return $p; }'
+  );
 
   // Module header.
   var /** @const {string} */ pad1 = Wasm2Lang.Backend.AbstractCodegen.pad_(1);

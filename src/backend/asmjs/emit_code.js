@@ -75,6 +75,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       pad1 + 'var ' + this.n_('$g_' + moduleInfo.globals[gi].globalName) + ' = ' + moduleInfo.globals[gi].globalInitValue + ';';
   }
 
+  // Track heap page count for memory.size / memory.grow emission.
+  this.heapPageCount_ = heapSize / 65536;
+
   // Function bodies (emitted first to discover which helpers and bindings are needed).
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
@@ -96,8 +99,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
 
   // Numeric helper bundle (only helpers referenced by function bodies).
   // emitHelpers_ also marks binding dependencies for each emitted helper.
-  var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(scratchByteOffset, scratchWordIndex, scratchQwordIndex);
+  var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(
+      scratchByteOffset,
+      scratchWordIndex,
+      scratchQwordIndex,
+      this.heapPageCount_
+    );
   this.usedHelpers_ = null;
+  this.heapPageCount_ = 0;
 
   // Insert conditional heap views and stdlib imports at the reserved position.
   var /** @const {!Object<string, boolean>} */ ub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);

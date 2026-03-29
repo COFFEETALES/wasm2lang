@@ -148,6 +148,16 @@ Wasm2Lang.Wasm.Tree.NodeSchema.ensureDefaultSchema_ = function (opt_binaryen) {
     single('ifFalse', binaryen.Select, 'setIfFalse')
   ]);
   register(binaryen.MemoryGrowId, [single('delta', binaryen.MemoryGrow, 'setDelta')]);
+  register(binaryen.MemoryFillId, [
+    single('dest', binaryen.MemoryFill, 'setDest'),
+    single('value', binaryen.MemoryFill, 'setValue'),
+    single('size', binaryen.MemoryFill, 'setSize')
+  ]);
+  register(binaryen.MemoryCopyId, [
+    single('dest', binaryen.MemoryCopy, 'setDest'),
+    single('source', binaryen.MemoryCopy, 'setSource'),
+    single('size', binaryen.MemoryCopy, 'setSize')
+  ]);
 
   // Leaf nodes: no expression-pointer children.
   registerLeaf(binaryen.NopId);
@@ -185,6 +195,29 @@ Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs = function (expressionId) {
   return /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpecList} */ (
     Wasm2Lang.Wasm.Tree.NodeSchema.expressionEdgeSpecs_[expressionId]
   );
+};
+
+/**
+ * Patches expression info objects for expression IDs where
+ * {@code binaryen.getExpressionInfo()} does not populate child pointer
+ * properties.  Must be called before {@code iterChildren}.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} exprPtr
+ * @param {!Wasm2Lang.Wasm.Tree.ExpressionInfo} info
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_ = function (binaryen, exprPtr, info) {
+  var /** @const {number} */ id = info.id;
+  if (id === binaryen.MemoryFillId) {
+    /** @type {!Object<string, *>} */ (info)['dest'] = binaryen.MemoryFill.getDest(exprPtr);
+    /** @type {!Object<string, *>} */ (info)['value'] = binaryen.MemoryFill.getValue(exprPtr);
+    /** @type {!Object<string, *>} */ (info)['size'] = binaryen.MemoryFill.getSize(exprPtr);
+  } else if (id === binaryen.MemoryCopyId) {
+    /** @type {!Object<string, *>} */ (info)['dest'] = binaryen.MemoryCopy.getDest(exprPtr);
+    /** @type {!Object<string, *>} */ (info)['source'] = binaryen.MemoryCopy.getSource(exprPtr);
+    /** @type {!Object<string, *>} */ (info)['size'] = binaryen.MemoryCopy.getSize(exprPtr);
+  }
 };
 
 /**

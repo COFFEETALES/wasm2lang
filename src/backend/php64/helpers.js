@@ -28,7 +28,10 @@ Wasm2Lang.Backend.Php64Codegen.HELPER_DEPS_ = {
   '_w2l_convert_u_i32_to_f32': [],
   '_w2l_convert_u_i32_to_f64': [],
   '_w2l_reinterpret_f32_to_i32': [],
-  '_w2l_reinterpret_i32_to_f32': []
+  '_w2l_reinterpret_i32_to_f32': [],
+  '_w2l_memory_fill': [],
+  '_w2l_memory_copy': [],
+  '_w2l_memory_grow': []
 };
 
 /**

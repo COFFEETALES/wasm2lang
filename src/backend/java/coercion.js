@@ -24,6 +24,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderCoercionByType_ = function (binary
 };
 
 /**
+ * @override
+ * @protected
  * @param {!Binaryen} binaryen
  * @param {number} value
  * @param {number} wasmType

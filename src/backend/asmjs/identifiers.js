@@ -81,7 +81,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getAllHelperNames_ = function () {
     '$w2l_trunc_sat_u_f32_to_i32',
     '$w2l_trunc_sat_u_f64_to_i32',
     '$w2l_trunc_u_f32_to_i32',
-    '$w2l_trunc_u_f64_to_i32'
+    '$w2l_trunc_u_f64_to_i32',
+    '$w2l_memory_copy',
+    '$w2l_memory_fill',
+    '$w2l_memory_grow'
   ];
 };
 

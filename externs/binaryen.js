@@ -615,6 +615,16 @@ Binaryen.prototype.MemorySizeId;
  */
 Binaryen.prototype.MemoryGrowId;
 
+/**
+ * @type {number}
+ */
+Binaryen.prototype.MemoryFillId;
+
+/**
+ * @type {number}
+ */
+Binaryen.prototype.MemoryCopyId;
+
 // ---------------------------------------------------------------------------
 // BinaryenModule expression-builder methods
 // ---------------------------------------------------------------------------
@@ -1098,6 +1108,58 @@ BinaryenMemoryGrowApi.prototype.setDelta = function (ptr, delta) {};
  * @type {!BinaryenMemoryGrowApi}
  */
 Binaryen.prototype.MemoryGrow;
+
+// --
+
+/**
+ * @interface
+ * @const
+ */
+var BinaryenMemoryFillApi = function () {};
+
+/** @param {number} ptr @param {number} dest @return {void} */
+BinaryenMemoryFillApi.prototype.setDest = function (ptr, dest) {};
+/** @param {number} ptr @param {number} value @return {void} */
+BinaryenMemoryFillApi.prototype.setValue = function (ptr, value) {};
+/** @param {number} ptr @param {number} size @return {void} */
+BinaryenMemoryFillApi.prototype.setSize = function (ptr, size) {};
+/** @param {number} ptr @return {number} */
+BinaryenMemoryFillApi.prototype.getDest = function (ptr) {};
+/** @param {number} ptr @return {number} */
+BinaryenMemoryFillApi.prototype.getValue = function (ptr) {};
+/** @param {number} ptr @return {number} */
+BinaryenMemoryFillApi.prototype.getSize = function (ptr) {};
+
+/**
+ * @type {!BinaryenMemoryFillApi}
+ */
+Binaryen.prototype.MemoryFill;
+
+// --
+
+/**
+ * @interface
+ * @const
+ */
+var BinaryenMemoryCopyApi = function () {};
+
+/** @param {number} ptr @param {number} dest @return {void} */
+BinaryenMemoryCopyApi.prototype.setDest = function (ptr, dest) {};
+/** @param {number} ptr @param {number} source @return {void} */
+BinaryenMemoryCopyApi.prototype.setSource = function (ptr, source) {};
+/** @param {number} ptr @param {number} size @return {void} */
+BinaryenMemoryCopyApi.prototype.setSize = function (ptr, size) {};
+/** @param {number} ptr @return {number} */
+BinaryenMemoryCopyApi.prototype.getDest = function (ptr) {};
+/** @param {number} ptr @return {number} */
+BinaryenMemoryCopyApi.prototype.getSource = function (ptr) {};
+/** @param {number} ptr @return {number} */
+BinaryenMemoryCopyApi.prototype.getSize = function (ptr) {};
+
+/**
+ * @type {!BinaryenMemoryCopyApi}
+ */
+Binaryen.prototype.MemoryCopy;
 
 // --
 

@@ -63,13 +63,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       return childResultAt(i).expressionCategory;
     };
 
+  var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
+  if (common) return A.buildLeaveResult_(common.emittedString, common.resultCat);
+
   switch (id) {
-    case binaryen.ConstId: {
-      var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
-      result = this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType);
-      resultCat = A.catForConstType_(binaryen, constType);
-      break;
-    }
     case binaryen.LocalGetId:
       result = this.localN_(/** @type {number} */ (expr['index']));
       resultCat = C.SIGNED;
@@ -86,25 +83,6 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
 
-    case binaryen.BinaryId: {
-      var /** @const */ binResult = this.emitBinaryId_(
-          binaryen,
-          /** @type {number} */ (expr['op']),
-          cr(0),
-          cr(1),
-          cc(0),
-          cc(1)
-        );
-      result = binResult.emittedString;
-      resultCat = binResult.resultCat;
-      break;
-    }
-    case binaryen.UnaryId: {
-      var /** @const */ unResult = this.emitUnaryId_(binaryen, /** @type {number} */ (expr['op']), cr(0), cc(0));
-      result = unResult.emittedString;
-      resultCat = unResult.resultCat;
-      break;
-    }
     case binaryen.LoadId: {
       var /** @const {number} */ loadType = /** @type {number} */ (expr['type']);
       var /** @const {string} */ loadPtr = Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_(
@@ -142,20 +120,6 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           cc(1)
         ) +
         '\n';
-      break;
-    }
-    case binaryen.LocalSetId: {
-      var /** @const */ lsResult = this.emitLocalSet_(
-          binaryen,
-          state.functionInfo,
-          ind,
-          !!expr['isTee'],
-          /** @type {number} */ (expr['index']),
-          cr(0),
-          cc(0)
-        );
-      result = lsResult.emittedString;
-      resultCat = lsResult.resultCat;
       break;
     }
     case binaryen.GlobalSetId: {
@@ -222,10 +186,6 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       result = pad(ind) + cr(0) + ';\n';
       break;
 
-    case binaryen.NopId:
-    case binaryen.UnreachableId:
-      break;
-
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
       result = this.renderCoercionByType_(
@@ -237,13 +197,32 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.MemorySizeId:
-      result = '0';
+      result = String(this.heapPageCount_);
       resultCat = C.FIXNUM;
       break;
 
     case binaryen.MemoryGrowId:
-      result = pad(ind) + cr(0) + ';\n';
+      this.markHelper_('$w2l_memory_grow');
+      result = this.n_('$w2l_memory_grow') + '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ')|0';
+      resultCat = C.SIGNED;
       break;
+
+    case binaryen.MemoryFillId:
+    case binaryen.MemoryCopyId: {
+      var /** @const {string} */ memHelperName = id === binaryen.MemoryFillId ? '$w2l_memory_fill' : '$w2l_memory_copy';
+      this.markHelper_(memHelperName);
+      result =
+        pad(ind) +
+        this.n_(memHelperName) +
+        '(' +
+        this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) +
+        ', ' +
+        this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
+        ', ' +
+        this.coerceToType_(binaryen, cr(2), cc(2), binaryen.i32) +
+        ');\n';
+      break;
+    }
 
     case binaryen.BlockId: {
       var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
@@ -326,8 +305,5 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
   }
 
-  if (resultCat !== A.CAT_VOID) {
-    return {decisionValue: {'s': result, 'c': resultCat}};
-  }
-  return {decisionValue: result};
+  return A.buildLeaveResult_(result, resultCat);
 };

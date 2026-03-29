@@ -65,6 +65,7 @@ const wasm = !!obj['wasm'];
     const instance = new WebAssembly.Instance(new WebAssembly.Module(bin), wasmImportObject);
     instanceMemoryBuffer = instance.exports.memory.buffer;
     harness.runTest(instanceMemoryBuffer, stdoutWrite, instance.exports, sharedData);
+    instanceMemoryBuffer = instance.exports.memory.buffer;
   }
   if (asmjs) {
     let code = '';

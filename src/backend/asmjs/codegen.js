@@ -18,4 +18,8 @@ Wasm2Lang.Backend.AsmjsCodegen = function () {
 
 Wasm2Lang.Backend.AsmjsCodegen.prototype = Object.create(Wasm2Lang.Backend.AbstractCodegen.prototype);
 Wasm2Lang.Backend.AsmjsCodegen.prototype.constructor = Wasm2Lang.Backend.AsmjsCodegen;
+
+/** @protected @type {number} */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.heapPageCount_ = 0;
+
 Wasm2Lang.Backend.registerBackend('asmjs', Wasm2Lang.Backend.AsmjsCodegen);

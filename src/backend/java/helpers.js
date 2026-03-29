@@ -23,6 +23,14 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
   var /** @const {string} */ pad1 = pad(1);
   var /** @const {string} */ pad2 = pad(2);
   var /** @const {string} */ l0 = this.localN_(0);
+  var /** @const {string} */ l1 = this.localN_(1);
+  var /** @const {string} */ l2 = this.localN_(2);
+  var /** @const {string} */ l3 = this.localN_(3);
+  var /** @const */ self = this;
+  /** @param {string} s @return {string} */
+  var n = function (s) {
+    return self.n_(s);
+  };
 
   if (used['$w2l_trunc_f64']) {
     lines[lines.length] = pad1 + 'static double ' + this.n_('$w2l_trunc_f64') + '(double ' + l0 + ') {';
@@ -97,6 +105,63 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
   if (used['$w2l_convert_u_i32_to_f64']) {
     lines[lines.length] = pad1 + 'static double ' + this.n_('$w2l_convert_u_i32_to_f64') + '(int ' + l0 + ') {';
     lines[lines.length] = pad2 + 'return (double)Integer.toUnsignedLong(' + l0 + ');';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_memory_fill']) {
+    lines[lines.length] =
+      pad1 +
+      'static void ' +
+      this.n_('$w2l_memory_fill') +
+      '(java.nio.ByteBuffer ' +
+      l0 +
+      ', int ' +
+      l1 +
+      ', int ' +
+      l2 +
+      ', int ' +
+      l3 +
+      ') {';
+    lines[lines.length] = pad2 + 'byte[] ' + n('$t') + ' = new byte[' + l3 + '];';
+    lines[lines.length] = pad2 + 'java.util.Arrays.fill(' + n('$t') + ', (byte)' + l2 + ');';
+    lines[lines.length] = pad2 + l0 + '.put(' + l1 + ', ' + n('$t') + ', 0, ' + l3 + ');';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_memory_copy']) {
+    lines[lines.length] =
+      pad1 +
+      'static void ' +
+      this.n_('$w2l_memory_copy') +
+      '(java.nio.ByteBuffer ' +
+      l0 +
+      ', int ' +
+      l1 +
+      ', int ' +
+      l2 +
+      ', int ' +
+      l3 +
+      ') {';
+    lines[lines.length] = pad2 + 'byte[] ' + n('$t') + ' = new byte[' + l3 + '];';
+    lines[lines.length] = pad2 + l0 + '.get(' + l2 + ', ' + n('$t') + ', 0, ' + l3 + ');';
+    lines[lines.length] = pad2 + l0 + '.put(' + l1 + ', ' + n('$t') + ', 0, ' + l3 + ');';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_memory_grow']) {
+    var /** @const {string} */ nBuf = this.n_('buffer');
+    lines[lines.length] = pad1 + 'int ' + this.n_('$w2l_memory_grow') + '(int ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'int ' + l1 + ' = this.' + nBuf + '.capacity() / 65536;';
+    lines[lines.length] = pad2 + 'if (' + l0 + ' == 0) return ' + l1 + ';';
+    lines[lines.length] =
+      pad2 +
+      'java.nio.ByteBuffer ' +
+      l2 +
+      ' = java.nio.ByteBuffer.allocate(this.' +
+      nBuf +
+      '.capacity() + ' +
+      l0 +
+      ' * 65536).order(java.nio.ByteOrder.LITTLE_ENDIAN);';
+    lines[lines.length] = pad2 + l2 + '.put(0, this.' + nBuf + ', 0, this.' + nBuf + '.capacity());';
+    lines[lines.length] = pad2 + 'this.' + nBuf + ' = ' + l2 + ';';
+    lines[lines.length] = pad2 + 'return ' + l1 + ';';
     lines[lines.length] = pad1 + '}';
   }
 

@@ -72,7 +72,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.getAllHelperNames_ = function () {
     '_w2l_trunc_sat_u_f32_to_i32',
     '_w2l_trunc_sat_u_f64_to_i32',
     '_w2l_trunc_u_f32_to_i32',
-    '_w2l_trunc_u_f64_to_i32'
+    '_w2l_trunc_u_f64_to_i32',
+    '_w2l_memory_copy',
+    '_w2l_memory_fill',
+    '_w2l_memory_grow'
   ];
 };
 

@@ -85,6 +85,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderHelperCall_ = function (binaryen,
 };
 
 /**
+ * @override
+ * @protected
  * @param {!Binaryen} binaryen
  * @param {number} value
  * @param {number} wasmType

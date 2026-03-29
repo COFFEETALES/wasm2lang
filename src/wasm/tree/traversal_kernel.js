@@ -94,6 +94,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
       }
 
       var /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression = binaryen.getExpressionInfo(currentExprPtr);
+      Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_(binaryen, currentExprPtr, expression);
       var /** @const {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} */ nodeContext = {
           binaryen: binaryen,
           treeModule: module,
@@ -122,6 +123,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
         // prettier-ignore
         currentExprPtr = /** @const {number} */ (enterDecision.expressionPointer);
         expression = binaryen.getExpressionInfo(currentExprPtr);
+        Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_(binaryen, currentExprPtr, expression);
         nodeContext.expression = expression;
         nodeContext.expressionPointer = currentExprPtr;
       }
