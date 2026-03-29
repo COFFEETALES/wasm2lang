@@ -5,15 +5,15 @@
 **Compile once to WebAssembly. Ship everywhere as source code.**
 
 <p align="center">
-  <a href="https://coffeetales.github.io/wasm2lang/"><img src="https://img.shields.io/badge/Try%20the%20Playground-Live%20Demo-111827?style=for-the-badge&logo=githubpages&logoColor=white" alt="Launch the Playground" /></a>
-  <a href="https://www.npmjs.com/package/@coffeetales.net/wasm2lang"><img src="https://img.shields.io/npm/v/%40coffeetales.net%2Fwasm2lang?style=for-the-badge&label=npm&color=2563eb&logo=npm" alt="npm version" /></a>
-  <a href="https://github.com/COFFEETALES/wasm2lang/actions/workflows/wasm2lang_ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/COFFEETALES/wasm2lang/wasm2lang_ci.yml?style=for-the-badge&label=CI&color=16a34a&logo=githubactions&logoColor=white" alt="CI status" /></a>
+  <a href="https://github.com/COFFEETALES/wasm2lang/actions/workflows/wasm2lang_ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/COFFEETALES/wasm2lang/wasm2lang_ci.yml?style=flat&label=ci&logo=githubactions&logoColor=white" alt="CI status" height="28" /></a>
+  <a href="https://www.npmjs.com/package/@coffeetales.net/wasm2lang"><img src="https://img.shields.io/npm/v/%40coffeetales.net%2Fwasm2lang.svg?style=flat&label=latest&color=007acc&logo=npm&logoColor=white" alt="npm version" height="28" /></a>
+  <a href="https://coffeetales.github.io/wasm2lang/"><img src="https://img.shields.io/badge/playground-live-111827?style=flat&logo=codepen&logoColor=white" alt="Launch the Playground" height="28" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/COFFEETALES/wasm2lang/stargazers"><img src="https://img.shields.io/github/stars/COFFEETALES/wasm2lang?style=flat-square&label=stars&color=f59e0b&logo=github" alt="GitHub stars" /></a>
-  <a href="https://github.com/COFFEETALES/wasm2lang/issues"><img src="https://img.shields.io/github/issues/COFFEETALES/wasm2lang?style=flat-square&label=issues&color=0f766e&logo=github" alt="Open issues" /></a>
-  <a href="https://github.com/sponsors/COFFEETALES"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-db2777?style=flat-square&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" /></a>
+  <a href="https://github.com/COFFEETALES/wasm2lang/stargazers"><img src="https://img.shields.io/github/stars/COFFEETALES/wasm2lang?style=flat&label=stars&color=f59e0b&logo=github&logoColor=white" alt="GitHub stars" height="28" /></a>
+  <a href="https://github.com/COFFEETALES/wasm2lang/issues"><img src="https://img.shields.io/github/issues/COFFEETALES/wasm2lang?style=flat&label=issues&color=0f766e&logo=github&logoColor=white" alt="Open issues" height="28" /></a>
+  <a href="https://github.com/sponsors/COFFEETALES"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-db2777?style=flat&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" height="28" /></a>
 </p>
 
 </div>
@@ -393,6 +393,6 @@ this kind of tool should exist -- consider sponsoring.
 
 ### [Become a sponsor](https://github.com/sponsors/COFFEETALES)
 
-<a href="https://github.com/sponsors/COFFEETALES"><img src="https://img.shields.io/badge/Become%20a%20Sponsor-GitHub%20Sponsors-db2777?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Become a sponsor on GitHub Sponsors" /></a>
+<a href="https://github.com/sponsors/COFFEETALES"><img src="https://img.shields.io/badge/Become%20a%20Sponsor-GitHub%20Sponsors-db2777?style=flat&logo=githubsponsors&logoColor=white" alt="Become a sponsor on GitHub Sponsors" height="28" /></a>
 
 </div>
