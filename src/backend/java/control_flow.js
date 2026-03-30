@@ -281,7 +281,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     }
     case binaryen.IfId: {
       var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
-      if (ifType !== binaryen.none && 0 !== ifType) {
+      if (ifType !== binaryen.none && ifType !== binaryen.unreachable && 0 !== ifType) {
         var /** @const */ IfPs = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         var /** @type {string} */ ifCondStr;
         if (A.CAT_BOOL_I32 === cc(0)) {

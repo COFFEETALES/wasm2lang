@@ -426,7 +426,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
     case binaryen.IfId: {
       var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
-      if (ifType !== binaryen.none && 0 !== ifType) {
+      if (ifType !== binaryen.none && ifType !== binaryen.unreachable && 0 !== ifType) {
         var /** @const */ ifP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         result = this.renderCoercionByType_(
           binaryen,

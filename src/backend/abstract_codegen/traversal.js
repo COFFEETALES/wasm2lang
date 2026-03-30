@@ -116,6 +116,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.idName_ = function (binaryen, id) {
     names[binaryen.UnreachableId] = 'unreachable';
     names[binaryen.MemorySizeId] = 'memory.size';
     names[binaryen.MemoryGrowId] = 'memory.grow';
+    names[binaryen.MemoryFillId] = 'memory.fill';
+    names[binaryen.MemoryCopyId] = 'memory.copy';
     Wasm2Lang.Backend.AbstractCodegen.idNames_ = names;
   }
 

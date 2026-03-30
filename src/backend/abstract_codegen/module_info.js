@@ -171,6 +171,60 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.resolveHeapSize_ = function (options
 };
 
 /**
+ * Resolves all data segment names for a module.  Binaryen names segments
+ * differently depending on whether the WAT source uses explicit names:
+ *   - unnamed segments: "0", "1", "2", ...
+ *   - named segments:   "d0", "d0.1", ..., "d1", "d1.1", ...
+ * The sub-segment naming ("d0.1") appears after passes like remove-non-js-ops
+ * that split a single passive segment into multiple active segments.
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {number} numSegments
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.resolveSegmentNames_ = function (wasmModule, numSegments) {
+  if (0 === numSegments) {
+    return [];
+  }
+
+  // Fast path: try implicit numeric naming ("0", "1", ...).
+  try {
+    wasmModule.getMemorySegmentInfo(String(0));
+    var /** @const {!Array<string>} */ numericNames = [];
+    for (var /** number */ ni = 0; ni !== numSegments; ++ni) {
+      numericNames[numericNames.length] = String(ni);
+    }
+    return numericNames;
+  } catch (e) {
+    // Not numeric naming — fall through to named-segment enumeration.
+  }
+
+  // Named-segment enumeration: "d0", "d0.1", "d0.2", ..., "d1", ...
+  var /** @const {!Array<string>} */ names = [];
+  for (var /** number */ base = 0; names.length < numSegments; ++base) {
+    var /** @const {string} */ baseName = 'd' + base;
+    try {
+      wasmModule.getMemorySegmentInfo(baseName);
+      names[names.length] = baseName;
+    } catch (e) {
+      continue;
+    }
+    for (var /** number */ sub = 1; names.length < numSegments; ++sub) {
+      var /** @const {string} */ subName = 'd' + base + '.' + sub;
+      try {
+        wasmModule.getMemorySegmentInfo(subName);
+        names[names.length] = subName;
+      } catch (e) {
+        break;
+      }
+    }
+  }
+
+  return names;
+};
+
+/**
  * Collects and merges all static memory segments from the wasm module into a
  * single Int32Array.  Used by all language backends.
  *
@@ -180,10 +234,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.resolveHeapSize_ = function (options
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.collectStaticMemory_ = function (wasmModule) {
   var /** @const {number} */ numSegments = wasmModule.getNumMemorySegments();
+  var /** @const {!Array<string>} */ segNames = Wasm2Lang.Backend.AbstractCodegen.resolveSegmentNames_(wasmModule, numSegments);
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.StaticMemorySegment_>} */ segments = [];
 
-  for (var /** number */ i = 0; i !== numSegments; ++i) {
-    var /** @const {!BinaryenMemorySegmentInfo} */ segInfo = wasmModule.getMemorySegmentInfo(String(i));
+  for (var /** number */ i = 0, /** @const {number} */ nameCount = segNames.length; i !== nameCount; ++i) {
+    var /** @const {!BinaryenMemorySegmentInfo} */ segInfo = wasmModule.getMemorySegmentInfo(segNames[i]);
+    if (segInfo.passive) {
+      continue;
+    }
     segments[segments.length] = {
       segmentByteOffset_: segInfo.offset,
       segmentBuffer_: segInfo.data,

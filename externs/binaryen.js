@@ -207,6 +207,11 @@ Binaryen.prototype.none;
 /**
  * @type {number}
  */
+Binaryen.prototype.unreachable;
+
+/**
+ * @type {number}
+ */
 Binaryen.prototype.i32;
 
 /**

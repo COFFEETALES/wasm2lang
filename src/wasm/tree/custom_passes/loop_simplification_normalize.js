@@ -220,7 +220,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.VARIANT_INFO_ = {
   'lea': ['le$', 'dowhile', false],
   'leb': ['le$', 'dowhile', false],
   'lw': ['lw$', 'while', true],
-  'ly': ['ly$', 'while', false]
+  'ly': ['ly$', 'while', false],
+  'lwi': ['lw$', 'while', true],
+  'lyi': ['ly$', 'while', false]
 };
 
 /**
@@ -280,6 +282,53 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
       // No block wrapper ⇒ no nested breakable constructs ⇒ unlabeled.
       state.simplifiedLoops[loopName] = 'leb';
       return null;
+    }
+    return null;
+  }
+
+  // Pattern LWI: if-guarded while — loop body is an If with no else arm,
+  // where the then-arm is a Block whose last child is unconditional br $loop.
+  // (loop $L (if (negated_cond) (then body... (br $L))))
+  // Inverted to: while (cond) { body }
+  if (/** @type {number} */ (bodyInfo['id']) === binaryen.IfId) {
+    var /** @const {number} */ ifFalse = /** @type {number} */ (bodyInfo['ifFalse'] || 0);
+    if (0 === ifFalse) {
+      var /** @const {number} */ ifTruePtr = /** @type {number} */ (bodyInfo['ifTrue'] || 0);
+      if (ifTruePtr) {
+        var /** @const {!Object<string, *>} */ ifTrueInfo = /** @type {!Object<string, *>} */ (
+            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ifTruePtr)
+          );
+        if (/** @type {number} */ (ifTrueInfo['id']) === binaryen.BlockId) {
+          var /** @const {!Array<number>|void} */ thenCh = /** @type {!Array<number>|void} */ (ifTrueInfo['children']);
+          if (thenCh && thenCh.length >= 1) {
+            var /** @const {number} */ thenLen = thenCh.length;
+            var /** @const {!Object<string, *>} */ thenLastInfo = /** @type {!Object<string, *>} */ (
+                Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, thenCh[thenLen - 1])
+              );
+            if (
+              /** @type {number} */ (thenLastInfo['id']) === binaryen.BreakId &&
+              /** @type {?string} */ (thenLastInfo['name']) === loopName &&
+              0 === /** @type {number} */ (thenLastInfo['condition'] || 0)
+            ) {
+              var /** @type {boolean} */ lwiNeedsLabel = false;
+              for (var /** @type {number} */ lwii = 0; lwii < thenLen - 1; ++lwii) {
+                if (
+                  Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_(
+                    binaryen,
+                    thenCh[lwii],
+                    loopName
+                  )
+                ) {
+                  lwiNeedsLabel = true;
+                  break;
+                }
+              }
+              state.simplifiedLoops[loopName] = lwiNeedsLabel ? 'lwi' : 'lyi';
+              return null;
+            }
+          }
+        }
+      }
     }
     return null;
   }
@@ -492,6 +541,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
         );
       planCondPtr = S.invertCondition_(binaryen, module, /** @type {number} */ (brIfInfo.condition || 0));
       bodyChildren = children.slice(1, len - 1);
+    } else if ('lwi' === kind || 'lyi' === kind) {
+      // Body is IfId: invert the if condition, extract ifTrue block children minus trailing br.
+      planCondPtr = S.invertCondition_(binaryen, module, /** @type {number} */ (bodyInfo.condition || 0));
+      var /** @const {number} */ lwiIfTruePtr = /** @type {number} */ (bodyInfo.ifTrue || 0);
+      var /** @const {!BinaryenExpressionInfo} */ lwiIfTrueInfo = /** @type {!BinaryenExpressionInfo} */ (
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, lwiIfTruePtr)
+        );
+      var /** @const {!Array<number>} */ lwiThenCh = /** @type {!Array<number>} */ ((lwiIfTrueInfo.children || []).slice(0));
+      lwiThenCh.length = lwiThenCh.length - 1;
+      bodyChildren = lwiThenCh;
     } else if ('lc' === kind || 'lf' === kind) {
       children.length = len - 1;
     } else if ('ldb' === kind || 'leb' === kind) {

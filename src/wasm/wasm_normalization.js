@@ -125,12 +125,13 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmMod
   }
   // "flatten" inserts explicit returns at block ends so later codegen sees
   // concrete control flow.
-  // "simplify-locals-nostructure" merges redundant local set/get patterns
-  // without restructuring control flow — unlike "simplify-locals-notee" it
-  // never re-nests blocks/ifs with result values, so the flat invariant holds.
+  // "simplify-locals-notee-nostructure" merges redundant local set/get
+  // patterns without restructuring control flow (no re-nesting blocks/ifs)
+  // AND without reintroducing local.tee (which produces broken multi-line
+  // ternaries when the codegen renders selects with tee-wrapped operands).
   // "reorder-locals" compacts local indices to a tighter layout.
   // "vacuum" removes unreachable code left by earlier passes.
-  wasmModule.runPasses(['flatten', 'simplify-locals-nostructure', 'reorder-locals', 'vacuum']);
+  wasmModule.runPasses(['flatten', 'simplify-locals-notee-nostructure', 'reorder-locals', 'vacuum']);
 };
 
 /**

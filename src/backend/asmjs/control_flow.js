@@ -259,7 +259,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.IfId: {
       var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
-      if (ifType !== binaryen.none && 0 !== ifType) {
+      if (ifType !== binaryen.none && ifType !== binaryen.unreachable && 0 !== ifType) {
         result = this.renderCoercionByType_(
           binaryen,
           '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',

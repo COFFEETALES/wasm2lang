@@ -48,4 +48,16 @@
           (local.get $limit))))
     (local.get $i)
   )
+
+  ;; If-guarded while: loop body is an if with no else, then-arm ends with br $loop.
+  ;; Produced by binaryen:max optimization. Should become lw$/ly$ with loopKind 'while'.
+  (func $ifGuardedWhile (param $limit i32) (result i32)
+    (local $i i32)
+    (loop $loop
+      (if (i32.lt_s (local.get $i) (local.get $limit))
+        (then
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br $loop))))
+    (local.get $i)
+  )
 )
