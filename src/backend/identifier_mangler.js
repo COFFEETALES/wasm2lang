@@ -19,6 +19,10 @@ Wasm2Lang.Backend.IdentifierMangler = function (key, languageId) {
   /** @private @const {!Wasm2Lang.Backend.ManglerProfile} */
   this.profile_ = Wasm2Lang.Backend.getManglerProfile(languageId) || {
     reservedWords: /** @type {!Object<string, boolean>} */ (Object.create(null)),
+    rejectName: /** @param {string} name @return {boolean} */ function (name) {
+      var /** @const {number} */ ch = name.charCodeAt(0);
+      return 48 <= ch && ch <= 57;
+    },
     singleCharset: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz',
     blockCharset: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz0123456789',
     caseInsensitive: false
@@ -361,10 +365,9 @@ Wasm2Lang.Backend.IdentifierMangler.prototype.ln = function (index) {
 /**
  * Resolves {@code count} unique mangled names using the Aquitaine encoder.
  *
- * Names that start with a digit, collide with reserved words, or (when the
- * profile requires it) start with {@code $} are skipped.  Since the encoder
- * is a bijection, unique counter values always produce unique outputs, so
- * the only reason to skip is legality — not collision.
+ * Names rejected by the profile's {@code rejectName} callback are skipped.
+ * Since the encoder is a bijection, unique counter values always produce
+ * unique outputs, so the only reason to skip is legality — not collision.
  *
  * @private
  * @param {number} count
@@ -373,7 +376,6 @@ Wasm2Lang.Backend.IdentifierMangler.prototype.ln = function (index) {
  * @return {!Promise<!Array<string>>}
  */
 Wasm2Lang.Backend.IdentifierMangler.resolveNames_ = function (count, spec, profile) {
-  var /** @const {!Object<string, boolean>} */ reserved = profile.reservedWords;
   var /** @const {boolean} */ ciCheck = profile.caseInsensitive;
   var /** @const {!Object<string, boolean>} */ seenLower = /** @type {!Object<string, boolean>} */ (Object.create(null));
   var /** @const {!Array<string>} */ names = [];
@@ -397,16 +399,14 @@ Wasm2Lang.Backend.IdentifierMangler.resolveNames_ = function (count, spec, profi
   function tryNext(idx) {
     var /** @const {number} */ c = counter++;
     return Wasm2Lang.Backend.IdentifierMangler.encode_(c, spec).then(function (name) {
-      var /** @const {number} */ ch = name.charCodeAt(0);
-      // Reject digit-leading (0x30-0x39) and reserved words.
-      if ((48 <= ch && ch <= 57) || reserved[name]) {
+      if (profile.rejectName(name)) {
         return tryNext(idx);
       }
       // For case-insensitive languages (PHP), reject names that collide
       // when lowercased — e.g. 'I' and 'i' are the same PHP function.
       if (ciCheck) {
         var /** @const {string} */ lower = name.toLowerCase();
-        if (reserved[lower] || seenLower[lower]) {
+        if (seenLower[lower]) {
           return tryNext(idx);
         }
         seenLower[lower] = true;

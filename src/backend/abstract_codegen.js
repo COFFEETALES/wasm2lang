@@ -54,6 +54,7 @@ Wasm2Lang.Backend.createBackend = function (languageId) {
 /**
  * @typedef {{
  *   reservedWords: !Object<string, boolean>,
+ *   rejectName: function(string): boolean,
  *   singleCharset: string,
  *   blockCharset: string,
  *   caseInsensitive: boolean

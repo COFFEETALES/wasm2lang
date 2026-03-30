@@ -61,6 +61,10 @@ Wasm2Lang.Backend.JavaCodegen.RESERVED_ = Wasm2Lang.Backend.buildReservedSet([
 
 Wasm2Lang.Backend.registerManglerProfile('java', {
   reservedWords: Wasm2Lang.Backend.JavaCodegen.RESERVED_,
+  rejectName: /** @param {string} name @return {boolean} */ function (name) {
+    var /** @const {number} */ ch = name.charCodeAt(0);
+    return (48 <= ch && ch <= 57) || !!Wasm2Lang.Backend.JavaCodegen.RESERVED_[name];
+  },
   singleCharset: '$ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz',
   blockCharset: '$ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz0123456789',
   caseInsensitive: false
