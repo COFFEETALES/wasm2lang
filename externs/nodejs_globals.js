@@ -38,6 +38,11 @@ NodeProcess.prototype.stdout;
 NodeProcess.prototype.stderr;
 
 /**
+ * @type {number|undefined}
+ */
+NodeProcess.prototype.exitCode;
+
+/**
  * @const {!NodeProcess}
  */
 var process;

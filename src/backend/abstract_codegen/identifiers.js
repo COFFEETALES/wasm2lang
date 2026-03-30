@@ -14,6 +14,8 @@
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_ = function (name) {
+  // Replace characters that are not valid in JS/Java/PHP identifiers.
+  name = name.replace(/[^a-zA-Z0-9_$]/g, '_');
   var /** @const {number} */ ch = name.charCodeAt(0);
   // 0x30 = '0', 0x39 = '9'
   if (48 <= ch && ch <= 57) {
@@ -123,7 +125,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildLocalInitStrings_ = function (b
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.n_ = function (originalName) {
-  return this.mangler_ ? this.mangler_.mn(originalName) : originalName;
+  return this.mangler_ ? this.mangler_.mn(originalName) : Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(originalName);
 };
 
 /**

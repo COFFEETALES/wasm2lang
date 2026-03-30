@@ -98,20 +98,24 @@ Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_ = function (wasmMo
  * @return {void}
  */
 Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmModule, aggressive) {
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @const {!BinaryenFeatures} */ features = binaryen.Features;
+  // Set the feature mask so binaryen's optimizer and passes recognize post-MVP
+  // ops (bulk memory, sign-ext, non-trapping float-to-int).
+  wasmModule.setFeatures(0 | features.NontrappingFPToInt | features.BulkMemory | features.BulkMemoryOpt | features.SignExt);
+
   if (aggressive) {
-    var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-    var /** @const {!BinaryenFeatures} */ features = binaryen.Features;
-    // Set the feature mask so binaryen's optimizer recognizes post-MVP ops.
-    wasmModule.setFeatures(0 | features.NontrappingFPToInt | features.BulkMemory | features.BulkMemoryOpt | features.SignExt);
     // Run a full optimization pass before i64 lowering to inline small
     // functions, eliminate duplicates, and simplify instructions.
     binaryen.setOptimizeLevel(2);
     binaryen.setShrinkLevel(1);
     wasmModule.optimize();
-    // Lower i64 to pairs of i32 so backends only need to handle i32/f32/f64.
-    // "remove-non-js-ops" converts i64 selects to if/else which the lowering
-    // pass requires; both passes need flat IR so "flatten" runs before each.
-    wasmModule.runPasses(['flatten', 'remove-non-js-ops', 'flatten', 'i64-to-i32-lowering']);
+  }
+  // Lower i64 to pairs of i32 so backends only need to handle i32/f32/f64.
+  // "remove-non-js-ops" converts i64 selects to if/else which the lowering
+  // pass requires; both passes need flat IR so "flatten" runs before each.
+  wasmModule.runPasses(['flatten', 'remove-non-js-ops', 'flatten', 'i64-to-i32-lowering']);
+  if (aggressive) {
     // Cleanup passes before the final flatten to reduce dead code and simplify.
     wasmModule.runPasses([
       'optimize-instructions',

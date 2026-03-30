@@ -78,8 +78,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       if (state.stdlibGlobals && state.stdlibGlobals[globalGetName]) {
         result = this.n_(state.stdlibGlobals[globalGetName]);
       } else {
-        result = this.n_('$g_' + globalGetName);
-        this.markBinding_('$g_' + globalGetName);
+        var /** @const {string} */ globalGetKey = '$g_' + this.safeName_(globalGetName);
+        result = this.n_(globalGetKey);
+        this.markBinding_(globalGetKey);
       }
       resultCat = A.catForCoercedType_(binaryen, globalGetType);
       break;
@@ -127,8 +128,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.GlobalSetId: {
       var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
-      this.markBinding_('$g_' + globalName);
-      result = pad(ind) + this.n_('$g_' + globalName) + ' = ' + this.coerceToType_(binaryen, cr(0), cc(0), globalType) + ';\n';
+      var /** @const {string} */ globalSetKey = '$g_' + this.safeName_(globalName);
+      this.markBinding_(globalSetKey);
+      result = pad(ind) + this.n_(globalSetKey) + ' = ' + this.coerceToType_(binaryen, cr(0), cc(0), globalType) + ';\n';
       break;
     }
     case binaryen.CallId: {

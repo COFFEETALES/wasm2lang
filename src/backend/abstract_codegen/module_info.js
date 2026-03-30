@@ -171,6 +171,45 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.resolveHeapSize_ = function (options
 };
 
 /**
+ * Probes whether a data segment with the given name exists.  Binaryen's
+ * {@code getMemorySegmentInfo} calls C++ {@code Fatal()} on lookup failure,
+ * which prints "Fatal: invalid segment name." to stderr and sets
+ * {@code process.exitCode = 1} even though the JS exception IS catchable.
+ * This wrapper suppresses both side effects so that probing does not
+ * pollute stderr output or corrupt the process exit code.
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {string} name
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.probeSegmentName_ = function (wasmModule, name) {
+  /** @type {?function((!Buffer|string), string=, function(*=): ?=): boolean} */
+  var origWrite = null;
+  var /** @type {number|undefined} */ savedExitCode;
+  if (Wasm2Lang.Utilities.Environment.isNode()) {
+    origWrite = /** @type {function((!Buffer|string), string=, function(*=): ?=): boolean} */ (process.stderr.write);
+    savedExitCode = process.exitCode;
+    process.stderr.write = /** @type {function((!Buffer|string), string=, function(*=): ?=): boolean} */ (
+      function () {
+        return true;
+      }
+    );
+  }
+  try {
+    wasmModule.getMemorySegmentInfo(name);
+    return true;
+  } catch (e) {
+    return false;
+  } finally {
+    if (null !== origWrite) {
+      process.stderr.write = origWrite;
+      process.exitCode = savedExitCode || 0;
+    }
+  }
+};
+
+/**
  * Resolves all data segment names for a module.  Binaryen names segments
  * differently depending on whether the WAT source uses explicit names:
  *   - unnamed segments: "0", "1", "2", ...
@@ -188,36 +227,31 @@ Wasm2Lang.Backend.AbstractCodegen.resolveSegmentNames_ = function (wasmModule, n
     return [];
   }
 
+  var /** @const {function(!BinaryenModule, string):boolean} */ probe = Wasm2Lang.Backend.AbstractCodegen.probeSegmentName_;
+
   // Fast path: try implicit numeric naming ("0", "1", ...).
-  try {
-    wasmModule.getMemorySegmentInfo(String(0));
+  if (probe(wasmModule, '0')) {
     var /** @const {!Array<string>} */ numericNames = [];
     for (var /** number */ ni = 0; ni !== numSegments; ++ni) {
       numericNames[numericNames.length] = String(ni);
     }
     return numericNames;
-  } catch (e) {
-    // Not numeric naming — fall through to named-segment enumeration.
   }
 
   // Named-segment enumeration: "d0", "d0.1", "d0.2", ..., "d1", ...
   var /** @const {!Array<string>} */ names = [];
   for (var /** number */ base = 0; names.length < numSegments; ++base) {
     var /** @const {string} */ baseName = 'd' + base;
-    try {
-      wasmModule.getMemorySegmentInfo(baseName);
-      names[names.length] = baseName;
-    } catch (e) {
+    if (!probe(wasmModule, baseName)) {
       continue;
     }
+    names[names.length] = baseName;
     for (var /** number */ sub = 1; names.length < numSegments; ++sub) {
       var /** @const {string} */ subName = 'd' + base + '.' + sub;
-      try {
-        wasmModule.getMemorySegmentInfo(subName);
-        names[names.length] = subName;
-      } catch (e) {
+      if (!probe(wasmModule, subName)) {
         break;
       }
+      names[names.length] = subName;
     }
   }
 

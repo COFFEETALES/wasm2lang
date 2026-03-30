@@ -211,7 +211,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   }
   // Conditional module-level globals.
   for (var /** number */ cgi = 0, /** @const {number} */ cgLen = moduleInfo.globals.length; cgi !== cgLen; ++cgi) {
-    var /** @const {string} */ cgKey = '$g_' + moduleInfo.globals[cgi].globalName;
+    var /** @const {string} */ cgKey = '$g_' + this.safeName_(moduleInfo.globals[cgi].globalName);
     if (ub[cgKey]) {
       bindingLines[bindingLines.length] =
         pad1 + 'var ' + this.n_(cgKey) + ' = ' + moduleInfo.globals[cgi].globalInitValue + ';';
