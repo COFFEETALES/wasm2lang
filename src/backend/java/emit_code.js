@@ -99,22 +99,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     }
   }
 
-  // Import fields — stored as Object, cast at call sites. Skip stdlib.
-  for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
-    if (moduleInfo.impFuncs[i].wasmFuncName in javaStdlibNames) {
-      continue;
-    }
-    outputParts[outputParts.length] =
-      pad1 + 'Object ' + this.n_('$if_' + this.safeName_(moduleInfo.impFuncs[i].importBaseName)) + ';';
-  }
-
-  // Global fields.
-  for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
-    var /** @const {string} */ gName = this.safeName_(moduleInfo.globals[gi].globalName);
-    var /** @const {string} */ gType = Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, moduleInfo.globals[gi].globalType);
-    outputParts[outputParts.length] =
-      pad1 + gType + ' ' + this.n_('$g_' + gName) + ' = ' + moduleInfo.globals[gi].globalInitValue + ';';
-  }
+  // Import fields and global fields are emitted conditionally after function
+  // body traversal (see usedBindings_ below).  Reserve an insertion index.
+  var /** @const {number} */ fieldInsertIndex = outputParts.length;
 
   // Function table array fields.
   for (var /** number */ ftf = 0; ftf !== ftLen; ++ftf) {
@@ -125,18 +112,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   }
 
   // Constructor accepting foreign imports and buffer.
+  // Import assignments are deferred until after function body emission.
   var /** @const {string} */ bufferParamName = this.n_('buffer');
   outputParts[outputParts.length] =
     pad1 + className + '(java.util.Map<String, Object> foreign, java.nio.ByteBuffer ' + bufferParamName + ') {';
   outputParts[outputParts.length] = pad2 + 'this.' + bufferParamName + ' = ' + bufferParamName + ';';
-  for (var /** number */ ci = 0; ci !== importCount; ++ci) {
-    if (moduleInfo.impFuncs[ci].wasmFuncName in javaStdlibNames) {
-      continue;
-    }
-    var /** @const {string} */ importSafe = this.safeName_(moduleInfo.impFuncs[ci].importBaseName);
-    outputParts[outputParts.length] =
-      pad2 + 'this.' + this.n_('$if_' + importSafe) + ' = foreign.get("' + moduleInfo.impFuncs[ci].importBaseName + '");';
-  }
+  var /** @const {number} */ importAssignInsertIndex = outputParts.length;
   // Reserve a slot for function table array initialisation — method
   // references resolve against methods defined later in the class, but the
   // export-name map is not yet built at this point, so actual init is
@@ -151,8 +132,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     exportNameMap[moduleInfo.expFuncs[ei].internalName] = moduleInfo.expFuncs[ei].exportName;
   }
 
-  // Function bodies (emitted first to discover which helpers are needed).
+  // Function bodies (emitted first to discover which helpers and bindings are needed).
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   var /** @const {!Array<string>} */ functionParts = [];
   for (var /** number */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
@@ -173,8 +155,48 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Helper methods (only those referenced by function bodies).
   var /** @const {!Array<string>} */ helperLines = this.emitHelpers_();
   this.usedHelpers_ = null;
+  var /** @const {!Object<string, boolean>} */ jub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
+  this.usedBindings_ = null;
   for (var /** number */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
     outputParts[outputParts.length] = helperLines[hi];
+  }
+
+  // Splice conditional import fields, global fields, and constructor
+  // import assignments now that usedBindings_ is available.
+  var /** @const {!Array<string>} */ javaFieldLines = [];
+  var /** @const {!Array<string>} */ javaAssignLines = [];
+  var /** @const {number} */ javaImpCount = moduleInfo.impFuncs.length;
+  for (var /** number */ ji = 0; ji !== javaImpCount; ++ji) {
+    if (moduleInfo.impFuncs[ji].wasmFuncName in javaStdlibNames) {
+      continue;
+    }
+    var /** @const {string} */ jImpKey = '$if_' + this.safeName_(moduleInfo.impFuncs[ji].importBaseName);
+    if (!jub[jImpKey]) {
+      continue;
+    }
+    javaFieldLines[javaFieldLines.length] = pad1 + 'Object ' + this.n_(jImpKey) + ';';
+    javaAssignLines[javaAssignLines.length] =
+      pad2 + 'this.' + this.n_(jImpKey) + ' = foreign.get("' + moduleInfo.impFuncs[ji].importBaseName + '");';
+  }
+  for (var /** number */ jgf = 0, /** @const {number} */ jgfLen = moduleInfo.globals.length; jgf !== jgfLen; ++jgf) {
+    var /** @const {string} */ jGlobalKey = '$g_' + this.safeName_(moduleInfo.globals[jgf].globalName);
+    if (!jub[jGlobalKey]) {
+      continue;
+    }
+    var /** @const {string} */ jGlobalType = Wasm2Lang.Backend.JavaCodegen.javaTypeName_(
+        binaryen,
+        moduleInfo.globals[jgf].globalType
+      );
+    javaFieldLines[javaFieldLines.length] =
+      pad1 + jGlobalType + ' ' + this.n_(jGlobalKey) + ' = ' + moduleInfo.globals[jgf].globalInitValue + ';';
+  }
+  for (var /** number */ jfs = javaFieldLines.length - 1; jfs >= 0; --jfs) {
+    outputParts.splice(fieldInsertIndex, 0, javaFieldLines[jfs]);
+  }
+  // Adjust importAssignInsertIndex by the number of field lines inserted before it.
+  var /** @const {number} */ adjustedAssignIndex = importAssignInsertIndex + javaFieldLines.length;
+  for (var /** number */ jas = javaAssignLines.length - 1; jas >= 0; --jas) {
+    outputParts.splice(adjustedAssignIndex, 0, javaAssignLines[jas]);
   }
 
   // Function table array initialisation — splice into constructor now that
@@ -219,7 +241,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   }
   // Splice init lines into the constructor (just before the closing brace).
   for (var /** number */ fts = ftInitLines.length - 1; fts >= 0; --fts) {
-    outputParts.splice(ftInitInsertIndex, 0, ftInitLines[fts]);
+    outputParts.splice(ftInitInsertIndex + javaFieldLines.length + javaAssignLines.length, 0, ftInitLines[fts]);
   }
 
   // Append function bodies.

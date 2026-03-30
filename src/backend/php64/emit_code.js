@@ -72,8 +72,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     }
   }
 
-  // Emit function bodies first to discover which helpers are needed.
+  // Emit function bodies first to discover which helpers and bindings are needed.
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   var /** @const {!Array<string>} */ functionParts = [];
   for (var /** number */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
@@ -94,6 +95,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   }
   var /** @const {!Object<string, boolean>} */ used = this.usedHelpers_;
   this.usedHelpers_ = null;
+  var /** @const {!Object<string, boolean>} */ usedB = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
+  this.usedBindings_ = null;
 
   // Conditional helper emission via local shorthand.
   var /** @const */ self = this;
@@ -207,27 +210,26 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   var /** @const {string} */ nBuf = this.phpVar_('buffer');
   outputParts[outputParts.length] = '$' + moduleName + ' = function(array $foreign, string &' + nBuf + '): array {';
 
-  // Imported function bindings — skip stdlib functions (handled natively).
+  // Imported function bindings — skip stdlib and unused imports.
   for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
     if (moduleInfo.impFuncs[i].wasmFuncName in phpStdlibNames) {
       continue;
     }
+    var /** @const {string} */ phpImpKey = '$if_' + this.safeName_(moduleInfo.impFuncs[i].importBaseName);
+    if (!usedB[phpImpKey]) {
+      continue;
+    }
     outputParts[outputParts.length] =
-      pad1 +
-      this.phpVar_('$if_' + this.safeName_(moduleInfo.impFuncs[i].importBaseName)) +
-      " = $foreign['" +
-      moduleInfo.impFuncs[i].importBaseName +
-      "'] ?? null;";
+      pad1 + this.phpVar_(phpImpKey) + " = $foreign['" + moduleInfo.impFuncs[i].importBaseName + "'] ?? null;";
   }
 
-  // Module-level globals.
+  // Module-level globals (only those referenced by function bodies).
   for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
-    outputParts[outputParts.length] =
-      pad1 +
-      this.phpVar_('$g_' + this.safeName_(moduleInfo.globals[gi].globalName)) +
-      ' = ' +
-      moduleInfo.globals[gi].globalInitValue +
-      ';';
+    var /** @const {string} */ phpGlobalKey = '$g_' + this.safeName_(moduleInfo.globals[gi].globalName);
+    if (!usedB[phpGlobalKey]) {
+      continue;
+    }
+    outputParts[outputParts.length] = pad1 + this.phpVar_(phpGlobalKey) + ' = ' + moduleInfo.globals[gi].globalInitValue + ';';
   }
 
   // Forward declarations for internal functions.

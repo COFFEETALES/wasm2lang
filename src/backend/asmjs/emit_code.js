@@ -37,22 +37,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   var /** @const {!Object<string, string>} */ stdlibGlobals = /** @type {!Object<string, string>} */ (Object.create(null));
   var /** @const */ classify = Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport;
 
-  // Imported function bindings — stdlib functions go through stdlib.Math,
-  // everything else goes through foreign.
+  // Classify imports: stdlib functions go through stdlib.Math; everything
+  // else is emitted conditionally after function body traversal (see below).
   for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
     var /** @const {string} */ impKind = classify(moduleInfo.impFuncs[i].importModule, moduleInfo.impFuncs[i].importBaseName);
     if ('math_func' === impKind) {
       stdlibNames[moduleInfo.impFuncs[i].wasmFuncName] = 'Math_' + moduleInfo.impFuncs[i].importBaseName;
-    } else {
-      outputParts[outputParts.length] =
-        pad1 +
-        'var ' +
-        this.n_('$if_' + moduleInfo.impFuncs[i].importBaseName) +
-        ' = ' +
-        foreignName +
-        '.' +
-        moduleInfo.impFuncs[i].importBaseName +
-        ';';
     }
   }
 
@@ -69,11 +59,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
     }
   }
 
-  // Module-level globals.
-  for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
-    outputParts[outputParts.length] =
-      pad1 + 'var ' + this.n_('$g_' + moduleInfo.globals[gi].globalName) + ' = ' + moduleInfo.globals[gi].globalInitValue + ';';
-  }
+  // Module-level globals: emitted conditionally after function body
+  // traversal (see usedBindings_ below).
 
   // Track heap page count for memory.size / memory.grow emission.
   this.heapPageCount_ = heapSize / 65536;
@@ -210,6 +197,25 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   }
   if (usedStdlibGlobalSet['$g_NaN']) {
     bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('$g_NaN') + ' = +' + foreignName + '.NaN;';
+  }
+  // Conditional import bindings (only those referenced by function bodies).
+  for (var /** number */ ci = 0; ci !== importCount; ++ci) {
+    if (moduleInfo.impFuncs[ci].wasmFuncName in stdlibNames) {
+      continue;
+    }
+    var /** @const {string} */ ciKey = '$if_' + moduleInfo.impFuncs[ci].importBaseName;
+    if (ub[ciKey]) {
+      bindingLines[bindingLines.length] =
+        pad1 + 'var ' + this.n_(ciKey) + ' = ' + foreignName + '.' + moduleInfo.impFuncs[ci].importBaseName + ';';
+    }
+  }
+  // Conditional module-level globals.
+  for (var /** number */ cgi = 0, /** @const {number} */ cgLen = moduleInfo.globals.length; cgi !== cgLen; ++cgi) {
+    var /** @const {string} */ cgKey = '$g_' + moduleInfo.globals[cgi].globalName;
+    if (ub[cgKey]) {
+      bindingLines[bindingLines.length] =
+        pad1 + 'var ' + this.n_(cgKey) + ' = ' + moduleInfo.globals[cgi].globalInitValue + ';';
+    }
   }
   // Splice binding declarations into the reserved position.
   for (var /** number */ bi = bindingLines.length - 1; bi >= 0; --bi) {

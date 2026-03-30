@@ -189,8 +189,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       if ('' !== stdlibGlobal) {
         result = stdlibGlobal;
       } else {
-        var /** @const {string} */ globalGetVar = this.phpVar_('$g_' + this.safeName_(globalGetName));
+        var /** @const {string} */ globalGetKey = '$g_' + this.safeName_(globalGetName);
+        var /** @const {string} */ globalGetVar = this.phpVar_(globalGetKey);
         state.usedCaptures[globalGetVar] = true;
+        this.markBinding_(globalGetKey);
         result = globalGetVar;
       }
       resultCat = A.catForCoercedType_(binaryen, globalGetType);
@@ -272,8 +274,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.GlobalSetId: {
       var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
-      var /** @const {string} */ globalSetVar = this.phpVar_('$g_' + this.safeName_(globalName));
+      var /** @const {string} */ globalSetKey = '$g_' + this.safeName_(globalName);
+      var /** @const {string} */ globalSetVar = this.phpVar_(globalSetKey);
       state.usedCaptures[globalSetVar] = true;
+      this.markBinding_(globalSetKey);
       result = pad(ind) + globalSetVar + ' = ' + this.coerceToType_(binaryen, cr(0), cc(0), globalType) + ';\n';
       break;
     }
@@ -285,8 +289,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       if ('' !== phpStdlibName) {
         callName = phpStdlibName;
       } else if ('' !== importBase) {
-        callName = this.phpVar_('$if_' + this.safeName_(importBase));
+        var /** @const {string} */ phpImpKey = '$if_' + this.safeName_(importBase);
+        callName = this.phpVar_(phpImpKey);
         state.usedCaptures[callName] = true;
+        this.markBinding_(phpImpKey);
       } else {
         callName = this.phpVar_(this.safeName_(callTarget));
         state.usedCaptures[callName] = true;

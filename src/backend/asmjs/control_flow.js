@@ -75,10 +75,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.GlobalGetId: {
       var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
-      result =
-        state.stdlibGlobals && state.stdlibGlobals[globalGetName]
-          ? this.n_(state.stdlibGlobals[globalGetName])
-          : this.n_('$g_' + globalGetName);
+      if (state.stdlibGlobals && state.stdlibGlobals[globalGetName]) {
+        result = this.n_(state.stdlibGlobals[globalGetName]);
+      } else {
+        result = this.n_('$g_' + globalGetName);
+        this.markBinding_('$g_' + globalGetName);
+      }
       resultCat = A.catForCoercedType_(binaryen, globalGetType);
       break;
     }
@@ -125,6 +127,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.GlobalSetId: {
       var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
+      this.markBinding_('$g_' + globalName);
       result = pad(ind) + this.n_('$g_' + globalName) + ' = ' + this.coerceToType_(binaryen, cr(0), cc(0), globalType) + ';\n';
       break;
     }
@@ -132,12 +135,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
       var /** @const {string} */ stdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
       var /** @const {string} */ importBase = stdlibName ? '' : state.importedNames[callTarget] || '';
-      var /** @type {string} */ callName =
-          '' !== stdlibName
-            ? this.n_(stdlibName)
-            : '' !== importBase
-              ? this.n_('$if_' + importBase)
-              : this.n_(this.safeName_(callTarget));
+      var /** @type {string} */ callName;
+      if ('' !== stdlibName) {
+        callName = this.n_(stdlibName);
+      } else if ('' !== importBase) {
+        callName = this.n_('$if_' + importBase);
+        this.markBinding_('$if_' + importBase);
+      } else {
+        callName = this.n_(this.safeName_(callTarget));
+      }
       var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
           binaryen,
           expr,

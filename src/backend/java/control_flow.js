@@ -87,7 +87,13 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
       var /** @const {string} */ javaStdlibGlobal = state.stdlibGlobals ? state.stdlibGlobals[globalGetName] || '' : '';
-      result = '' !== javaStdlibGlobal ? javaStdlibGlobal : 'this.' + this.n_('$g_' + this.safeName_(globalGetName));
+      if ('' !== javaStdlibGlobal) {
+        result = javaStdlibGlobal;
+      } else {
+        var /** @const {string} */ javaGlobalGetKey = '$g_' + this.safeName_(globalGetName);
+        this.markBinding_(javaGlobalGetKey);
+        result = 'this.' + this.n_(javaGlobalGetKey);
+      }
       resultCat = A.catForCoercedType_(binaryen, globalGetType);
       break;
     }
@@ -115,13 +121,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     case binaryen.GlobalSetId: {
       var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
       var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
+      var /** @const {string} */ javaGlobalSetKey = '$g_' + this.safeName_(globalName);
+      this.markBinding_(javaGlobalSetKey);
       result =
-        pad(ind) +
-        'this.' +
-        this.n_('$g_' + this.safeName_(globalName)) +
-        ' = ' +
-        this.coerceToType_(binaryen, cr(0), cc(0), globalType) +
-        ';\n';
+        pad(ind) + 'this.' + this.n_(javaGlobalSetKey) + ' = ' + this.coerceToType_(binaryen, cr(0), cc(0), globalType) + ';\n';
       break;
     }
     case binaryen.CallId: {
@@ -139,6 +142,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       if ('' !== javaStdlibName) {
         callExpr = javaStdlibName + '(' + callArgs.join(', ') + ')';
       } else if ('' !== importBase) {
+        this.markBinding_('$if_' + this.safeName_(importBase));
         callExpr = this.renderImportCallExpr_(binaryen, importBase, callArgs, callType);
       } else {
         var /** @const {boolean} */ callIsExported = callTarget in state.exportNameMap;
