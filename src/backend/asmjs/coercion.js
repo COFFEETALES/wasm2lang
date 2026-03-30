@@ -58,6 +58,21 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderFloatCoercion_ = function (expr) 
 };
 
 /**
+ * asm.js requires explicit type annotations at call/return boundaries.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} expr
+ * @param {number} cat
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceAtBoundary_ = function (binaryen, expr, cat, wasmType) {
+  return this.renderCoercionByType_(binaryen, expr, wasmType);
+};
+
+/**
  * @override
  * @protected
  * @param {string} condStr
@@ -110,6 +125,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderConst_ = function (binaryen, valu
 };
 
 /**
+ * @override
  * @param {!Binaryen} binaryen
  * @param {number} wasmType
  * @return {string}
@@ -189,76 +205,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
   return Wasm2Lang.Backend.I32Coercion.FIXNUM;
 };
 
-/**
- * asm.js requires explicit type annotations on implicit return values.
- * Override to use {@code renderCoercionByType_} instead of
- * {@code coerceToType_} so the annotation is always present.
- *
- * @override
- * @protected
- * @param {!Binaryen} binaryen
- * @param {*} bodyResult
- * @param {number} resultType
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.renderImplicitReturn_ = function (binaryen, bodyResult, resultType) {
-  return this.renderCoercionByType_(binaryen, /** @type {string} */ (bodyResult['s']), resultType);
-};
-
-/**
- * asm.js requires explicit type annotations on function call arguments.
- * Override the shared builder to use {@code renderCoercionByType_} which
- * always emits the annotation regardless of the expression category.
- *
- * @override
- * @protected
- * @param {!Binaryen} binaryen
- * @param {!Object<string, *>} expr
- * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
- * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
- * @return {!Array<string>}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.buildCoercedCallArgs_ = function (binaryen, expr, childResults, functionSignatures) {
-  var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ callSig = functionSignatures[callTarget] || {
-      sigParams: [],
-      sigRetType: /** @type {number} */ (expr['type'])
-    };
-  var /** @const {!Array<number>} */ operands = /** @type {!Array<number>} */ (expr['operands']) || [];
-  var /** @const {!Array<string>} */ callArgs = [];
-  var /** @const */ getInfo = Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_;
-
-  for (var /** number */ ai = 0, /** @const {number} */ alen = childResults.length; ai !== alen; ++ai) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ argInfo = getInfo(childResults, ai);
-    var /** @const {number} */ argType =
-        ai < callSig.sigParams.length
-          ? callSig.sigParams[ai]
-          : Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, operands[ai]).type;
-    callArgs[callArgs.length] = this.renderCoercionByType_(binaryen, argInfo.expressionString, argType);
-  }
-
-  return callArgs;
-};
-
-/**
- * asm.js requires explicit type annotations on call_indirect arguments.
- *
- * @override
- * @protected
- * @param {!Binaryen} binaryen
- * @param {!Object<string, *>} expr
- * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
- * @return {!Array<string>}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.buildCoercedCallIndirectArgs_ = function (binaryen, expr, childResults) {
-  var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(/** @type {number} */ (expr['params']));
-  var /** @const {!Array<string>} */ callArgs = [];
-  var /** @const */ getInfo = Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_;
-
-  for (var /** number */ ai = 0, /** @const {number} */ alen = paramTypes.length; ai !== alen; ++ai) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ argInfo = getInfo(childResults, ai + 1);
-    callArgs[callArgs.length] = this.renderCoercionByType_(binaryen, argInfo.expressionString, paramTypes[ai]);
-  }
-
-  return callArgs;
-};
+// buildCoercedCallArgs_, buildCoercedCallIndirectArgs_, and
+// renderImplicitReturn_ are no longer overridden here — the base class
+// implementations now delegate to coerceAtBoundary_ which asm.js
+// overrides above to always apply the type annotation.

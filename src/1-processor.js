@@ -88,7 +88,7 @@ Wasm2Lang.Processor.forEachResultEntry_ = function (result, visitFn) {
  */
 Wasm2Lang.Processor.normalizeEmitOption_ = function (userOptions, optionName, trueValue) {
   var /** @const {*} */ value = userOptions[optionName];
-  return value == null ? null : value === true ? trueValue : String(value);
+  return null == value ? null : true === value ? trueValue : String(value);
 };
 
 /**

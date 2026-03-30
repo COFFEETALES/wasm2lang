@@ -39,6 +39,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderConst_ = function (binaryen, value
 };
 
 /**
+ * @override
  * @param {!Binaryen} binaryen
  * @param {number} wasmType
  * @return {string}

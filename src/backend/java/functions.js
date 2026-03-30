@@ -52,22 +52,16 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
 
   // Local variable declarations.
   if (0 !== numVars) {
-    var /** @const {?Object<string, number>} */ initOverrides = this.getLocalInitOverrides_(funcInfo.name);
+    var /** @const {!Array<string>} */ initStrs = this.buildLocalInitStrings_(binaryen, funcInfo.name, varTypes, numParams);
     for (var /** number */ vi = 0; vi !== numVars; ++vi) {
-      var /** @const {number} */ localType = varTypes[vi];
       var /** @const {number} */ localIdx = numParams + vi;
-      var /** @const {number|void} */ overrideValue = initOverrides ? initOverrides[String(localIdx)] : void 0;
-      // prettier-ignore
-      var /** @const {string} */ initStr = overrideValue !== void 0
-        ? this.renderConst_(binaryen, /** @type {number} */ (overrideValue), localType)
-        : this.renderLocalInit_(binaryen, localType);
       parts[parts.length] =
         pad2 +
-        Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, localType) +
+        Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, varTypes[vi]) +
         ' ' +
         this.localN_(localIdx) +
         ' = ' +
-        initStr +
+        initStrs[vi] +
         ';';
     }
   }

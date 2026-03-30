@@ -18,24 +18,6 @@
 /** @const {number} */ Wasm2Lang.Backend.I32Coercion.INT = 3;
 /** @const {number} */ Wasm2Lang.Backend.I32Coercion.INTISH = 4;
 
-/**
- * Returns true when {@code fromType} is a subtype of {@code toType} — i.e. no
- * coercion is required.
- *
- * @param {number} fromType  The result type of the child expression.
- * @param {number} toType    The type the consumer requires.
- * @return {boolean}
- */
-Wasm2Lang.Backend.I32Coercion.satisfies = function (fromType, toType) {
-  if (fromType === toType) return true;
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  // fixnum satisfies everything except intish (which is not a consumer target).
-  if (C.FIXNUM === fromType) return true;
-  // signed → int,  unsigned → int.
-  if (C.INT === toType) return C.SIGNED === fromType || C.UNSIGNED === fromType;
-  return false;
-};
-
 // ---------------------------------------------------------------------------
 // Numeric-constant detection.
 // ---------------------------------------------------------------------------

@@ -328,14 +328,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       }
       break;
     }
-    case binaryen.ReturnId:
-      if (childResultAt(0).hasExpression) {
-        result = pad(ind) + 'return ' + this.coerceToType_(binaryen, cr(0), cc(0), state.functionInfo.results) + ';\n';
-      } else {
-        result = pad(ind) + 'return;\n';
-      }
-      break;
-
     case binaryen.DropId:
       result = pad(ind) + cr(0) + ';\n';
       break;

@@ -56,7 +56,7 @@ function assertNotNull(value, msg) {
 }
 
 function assertNull(value, msg) {
-  if (value != null) throw new Error(msg + ' (expected null, got ' + JSON.stringify(value) + ')');
+  if (null != value) throw new Error(msg + ' (expected null, got ' + JSON.stringify(value) + ')');
 }
 
 function assertHasKey(obj, key, msg) {

@@ -69,7 +69,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     };
 
   var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
-  if (common) return A.buildLeaveResult_(common.emittedString, common.resultCat);
+  if (common) {
+    if (id === binaryen.ReturnId) state.lastExprIsTerminal = true;
+    return A.buildLeaveResult_(common.emittedString, common.resultCat);
+  }
 
   switch (id) {
     case binaryen.LocalGetId: {
@@ -176,15 +179,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       }
       break;
     }
-    case binaryen.ReturnId:
-      if (childResultAt(0).hasExpression) {
-        result = pad(ind) + 'return ' + this.coerceToType_(binaryen, cr(0), cc(0), state.functionInfo.results) + ';\n';
-      } else {
-        result = pad(ind) + 'return;\n';
-      }
-      state.lastExprIsTerminal = true;
-      break;
-
     case binaryen.DropId: {
       // Java only allows method calls, assignments, etc. as expression statements.
       // Emit only when the child is a call (side-effectful); skip pure expressions.

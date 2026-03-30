@@ -114,6 +114,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.infiniteLoopKeyword_ = function () {
 };
 
 /**
+ * @override
  * @param {!Binaryen} binaryen
  * @param {number} wasmType
  * @return {string}

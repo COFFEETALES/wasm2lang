@@ -46,7 +46,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderImplicitReturn_ = function (bi
       'number' === typeof bodyResult['c']
         ? /** @type {number} */ (bodyResult['c'])
         : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
-  return this.coerceToType_(binaryen, implicitExpr, implicitCat, resultType);
+  return this.coerceAtBoundary_(binaryen, implicitExpr, implicitCat, resultType);
 };
 
 /**
@@ -861,8 +861,8 @@ Wasm2Lang.Backend.AbstractCodegen.buildLeaveResult_ = function (result, resultCa
 
 /**
  * Handles expression IDs whose emitLeave_ logic is identical across all
- * backends: ConstId, BinaryId, UnaryId, LocalSetId, NopId, UnreachableId.
- * Returns null for IDs that require backend-specific handling.
+ * backends: ConstId, BinaryId, UnaryId, LocalSetId, ReturnId, NopId,
+ * UnreachableId.  Returns null for IDs that require backend-specific handling.
  *
  * @protected
  * @param {!Binaryen} binaryen
@@ -918,6 +918,20 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
       lsOp.expressionString,
       lsOp.expressionCategory
     );
+  }
+  if (id === binaryen.ReturnId) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ retOp = getInfo(childResults, 0);
+    var /** @type {string} */ retStr;
+    if (retOp.hasExpression) {
+      retStr =
+        A.pad_(indent) +
+        'return ' +
+        this.coerceAtBoundary_(binaryen, retOp.expressionString, retOp.expressionCategory, functionInfo.results) +
+        ';\n';
+    } else {
+      retStr = A.pad_(indent) + 'return;\n';
+    }
+    return {emittedString: retStr, resultCat: A.CAT_VOID};
   }
   if (id === binaryen.NopId || id === binaryen.UnreachableId) {
     return {emittedString: '', resultCat: A.CAT_VOID};

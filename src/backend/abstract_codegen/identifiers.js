@@ -83,6 +83,32 @@ Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_ = function (value) {
   return s;
 };
 
+/**
+ * Builds per-local init strings for function variables, applying
+ * LocalInitFoldingPass overrides when available.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} funcName
+ * @param {!Array<number>} varTypes
+ * @param {number} numParams
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.buildLocalInitStrings_ = function (binaryen, funcName, varTypes, numParams) {
+  var /** @const {?Object<string, number>} */ initOverrides = this.getLocalInitOverrides_(funcName);
+  var /** @const {!Array<string>} */ result = [];
+  for (var /** number */ vi = 0, /** @const {number} */ numVars = varTypes.length; vi !== numVars; ++vi) {
+    var /** @const {number} */ localType = varTypes[vi];
+    var /** @const {number} */ localIdx = numParams + vi;
+    var /** @const {number|void} */ overrideValue = initOverrides ? initOverrides[String(localIdx)] : void 0;
+    // prettier-ignore
+    result[result.length] = void 0 !== overrideValue
+      ? this.renderConst_(binaryen, /** @type {number} */ (overrideValue), localType)
+      : this.renderLocalInit_(binaryen, localType);
+  }
+  return result;
+};
+
 // ---------------------------------------------------------------------------
 // Shared identifier mangling infrastructure.
 // ---------------------------------------------------------------------------

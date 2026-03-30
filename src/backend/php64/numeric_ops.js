@@ -17,7 +17,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
 
   if ('abs' === name || 'ceil' === name || 'floor' === name || 'sqrt' === name) {
     // prettier-ignore
-    var /** @const {string} */ coerced = opt_valueCat != null
+    var /** @const {string} */ coerced = null != opt_valueCat
       ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, info.operandType)
       : this.renderCoercionByType_(binaryen, valueExpr, info.operandType);
     if (isF32) {
@@ -28,14 +28,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
 
   if ('convert_s_i32_to_f32' === name) {
     // prettier-ignore
-    var /** @const {string} */ csf32 = opt_valueCat != null
+    var /** @const {string} */ csf32 = null != opt_valueCat
       ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, binaryen.i32)
       : nI + '(' + valueExpr + ')';
     return nF32 + '(' + csf32 + ')';
   }
   if ('convert_s_i32_to_f64' === name) {
     // prettier-ignore
-    var /** @const {string} */ csf64 = opt_valueCat != null
+    var /** @const {string} */ csf64 = null != opt_valueCat
       ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, binaryen.i32)
       : nI + '(' + valueExpr + ')';
     return '(float)' + csf64;
@@ -43,7 +43,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
 
   if ('demote_f64_to_f32' === name) {
     // prettier-ignore
-    var /** @const {string} */ demoted = opt_valueCat != null
+    var /** @const {string} */ demoted = null != opt_valueCat
       ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, info.operandType)
       : this.renderCoercionByType_(binaryen, valueExpr, info.operandType);
     return nF32 + '(' + demoted + ')';
@@ -78,7 +78,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericBinaryOp_ = function (bina
   var /** @const */ self = this;
   /** @param {string} expr @param {number=} cat @return {string} */
   var coerce = function (expr, cat) {
-    return cat != null
+    return null != cat
       ? self.coerceToType_(binaryen, expr, /** @type {number} */ (cat), info.retType)
       : self.renderCoercionByType_(binaryen, expr, info.retType);
   };

@@ -40,6 +40,22 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderConst_ = function (binaryen, v
 };
 
 /**
+ * Backend hook for rendering the default init value for a local variable.
+ *
+ * Concrete backends override this with target-language init formatting.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderLocalInit_ = function (binaryen, wasmType) {
+  void binaryen;
+  void wasmType;
+  return '0';
+};
+
+/**
  * Coerces {@code expr} to {@code wasmType}, skipping the coercion when
  * {@code cat} indicates the expression already satisfies the target type.
  *
@@ -65,6 +81,24 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_ = function (binaryen, 
     if (A.CAT_F32 === cat && this.f32WidensToF64_) return expr;
   }
   return this.renderCoercionByType_(binaryen, expr, wasmType);
+};
+
+/**
+ * Coerces an expression at a call/return boundary.  The default delegates to
+ * {@code coerceToType_} (uses the expression category to skip redundant
+ * coercion).  Asm.js overrides to always apply the type annotation via
+ * {@code renderCoercionByType_} regardless of category, as the asm.js
+ * validator requires explicit annotations at every call/return site.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} expr
+ * @param {number} cat   Expression category (may be ignored by overrides).
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.coerceAtBoundary_ = function (binaryen, expr, cat, wasmType) {
+  return this.coerceToType_(binaryen, expr, cat, wasmType);
 };
 
 /**
@@ -100,7 +134,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallIndirectArgs_ = func
   // childResults[0] = target index expression, operands start at 1.
   for (var /** number */ ai = 0, /** @const {number} */ alen = paramTypes.length; ai !== alen; ++ai) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ argInfo = getInfo(childResults, ai + 1);
-    callArgs[callArgs.length] = this.coerceToType_(
+    callArgs[callArgs.length] = this.coerceAtBoundary_(
       binaryen,
       argInfo.expressionString,
       argInfo.expressionCategory,
@@ -221,7 +255,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
         ai < callSig.sigParams.length
           ? callSig.sigParams[ai]
           : Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, operands[ai]).type;
-    callArgs[callArgs.length] = this.coerceToType_(binaryen, argInfo.expressionString, argInfo.expressionCategory, argType);
+    callArgs[callArgs.length] = this.coerceAtBoundary_(binaryen, argInfo.expressionString, argInfo.expressionCategory, argType);
   }
 
   return callArgs;
