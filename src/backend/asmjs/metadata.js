@@ -10,7 +10,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitStaticI32InitLines_ = function (i32
   var /** @const {!Array<string>} */ lines = [];
   var /** @const {string} */ i32Name = this.n_('i32_array');
 
-  for (var /** number */ i = 0, /** @const {number} */ opsLen = ops.length; i !== opsLen; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ opsLen = ops.length; i !== opsLen; ++i) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.I32InitOp_} */ op = ops[i];
     var /** @const {string} */ opKind = op.opKind;
     var /** @const {number} */ wordIndex = op.startWordIndex;
@@ -23,7 +23,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitStaticI32InitLines_ = function (i32
     } else {
       var /** @const {!Array<number>} */ words = op.setWordsI32;
       var /** @const {!Array<string>} */ wordStrs = [];
-      for (var /** number */ j = 0, /** @const {number} */ wLen = words.length; j !== wLen; ++j) {
+      for (var /** @type {number} */ j = 0, /** @const {number} */ wLen = words.length; j !== wLen; ++j) {
         wordStrs[wordStrs.length] = String(words[j]);
       }
       lines[lines.length] = i32Name + '.set([' + wordStrs.join(', ') + '], ' + String(wordIndex) + ');';
@@ -53,7 +53,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitMetadata = function (wasmModule, op
 
   if (0 !== i32.length) {
     var /** @const {!Array<string>} */ initLines = this.emitStaticI32InitLines_(i32, startWordIndex);
-    for (var /** number */ ii = 0, /** @const {number} */ initLinesCount = initLines.length; ii !== initLinesCount; ++ii) {
+    for (
+      var /** @type {number} */ ii = 0, /** @const {number} */ initLinesCount = initLines.length;
+      ii !== initLinesCount;
+      ++ii
+    ) {
       lines[lines.length] = initLines[ii];
     }
   }

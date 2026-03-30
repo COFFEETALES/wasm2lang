@@ -44,7 +44,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
 
   // Method header (indent 1 = inside class).
   var /** @const {!Array<string>} */ paramDecls = [];
-  for (var /** number */ pi = 0; pi !== numParams; ++pi) {
+  for (var /** @type {number} */ pi = 0; pi !== numParams; ++pi) {
     paramDecls[paramDecls.length] =
       Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, paramTypes[pi]) + ' ' + this.localN_(pi);
   }
@@ -53,7 +53,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitFunction_ = function (
   // Local variable declarations.
   if (0 !== numVars) {
     var /** @const {!Array<string>} */ initStrs = this.buildLocalInitStrings_(binaryen, funcInfo.name, varTypes, numParams);
-    for (var /** number */ vi = 0; vi !== numVars; ++vi) {
+    for (var /** @type {number} */ vi = 0; vi !== numVars; ++vi) {
       var /** @const {number} */ localIdx = numParams + vi;
       parts[parts.length] =
         pad2 +

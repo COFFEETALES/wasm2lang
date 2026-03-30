@@ -250,7 +250,7 @@ Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren = function (expressionInfo) {
   var /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpecList} */ specs = Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs(expression.id);
   var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ children = [];
 
-  for (var /** number */ i = 0, /** @const {number} */ edgeCount = specs.length; i !== edgeCount; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ edgeCount = specs.length; i !== edgeCount; ++i) {
     var /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpec} */ edgeSpec = specs[i];
     var /** @const {function(number, number, number): void} */ setter = /** @type {function(number, number, number): void} */ (
         edgeSpec.setter
@@ -259,7 +259,7 @@ Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren = function (expressionInfo) {
       // prettier-ignore
       var /** @const {!Array<number>} */ childList =
         /** @const {!Array<number>} */ (expressionMap[edgeSpec.edgePropertyName] || []);
-      for (var /** number */ j = 0, /** @const {number} */ childCount = childList.length; j !== childCount; ++j) {
+      for (var /** @type {number} */ j = 0, /** @const {number} */ childCount = childList.length; j !== childCount; ++j) {
         var /** @const {number} */ listPtr = /** @type {number} */ (childList[j] || 0);
         if (0 === listPtr) {
           continue;

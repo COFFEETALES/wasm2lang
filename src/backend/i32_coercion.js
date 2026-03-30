@@ -94,7 +94,7 @@ Wasm2Lang.Backend.I32Coercion.createBinaryOpInfo_ = function (category, operator
  * @return {void}
  */
 Wasm2Lang.Backend.I32Coercion.registerBinaryOps_ = function (map, category, unsigned, rotateLeft, entries) {
-  for (var /** number */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
     var /** @const {!Array<*>} */ entry = entries[i];
     var /** @const {number} */ op = /** @type {number} */ (entry[0]);
     var /** @const {string} */ operator = /** @type {string} */ (entry[1]);

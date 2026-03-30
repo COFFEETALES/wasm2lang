@@ -101,7 +101,7 @@ Wasm2Lang.Backend.getManglerProfile = function (languageId) {
  */
 Wasm2Lang.Backend.buildReservedSet = function (words) {
   var /** @const {!Object<string, boolean>} */ set = /** @type {!Object<string, boolean>} */ (Object.create(null));
-  for (var /** number */ i = 0, /** @const {number} */ wordLen = words.length; i < wordLen; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ wordLen = words.length; i < wordLen; ++i) {
     set[words[i]] = true;
   }
   return set;
@@ -136,6 +136,14 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
    * @protected @type {!Array<!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined>}
    */
   this.binaryRenderers_ = [];
+
+  /**
+   * Per-category i64 binary-op renderers, populated by backends that handle
+   * i64 natively (e.g. Java).
+   * Indexed by {@code Wasm2Lang.Backend.I32Coercion.OP_*} constants.
+   * @protected @type {!Array<!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined>}
+   */
+  this.i64BinaryRenderers_ = [];
 };
 
 /**
@@ -148,3 +156,16 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
  *     !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo, string, string): string}
  */
 Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_;
+
+/**
+ * Returns whether this backend requires i64-to-i32 lowering.
+ * Backends that handle i64 natively (e.g. Java) override this to return
+ * {@code false}, causing the normalization pipeline to skip the
+ * {@code flatten → remove-non-js-ops → flatten → i64-to-i32-lowering}
+ * binaryen pass sequence.
+ *
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.needsI64Lowering = function () {
+  return true;
+};

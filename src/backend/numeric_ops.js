@@ -65,7 +65,7 @@ Wasm2Lang.Backend.NumericOps.createBinaryOpInfo_ = function (resultType, name, o
  * @return {void}
  */
 Wasm2Lang.Backend.NumericOps.registerBinaryOps_ = function (map, resultType, operandType, isComparison, entries) {
-  for (var /** number */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
     var /** @const {!Array<*>} */ entry = entries[i];
     var /** @const {number} */ op = /** @type {number} */ (entry[0]);
     var /** @const {string} */ name = /** @type {string} */ (entry[1]);
@@ -98,7 +98,7 @@ Wasm2Lang.Backend.NumericOps.createUnaryOpInfo_ = function (name, operandType, r
  * @return {void}
  */
 Wasm2Lang.Backend.NumericOps.registerUnaryOps_ = function (map, operandType, resultType, entries) {
-  for (var /** number */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
     var /** @const {!Array<*>} */ entry = entries[i];
     var /** @const {number} */ op = /** @type {number} */ (entry[0]);
     var /** @const {string} */ name = /** @type {string} */ (entry[1]);
@@ -219,6 +219,43 @@ Wasm2Lang.Backend.NumericOps.classifyUnaryOp = function (binaryen, op) {
     ]);
     Wasm2Lang.Backend.NumericOps.registerUnaryOps_(m, binaryen.f32, binaryen.i32, [
       [binaryen.ReinterpretFloat32, 'reinterpret_f32_to_i32']
+    ]);
+
+    // i64 → i32 wrap.
+    Wasm2Lang.Backend.NumericOps.registerUnaryOps_(m, binaryen.i64, binaryen.i32, [[binaryen.WrapInt64, 'wrap_i64_to_i32']]);
+    // i32 → i64 extend.
+    Wasm2Lang.Backend.NumericOps.registerUnaryOps_(m, binaryen.i32, binaryen.i64, [
+      [binaryen.ExtendSInt32, 'extend_s_i32_to_i64'],
+      [binaryen.ExtendUInt32, 'extend_u_i32_to_i64']
+    ]);
+    // i64 → f32/f64 convert.
+    Wasm2Lang.Backend.NumericOps.registerUnaryOps_(m, binaryen.i64, binaryen.f32, [
+      [binaryen.ConvertSInt64ToFloat32, 'convert_s_i64_to_f32'],
+      [binaryen.ConvertUInt64ToFloat32, 'convert_u_i64_to_f32']
+    ]);
+    Wasm2Lang.Backend.NumericOps.registerUnaryOps_(m, binaryen.i64, binaryen.f64, [
+      [binaryen.ConvertSInt64ToFloat64, 'convert_s_i64_to_f64'],
+      [binaryen.ConvertUInt64ToFloat64, 'convert_u_i64_to_f64']
+    ]);
+    // f32/f64 → i64 truncate.
+    Wasm2Lang.Backend.NumericOps.registerUnaryOps_(m, binaryen.f32, binaryen.i64, [
+      [binaryen.TruncSFloat32ToInt64, 'trunc_s_f32_to_i64'],
+      [binaryen.TruncUFloat32ToInt64, 'trunc_u_f32_to_i64'],
+      [binaryen.TruncSatSFloat32ToInt64, 'trunc_sat_s_f32_to_i64'],
+      [binaryen.TruncSatUFloat32ToInt64, 'trunc_sat_u_f32_to_i64']
+    ]);
+    Wasm2Lang.Backend.NumericOps.registerUnaryOps_(m, binaryen.f64, binaryen.i64, [
+      [binaryen.TruncSFloat64ToInt64, 'trunc_s_f64_to_i64'],
+      [binaryen.TruncUFloat64ToInt64, 'trunc_u_f64_to_i64'],
+      [binaryen.TruncSatSFloat64ToInt64, 'trunc_sat_s_f64_to_i64'],
+      [binaryen.TruncSatUFloat64ToInt64, 'trunc_sat_u_f64_to_i64']
+    ]);
+    // i64 ↔ f64 reinterpret.
+    Wasm2Lang.Backend.NumericOps.registerUnaryOps_(m, binaryen.i64, binaryen.f64, [
+      [binaryen.ReinterpretInt64, 'reinterpret_i64_to_f64']
+    ]);
+    Wasm2Lang.Backend.NumericOps.registerUnaryOps_(m, binaryen.f64, binaryen.i64, [
+      [binaryen.ReinterpretFloat64, 'reinterpret_f64_to_i64']
     ]);
 
     Wasm2Lang.Backend.NumericOps.unaryOpMap_ = m;

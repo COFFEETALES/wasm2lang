@@ -52,7 +52,7 @@ function assertEqual(actual, expected, msg) {
 }
 
 function assertNotNull(value, msg) {
-  if (value == null) throw new Error(msg + ' (got null/undefined)');
+  if (null == value) throw new Error(msg + ' (got null/undefined)');
 }
 
 function assertNull(value, msg) {

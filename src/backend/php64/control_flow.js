@@ -51,7 +51,7 @@ Wasm2Lang.Backend.Php64Codegen.EmitState_;
  */
 Wasm2Lang.Backend.Php64Codegen.renderPackStore_ = function (padStr, tP, ptrExpr, tS, packFmt, valueExpr, buf, byteCount) {
   var /** @type {string} */ s = padStr + tP + ' = ' + ptrExpr + '; ' + tS + ' = pack(' + packFmt + ', ' + valueExpr + '); ';
-  for (var /** number */ i = 0; i < byteCount; ++i) {
+  for (var /** @type {number} */ i = 0; i < byteCount; ++i) {
     s += buf + '[' + tP + (0 < i ? ' + ' + i : '') + '] = ' + tS + '[' + i + ']; ';
   }
   return s.slice(0, -1) + '\n';
@@ -67,7 +67,7 @@ Wasm2Lang.Backend.Php64Codegen.renderPackStore_ = function (padStr, tP, ptrExpr,
  */
 Wasm2Lang.Backend.Php64Codegen.resolveLabelDepth_ = function (labelStack, targetName) {
   var /** @type {number} */ depth = 0;
-  for (var /** number */ i = labelStack.length - 1; 0 <= i; --i) {
+  for (var /** @type {number} */ i = labelStack.length - 1; 0 <= i; --i) {
     ++depth;
     if (labelStack[i].lbl === targetName) {
       return {resolvedDepth: depth, resolvedLabelKind: labelStack[i].lk};
@@ -127,6 +127,33 @@ Wasm2Lang.Backend.Php64Codegen.prototype.adjustLeaveIndent_ = function (state, n
   }
 };
 
+/**
+ * PHP labeled-block override: wraps named blocks in {@code do { } while (false)}
+ * instead of labeled blocks, since PHP uses numeric break/continue depths.
+ *
+ * @suppress {checkTypes}
+ * @override
+ * @param {!Wasm2Lang.Backend.Php64Codegen.EmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, nodeCtx, childResults) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
+  var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
+  var /** @const {number} */ ind = state.indent;
+  var /** @const {boolean} */ isFused =
+      !!blockName &&
+      (!!this.getBlockFusionPlan_(state.functionInfo.name, blockName) || A.hasPrefix_(blockName, A.LB_FUSION_PREFIX_));
+  var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
+  var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, childResults.length, childInd);
+  if (isFused) return blockBody;
+  if (blockName) return pad(ind) + 'do {\n' + blockBody + pad(ind) + '} while (false);\n';
+  return blockBody;
+};
+
 // ---------------------------------------------------------------------------
 // Expression emitter (leave callback).
 // ---------------------------------------------------------------------------
@@ -145,7 +172,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
   var /** @type {string} */ result = '';
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ hp = A.hasPrefix_;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @type {number} */ resultCat = A.CAT_VOID;
   var /** @const */ self = this;
@@ -387,30 +413,13 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
 
-    case binaryen.BlockId: {
-      var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
-      var /** @const {string} */ fnName = state.functionInfo.name;
-      if (blockName && (this.isBlockRootSwitch_(fnName, blockName) || hp(blockName, A.RS_ROOT_SWITCH_PREFIX_))) {
-        result = this.emitRootSwitch_(state, nodeCtx);
-        break;
-      }
-      if (blockName && (this.isBlockSwitchDispatch_(fnName, blockName) || hp(blockName, A.SW_DISPATCH_PREFIX_))) {
-        result = this.emitFlatSwitch_(state, nodeCtx);
-        break;
-      }
-      var /** @const {boolean} */ isFusedBlock =
-          !!blockName && (!!this.getBlockFusionPlan_(fnName, blockName) || hp(blockName, A.LB_FUSION_PREFIX_));
-      var /** @const {number} */ childInd = blockName && !isFusedBlock ? ind + 1 : ind;
-      var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, childResults.length, childInd);
-      if (isFusedBlock) {
-        result = blockBody;
-      } else if (blockName) {
-        result = pad(ind) + 'do {\n' + blockBody + pad(ind) + '} while (false);\n';
-      } else {
-        result = blockBody;
-      }
+    case binaryen.BlockId:
+      result = this.emitBlockDispatch_(
+        /** @type {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} */ (state),
+        nodeCtx,
+        childResults
+      );
       break;
-    }
     case binaryen.LoopId: {
       var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
@@ -620,10 +629,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFlatSwitch_ = function (state, node
   SDA.emitFlatSwitchHeader(lines, ind, condStr, '', info);
 
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_>} */ groups = info.caseGroups;
-  for (var /** number */ gi = 0, /** @const {number} */ groupLen = groups.length; gi < groupLen; ++gi) {
+  for (var /** @type {number} */ gi = 0, /** @const {number} */ groupLen = groups.length; gi < groupLen; ++gi) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ group = groups[gi];
     var /** @const {!Array<number>} */ indices = group.caseIndices;
-    for (var /** number */ ii = 0, /** @const {number} */ idxLen = indices.length; ii < idxLen; ++ii) {
+    for (var /** @type {number} */ ii = 0, /** @const {number} */ idxLen = indices.length; ii < idxLen; ++ii) {
       lines[lines.length] = pad(ind + 1) + 'case ' + indices[ii] + ':\n';
     }
     this.emitPhpFlatSwitchGroupBody_(state, lines, binaryen, vis, group, ind, info);

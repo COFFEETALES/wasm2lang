@@ -194,7 +194,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitCode = function (wasmModule, opt
       enter: this.traversalEnter_.bind(this, traversalState)
     });
 
-  for (var /** number */ f = 0, /** @const {number} */ funcCount = functions.length; f !== funcCount; ++f) {
+  for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = functions[f];
     traversalState.nodeCount = 0;
     this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);

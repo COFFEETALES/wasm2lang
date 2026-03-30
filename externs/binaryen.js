@@ -227,6 +227,11 @@ Binaryen.prototype.f64;
 /**
  * @type {number}
  */
+Binaryen.prototype.i64;
+
+/**
+ * @type {number}
+ */
 Binaryen.prototype.BlockId;
 
 /**
@@ -1276,6 +1281,70 @@ var BinaryenGlobalInfo;
 /** @type {number} */ Binaryen.prototype.PopcntInt32;
 /** @type {number} */ Binaryen.prototype.ExtendS8Int32;
 /** @type {number} */ Binaryen.prototype.ExtendS16Int32;
+
+// ---------------------------------------------------------------------------
+// Binary operation constants (i64)
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.AddInt64;
+/** @type {number} */ Binaryen.prototype.SubInt64;
+/** @type {number} */ Binaryen.prototype.MulInt64;
+/** @type {number} */ Binaryen.prototype.DivSInt64;
+/** @type {number} */ Binaryen.prototype.DivUInt64;
+/** @type {number} */ Binaryen.prototype.RemSInt64;
+/** @type {number} */ Binaryen.prototype.RemUInt64;
+/** @type {number} */ Binaryen.prototype.AndInt64;
+/** @type {number} */ Binaryen.prototype.OrInt64;
+/** @type {number} */ Binaryen.prototype.XorInt64;
+/** @type {number} */ Binaryen.prototype.ShlInt64;
+/** @type {number} */ Binaryen.prototype.ShrSInt64;
+/** @type {number} */ Binaryen.prototype.ShrUInt64;
+/** @type {number} */ Binaryen.prototype.RotLInt64;
+/** @type {number} */ Binaryen.prototype.RotRInt64;
+/** @type {number} */ Binaryen.prototype.EqInt64;
+/** @type {number} */ Binaryen.prototype.NeInt64;
+/** @type {number} */ Binaryen.prototype.LtSInt64;
+/** @type {number} */ Binaryen.prototype.LtUInt64;
+/** @type {number} */ Binaryen.prototype.LeSInt64;
+/** @type {number} */ Binaryen.prototype.LeUInt64;
+/** @type {number} */ Binaryen.prototype.GtSInt64;
+/** @type {number} */ Binaryen.prototype.GtUInt64;
+/** @type {number} */ Binaryen.prototype.GeSInt64;
+/** @type {number} */ Binaryen.prototype.GeUInt64;
+
+// ---------------------------------------------------------------------------
+// Unary operation constants (i64)
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.EqZInt64;
+/** @type {number} */ Binaryen.prototype.ClzInt64;
+/** @type {number} */ Binaryen.prototype.CtzInt64;
+/** @type {number} */ Binaryen.prototype.PopcntInt64;
+/** @type {number} */ Binaryen.prototype.ExtendS8Int64;
+/** @type {number} */ Binaryen.prototype.ExtendS16Int64;
+/** @type {number} */ Binaryen.prototype.ExtendS32Int64;
+
+// ---------------------------------------------------------------------------
+// Conversion operation constants (i64)
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.WrapInt64;
+/** @type {number} */ Binaryen.prototype.ExtendSInt32;
+/** @type {number} */ Binaryen.prototype.ExtendUInt32;
+/** @type {number} */ Binaryen.prototype.ConvertSInt64ToFloat32;
+/** @type {number} */ Binaryen.prototype.ConvertUInt64ToFloat32;
+/** @type {number} */ Binaryen.prototype.ConvertSInt64ToFloat64;
+/** @type {number} */ Binaryen.prototype.ConvertUInt64ToFloat64;
+/** @type {number} */ Binaryen.prototype.TruncSFloat32ToInt64;
+/** @type {number} */ Binaryen.prototype.TruncUFloat32ToInt64;
+/** @type {number} */ Binaryen.prototype.TruncSFloat64ToInt64;
+/** @type {number} */ Binaryen.prototype.TruncUFloat64ToInt64;
+/** @type {number} */ Binaryen.prototype.TruncSatSFloat32ToInt64;
+/** @type {number} */ Binaryen.prototype.TruncSatUFloat32ToInt64;
+/** @type {number} */ Binaryen.prototype.TruncSatSFloat64ToInt64;
+/** @type {number} */ Binaryen.prototype.TruncSatUFloat64ToInt64;
+/** @type {number} */ Binaryen.prototype.ReinterpretInt64;
+/** @type {number} */ Binaryen.prototype.ReinterpretFloat64;
 
 // ---------------------------------------------------------------------------
 // Floating-point unary/binary operation constants (MVP subset used here)

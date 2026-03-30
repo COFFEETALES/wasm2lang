@@ -18,6 +18,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.getAllHelperNames_ = function () {
   return [
     '$w2l_convert_u_i32_to_f32',
     '$w2l_convert_u_i32_to_f64',
+    '$w2l_convert_u_i64_to_f32',
+    '$w2l_convert_u_i64_to_f64',
     '$w2l_nearest_f32',
     '$w2l_nearest_f64',
     '$w2l_trunc_f32',
@@ -28,6 +30,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.getAllHelperNames_ = function () {
     '$w2l_trunc_sat_u_f64_to_i32',
     '$w2l_trunc_u_f32_to_i32',
     '$w2l_trunc_u_f64_to_i32',
+    '$w2l_trunc_sat_s_f32_to_i64',
+    '$w2l_trunc_sat_s_f64_to_i64',
+    '$w2l_trunc_sat_u_f32_to_i64',
+    '$w2l_trunc_sat_u_f64_to_i64',
+    '$w2l_trunc_u_f32_to_i64',
+    '$w2l_trunc_u_f64_to_i64',
     '$w2l_memory_copy',
     '$w2l_memory_fill',
     '$w2l_memory_grow'
@@ -55,6 +63,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.safeName_ = function (name) {
  */
 Wasm2Lang.Backend.JavaCodegen.javaTypeName_ = function (binaryen, wasmType) {
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) return 'int';
+  if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) return 'long';
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) return 'float';
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) return 'double';
   return 'void';

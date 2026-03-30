@@ -41,7 +41,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
   var /** @type {string} */ result = '';
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ hp = A.hasPrefix_;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @type {number} */ resultCat = A.CAT_VOID;
 
@@ -234,20 +233,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
     }
 
-    case binaryen.BlockId: {
-      var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
-      var /** @const {string} */ fnName = state.functionInfo.name;
-      if (blockName && (this.isBlockRootSwitch_(fnName, blockName) || hp(blockName, A.RS_ROOT_SWITCH_PREFIX_))) {
-        result = this.emitRootSwitch_(state, nodeCtx);
-        break;
-      }
-      if (blockName && (this.isBlockSwitchDispatch_(fnName, blockName) || hp(blockName, A.SW_DISPATCH_PREFIX_))) {
-        result = this.emitFlatSwitch_(state, nodeCtx);
-        break;
-      }
-      result = this.emitLabeledBlock_(state, nodeCtx, childResults);
+    case binaryen.BlockId:
+      result = this.emitBlockDispatch_(state, nodeCtx, childResults);
       break;
-    }
     case binaryen.LoopId: {
       var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
       var /** @const {string} */ loopBody = cr(0);

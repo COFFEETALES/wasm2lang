@@ -39,7 +39,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
 
   // Classify imports: stdlib functions go through stdlib.Math; everything
   // else is emitted conditionally after function body traversal (see below).
-  for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
+  for (
+    var /** @type {number} */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length;
+    i !== importCount;
+    ++i
+  ) {
     var /** @const {string} */ impKind = classify(moduleInfo.impFuncs[i].importModule, moduleInfo.impFuncs[i].importBaseName);
     if ('math_func' === impKind) {
       stdlibNames[moduleInfo.impFuncs[i].wasmFuncName] = 'Math_' + moduleInfo.impFuncs[i].importBaseName;
@@ -47,7 +51,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   }
 
   // Imported globals — stdlib constants and Infinity/NaN.
-  for (var /** number */ ig = 0, /** @const {number} */ igLen = moduleInfo.impGlobals.length; ig !== igLen; ++ig) {
+  for (var /** @type {number} */ ig = 0, /** @const {number} */ igLen = moduleInfo.impGlobals.length; ig !== igLen; ++ig) {
     var /** @const {string} */ igKind = classify(
         moduleInfo.impGlobals[ig].importModule,
         moduleInfo.impGlobals[ig].importBaseName
@@ -69,7 +73,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   var /** @const {!Array<string>} */ functionParts = [];
-  for (var /** number */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
+  for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
     functionParts[functionParts.length] = this.emitFunction_(
       wasmModule,
@@ -101,7 +105,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
 
   // Mark stdlib function imports as used so their bindings are emitted.
   var /** @const {!Array<string>} */ stdlibFuncKeys = Object.keys(stdlibNames);
-  for (var /** number */ sf = 0, /** @const {number} */ sfLen = stdlibFuncKeys.length; sf !== sfLen; ++sf) {
+  for (var /** @type {number} */ sf = 0, /** @const {number} */ sfLen = stdlibFuncKeys.length; sf !== sfLen; ++sf) {
     ub[stdlibNames[stdlibFuncKeys[sf]]] = true;
   }
 
@@ -110,7 +114,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       Object.create(null)
     );
   var /** @const {!Array<string>} */ sgKeys = Object.keys(stdlibGlobals);
-  for (var /** number */ sg = 0, /** @const {number} */ sgLen = sgKeys.length; sg !== sgLen; ++sg) {
+  for (var /** @type {number} */ sg = 0, /** @const {number} */ sgLen = sgKeys.length; sg !== sgLen; ++sg) {
     usedStdlibGlobalSet[stdlibGlobals[sgKeys[sg]]] = true;
   }
 
@@ -124,7 +128,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       ['HEAPF32', 'Float32Array'],
       ['HEAPF64', 'Float64Array']
     ];
-  for (var /** number */ hbi = 0, /** @const {number} */ hbLen = heapBindings.length; hbi !== hbLen; ++hbi) {
+  for (var /** @type {number} */ hbi = 0, /** @const {number} */ hbLen = heapBindings.length; hbi !== hbLen; ++hbi) {
     if (ub[heapBindings[hbi][0]]) {
       bindingLines[bindingLines.length] =
         pad1 +
@@ -160,7 +164,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       'Math_sqrt',
       'Math_tan'
     ];
-  for (var /** number */ mbi = 0, /** @const {number} */ mbLen = mathBindings.length; mbi !== mbLen; ++mbi) {
+  for (var /** @type {number} */ mbi = 0, /** @const {number} */ mbLen = mathBindings.length; mbi !== mbLen; ++mbi) {
     if (ub[mathBindings[mbi]]) {
       bindingLines[bindingLines.length] =
         pad1 + 'var ' + this.n_(mathBindings[mbi]) + ' = ' + stdlibName + '.Math.' + mathBindings[mbi].substring(5) + ';';
@@ -179,7 +183,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       'Math_SQRT1_2',
       'Math_SQRT2'
     ];
-  for (var /** number */ mci = 0, /** @const {number} */ mcLen = mathConstBindings.length; mci !== mcLen; ++mci) {
+  for (var /** @type {number} */ mci = 0, /** @const {number} */ mcLen = mathConstBindings.length; mci !== mcLen; ++mci) {
     if (usedStdlibGlobalSet[mathConstBindings[mci]]) {
       bindingLines[bindingLines.length] =
         pad1 +
@@ -199,7 +203,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
     bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('$g_NaN') + ' = +' + foreignName + '.NaN;';
   }
   // Conditional import bindings (only those referenced by function bodies).
-  for (var /** number */ ci = 0; ci !== importCount; ++ci) {
+  for (var /** @type {number} */ ci = 0; ci !== importCount; ++ci) {
     if (moduleInfo.impFuncs[ci].wasmFuncName in stdlibNames) {
       continue;
     }
@@ -210,7 +214,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
     }
   }
   // Conditional module-level globals.
-  for (var /** number */ cgi = 0, /** @const {number} */ cgLen = moduleInfo.globals.length; cgi !== cgLen; ++cgi) {
+  for (var /** @type {number} */ cgi = 0, /** @const {number} */ cgLen = moduleInfo.globals.length; cgi !== cgLen; ++cgi) {
     var /** @const {string} */ cgKey = '$g_' + this.safeName_(moduleInfo.globals[cgi].globalName);
     if (ub[cgKey]) {
       bindingLines[bindingLines.length] =
@@ -218,22 +222,22 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
     }
   }
   // Splice binding declarations into the reserved position.
-  for (var /** number */ bi = bindingLines.length - 1; bi >= 0; --bi) {
+  for (var /** @type {number} */ bi = bindingLines.length - 1; bi >= 0; --bi) {
     outputParts.splice(bindingsInsertIndex, 0, bindingLines[bi]);
   }
 
-  for (var /** number */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
+  for (var /** @type {number} */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
     outputParts[outputParts.length] = helperLines[hi];
   }
 
   // Append function bodies.
-  for (var /** number */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
+  for (var /** @type {number} */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
     outputParts[outputParts.length] = functionParts[fi];
   }
 
   // Function table stubs (must come before table var declarations in asm.js).
   var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
-  for (var /** number */ fti = 0, /** @const {number} */ ftLen = ftKeys.length; fti !== ftLen; ++fti) {
+  for (var /** @type {number} */ fti = 0, /** @const {number} */ ftLen = ftKeys.length; fti !== ftLen; ++fti) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc =
         moduleInfo.functionTables[ftKeys[fti]];
     if (ftDesc.stubNeeded) {
@@ -241,7 +245,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       var /** @const {string} */ stubName = this.n_('$ftable_' + ftSigKey + '_stub');
       var /** @const {!Array<string>} */ stubParams = [];
       var /** @const {!Array<string>} */ stubAnnotations = [];
-      for (var /** number */ sp = 0, /** @const {number} */ spLen = ftDesc.signatureParams.length; sp !== spLen; ++sp) {
+      for (var /** @type {number} */ sp = 0, /** @const {number} */ spLen = ftDesc.signatureParams.length; sp !== spLen; ++sp) {
         var /** @const {string} */ spName = this.localN_(sp);
         stubParams[stubParams.length] = spName;
         stubAnnotations[stubAnnotations.length] =
@@ -267,13 +271,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   }
 
   // Function table var declarations (after all function definitions).
-  for (var /** number */ ftv = 0; ftv !== ftLen; ++ftv) {
+  for (var /** @type {number} */ ftv = 0; ftv !== ftLen; ++ftv) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc2 =
         moduleInfo.functionTables[ftKeys[ftv]];
     var /** @const {string} */ ftSigKey2 = ftDesc2.signatureKey;
     var /** @const {string} */ ftTableName = this.n_('$ftable_' + ftSigKey2);
     var /** @const {!Array<string>} */ tableEntryNames = [];
-    for (var /** number */ te = 0, /** @const {number} */ teLen = ftDesc2.tableEntries.length; te !== teLen; ++te) {
+    for (var /** @type {number} */ te = 0, /** @const {number} */ teLen = ftDesc2.tableEntries.length; te !== teLen; ++te) {
       var /** @const {string|null} */ funcName = ftDesc2.tableEntries[te].boundName;
       if (null === funcName) {
         tableEntryNames[tableEntryNames.length] = this.n_('$ftable_' + ftSigKey2 + '_stub');
@@ -286,7 +290,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
 
   // Return object.
   var /** @const {!Array<string>} */ returnEntries = [];
-  for (var /** number */ r = 0, /** @const {number} */ exportCount = moduleInfo.expFuncs.length; r !== exportCount; ++r) {
+  for (
+    var /** @type {number} */ r = 0, /** @const {number} */ exportCount = moduleInfo.expFuncs.length;
+    r !== exportCount;
+    ++r
+  ) {
     returnEntries[returnEntries.length] =
       moduleInfo.expFuncs[r].exportName + ': ' + this.n_(this.safeName_(moduleInfo.expFuncs[r].internalName));
   }

@@ -27,19 +27,19 @@ Wasm2Lang.Backend.Php64Codegen.prototype.buildUseClause_ = function (
   if (usedCaptures[bufVar]) {
     entries[entries.length] = '&' + bufVar;
   }
-  for (var /** number */ gi = 0, /** @const {number} */ gLen = globals.length; gi !== gLen; ++gi) {
+  for (var /** @type {number} */ gi = 0, /** @const {number} */ gLen = globals.length; gi !== gLen; ++gi) {
     var /** @const {string} */ gVar = this.phpVar_('$g_' + this.safeName_(globals[gi].globalName));
     if (usedCaptures[gVar]) {
       entries[entries.length] = '&' + gVar;
     }
   }
-  for (var /** number */ ii = 0, /** @const {number} */ iLen = imports.length; ii !== iLen; ++ii) {
+  for (var /** @type {number} */ ii = 0, /** @const {number} */ iLen = imports.length; ii !== iLen; ++ii) {
     var /** @const {string} */ iVar = this.phpVar_('$if_' + this.safeName_(imports[ii].importBaseName));
     if (usedCaptures[iVar]) {
       entries[entries.length] = '&' + iVar;
     }
   }
-  for (var /** number */ fi = 0, /** @const {number} */ fLen = internalFuncNames.length; fi !== fLen; ++fi) {
+  for (var /** @type {number} */ fi = 0, /** @const {number} */ fLen = internalFuncNames.length; fi !== fLen; ++fi) {
     var /** @const {string} */ fVar = this.phpVar_(internalFuncNames[fi]);
     if (usedCaptures[fVar]) {
       entries[entries.length] = '&' + fVar;
@@ -96,7 +96,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
 
   // Parameter list.
   var /** @const {!Array<string>} */ paramNames = [];
-  for (var /** number */ pi = 0; pi !== numParams; ++pi) {
+  for (var /** @type {number} */ pi = 0; pi !== numParams; ++pi) {
     paramNames[paramNames.length] = this.localN_(pi);
   }
   // Reserve slot for the function header; the use clause is finalised after
@@ -105,7 +105,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   parts[parts.length] = '';
 
   // Coerce parameters to their wasm types.
-  for (var /** number */ pa = 0; pa !== numParams; ++pa) {
+  for (var /** @type {number} */ pa = 0; pa !== numParams; ++pa) {
     var /** @const {string} */ pName = this.localN_(pa);
     parts[parts.length] = pad(2) + pName + ' = ' + this.renderCoercionByType_(binaryen, pName, paramTypes[pa]) + ';';
   }
@@ -114,7 +114,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   if (0 !== numVars) {
     var /** @const {!Array<string>} */ initStrs = this.buildLocalInitStrings_(binaryen, funcInfo.name, varTypes, numParams);
     var /** @const {!Array<string>} */ varDecls = [];
-    for (var /** number */ vi = 0; vi !== numVars; ++vi) {
+    for (var /** @type {number} */ vi = 0; vi !== numVars; ++vi) {
       varDecls[varDecls.length] = this.localN_(numParams + vi) + ' = ' + initStrs[vi];
     }
     parts[parts.length] = pad(2) + varDecls.join('; ') + ';';

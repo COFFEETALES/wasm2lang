@@ -188,7 +188,7 @@ Wasm2Lang.OutputSink.collectChunks = function (chunks) {
  * @return {*}
  */
 Wasm2Lang.OutputSink.scanChunks_ = function (chunks, onChunk, onAsync) {
-  for (var /** number */ i = 0, /** @const {number} */ len = chunks.length; i !== len; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = chunks.length; i !== len; ++i) {
     var /** @const {*} */ chunk = chunks[i];
     if (chunk instanceof Promise) {
       return onAsync(i);
@@ -213,7 +213,7 @@ Wasm2Lang.OutputSink.scanChunks_ = function (chunks, onChunk, onAsync) {
 Wasm2Lang.OutputSink.interleaveNewlines = function (parts) {
   /** @type {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */
   var result = [];
-  for (var /** number */ i = 0, /** @const {number} */ len = parts.length; i !== len; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = parts.length; i !== len; ++i) {
     if (i > 0) {
       result[result.length] = '\n';
     }

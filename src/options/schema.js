@@ -143,7 +143,7 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.NORMAL
  * @param {!Array<string>} strs
  */
 Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.DEFINE] = function (options, strs) {
-  for (var /** number */ i = 0, /** @const {number} */ len = strs.length; i !== len; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = strs.length; i !== len; ++i) {
     var /** @const {!Array<string>} */ parts = strs[i].split('=', 2);
     options.definitions[parts[0]] = 1 !== parts.length ? parts[1] : '';
   }

@@ -56,7 +56,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.scanForLocalGets_ = functi
       /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (info)
     );
 
-  for (var /** number */ i = 0, /** @const {number} */ len = children.length; i !== len; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = children.length; i !== len; ++i) {
     Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.scanForLocalGets_(
       binaryen,
       /** @type {number} */ (children[i][3]),
@@ -121,7 +121,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
   var /** @type {boolean} */ hasOverrides = false;
   var scanFn = Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.scanForLocalGets_;
 
-  for (var /** number */ ci = 0, /** @const {number} */ childCount = children.length; ci !== childCount; ++ci) {
+  for (var /** @type {number} */ ci = 0, /** @const {number} */ childCount = children.length; ci !== childCount; ++ci) {
     var /** @const {number} */ childPtr = children[ci];
     // prettier-ignore
     var /** @const {!BinaryenExpressionInfo} */ childInfo =

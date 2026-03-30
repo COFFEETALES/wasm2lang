@@ -25,7 +25,7 @@ Wasm2Lang.Utilities.Environment.sliceArgs_ = function (args, startIndex) {
  */
 Wasm2Lang.Utilities.Environment.writeCliChunks_ = function (stream, args, startIndex, isBinaryChunk) {
   var /** @type {boolean} */ binaryOnly = true;
-  for (var /** number */ i = startIndex, /** @const {number} */ argCount = args.length; i !== argCount; ++i) {
+  for (var /** @type {number} */ i = startIndex, /** @const {number} */ argCount = args.length; i !== argCount; ++i) {
     if (i !== startIndex) {
       stream.write(' ');
     }

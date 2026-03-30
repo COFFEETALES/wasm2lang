@@ -114,7 +114,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
         );
       if (sole.id === binaryen.SwitchId) {
         var /** @const {!Array<string>} */ names = /** @type {!Array<string>} */ (sole.names || []);
-        for (var /** number */ i = 0, /** @const {number} */ nameLen = names.length; i < nameLen; ++i) {
+        for (var /** @type {number} */ i = 0, /** @const {number} */ nameLen = names.length; i < nameLen; ++i) {
           if (!(names[i] in blockNameSet)) {
             return null;
           }

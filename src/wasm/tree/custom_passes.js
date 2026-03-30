@@ -261,7 +261,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag = function (passRunResultI
 Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap = function (raw, projectFn) {
   var /** @const {!Object} */ out = Object.create(null);
   var /** @const {!Array<string>} */ keys = Object.keys(raw);
-  for (var /** number */ i = 0, /** @const {number} */ keyLen = keys.length; i < keyLen; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ keyLen = keys.length; i < keyLen; ++i) {
     out[keys[i]] = projectFn(raw[keys[i]]);
   }
   return out;

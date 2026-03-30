@@ -11,6 +11,7 @@ if [ ${#0} -ne ${#prefix} ]; then
 
   fn() {
     local dirbase directory dirname filebase retcode tmpretcode
+    local codegen_dir codegen_filebase
     local LF="$(printf '\012+')"
     LF="${LF%?}"
 
@@ -40,19 +41,21 @@ if [ ${#0} -ne ${#prefix} ]; then
       |                                    \
       tee "${filebase}".v8.wasm.out
       #
-      echo -e "\033[0;33mRunning V8 ASMJS test...\033[0m"
-      cat "${filebase}".asm.js             \
-      |                                    \
-      node                                 \
-        --trace-warnings                   \
-        "./wasm2lang_wasm_asmjs_runner.js" \
-        --test-name "$filebase"            \
-        --asmjs                            \
-        2>&1                               \
-      |                                    \
-      tee "${filebase}".v8.asmjs.out
+      if [ -f "${filebase}".asm.js ]; then
+        echo -e "\033[0;33mRunning V8 ASMJS test...\033[0m"
+        cat "${filebase}".asm.js             \
+        |                                    \
+        node                                 \
+          --trace-warnings                   \
+          "./wasm2lang_wasm_asmjs_runner.js" \
+          --test-name "$filebase"            \
+          --asmjs                            \
+          2>&1                               \
+        |                                    \
+        tee "${filebase}".v8.asmjs.out
+      fi
       #
-      if [ -x "${SPIDERMONKEY_JS}" ]; then
+      if [ -f "${filebase}".asm.js ] && [ -x "${SPIDERMONKEY_JS}" ]; then
         echo -e "\033[0;33mRunning SpiderMonkey ASMJS test...\033[0m"
         cat "${filebase}".asm.js             \
         |                                    \
@@ -65,7 +68,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         tee "${filebase}".sm.asmjs.out
         dos2unix "${filebase}".sm.asmjs.out
       fi
-      if [ -x "${PHP_CLI}" ]; then
+      if [ -f "${filebase}".php ] && [ -x "${PHP_CLI}" ]; then
         echo -e "\033[0;33mRunning PHP test...\033[0m"
         cat "${filebase}".php          \
         |                              \
@@ -95,20 +98,22 @@ if [ ${#0} -ne ${#prefix} ]; then
       fi
       #
       echo ''
-      diff -qs                     \
-        "${filebase}".v8.wasm.out  \
-        "${filebase}".v8.asmjs.out
-      [ $? -eq 0 ] || tmpretcode=1
-      if [ -s "${filebase}".v8.asmjs.stderr ]; then
-        tmpretcode=1
+      if [ -f "${filebase}".v8.asmjs.out ]; then
+        diff -qs                     \
+          "${filebase}".v8.wasm.out  \
+          "${filebase}".v8.asmjs.out
+        [ $? -eq 0 ] || tmpretcode=1
+        if [ -s "${filebase}".v8.asmjs.stderr ]; then
+          tmpretcode=1
+        fi
       fi
-      if [ -x "${SPIDERMONKEY_JS}" ]; then
+      if [ -f "${filebase}".sm.asmjs.out ] && [ -x "${SPIDERMONKEY_JS}" ]; then
         diff -qs                     \
           "${filebase}".v8.wasm.out  \
           "${filebase}".sm.asmjs.out
         [ $? -eq 0 ] || tmpretcode=1
       fi
-      if [ -x "${PHP_CLI}" ]; then
+      if [ -f "${filebase}".php.out ] && [ -x "${PHP_CLI}" ]; then
         diff -qs                    \
           "${filebase}".v8.wasm.out \
           "${filebase}".php.out
@@ -120,22 +125,20 @@ if [ ${#0} -ne ${#prefix} ]; then
           "${filebase}".jshell.out
         [ $? -eq 0 ] || tmpretcode=1
       fi
-      case "$dirname" in
-        *_none)
-          codegen_dir="${dirname%_none}_codegen"
-          codegen_filebase="${codegen_dir}/${codegen_dir}"
-          echo -e "\033[0;33mComparing none vs codegen V8 WASM output...\033[0m"
-          if [ -f "${codegen_filebase}".v8.wasm.out ]; then
-            diff -qs                    \
-              "${filebase}".v8.wasm.out \
-              "${codegen_filebase}".v8.wasm.out
-            [ $? -eq 0 ] || tmpretcode=1
-          else
-            echo "Missing comparison target: ${codegen_filebase}.v8.wasm.out"
-            tmpretcode=1
-          fi
-          ;;
-      esac
+      codegen_dir="${dirname%_none}_codegen"
+      codegen_filebase="${codegen_dir}/${codegen_dir}"
+      if [ -f "${filebase}".v8.wasm.out -a -f "${codegen_filebase}".v8.wasm.out ]; then
+        echo -e "\033[0;33mComparing none vs codegen V8 WASM output...\033[0m"
+        if [ -f "${codegen_filebase}".v8.wasm.out ]; then
+          diff -qs                    \
+            "${filebase}".v8.wasm.out \
+            "${codegen_filebase}".v8.wasm.out
+          [ $? -eq 0 ] || tmpretcode=1
+        else
+          echo "Missing comparison target: ${codegen_filebase}.v8.wasm.out"
+          tmpretcode=1
+        fi
+      fi
       [ $? -eq 0 ] || tmpretcode=1
       if [ 1 -eq $tmpretcode ]; then
         echo -e "Test $dirname: \033[0;31mFAILED\033[0m"

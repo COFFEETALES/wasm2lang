@@ -15,7 +15,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
 
   // Collect internal function names (safe identifiers, unmangled keys).
   var /** @const {!Array<string>} */ internalFuncNames = [];
-  for (var /** number */ fn = 0, /** @const {number} */ fnCount = moduleInfo.functions.length; fn !== fnCount; ++fn) {
+  for (var /** @type {number} */ fn = 0, /** @const {number} */ fnCount = moduleInfo.functions.length; fn !== fnCount; ++fn) {
     internalFuncNames[internalFuncNames.length] = this.safeName_(moduleInfo.functions[fn].name);
   }
 
@@ -53,13 +53,13 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     'SQRT1_2': 'M_SQRT1_2',
     'SQRT2': 'M_SQRT2'
   };
-  for (var /** number */ si = 0, /** @const {number} */ siLen = moduleInfo.impFuncs.length; si !== siLen; ++si) {
+  for (var /** @type {number} */ si = 0, /** @const {number} */ siLen = moduleInfo.impFuncs.length; si !== siLen; ++si) {
     var /** @const {string} */ siKind = classify(moduleInfo.impFuncs[si].importModule, moduleInfo.impFuncs[si].importBaseName);
     if ('math_func' === siKind && PHP_MATH_FUNCS_[moduleInfo.impFuncs[si].importBaseName]) {
       phpStdlibNames[moduleInfo.impFuncs[si].wasmFuncName] = PHP_MATH_FUNCS_[moduleInfo.impFuncs[si].importBaseName];
     }
   }
-  for (var /** number */ sgi = 0, /** @const {number} */ sgiLen = moduleInfo.impGlobals.length; sgi !== sgiLen; ++sgi) {
+  for (var /** @type {number} */ sgi = 0, /** @const {number} */ sgiLen = moduleInfo.impGlobals.length; sgi !== sgiLen; ++sgi) {
     var /** @const {string} */ sgiKind = classify(
         moduleInfo.impGlobals[sgi].importModule,
         moduleInfo.impGlobals[sgi].importBaseName
@@ -76,7 +76,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   var /** @const {!Array<string>} */ functionParts = [];
-  for (var /** number */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
+  for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
     functionParts[functionParts.length] = this.emitFunction_(
       wasmModule,
@@ -211,7 +211,11 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   outputParts[outputParts.length] = '$' + moduleName + ' = function(array $foreign, string &' + nBuf + '): array {';
 
   // Imported function bindings — skip stdlib and unused imports.
-  for (var /** number */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length; i !== importCount; ++i) {
+  for (
+    var /** @type {number} */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length;
+    i !== importCount;
+    ++i
+  ) {
     if (moduleInfo.impFuncs[i].wasmFuncName in phpStdlibNames) {
       continue;
     }
@@ -224,7 +228,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   }
 
   // Module-level globals (only those referenced by function bodies).
-  for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
+  for (var /** @type {number} */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
     var /** @const {string} */ phpGlobalKey = '$g_' + this.safeName_(moduleInfo.globals[gi].globalName);
     if (!usedB[phpGlobalKey]) {
       continue;
@@ -233,7 +237,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   }
 
   // Forward declarations for internal functions.
-  for (var /** number */ fi = 0, /** @const {number} */ fNameLen = internalFuncNames.length; fi !== fNameLen; ++fi) {
+  for (var /** @type {number} */ fi = 0, /** @const {number} */ fNameLen = internalFuncNames.length; fi !== fNameLen; ++fi) {
     outputParts[outputParts.length] = pad1 + this.phpVar_(internalFuncNames[fi]) + ' = null;';
   }
 
@@ -243,14 +247,18 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   }
 
   // Append function bodies.
-  for (var /** number */ fp = 0, /** @const {number} */ fpLen = functionParts.length; fp !== fpLen; ++fp) {
+  for (var /** @type {number} */ fp = 0, /** @const {number} */ fpLen = functionParts.length; fp !== fpLen; ++fp) {
     outputParts[outputParts.length] = functionParts[fp];
   }
 
   // Function table population.
   if (moduleInfo.flatTableEntries.length > 0) {
     var /** @const {!Array<string>} */ ftEntries = [];
-    for (var /** number */ fte = 0, /** @const {number} */ fteLen = moduleInfo.flatTableEntries.length; fte !== fteLen; ++fte) {
+    for (
+      var /** @type {number} */ fte = 0, /** @const {number} */ fteLen = moduleInfo.flatTableEntries.length;
+      fte !== fteLen;
+      ++fte
+    ) {
       var /** @const {string|null} */ fteName = moduleInfo.flatTableEntries[fte];
       if (null === fteName) {
         ftEntries[ftEntries.length] = 'null';
@@ -263,7 +271,11 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
 
   // Return array.
   var /** @const {!Array<string>} */ returnEntries = [];
-  for (var /** number */ r = 0, /** @const {number} */ exportCount = moduleInfo.expFuncs.length; r !== exportCount; ++r) {
+  for (
+    var /** @type {number} */ r = 0, /** @const {number} */ exportCount = moduleInfo.expFuncs.length;
+    r !== exportCount;
+    ++r
+  ) {
     returnEntries[returnEntries.length] =
       "'" + moduleInfo.expFuncs[r].exportName + "' => " + this.phpVar_(this.safeName_(moduleInfo.expFuncs[r].internalName));
   }

@@ -79,10 +79,10 @@ Wasm2Lang.CLI.CommandLineParser.assignInputData_ = function (options, params) {
 Wasm2Lang.CLI.CommandLineParser.parseArgv = function () {
   var /** @const {number} */ argvCount = process.argv.length;
   var /** @const {!RegExp} */ optionWithValuePattern = /^(--[\w-]+)(?:[=:])(.*?)$/;
-  var /** string */ pendingOptionName = '';
+  var /** @type {string} */ pendingOptionName = '';
   var /** @const {!Object<string, !Array<string>>} */ parsedParams = Object.create(null);
 
-  for (var /** number */ argIndex = 2; argIndex !== argvCount; ++argIndex) {
+  for (var /** @type {number} */ argIndex = 2; argIndex !== argvCount; ++argIndex) {
     var /** @const {string} */ currentArg = process.argv[argIndex];
     if ('--' === currentArg.substring(0, 2)) {
       if (2 === currentArg.length) {
@@ -135,7 +135,7 @@ Wasm2Lang.CLI.CommandLineParser.processParams = function (params) {
   /** @const {!Array<!Wasm2Lang.Options.Schema.OptionKey>} */
   var props = Object.keys(Wasm2Lang.Options.Schema.optionSchema);
 
-  for (var /** number */ i = 0, /** @const {number} */ len = props.length; i !== len; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = props.length; i !== len; ++i) {
     var /** @const {!Wasm2Lang.Options.Schema.OptionKey} */ key = props[i];
     var /** @const {string} */ cliKey = Wasm2Lang.CLI.CommandLineParser.optionKeyToCliKey_(key);
     var /** @type {!Array<string>|void} */ optionValues = params[cliKey];

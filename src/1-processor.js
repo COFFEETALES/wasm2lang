@@ -69,7 +69,7 @@ Wasm2Lang.Processor.getBinaryen = function () {
  */
 Wasm2Lang.Processor.forEachResultEntry_ = function (result, visitFn) {
   var /** @const {!Array<!Wasm2Lang.Processor.TranspileResultProperty>} */ keyOrder = Wasm2Lang.Processor.RESULT_KEY_ORDER_;
-  for (var /** number */ i = 0, /** @const {number} */ len = keyOrder.length; i !== len; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = keyOrder.length; i !== len; ++i) {
     var /** @const {!Wasm2Lang.Processor.TranspileResultProperty} */ key = keyOrder[i];
     if (key in result) {
       visitFn(key, result[key]);
@@ -145,7 +145,7 @@ Wasm2Lang.Processor.transpile_ = function (options) {
 
   // prettier-ignore
   var /** @const {?Wasm2Lang.Wasm.Tree.PassRunResult} */ passRunResult =
-    Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles(wasmModule, options);
+    Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles(wasmModule, options, !codegen.needsI64Lowering());
   if (passRunResult) {
     codegen.setPassRunResult_(passRunResult);
   }
@@ -183,7 +183,7 @@ Wasm2Lang.Processor.drainResults_ = function (results, writeFn) {
     function (key, value) {
       void key;
       if (Array.isArray(value)) {
-        for (var /** number */ j = 0, /** @const {number} */ cLen = value.length; j !== cLen; ++j) {
+        for (var /** @type {number} */ j = 0, /** @const {number} */ cLen = value.length; j !== cLen; ++j) {
           allChunks[allChunks.length] = value[j];
         }
         allChunks[allChunks.length] = '\n';
@@ -294,7 +294,7 @@ Wasm2Lang.Processor.materializeResult_ = function (result) {
     return Promise.all(asyncPromises).then(
       /** @param {!Array<string>} strings @return {!Wasm2Lang.Processor.MaterializedResult} */
       function (strings) {
-        for (var /** number */ j = 0, /** @const {number} */ jLen = strings.length; j !== jLen; ++j) {
+        for (var /** @type {number} */ j = 0, /** @const {number} */ jLen = strings.length; j !== jLen; ++j) {
           materialized[asyncKeys[j]] = strings[j];
         }
         return materialized;
@@ -351,7 +351,7 @@ Wasm2Lang.Processor.getPassAnalysis = function (binaryenModule, wastString) {
 
   var /** @const {!Object} */ result = Object.create(null);
 
-  for (var /** number */ fi = 0; fi !== fLen; ++fi) {
+  for (var /** @type {number} */ fi = 0; fi !== fLen; ++fi) {
     var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ fm = funcs[fi];
     var /** @const {string|void} */ funcName = fm.passFuncName;
     if (!funcName) {
@@ -360,7 +360,7 @@ Wasm2Lang.Processor.getPassAnalysis = function (binaryenModule, wastString) {
 
     var /** @const {!Object} */ funcResult = Object.create(null);
 
-    for (var /** number */ di = 0; di !== dLen; ++di) {
+    for (var /** @type {number} */ di = 0; di !== dLen; ++di) {
       var /** @const {!Wasm2Lang.Wasm.Tree.PassAnalysisDescriptor} */ desc = descriptors[di];
       var /** @const {*} */ raw = desc.extract(fm);
       var /** @const {!Array<string>} */ rawKeys = raw ? Object.keys(/** @type {!Object} */ (raw)) : [];
@@ -432,7 +432,7 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
     /** @const {!Array<!Wasm2Lang.Options.Schema.OptionKey>} */
     var props = Object.keys(Wasm2Lang.Options.Schema.optionSchema);
 
-    for (var /** number */ i = 0, /** @const {number} */ len = props.length; i !== len; ++i) {
+    for (var /** @type {number} */ i = 0, /** @const {number} */ len = props.length; i !== len; ++i) {
       var /** @const {!Wasm2Lang.Options.Schema.OptionKey} */ key = props[i];
       var entry = Wasm2Lang.Options.Schema.optionSchema[key];
       var /** @const {string} */ description = entry.optionDesc;

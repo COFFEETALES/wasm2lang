@@ -22,7 +22,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitMetadata = function (wasmModule, op
 
   // Check whether any word in the static data span is non-zero.
   var /** @type {boolean} */ hasNonZero = false;
-  for (var /** number */ k = 0, /** @const {number} */ i32Len = i32.length; k !== i32Len; ++k) {
+  for (var /** @type {number} */ k = 0, /** @const {number} */ i32Len = i32.length; k !== i32Len; ++k) {
     if (0 !== i32[k]) {
       hasNonZero = true;
       break;
@@ -46,7 +46,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitMetadata = function (wasmModule, op
   }
 
   var /** @const {!Array<string>} */ wordStrs = [];
-  for (var /** number */ w = 0, /** @const {number} */ wLen = i32.length; w !== wLen; ++w) {
+  for (var /** @type {number} */ w = 0, /** @const {number} */ wLen = i32.length; w !== wLen; ++w) {
     wordStrs[wordStrs.length] = String(i32[w]);
   }
   concatParts[concatParts.length] = "pack('V*', " + wordStrs.join(', ') + ')';

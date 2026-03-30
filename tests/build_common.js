@@ -66,8 +66,9 @@ function createTestModule(binaryen, options) {
   const storeF32 = value => module.block(null, [module.f32.store(0, 4, heapTop(), value), advanceHeap(4)]);
   const storeF64 = value => module.block(null, [module.f64.store(0, 8, heapTop(), value), advanceHeap(8)]);
   const storeF64Safe = value => module.block(null, [module.f64.store(0, 4, heapTop(), value), advanceHeap(8)]);
+  const storeI64 = value => module.block(null, [module.i64.store(0, 4, heapTop(), value), advanceHeap(8)]);
 
-  return {module, heapTop, advanceHeap, storeI32, storeF32, storeF64, storeF64Safe};
+  return {module, heapTop, advanceHeap, storeI32, storeF32, storeF64, storeF64Safe, storeI64};
 }
 
 function finalizeAndOutput(module) {

@@ -24,6 +24,7 @@
       {'sourcePath': 'src/backend/abstract_codegen/numeric_ops.js'},
       {'sourcePath': 'src/backend/abstract_codegen/traversal.js'},
       {'sourcePath': 'src/backend/i32_coercion.js'},
+      {'sourcePath': 'src/backend/i64_coercion.js'},
       {'sourcePath': 'src/backend/value_types.js'},
       {'sourcePath': 'src/backend/numeric_ops.js'},
       {'sourcePath': 'src/backend/identifier_mangler.js'}

@@ -50,7 +50,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.markHelper_ = function (name) {
   this.usedHelpers_[name] = true;
   var /** @const {!Array<string>|void} */ deps = Wasm2Lang.Backend.Php64Codegen.HELPER_DEPS_[name];
   if (deps) {
-    for (var /** number */ i = 0, /** @const {number} */ len = deps.length; i !== len; ++i) {
+    for (var /** @type {number} */ i = 0, /** @const {number} */ len = deps.length; i !== len; ++i) {
       this.markHelper_(deps[i]);
     }
   }

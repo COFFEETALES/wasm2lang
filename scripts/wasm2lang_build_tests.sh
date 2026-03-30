@@ -12,7 +12,11 @@ if [ ${#0} -ne ${#prefix} ]; then
   fn() {
     local file variant_suffix normalize_wasm artifact_normalize_wasm
     local filename testbase artifact_dir artifact_base
-    local harness_file harness_name harness_variant_name
+    local harness_file harness_name harness_variant_name build_languages
+    local variant_list
+
+    local LF="$(printf '\012+')"
+    LF="${LF%?}"
 
     if [ "$ACTUAL_CWD" != "$EXPECTED_CWD" ]; then
       echo "Error: run from $EXPECTED_CWD (current: $ACTUAL_CWD)" >&2
@@ -49,10 +53,18 @@ if [ ${#0} -ne ${#prefix} ]; then
         --emit-shared-data "./${testbase}.shared.data.json"                      \
         1>./"${testbase}".orig.wast
 
-      for variant_suffix in codegen none; do
-        case "$variant_suffix" in
-          codegen)
-            normalize_wasm="binaryen:none,wasm2lang:codegen"
+      # Read variant list from .build.normalize (one "suffix normalize_wasm" per
+      # line) or fall back to the default two-variant set.
+      if [ -f "../tests/${testbase}.build.normalize" ]; then
+        variant_list="$(cat "../tests/${testbase}.build.normalize")"
+      else
+        variant_list="codegen binaryen:none,wasm2lang:codegen${LF}none binaryen:none"
+      fi
+
+      while IFS=' ' read -r variant_suffix normalize_wasm; do
+        # Variants with wasm2lang:codegen get mangler args; others get none.
+        case "$normalize_wasm" in
+          *wasm2lang:codegen*)
             if [ -n "${UNIQUE_MANGLER_KEY:-}" ]; then
               set -- --mangler "$UNIQUE_MANGLER_KEY"
             else
@@ -60,8 +72,7 @@ if [ ${#0} -ne ${#prefix} ]; then
               set -- --mangler "$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c "$MANGLER_LEN")"
             fi
             ;;
-          none)
-            normalize_wasm="binaryen:none"
+          *)
             set --
             ;;
         esac
@@ -69,6 +80,12 @@ if [ ${#0} -ne ${#prefix} ]; then
         artifact_normalize_wasm="binaryen:none"
         artifact_dir="${testbase}_${variant_suffix}"
         artifact_base="${artifact_dir}/${artifact_dir}"
+
+        # Per-test language restriction (default: all languages).
+        build_languages="ASMJS PHP64 JAVA"
+        if [ -f "../tests/${testbase}.build.languages" ]; then
+          build_languages="$(cat "../tests/${testbase}.build.languages")"
+        fi
 
         mkdir "$artifact_dir"
         for harness_file in "../tests/${testbase}.harness."*; do
@@ -99,6 +116,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         #
         # Generate ASMJS (uses .wast text input — binaryen's getExpressionInfo
         # has issues with br_table expressions read from .wasm binary)
+        case " $build_languages " in *" ASMJS "*)
         node                                        \
           "../wasm2lang.js"                         \
           --normalize-wasm "$normalize_wasm"        \
@@ -109,8 +127,10 @@ if [ ${#0} -ne ${#prefix} ]; then
           --emit-code=module                        \
           --input-file "wast:${artifact_base}.wast" \
           1>"${artifact_base}".asm.js
+        ;; esac
         #
         # Generate PHP64
+        case " $build_languages " in *" PHP64 "*)
         node                                        \
           "../wasm2lang.js"                         \
           --normalize-wasm "$normalize_wasm"        \
@@ -121,8 +141,10 @@ if [ ${#0} -ne ${#prefix} ]; then
           --emit-code=module                        \
           --input-file "wast:${artifact_base}.wast" \
           1>"${artifact_base}".php
+        ;; esac
         #
         # Generate JAVA
+        case " $build_languages " in *" JAVA "*)
         node                                        \
           "../wasm2lang.js"                         \
           --normalize-wasm "$normalize_wasm"        \
@@ -133,7 +155,10 @@ if [ ${#0} -ne ${#prefix} ]; then
           --emit-code=module                        \
           --input-file "wast:${artifact_base}.wast" \
           1>"${artifact_base}".java
-      done
+        ;; esac
+      done <<EOF
+$variant_list
+EOF
     done
 
     echo "Build complete."

@@ -24,6 +24,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.formatCondition_ = function (expr, opt_c
   if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === opt_condCat) {
     return P.isFullyParenthesized(expr) ? expr : '(' + expr + ')';
   }
+  if (Wasm2Lang.Backend.AbstractCodegen.CAT_I64 === opt_condCat) {
+    return '(' + P.wrap(expr, P.PREC_EQUALITY_, true) + ' != 0L)';
+  }
   return '(' + P.wrap(expr, P.PREC_EQUALITY_, true) + ' != 0)';
 };
 
@@ -42,6 +45,18 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderLoad_ = function (binaryen, ptrExp
   }
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
     return buf + '.getFloat(' + ptrExpr + ')';
+  }
+  if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) {
+    if (8 === bytes) {
+      return buf + '.getLong(' + ptrExpr + ')';
+    }
+    if (4 === bytes) {
+      return isSigned ? '(long)' + buf + '.getInt(' + ptrExpr + ')' : '(' + buf + '.getInt(' + ptrExpr + ') & 0xFFFFFFFFL)';
+    }
+    if (2 === bytes) {
+      return isSigned ? '(long)' + buf + '.getShort(' + ptrExpr + ')' : '(' + buf + '.getShort(' + ptrExpr + ') & 0xFFFFL)';
+    }
+    return isSigned ? '(long)' + buf + '.get(' + ptrExpr + ')' : '(' + buf + '.get(' + ptrExpr + ') & 0xFFL)';
   }
   if (4 === bytes) {
     return buf + '.getInt(' + ptrExpr + ')';
@@ -76,6 +91,19 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderStore_ = function (binaryen, ptrEx
   }
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
     return buf + '.putFloat(' + ptrExpr + ', ' + this.coerceToType_(binaryen, valueExpr, valueCat, wasmType) + ');';
+  }
+  if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) {
+    var /** @const {string} */ coercedI64 = this.coerceToType_(binaryen, valueExpr, valueCat, binaryen.i64);
+    if (8 === bytes) {
+      return buf + '.putLong(' + ptrExpr + ', ' + coercedI64 + ');';
+    }
+    if (4 === bytes) {
+      return buf + '.putInt(' + ptrExpr + ', (int)(' + coercedI64 + '));';
+    }
+    if (2 === bytes) {
+      return buf + '.putShort(' + ptrExpr + ', (short)(' + coercedI64 + '));';
+    }
+    return buf + '.put(' + ptrExpr + ', (byte)(' + coercedI64 + '));';
   }
   var /** @const {string} */ coercedValue = this.coerceToType_(binaryen, valueExpr, valueCat, binaryen.i32);
   if (4 === bytes) {

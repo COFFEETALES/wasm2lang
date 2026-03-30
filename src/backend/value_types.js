@@ -20,6 +20,9 @@ Wasm2Lang.Backend.ValueType.typeName = function (binaryen, wasmType) {
   if (binaryen.f64 === wasmType) {
     return 'f64';
   }
+  if (binaryen.i64 === wasmType) {
+    return 'i64';
+  }
   return 'type(' + wasmType + ')';
 };
 
@@ -71,6 +74,17 @@ Wasm2Lang.Backend.ValueType.isF32 = function (binaryen, wasmType) {
  */
 Wasm2Lang.Backend.ValueType.isF64 = function (binaryen, wasmType) {
   return binaryen.f64 === wasmType;
+};
+
+/**
+ * Returns true when the wasm type is i64.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} wasmType
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.ValueType.isI64 = function (binaryen, wasmType) {
+  return binaryen.i64 === wasmType;
 };
 
 /**

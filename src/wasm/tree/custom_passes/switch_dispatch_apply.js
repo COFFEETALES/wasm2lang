@@ -327,7 +327,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSubWalkedExpressi
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const */ subWalk = Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_;
   var /** @const */ subStr = Wasm2Lang.Backend.AbstractCodegen.subWalkString_;
-  for (var /** number */ i = 0; i < count; ++i) {
+  for (var /** @type {number} */ i = 0; i < count; ++i) {
     var /** @const {string} */ code = subStr(subWalk(wasmModule, binaryen, funcInfo, visitor, ptrs[i]));
     if ('' !== code) {
       if (-1 === code.indexOf('\n')) {
@@ -539,14 +539,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
       Object.create(null)
     );
 
-  for (var /** number */ j = 1, /** @const {number} */ chainLen = chain.length; j < chainLen; ++j) {
+  for (var /** @type {number} */ j = 1, /** @const {number} */ chainLen = chain.length; j < chainLen; ++j) {
     var /** @const {string} */ targetName = /** @type {string} */ (chain[j]['n']);
     var /** @const {!Array<number>} */ exitPtrs = [];
     var /** @type {boolean} */ hitTerminal = false;
 
-    for (var /** number */ k = j - 1; 0 <= k && !hitTerminal; --k) {
+    for (var /** @type {number} */ k = j - 1; 0 <= k && !hitTerminal; --k) {
       var /** @const {!Array<number>} */ levelPtrs = /** @type {!Array<number>} */ (chain[k]['c']);
-      for (var /** number */ p = 1, /** @const {number} */ ptrLen = levelPtrs.length; p < ptrLen; ++p) {
+      for (var /** @type {number} */ p = 1, /** @const {number} */ ptrLen = levelPtrs.length; p < ptrLen; ++p) {
         exitPtrs[exitPtrs.length] = levelPtrs[p];
         var /** @const {number} */ ptrId = /** @type {number} */ (
             Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, levelPtrs[p])['id']
@@ -687,10 +687,10 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
 
   var /** @const {!Array<!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup>} */ groups =
       info.caseGroups;
-  for (var /** number */ gi = 0, /** @const {number} */ groupLen = groups.length; gi < groupLen; ++gi) {
+  for (var /** @type {number} */ gi = 0, /** @const {number} */ groupLen = groups.length; gi < groupLen; ++gi) {
     var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */ group = groups[gi];
     var /** @const {!Array<number>} */ indices = group.caseIndices;
-    for (var /** number */ ii = 0, /** @const {number} */ idxLen = indices.length; ii < idxLen; ++ii) {
+    for (var /** @type {number} */ ii = 0, /** @const {number} */ idxLen = indices.length; ii < idxLen; ++ii) {
       lines[lines.length] = pad(ind + 1) + 'case ' + indices[ii] + ':\n';
     }
     S.emitLabeledGroupBody_(lines, codegen, state, vis, group, info, outerLabel, ind + 2);

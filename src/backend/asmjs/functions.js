@@ -35,13 +35,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
   // Function header (indent 1 = inside module).
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const {!Array<string>} */ paramNames = [];
-  for (var /** number */ pi = 0; pi !== numParams; ++pi) {
+  for (var /** @type {number} */ pi = 0; pi !== numParams; ++pi) {
     paramNames[paramNames.length] = this.localN_(pi);
   }
   parts[parts.length] = pad(1) + 'function ' + fnName + '(' + paramNames.join(', ') + ') {';
 
   // Parameter annotations.
-  for (var /** number */ pa = 0; pa !== numParams; ++pa) {
+  for (var /** @type {number} */ pa = 0; pa !== numParams; ++pa) {
     var /** @const {string} */ pName = this.localN_(pa);
     parts[parts.length] = pad(2) + pName + ' = ' + this.renderCoercionByType_(binaryen, pName, paramTypes[pa]) + ';';
   }
@@ -50,7 +50,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
   if (0 !== numVars) {
     var /** @const {!Array<string>} */ initStrs = this.buildLocalInitStrings_(binaryen, funcInfo.name, varTypes, numParams);
     var /** @const {!Array<string>} */ varDecls = [];
-    for (var /** number */ vi = 0; vi !== numVars; ++vi) {
+    for (var /** @type {number} */ vi = 0; vi !== numVars; ++vi) {
       varDecls[varDecls.length] = this.localN_(numParams + vi) + ' = ' + initStrs[vi];
     }
     parts[parts.length] = pad(2) + 'var ' + varDecls.join(', ') + ';';

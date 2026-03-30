@@ -13,7 +13,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitStaticI32InitLines_ = function (i32,
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.I32InitOp_>} */ ops = this.collectI32InitOps_(i32, startWordIndex);
   var /** @const {!Array<string>} */ lines = [];
 
-  for (var /** number */ i = 0, /** @const {number} */ opsLen = ops.length; i !== opsLen; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ opsLen = ops.length; i !== opsLen; ++i) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.I32InitOp_} */ op = ops[i];
     var /** @const {string} */ opKind = op.opKind;
     var /** @const {number} */ wordIndex = op.startWordIndex;
@@ -25,7 +25,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitStaticI32InitLines_ = function (i32,
         'for (int $i = 0; $i < ' + count + '; ++$i) ' + ibVar + '.put(' + wordIndex + ' + $i, ' + String(value) + ');';
     } else {
       var /** @const {!Array<number>} */ words = op.setWordsI32;
-      for (var /** number */ j = 0, /** @const {number} */ wLen = words.length; j !== wLen; ++j) {
+      for (var /** @type {number} */ j = 0, /** @const {number} */ wLen = words.length; j !== wLen; ++j) {
         lines[lines.length] = ibVar + '.put(' + (wordIndex + j) + ', ' + String(words[j]) + ');';
       }
     }
@@ -63,7 +63,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitMetadata = function (wasmModule, opt
     var /** @const {!Array<string>} */ initLines = this.emitStaticI32InitLines_(i32, startWordIndex, '$ib');
     if (0 !== initLines.length) {
       lines[lines.length] = 'java.nio.IntBuffer $ib = ' + bufferName + '.asIntBuffer();';
-      for (var /** number */ ii = 0, /** @const {number} */ initLinesCount = initLines.length; ii !== initLinesCount; ++ii) {
+      for (
+        var /** @type {number} */ ii = 0, /** @const {number} */ initLinesCount = initLines.length;
+        ii !== initLinesCount;
+        ++ii
+      ) {
         lines[lines.length] = initLines[ii];
       }
     }

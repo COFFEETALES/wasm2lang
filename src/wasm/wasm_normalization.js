@@ -37,7 +37,7 @@ Wasm2Lang.Wasm.WasmNormalization.validateInputModule_ = function (wasmModule) {
   var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ validationPasses =
       Wasm2Lang.Wasm.Tree.CustomPasses.getInputValidationPasses();
 
-  for (var /** number */ i = 0, /** @const {number} */ passCount = validationPasses.length; i !== passCount; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ passCount = validationPasses.length; i !== passCount; ++i) {
     var /** @const {!Wasm2Lang.Wasm.Tree.Pass} */ pass = validationPasses[i];
     if ('function' === typeof pass.validateModule) {
       /** @type {!Wasm2Lang.Wasm.Tree.PassModuleHook} */ (pass.validateModule)(wasmModule);
@@ -50,9 +50,11 @@ Wasm2Lang.Wasm.WasmNormalization.validateInputModule_ = function (wasmModule) {
 /**
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @param {boolean=} opt_skipI64Lowering  When true, the i64-to-i32 lowering
+ *     passes are skipped (backend handles i64 natively).
  * @return {?Wasm2Lang.Wasm.Tree.PassRunResult}
  */
-Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModule, options) {
+Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModule, options, opt_skipI64Lowering) {
   var /** @const {!Array<string>} */ bundles = options.normalizeWasm || ['binaryen:min'];
   if (0 === bundles.length) {
     return null;
@@ -60,7 +62,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
 
   var /** @const {!Array<string>} */ unknownBundles = [];
 
-  for (var /** number */ i = bundles.length - 1; i !== -1; --i) {
+  for (var /** @type {number} */ i = bundles.length - 1; i !== -1; --i) {
     if ('object' !== typeof Wasm2Lang.Options.Schema.normalizeBundles[bundles[i]]) {
       unknownBundles[unknownBundles.length] = bundles.splice(i, 1).pop();
     }
@@ -71,7 +73,11 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
   }
 
   if (-1 === bundles.indexOf('binaryen:none')) {
-    Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_(wasmModule, -1 !== bundles.indexOf('binaryen:max'));
+    Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_(
+      wasmModule,
+      -1 !== bundles.indexOf('binaryen:max'),
+      !!opt_skipI64Lowering
+    );
   }
 
   if (-1 !== bundles.indexOf('wasm2lang:codegen')) {
@@ -95,9 +101,10 @@ Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_ = function (wasmMo
  * @private
  * @param {!BinaryenModule} wasmModule
  * @param {boolean} aggressive
+ * @param {boolean} skipI64Lowering
  * @return {void}
  */
-Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmModule, aggressive) {
+Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmModule, aggressive, skipI64Lowering) {
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {!BinaryenFeatures} */ features = binaryen.Features;
   // Set the feature mask so binaryen's optimizer and passes recognize post-MVP
@@ -112,9 +119,12 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmMod
     wasmModule.optimize();
   }
   // Lower i64 to pairs of i32 so backends only need to handle i32/f32/f64.
+  // Backends that handle i64 natively (e.g. Java via `long`) skip this.
   // "remove-non-js-ops" converts i64 selects to if/else which the lowering
   // pass requires; both passes need flat IR so "flatten" runs before each.
-  wasmModule.runPasses(['flatten', 'remove-non-js-ops', 'flatten', 'i64-to-i32-lowering']);
+  if (!skipI64Lowering) {
+    wasmModule.runPasses(['flatten', 'remove-non-js-ops', 'flatten', 'i64-to-i32-lowering']);
+  }
   if (aggressive) {
     // Cleanup passes before the final flatten to reduce dead code and simplify.
     wasmModule.runPasses([

@@ -232,7 +232,7 @@ Wasm2Lang.Backend.AbstractCodegen.resolveSegmentNames_ = function (wasmModule, n
   // Fast path: try implicit numeric naming ("0", "1", ...).
   if (probe(wasmModule, '0')) {
     var /** @const {!Array<string>} */ numericNames = [];
-    for (var /** number */ ni = 0; ni !== numSegments; ++ni) {
+    for (var /** @type {number} */ ni = 0; ni !== numSegments; ++ni) {
       numericNames[numericNames.length] = String(ni);
     }
     return numericNames;
@@ -240,13 +240,13 @@ Wasm2Lang.Backend.AbstractCodegen.resolveSegmentNames_ = function (wasmModule, n
 
   // Named-segment enumeration: "d0", "d0.1", "d0.2", ..., "d1", ...
   var /** @const {!Array<string>} */ names = [];
-  for (var /** number */ base = 0; names.length < numSegments; ++base) {
+  for (var /** @type {number} */ base = 0; names.length < numSegments; ++base) {
     var /** @const {string} */ baseName = 'd' + base;
     if (!probe(wasmModule, baseName)) {
       continue;
     }
     names[names.length] = baseName;
-    for (var /** number */ sub = 1; names.length < numSegments; ++sub) {
+    for (var /** @type {number} */ sub = 1; names.length < numSegments; ++sub) {
       var /** @const {string} */ subName = 'd' + base + '.' + sub;
       if (!probe(wasmModule, subName)) {
         break;
@@ -271,7 +271,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectStaticMemory_ = function (was
   var /** @const {!Array<string>} */ segNames = Wasm2Lang.Backend.AbstractCodegen.resolveSegmentNames_(wasmModule, numSegments);
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.StaticMemorySegment_>} */ segments = [];
 
-  for (var /** number */ i = 0, /** @const {number} */ nameCount = segNames.length; i !== nameCount; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ nameCount = segNames.length; i !== nameCount; ++i) {
     var /** @const {!BinaryenMemorySegmentInfo} */ segInfo = wasmModule.getMemorySegmentInfo(segNames[i]);
     if (segInfo.passive) {
       continue;
@@ -303,7 +303,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectStaticMemory_ = function (was
 
   var /** @const {!Uint8Array} */ byteArray = new Uint8Array(totalLen);
 
-  for (var /** number */ j = 0, /** @const {number} */ segmentCount = segments.length; j !== segmentCount; ++j) {
+  for (var /** @type {number} */ j = 0, /** @const {number} */ segmentCount = segments.length; j !== segmentCount; ++j) {
     byteArray.set(new Uint8Array(segments[j].segmentBuffer_), segments[j].segmentByteOffset_ - startOffset);
   }
 
@@ -497,7 +497,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectDefinedFunctions_ = function 
   var /** @const {number} */ numFuncs = wasmModule.getNumFunctions();
   var /** @const {!Array<!BinaryenFunctionInfo>} */ functions = [];
 
-  for (var /** number */ f = 0; f !== numFuncs; ++f) {
+  for (var /** @type {number} */ f = 0; f !== numFuncs; ++f) {
     var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(f);
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
 
@@ -545,7 +545,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ functionSignatures =
       /** @type {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ (Object.create(null));
   var /** @const {!Object<string, string>} */ importedNames = /** @type {!Object<string, string>} */ (Object.create(null));
-  for (var /** number */ f = 0; f !== numFuncs; ++f) {
+  for (var /** @type {number} */ f = 0; f !== numFuncs; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(wasmModule.getFunctionByIndex(f));
     functionSignatures[funcInfo.name] = {sigParams: binaryen.expandType(funcInfo.params), sigRetType: funcInfo.results};
     if ('' !== funcInfo.base) {
@@ -561,7 +561,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>} */ impGlobals = [];
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = [];
   var /** @const {!Object<string, number>} */ globalTypes = /** @type {!Object<string, number>} */ (Object.create(null));
-  for (var /** number */ gi = 0; gi !== numGlobals; ++gi) {
+  for (var /** @type {number} */ gi = 0; gi !== numGlobals; ++gi) {
     var /** @const {!BinaryenGlobalInfo} */ globalInfo = binaryen.getGlobalInfo(wasmModule.getGlobalByIndex(gi));
     globalTypes[globalInfo.name] = globalInfo.type;
     if ('' !== globalInfo.base) {
@@ -588,7 +588,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   // -- Exports. --
   var /** @const {number} */ numExports = wasmModule.getNumExports();
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>} */ expFuncs = [];
-  for (var /** number */ e = 0; e !== numExports; ++e) {
+  for (var /** @type {number} */ e = 0; e !== numExports; ++e) {
     var /** @const {!BinaryenExportInfo} */ exportInfo = binaryen.getExportInfo(wasmModule.getExportByIndex(e));
     if (binaryen.ExternalFunction === exportInfo.kind) {
       expFuncs[expFuncs.length] = {
@@ -627,10 +627,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
 Wasm2Lang.Backend.AbstractCodegen.buildSignatureKey_ = function (binaryen, paramTypes, retType) {
   /** @param {number} t @return {string} */
   var c = function (t) {
-    return binaryen.f32 === t ? 'f' : binaryen.f64 === t ? 'd' : 'i';
+    return binaryen.f32 === t ? 'f' : binaryen.f64 === t ? 'd' : binaryen.i64 === t ? 'l' : 'i';
   };
   var /** @type {string} */ key = '';
-  for (var /** number */ i = 0, /** @const {number} */ len = paramTypes.length; i !== len; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = paramTypes.length; i !== len; ++i) {
     key += c(paramTypes[i]);
   }
   return key + '_' + (binaryen.none === retType || 0 === retType ? 'v' : c(retType));
@@ -672,10 +672,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
   }
 
   // Build flat entries array.
-  for (var /** number */ p = 0; p < baseOffset; ++p) {
+  for (var /** @type {number} */ p = 0; p < baseOffset; ++p) {
     flatEntries[flatEntries.length] = null;
   }
-  for (var /** number */ d = 0, /** @const {number} */ dLen = data.length; d !== dLen; ++d) {
+  for (var /** @type {number} */ d = 0, /** @const {number} */ dLen = data.length; d !== dLen; ++d) {
     flatEntries[flatEntries.length] = data[d];
   }
 
@@ -686,7 +686,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
       Object.create(null)
     );
 
-  for (var /** number */ e = 0, /** @const {number} */ eLen = flatEntries.length; e !== eLen; ++e) {
+  for (var /** @type {number} */ e = 0, /** @const {number} */ eLen = flatEntries.length; e !== eLen; ++e) {
     var /** @const {string|null} */ funcName = flatEntries[e];
     if (null === funcName) continue;
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_|void} */ sig = functionSignatures[funcName];
@@ -710,7 +710,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
 
   // Trim trailing nulls, pad to power-of-2, compute mask and stubNeeded.
   var /** @const {!Array<string>} */ sigKeys = Object.keys(sigGroups);
-  for (var /** number */ s = 0, /** @const {number} */ sLen = sigKeys.length; s !== sLen; ++s) {
+  for (var /** @type {number} */ s = 0, /** @const {number} */ sLen = sigKeys.length; s !== sLen; ++s) {
     var /** @const {string} */ sk = sigKeys[s];
     var /** @const {{sigParamTypes: !Array<number>, retType: number, slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}} */ sg =
         sigGroups[sk];
@@ -729,7 +729,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
       hasNulls = true;
     }
     if (!hasNulls) {
-      for (var /** number */ ni = 0, /** @const {number} */ niLen = sg.slots.length; ni !== niLen; ++ni) {
+      for (var /** @type {number} */ ni = 0, /** @const {number} */ niLen = sg.slots.length; ni !== niLen; ++ni) {
         if (null === sg.slots[ni].boundName) {
           hasNulls = true;
           break;

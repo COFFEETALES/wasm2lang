@@ -166,16 +166,6 @@ Wasm2Lang.Wasm.Tree.TraversalVisitor;
 Wasm2Lang.Wasm.Tree.TraversalWalkInnerFn;
 
 /**
- * @typedef {!Object<string, *>}
- */
-Wasm2Lang.Wasm.Tree.ModulePassContext;
-
-/**
- * @typedef {!Object<string, *>}
- */
-Wasm2Lang.Wasm.Tree.FunctionPassContext;
-
-/**
  * @typedef {function(!BinaryenFunctionInfo, !Wasm2Lang.Wasm.Tree.PassMetadata): void}
  */
 Wasm2Lang.Wasm.Tree.PassFunctionHook;

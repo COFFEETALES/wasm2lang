@@ -45,7 +45,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_b
   var /** @const {!Array<!Wasm2Lang.Wasm.Tree.PassMetadata>} */ funcsArray =
     /** @type {!Array<!Wasm2Lang.Wasm.Tree.PassMetadata>} */ (runResult.functions);
 
-  for (var /** number */ f = 0; f !== funcCount; ++f) {
+  for (var /** @type {number} */ f = 0; f !== funcCount; ++f) {
     var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(f);
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
 
@@ -66,7 +66,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_b
     funcMetadata.passFuncName = funcInfo.name;
     funcMetadata.bodyReplaced = false;
 
-    for (var /** number */ p = 0, /** @const {number} */ passCount = passes.length; p !== passCount; ++p) {
+    for (var /** @type {number} */ p = 0, /** @const {number} */ passCount = passes.length; p !== passCount; ++p) {
       var /** @const {!Wasm2Lang.Wasm.Tree.Pass} */ pass = passes[p];
 
       if ('function' === typeof pass.onFunctionEnter) {

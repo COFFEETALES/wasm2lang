@@ -54,7 +54,7 @@ Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_ = function (name, r
  */
 Wasm2Lang.Backend.AbstractCodegen.pad_ = function (indent) {
   var /** @type {string} */ s = '';
-  for (var /** number */ k = 0; k !== indent; ++k) {
+  for (var /** @type {number} */ k = 0; k !== indent; ++k) {
     s += '  ';
   }
   return s;
@@ -99,7 +99,7 @@ Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_ = function (value) {
 Wasm2Lang.Backend.AbstractCodegen.prototype.buildLocalInitStrings_ = function (binaryen, funcName, varTypes, numParams) {
   var /** @const {?Object<string, number>} */ initOverrides = this.getLocalInitOverrides_(funcName);
   var /** @const {!Array<string>} */ result = [];
-  for (var /** number */ vi = 0, /** @const {number} */ numVars = varTypes.length; vi !== numVars; ++vi) {
+  for (var /** @type {number} */ vi = 0, /** @const {number} */ numVars = varTypes.length; vi !== numVars; ++vi) {
     var /** @const {number} */ localType = varTypes[vi];
     var /** @const {number} */ localIdx = numParams + vi;
     var /** @const {number|void} */ overrideValue = initOverrides ? initOverrides[String(localIdx)] : void 0;
@@ -329,29 +329,29 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
 
   // 1. Backend-specific fixed bindings (sorted for determinism).
   var /** @const {!Array<string>} */ fixed = this.getFixedModuleBindings_(options);
-  for (var /** number */ fi = 0, /** @const {number} */ fLen = fixed.length; fi !== fLen; ++fi) {
+  for (var /** @type {number} */ fi = 0, /** @const {number} */ fLen = fixed.length; fi !== fLen; ++fi) {
     keys[keys.length] = fixed[fi];
   }
 
   // 2. Globals (module order).
-  for (var /** number */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
+  for (var /** @type {number} */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
     keys[keys.length] = '$g_' + this.safeName_(moduleInfo.globals[gi].globalName);
   }
 
   // 3. Import bindings (module order).
-  for (var /** number */ ii = 0, /** @const {number} */ iLen = moduleInfo.impFuncs.length; ii !== iLen; ++ii) {
+  for (var /** @type {number} */ ii = 0, /** @const {number} */ iLen = moduleInfo.impFuncs.length; ii !== iLen; ++ii) {
     keys[keys.length] = '$if_' + this.safeName_(moduleInfo.impFuncs[ii].importBaseName);
   }
 
   // 4. Internal function names (module order).
-  for (var /** number */ fn = 0, /** @const {number} */ fnLen = moduleInfo.functions.length; fn !== fnLen; ++fn) {
+  for (var /** @type {number} */ fn = 0, /** @const {number} */ fnLen = moduleInfo.functions.length; fn !== fnLen; ++fn) {
     keys[keys.length] = this.safeName_(moduleInfo.functions[fn].name);
   }
 
   // 5. All possible helper function names (sorted for determinism).
   // Registered last: helpers appear at most once as declarations.
   var /** @const {!Array<string>} */ helpers = this.getAllHelperNames_();
-  for (var /** number */ hi = 0, /** @const {number} */ hLen = helpers.length; hi !== hLen; ++hi) {
+  for (var /** @type {number} */ hi = 0, /** @const {number} */ hLen = helpers.length; hi !== hLen; ++hi) {
     keys[keys.length] = helpers[hi];
   }
 
@@ -359,7 +359,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
   var /** @const {!Array<string>} */ ftBindingKeys = Object.keys(moduleInfo.functionTables);
   if (0 !== ftBindingKeys.length) {
     keys[keys.length] = 'ftable';
-    for (var /** number */ fbi = 0, /** @const {number} */ fbLen = ftBindingKeys.length; fbi !== fbLen; ++fbi) {
+    for (var /** @type {number} */ fbi = 0, /** @const {number} */ fbLen = ftBindingKeys.length; fbi !== fbLen; ++fbi) {
       var /** @const {string} */ fbSigKey = ftBindingKeys[fbi];
       keys[keys.length] = '$ftable_' + fbSigKey;
       keys[keys.length] = '$ftable_' + fbSigKey + '_stub';
@@ -373,7 +373,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
   // functions, with a minimum of 5 for helper function locals.
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @type {number} */ maxLocals = 5;
-  for (var /** number */ f = 0, /** @const {number} */ fCount = moduleInfo.functions.length; f !== fCount; ++f) {
+  for (var /** @type {number} */ f = 0, /** @const {number} */ fCount = moduleInfo.functions.length; f !== fCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
     var /** @const {number} */ numParams = binaryen.expandType(funcInfo.params).length;
     var /** @const {number} */ numVars = /** @type {!Array<number>} */ (funcInfo.vars || []).length;

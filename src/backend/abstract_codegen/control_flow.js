@@ -20,7 +20,7 @@ Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) 
   }
 
   var /** @const {!Array<string>} */ lines = text.split('\n');
-  for (var /** number */ i = 0, /** @const {number} */ lineCount = lines.length; i !== lineCount; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ lineCount = lines.length; i !== lineCount; ++i) {
     if ('' !== lines[i]) {
       parts[parts.length] = lines[i];
     }
@@ -289,16 +289,41 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceSwitchCondition_ = function (c
 };
 
 /**
- * Shared enter callback for labeled-break backends (asm.js, Java).
+ * Default flat-switch emitter for labeled-break backends.
+ * Java overrides to also set {@code lastExprIsTerminal}.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch(this, state, nodeCtx).emittedString;
+};
+
+/**
+ * Default root-switch emitter for labeled-break backends.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitRootSwitch_ = function (state, nodeCtx) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledRootSwitch(this, state, nodeCtx);
+};
+
+/**
+ * Default enter callback for labeled-break backends (asm.js, Java).
  * Records label kinds, handles block-loop fusion, and adjusts indent.
- * PHP overrides its own {@code emitEnter_} entirely (uses labelStack).
+ * PHP overrides entirely (uses labelStack).
  *
  * @protected
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledEnter_ = function (state, nodeCtx) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCtx) {
   var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
   var /** @const {number} */ id = /** @type {number} */ (expr['id']);
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
@@ -360,44 +385,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledEnter_ = function (state,
 };
 
 /**
- * Default flat-switch emitter for labeled-break backends.
- * Java overrides to also set {@code lastExprIsTerminal}.
- *
- * @protected
- * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch(this, state, nodeCtx).emittedString;
-};
-
-/**
- * Default root-switch emitter for labeled-break backends.
- *
- * @protected
- * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitRootSwitch_ = function (state, nodeCtx) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledRootSwitch(this, state, nodeCtx);
-};
-
-/**
- * Default enter callback for labeled-break backends.
- * PHP overrides entirely (uses labelStack).
- *
- * @protected
- * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCtx) {
-  return this.emitLabeledEnter_(state, nodeCtx);
-};
-
-/**
  * Shared leave-callback indent adjustment for labeled-break backends.
  * Decrements state.indent for LoopId, IfId, and named blocks (excluding
  * fused blocks and root-switch blocks).  PHP overrides its leave callback
@@ -441,7 +428,7 @@ Wasm2Lang.Backend.AbstractCodegen.assembleBlockChildren_ = function (childResult
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ pad = A.pad_;
   var /** @const {!Array<string>} */ lines = [];
-  for (var /** number */ bi = 0; bi < emitCount; ++bi) {
+  for (var /** @type {number} */ bi = 0; bi < emitCount; ++bi) {
     var /** @const {string} */ childCode = A.getChildResultInfo_(childResults, bi).expressionString;
     if ('' !== childCode) {
       if (-1 === childCode.indexOf('\n')) {
@@ -609,10 +596,38 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSwitchStatement_ = function (
 };
 
 /**
+ * Dispatches a BlockId node to the appropriate emitter: root-switch,
+ * flat-switch, or labeled block.  All three backends share this dispatch;
+ * each may override the individual emitters.
+ *
+ * @suppress {checkTypes}
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state, nodeCtx, childResults) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ hp = A.hasPrefix_;
+  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
+  var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
+  if (blockName) {
+    var /** @const {string} */ fnName = state.functionInfo.name;
+    if (this.isBlockRootSwitch_(fnName, blockName) || hp(blockName, A.RS_ROOT_SWITCH_PREFIX_)) {
+      return this.emitRootSwitch_(state, nodeCtx);
+    }
+    if (this.isBlockSwitchDispatch_(fnName, blockName) || hp(blockName, A.SW_DISPATCH_PREFIX_)) {
+      return this.emitFlatSwitch_(state, nodeCtx);
+    }
+  }
+  return this.emitLabeledBlock_(state, nodeCtx, childResults);
+};
+
+/**
  * Emits a BlockId node body for labeled-break backends (asm.js, Java).
- * Handles fused blocks, do-while/while body detection, and child assembly.
- * Callers handle prefix dispatch (root-switch, flat-switch) before calling.
- * PHP handles BlockId directly because it uses different block wrapping.
+ * Handles fused blocks and child assembly.  PHP overrides to use
+ * {@code do { } while (false)} wrapping instead of labeled blocks.
  *
  * @protected
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
@@ -886,6 +901,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
 
   if (id === binaryen.ConstId) {
     var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
+    if (Wasm2Lang.Backend.ValueType.isI64(binaryen, constType)) {
+      return {
+        emittedString: this.renderI64Const_(binaryen, expr['value']),
+        resultCat: A.CAT_I64
+      };
+    }
     return {
       emittedString: this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType),
       resultCat: A.catForConstType_(binaryen, constType)

@@ -18,6 +18,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
   if (used['$w2l_trunc_u_f64_to_i32']) used['$w2l_trunc_f64'] = true;
   if (used['$w2l_trunc_sat_s_f64_to_i32']) used['$w2l_trunc_f64'] = true;
   if (used['$w2l_trunc_sat_u_f64_to_i32']) used['$w2l_trunc_f64'] = true;
+  if (used['$w2l_trunc_u_f32_to_i64']) used['$w2l_trunc_u_f64_to_i64'] = true;
+  if (used['$w2l_trunc_sat_s_f32_to_i64']) used['$w2l_trunc_sat_s_f64_to_i64'] = true;
+  if (used['$w2l_trunc_sat_u_f32_to_i64']) used['$w2l_trunc_sat_u_f64_to_i64'] = true;
+  if (used['$w2l_trunc_u_f64_to_i64']) used['$w2l_trunc_f64'] = true;
+  if (used['$w2l_trunc_sat_s_f64_to_i64']) used['$w2l_trunc_f64'] = true;
+  if (used['$w2l_trunc_sat_u_f64_to_i64']) used['$w2l_trunc_f64'] = true;
 
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const {string} */ pad1 = pad(1);
@@ -102,6 +108,63 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] = pad2 + 'return (float)Integer.toUnsignedLong(' + l0 + ');';
     lines[lines.length] = pad1 + '}';
   }
+  // i64 helpers.
+  if (used['$w2l_convert_u_i64_to_f32']) {
+    lines[lines.length] = pad1 + 'static float ' + this.n_('$w2l_convert_u_i64_to_f32') + '(long ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'if (' + l0 + ' >= 0L) return (float)' + l0 + ';';
+    lines[lines.length] = pad2 + 'return (float)((' + l0 + ' >>> 1) | (' + l0 + ' & 1L)) * 2.0f;';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_convert_u_i64_to_f64']) {
+    lines[lines.length] = pad1 + 'static double ' + this.n_('$w2l_convert_u_i64_to_f64') + '(long ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'if (' + l0 + ' >= 0L) return (double)' + l0 + ';';
+    lines[lines.length] = pad2 + 'return (double)((' + l0 + ' >>> 1) | (' + l0 + ' & 1L)) * 2.0;';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_trunc_u_f64_to_i64']) {
+    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_u_f64_to_i64') + '(double ' + l0 + ') {';
+    lines[lines.length] = pad2 + l0 + ' = ' + this.n_('$w2l_trunc_f64') + '(' + l0 + ');';
+    lines[lines.length] =
+      pad2 + 'if (' + l0 + ' >= 9.223372036854776E18) return (long)(' + l0 + ' - 9.223372036854776E18) + Long.MIN_VALUE;';
+    lines[lines.length] = pad2 + 'return (long)' + l0 + ';';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_trunc_u_f32_to_i64']) {
+    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_u_f32_to_i64') + '(float ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_u_f64_to_i64') + '((double)' + l0 + ');';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_trunc_sat_s_f64_to_i64']) {
+    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_sat_s_f64_to_i64') + '(double ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'if (Double.isNaN(' + l0 + ')) return 0L;';
+    lines[lines.length] = pad2 + l0 + ' = ' + this.n_('$w2l_trunc_f64') + '(' + l0 + ');';
+    lines[lines.length] = pad2 + 'if (' + l0 + ' >= 9.223372036854776E18) return Long.MAX_VALUE;';
+    lines[lines.length] = pad2 + 'if (' + l0 + ' <= -9.223372036854776E18) return Long.MIN_VALUE;';
+    lines[lines.length] = pad2 + 'return (long)' + l0 + ';';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_trunc_sat_u_f64_to_i64']) {
+    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_sat_u_f64_to_i64') + '(double ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'if (Double.isNaN(' + l0 + ')) return 0L;';
+    lines[lines.length] = pad2 + l0 + ' = ' + this.n_('$w2l_trunc_f64') + '(' + l0 + ');';
+    lines[lines.length] = pad2 + 'if (' + l0 + ' >= 1.8446744073709552E19) return -1L;';
+    lines[lines.length] = pad2 + 'if (' + l0 + ' < 0.0) return 0L;';
+    lines[lines.length] =
+      pad2 + 'if (' + l0 + ' >= 9.223372036854776E18) return (long)(' + l0 + ' - 9.223372036854776E18) + Long.MIN_VALUE;';
+    lines[lines.length] = pad2 + 'return (long)' + l0 + ';';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_trunc_sat_s_f32_to_i64']) {
+    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_sat_s_f32_to_i64') + '(float ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_sat_s_f64_to_i64') + '((double)' + l0 + ');';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_trunc_sat_u_f32_to_i64']) {
+    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_sat_u_f32_to_i64') + '(float ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_sat_u_f64_to_i64') + '((double)' + l0 + ');';
+    lines[lines.length] = pad1 + '}';
+  }
+
   if (used['$w2l_convert_u_i32_to_f64']) {
     lines[lines.length] = pad1 + 'static double ' + this.n_('$w2l_convert_u_i32_to_f64') + '(int ' + l0 + ') {';
     lines[lines.length] = pad2 + 'return (double)Integer.toUnsignedLong(' + l0 + ');';

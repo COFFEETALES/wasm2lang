@@ -26,6 +26,14 @@ Wasm2Lang.Backend.I32Coercion = {};
 Wasm2Lang.Backend.ValueType = {};
 
 /**
+ * Shared i64 coercion model — binary/unary op classification for backends
+ * that handle i64 natively.
+ *
+ * @const
+ */
+Wasm2Lang.Backend.I64Coercion = {};
+
+/**
  * Shared non-i32 numeric-op classification.
  *
  * @const

@@ -139,7 +139,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
         var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ childEdges =
             Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren(expression);
 
-        for (var /** number */ i = 0, /** @const {number} */ childCount = childEdges.length; i !== childCount; ++i) {
+        for (var /** @type {number} */ i = 0, /** @const {number} */ childCount = childEdges.length; i !== childCount; ++i) {
           var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ childEdge = childEdges[i];
           var /** @const {number} */ childExprPtr = /** @type {number} */ (childEdge[3]);
           var /** @type {*} */ childWalkResult = walkInner(expression, childEdge, childExprPtr);

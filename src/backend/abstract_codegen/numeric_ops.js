@@ -40,6 +40,22 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderConst_ = function (binaryen, v
 };
 
 /**
+ * Backend hook for rendering an i64 constant value.  The value is a
+ * binaryen i64 representation (an object with {@code low} and {@code high}
+ * 32-bit halves).  Only called for backends that handle i64 natively.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {*} value  The i64 value ({low: number, high: number}).
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderI64Const_ = function (binaryen, value) {
+  void binaryen;
+  var /** @const {!Object} */ v = /** @type {!Object} */ (value);
+  return '0x' + (v['high'] >>> 0).toString(16) + ('00000000' + (v['low'] >>> 0).toString(16)).slice(-8) + '/*i64*/';
+};
+
+/**
  * Backend hook for rendering the default init value for a local variable.
  *
  * Concrete backends override this with target-language init formatting.
@@ -72,6 +88,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_ = function (binaryen, 
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
     if (C.SIGNED === cat || C.FIXNUM === cat) return expr;
     if (A.CAT_BOOL_I32 === cat) return this.renderNumericComparisonResult_(expr);
+  } else if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) {
+    if (A.CAT_I64 === cat) return expr;
   } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
     if (A.CAT_F32 === cat) return expr;
   } else if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
@@ -132,7 +150,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallIndirectArgs_ = func
   var /** @const */ getInfo = Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_;
 
   // childResults[0] = target index expression, operands start at 1.
-  for (var /** number */ ai = 0, /** @const {number} */ alen = paramTypes.length; ai !== alen; ++ai) {
+  for (var /** @type {number} */ ai = 0, /** @const {number} */ alen = paramTypes.length; ai !== alen; ++ai) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ argInfo = getInfo(childResults, ai + 1);
     callArgs[callArgs.length] = this.coerceAtBoundary_(
       binaryen,
@@ -248,7 +266,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
   var /** @const {!Array<number>} */ operands = /** @type {!Array<number>} */ (expr['operands']) || [];
   var /** @const {!Array<string>} */ callArgs = [];
 
-  for (var /** number */ ai = 0, /** @const {number} */ alen = childResults.length; ai !== alen; ++ai) {
+  for (var /** @type {number} */ ai = 0, /** @const {number} */ alen = childResults.length; ai !== alen; ++ai) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ argInfo =
         Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_(childResults, ai);
     var /** @const {number} */ argType =
@@ -277,6 +295,21 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOp_ = function (info, L,
 };
 
 /**
+ * Dispatches a classified i64 binary operation to the backend-specific
+ * renderer registered in {@code i64BinaryRenderers_}.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderI64BinaryOp_ = function (info, L, R) {
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined} */ fn = this.i64BinaryRenderers_[info.category];
+  return fn ? fn(this, info, L, R) : '(__unknown_i64_binop(' + L + ', ' + R + '))';
+};
+
+/**
  * Returns the expression category for an i32 binary operation result.
  * Asm.js overrides this to return FIXNUM for comparisons and UNSIGNED
  * for unsigned bitwise ops.
@@ -289,6 +322,20 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.i32BinaryResultCat_ = function (info
   return Wasm2Lang.Backend.I32Coercion.OP_COMPARISON === info.category
     ? Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32
     : Wasm2Lang.Backend.I32Coercion.SIGNED;
+};
+
+/**
+ * Returns the expression category for an i64 binary operation result.
+ * Comparisons produce an i32 boolean; everything else produces CAT_I64.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.i64BinaryResultCat_ = function (info) {
+  return Wasm2Lang.Backend.I32Coercion.OP_COMPARISON === info.category
+    ? Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32
+    : Wasm2Lang.Backend.AbstractCodegen.CAT_I64;
 };
 
 /**
@@ -321,6 +368,24 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitI32Unary_ = function (binaryen, 
 };
 
 /**
+ * Backend hook for i64 unary operations (eqz, clz, ctz, popcnt, extend*).
+ * Returns the rendered expression and category, or null if the backend
+ * does not handle i64 natively.  Concrete backends override this.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} unaryCategory  Result of {@code I64Coercion.classifyUnaryOp}.
+ * @param {string} operandExpr
+ * @return {?{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitI64Unary_ = function (binaryen, unaryCategory, operandExpr) {
+  void binaryen;
+  void unaryCategory;
+  void operandExpr;
+  return null;
+};
+
+/**
  * Shared UnaryId dispatch.  Classifies as i32 unary, numeric unary,
  * or unknown; renders accordingly.
  *
@@ -343,6 +408,15 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, u
         operandExpr
       );
     if (i32Result) return i32Result;
+  }
+  var /** @const {number} */ i64Cat = Wasm2Lang.Backend.I64Coercion.classifyUnaryOp(binaryen, unaryOp);
+  if (-1 !== i64Cat) {
+    var /** @const {?{emittedString: string, resultCat: number}} */ i64Result = this.emitI64Unary_(
+        binaryen,
+        i64Cat,
+        operandExpr
+      );
+    if (i64Result) return i64Result;
   }
   var /** @const {?Wasm2Lang.Backend.NumericOps.UnaryOpInfo} */ numInfo = Wasm2Lang.Backend.NumericOps.classifyUnaryOp(
       binaryen,
@@ -379,6 +453,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, 
   var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = C.classifyBinaryOp(binaryen, binaryOp);
   if (binInfo) {
     return {emittedString: this.renderBinaryOp_(binInfo, L, R), resultCat: this.i32BinaryResultCat_(binInfo)};
+  }
+  var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ i64Info = Wasm2Lang.Backend.I64Coercion.classifyBinaryOp(
+      binaryen,
+      binaryOp
+    );
+  if (i64Info) {
+    return {emittedString: this.renderI64BinaryOp_(i64Info, L, R), resultCat: this.i64BinaryResultCat_(i64Info)};
   }
   var /** @const {?Wasm2Lang.Backend.NumericOps.BinaryOpInfo} */ numInfo = Wasm2Lang.Backend.NumericOps.classifyBinaryOp(
       binaryen,

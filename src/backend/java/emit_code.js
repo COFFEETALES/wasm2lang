@@ -23,7 +23,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
 
   // Functional interfaces for function table signatures.
   var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
-  for (var /** number */ fti = 0, /** @const {number} */ ftLen = ftKeys.length; fti !== ftLen; ++fti) {
+  for (var /** @type {number} */ fti = 0, /** @const {number} */ ftLen = ftKeys.length; fti !== ftLen; ++fti) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDescI =
         moduleInfo.functionTables[ftKeys[fti]];
     var /** @const {string} */ ifaceName = this.n_('$ftsig_' + ftDescI.signatureKey);
@@ -32,7 +32,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
         ftDescI.signatureReturnType
       );
     var /** @const {!Array<string>} */ ifaceParams = [];
-    for (var /** number */ ip = 0, /** @const {number} */ ipLen = ftDescI.signatureParams.length; ip !== ipLen; ++ip) {
+    for (var /** @type {number} */ ip = 0, /** @const {number} */ ipLen = ftDescI.signatureParams.length; ip !== ipLen; ++ip) {
       ifaceParams[ifaceParams.length] =
         Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, ftDescI.signatureParams[ip]) + ' ' + this.localN_(ip);
     }
@@ -77,7 +77,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     'SQRT1_2': '0.7071067811865476',
     'SQRT2': '1.4142135623730951'
   };
-  for (var /** number */ jsi = 0, /** @const {number} */ jsiLen = moduleInfo.impFuncs.length; jsi !== jsiLen; ++jsi) {
+  for (var /** @type {number} */ jsi = 0, /** @const {number} */ jsiLen = moduleInfo.impFuncs.length; jsi !== jsiLen; ++jsi) {
     var /** @const {string} */ jsiKind = classify(
         moduleInfo.impFuncs[jsi].importModule,
         moduleInfo.impFuncs[jsi].importBaseName
@@ -86,7 +86,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
       javaStdlibNames[moduleInfo.impFuncs[jsi].wasmFuncName] = JAVA_MATH_FUNCS_[moduleInfo.impFuncs[jsi].importBaseName];
     }
   }
-  for (var /** number */ jgi = 0, /** @const {number} */ jgiLen = moduleInfo.impGlobals.length; jgi !== jgiLen; ++jgi) {
+  for (var /** @type {number} */ jgi = 0, /** @const {number} */ jgiLen = moduleInfo.impGlobals.length; jgi !== jgiLen; ++jgi) {
     var /** @const {string} */ jgiKind = classify(
         moduleInfo.impGlobals[jgi].importModule,
         moduleInfo.impGlobals[jgi].importBaseName
@@ -104,7 +104,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   var /** @const {number} */ fieldInsertIndex = outputParts.length;
 
   // Function table array fields.
-  for (var /** number */ ftf = 0; ftf !== ftLen; ++ftf) {
+  for (var /** @type {number} */ ftf = 0; ftf !== ftLen; ++ftf) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDescF =
         moduleInfo.functionTables[ftKeys[ftf]];
     outputParts[outputParts.length] =
@@ -128,7 +128,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Build internalName → exportName map so exported methods use their
   // public export name and non-exported methods stay private.
   var /** @const {!Object<string, string>} */ exportNameMap = /** @type {!Object<string, string>} */ (Object.create(null));
-  for (var /** number */ ei = 0, /** @const {number} */ eLen = moduleInfo.expFuncs.length; ei !== eLen; ++ei) {
+  for (var /** @type {number} */ ei = 0, /** @const {number} */ eLen = moduleInfo.expFuncs.length; ei !== eLen; ++ei) {
     exportNameMap[moduleInfo.expFuncs[ei].internalName] = moduleInfo.expFuncs[ei].exportName;
   }
 
@@ -136,7 +136,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   var /** @const {!Array<string>} */ functionParts = [];
-  for (var /** number */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
+  for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
     functionParts[functionParts.length] = this.emitFunction_(
       wasmModule,
@@ -157,7 +157,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   this.usedHelpers_ = null;
   var /** @const {!Object<string, boolean>} */ jub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
   this.usedBindings_ = null;
-  for (var /** number */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
+  for (var /** @type {number} */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
     outputParts[outputParts.length] = helperLines[hi];
   }
 
@@ -166,7 +166,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   var /** @const {!Array<string>} */ javaFieldLines = [];
   var /** @const {!Array<string>} */ javaAssignLines = [];
   var /** @const {number} */ javaImpCount = moduleInfo.impFuncs.length;
-  for (var /** number */ ji = 0; ji !== javaImpCount; ++ji) {
+  for (var /** @type {number} */ ji = 0; ji !== javaImpCount; ++ji) {
     if (moduleInfo.impFuncs[ji].wasmFuncName in javaStdlibNames) {
       continue;
     }
@@ -178,7 +178,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     javaAssignLines[javaAssignLines.length] =
       pad2 + 'this.' + this.n_(jImpKey) + ' = foreign.get("' + moduleInfo.impFuncs[ji].importBaseName + '");';
   }
-  for (var /** number */ jgf = 0, /** @const {number} */ jgfLen = moduleInfo.globals.length; jgf !== jgfLen; ++jgf) {
+  for (var /** @type {number} */ jgf = 0, /** @const {number} */ jgfLen = moduleInfo.globals.length; jgf !== jgfLen; ++jgf) {
     var /** @const {string} */ jGlobalKey = '$g_' + this.safeName_(moduleInfo.globals[jgf].globalName);
     if (!jub[jGlobalKey]) {
       continue;
@@ -190,19 +190,19 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     javaFieldLines[javaFieldLines.length] =
       pad1 + jGlobalType + ' ' + this.n_(jGlobalKey) + ' = ' + moduleInfo.globals[jgf].globalInitValue + ';';
   }
-  for (var /** number */ jfs = javaFieldLines.length - 1; jfs >= 0; --jfs) {
+  for (var /** @type {number} */ jfs = javaFieldLines.length - 1; jfs >= 0; --jfs) {
     outputParts.splice(fieldInsertIndex, 0, javaFieldLines[jfs]);
   }
   // Adjust importAssignInsertIndex by the number of field lines inserted before it.
   var /** @const {number} */ adjustedAssignIndex = importAssignInsertIndex + javaFieldLines.length;
-  for (var /** number */ jas = javaAssignLines.length - 1; jas >= 0; --jas) {
+  for (var /** @type {number} */ jas = javaAssignLines.length - 1; jas >= 0; --jas) {
     outputParts.splice(adjustedAssignIndex, 0, javaAssignLines[jas]);
   }
 
   // Function table array initialisation — splice into constructor now that
   // the export-name map exists and method references can be resolved.
   var /** @const {!Array<string>} */ ftInitLines = [];
-  for (var /** number */ fta = 0; fta !== ftLen; ++fta) {
+  for (var /** @type {number} */ fta = 0; fta !== ftLen; ++fta) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDescA =
         moduleInfo.functionTables[ftKeys[fta]];
     var /** @const {string} */ ftaSigKey = ftDescA.signatureKey;
@@ -212,7 +212,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
         ftDescA.signatureReturnType !== binaryen.none && 0 !== ftDescA.signatureReturnType;
     // Build stub lambda for null entries.
     var /** @const {!Array<string>} */ lambdaParams = [];
-    for (var /** number */ lp = 0, /** @const {number} */ lpLen = ftDescA.signatureParams.length; lp !== lpLen; ++lp) {
+    for (var /** @type {number} */ lp = 0, /** @const {number} */ lpLen = ftDescA.signatureParams.length; lp !== lpLen; ++lp) {
       lambdaParams[lambdaParams.length] = this.localN_(lp);
     }
     var /** @type {string} */ stubLambda;
@@ -223,7 +223,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     }
     // Build array entries.
     var /** @const {!Array<string>} */ entryExprs = [];
-    for (var /** number */ te = 0, /** @const {number} */ teLen = ftDescA.tableEntries.length; te !== teLen; ++te) {
+    for (var /** @type {number} */ te = 0, /** @const {number} */ teLen = ftDescA.tableEntries.length; te !== teLen; ++te) {
       var /** @const {string|null} */ funcName = ftDescA.tableEntries[te].boundName;
       if (null === funcName) {
         entryExprs[entryExprs.length] = stubLambda;
@@ -240,12 +240,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
       pad2 + 'this.' + ftaArrayName + ' = new ' + ftaIfaceName + '[] { ' + entryExprs.join(', ') + ' };';
   }
   // Splice init lines into the constructor (just before the closing brace).
-  for (var /** number */ fts = ftInitLines.length - 1; fts >= 0; --fts) {
+  for (var /** @type {number} */ fts = ftInitLines.length - 1; fts >= 0; --fts) {
     outputParts.splice(ftInitInsertIndex + javaFieldLines.length + javaAssignLines.length, 0, ftInitLines[fts]);
   }
 
   // Append function bodies.
-  for (var /** number */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
+  for (var /** @type {number} */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
     outputParts[outputParts.length] = functionParts[fi];
   }
 

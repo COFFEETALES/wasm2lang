@@ -12,7 +12,7 @@
 Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr, opt_valueCat) {
   var /** @const {string} */ name = info.opName;
   var /** @const {boolean} */ isF32 = Wasm2Lang.Backend.ValueType.isF32(binaryen, info.operandType);
-  var /** @const {number} */ cat = opt_valueCat != null ? opt_valueCat : Wasm2Lang.Backend.AbstractCodegen.CAT_RAW;
+  var /** @const {number} */ cat = null != opt_valueCat ? opt_valueCat : Wasm2Lang.Backend.AbstractCodegen.CAT_RAW;
   var /** @type {string} */ inner;
 
   // neg: Java negation preserves float type — skip coercion when input category confirms type.
@@ -55,6 +55,59 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericUnaryOp_ = function (binary
     return 'Float.floatToRawIntBits(' + inner + ')';
   }
   if ('reinterpret_i32_to_f32' === name) return 'Float.intBitsToFloat(' + valueExpr + ')';
+
+  // i64 ↔ i32 conversions.
+  if ('wrap_i64_to_i32' === name) return '(int)(' + valueExpr + ')';
+  if ('extend_s_i32_to_i64' === name) return '(long)(' + valueExpr + ')';
+  if ('extend_u_i32_to_i64' === name) return 'Integer.toUnsignedLong(' + valueExpr + ')';
+
+  // i64 → float conversions.
+  if ('convert_s_i64_to_f32' === name) return '(float)(' + valueExpr + ')';
+  if ('convert_u_i64_to_f32' === name) {
+    this.markHelper_('$w2l_convert_u_i64_to_f32');
+    return this.n_('$w2l_convert_u_i64_to_f32') + '(' + valueExpr + ')';
+  }
+  if ('convert_s_i64_to_f64' === name) return '(double)(' + valueExpr + ')';
+  if ('convert_u_i64_to_f64' === name) {
+    this.markHelper_('$w2l_convert_u_i64_to_f64');
+    return this.n_('$w2l_convert_u_i64_to_f64') + '(' + valueExpr + ')';
+  }
+
+  // float → i64 truncations.
+  if ('trunc_s_f32_to_i64' === name || 'trunc_s_f64_to_i64' === name) {
+    inner = this.coerceToType_(binaryen, valueExpr, cat, info.operandType);
+    return '(long)(' + inner + ')';
+  }
+  if ('trunc_u_f32_to_i64' === name) {
+    this.markHelper_('$w2l_trunc_u_f32_to_i64');
+    return this.n_('$w2l_trunc_u_f32_to_i64') + '(' + this.coerceToType_(binaryen, valueExpr, cat, info.operandType) + ')';
+  }
+  if ('trunc_u_f64_to_i64' === name) {
+    this.markHelper_('$w2l_trunc_u_f64_to_i64');
+    return this.n_('$w2l_trunc_u_f64_to_i64') + '(' + valueExpr + ')';
+  }
+
+  // i64 ↔ f64 reinterpret.
+  if ('reinterpret_i64_to_f64' === name) return 'Double.longBitsToDouble(' + valueExpr + ')';
+  if ('reinterpret_f64_to_i64' === name) return 'Double.doubleToRawLongBits(' + valueExpr + ')';
+
+  // Saturating truncation f32/f64 → i64.
+  if ('trunc_sat_s_f32_to_i64' === name) {
+    this.markHelper_('$w2l_trunc_sat_s_f32_to_i64');
+    return this.n_('$w2l_trunc_sat_s_f32_to_i64') + '(' + this.coerceToType_(binaryen, valueExpr, cat, info.operandType) + ')';
+  }
+  if ('trunc_sat_u_f32_to_i64' === name) {
+    this.markHelper_('$w2l_trunc_sat_u_f32_to_i64');
+    return this.n_('$w2l_trunc_sat_u_f32_to_i64') + '(' + this.coerceToType_(binaryen, valueExpr, cat, info.operandType) + ')';
+  }
+  if ('trunc_sat_s_f64_to_i64' === name) {
+    this.markHelper_('$w2l_trunc_sat_s_f64_to_i64');
+    return this.n_('$w2l_trunc_sat_s_f64_to_i64') + '(' + valueExpr + ')';
+  }
+  if ('trunc_sat_u_f64_to_i64' === name) {
+    this.markHelper_('$w2l_trunc_sat_u_f64_to_i64');
+    return this.n_('$w2l_trunc_sat_u_f64_to_i64') + '(' + valueExpr + ')';
+  }
 
   return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_.call(this, binaryen, info, valueExpr, opt_valueCat);
 };

@@ -123,7 +123,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting
     }
     var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
     if (ch) {
-      for (var /** number */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
+      for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
         if (S.containsBreakableNesting_(binaryen, ch[ci])) {
           return true;
         }

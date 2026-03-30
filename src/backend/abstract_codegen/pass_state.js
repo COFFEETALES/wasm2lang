@@ -16,7 +16,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.setPassRunResult_ = function (result
   var /** @const {!Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} */ index =
     /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} */ (Object.create(null));
   var /** @const {!Array<!Wasm2Lang.Wasm.Tree.PassMetadata>} */ funcs = result.functions;
-  for (var /** number */ i = 0, /** @const {number} */ len = funcs.length; i !== len; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = funcs.length; i !== len; ++i) {
     var /** @const {string|void} */ name = funcs[i].passFuncName;
     if (name) {
       index[name] = funcs[i];
@@ -145,6 +145,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.markBinding_ = function (name) {
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_F64 = 6;
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_RAW = 7;
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 = 8;
+/** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_I64 = 9;
 
 /**
  * Shared type→category dispatch.  {@code catForCoercedType_} and
@@ -161,6 +162,7 @@ Wasm2Lang.Backend.AbstractCodegen.catForType_ = function (binaryen, wasmType, i3
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) return i32Cat;
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) return Wasm2Lang.Backend.AbstractCodegen.CAT_F32;
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) return Wasm2Lang.Backend.AbstractCodegen.CAT_F64;
+  if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) return Wasm2Lang.Backend.AbstractCodegen.CAT_I64;
   return defaultCat;
 };
 

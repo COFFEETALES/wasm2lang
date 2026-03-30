@@ -75,7 +75,7 @@ Wasm2Lang.Backend.IdentifierMangler.ENCODER_MAX_CHARS_ = 4;
  */
 Wasm2Lang.Backend.IdentifierMangler.buildCharsetIndex_ = function (charset) {
   var /** @type {!Object<string, number>} */ indexByChar = Object.create(null);
-  for (var /** number */ i = 0, /** @const {number} */ charLen = charset.length; i < charLen; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ charLen = charset.length; i < charLen; ++i) {
     indexByChar[charset.charAt(i)] = i;
   }
   return indexByChar;
@@ -89,7 +89,7 @@ Wasm2Lang.Backend.IdentifierMangler.buildCharsetIndex_ = function (charset) {
  */
 Wasm2Lang.Backend.IdentifierMangler.intPow_ = function (base, exponent) {
   var /** @type {number} */ result = 1;
-  for (var /** number */ i = 0; i < exponent; ++i) {
+  for (var /** @type {number} */ i = 0; i < exponent; ++i) {
     result *= base;
   }
   return result;
@@ -164,7 +164,7 @@ Wasm2Lang.Backend.IdentifierMangler.buildEncoderSpec_ = function (key, singleCha
   var /** @const {!Array<!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_>} */ tiers = [];
   var /** @type {number} */ offset = 0;
 
-  for (var /** number */ length = 1; length <= maxChars; ++length) {
+  for (var /** @type {number} */ length = 1; length <= maxChars; ++length) {
     var /** @const {!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_} */ tier =
         Wasm2Lang.Backend.IdentifierMangler.newEncoderTier_(length, sc, bc, offset);
     tiers[tiers.length] = tier;
@@ -214,7 +214,7 @@ Wasm2Lang.Backend.IdentifierMangler.invokeRound_ = function (r, key, range, roun
 Wasm2Lang.Backend.IdentifierMangler.numberToText_ = function (value, charset, length) {
   var /** @const {number} */ range = charset.length;
   var /** @const {!Array<string>} */ chars = new Array(length);
-  for (var /** number */ idx = length - 1; idx >= 0; --idx) {
+  for (var /** @type {number} */ idx = length - 1; idx >= 0; --idx) {
     chars[idx] = charset.charAt(value % range);
     value = Math.floor(value / range);
   }
@@ -268,7 +268,7 @@ Wasm2Lang.Backend.IdentifierMangler.feistelPermute_ = function (value, tier, key
  * @return {!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_}
  */
 Wasm2Lang.Backend.IdentifierMangler.getTierByNumber_ = function (numberValue, spec) {
-  for (var /** number */ i = 0, /** @const {number} */ tierLen = spec.tiers.length; i < tierLen; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ tierLen = spec.tiers.length; i < tierLen; ++i) {
     var /** @const {!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_} */ tier = spec.tiers[i];
     if (numberValue < tier.ofs + tier.tierSize) {
       return tier;
@@ -306,7 +306,7 @@ Wasm2Lang.Backend.IdentifierMangler.encode_ = function (numberValue, spec) {
  * @param {!Array<string>} keys
  */
 Wasm2Lang.Backend.IdentifierMangler.prototype.registerModuleBindings = function (keys) {
-  for (var /** number */ i = 0, /** @const {number} */ len = keys.length; i !== len; ++i) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = keys.length; i !== len; ++i) {
     var /** @const {string} */ k = keys[i];
     if (!(k in this.moduleNames_)) {
       this.moduleKeys_[this.moduleKeys_.length] = k;
@@ -334,7 +334,7 @@ Wasm2Lang.Backend.IdentifierMangler.prototype.precompute = function (localPoolSi
 
   return Wasm2Lang.Backend.IdentifierMangler.resolveNames_(totalCount, this.spec_, this.profile_).then(function (names) {
     self.localPool_ = names.slice(0, localPoolSize);
-    for (var /** number */ i = 0; i < moduleCount; ++i) {
+    for (var /** @type {number} */ i = 0; i < moduleCount; ++i) {
       self.moduleNames_[self.moduleKeys_[i]] = names[localPoolSize + i];
     }
   });
