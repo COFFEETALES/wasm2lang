@@ -730,6 +730,40 @@ BinaryenI32Api.prototype.eqz = function (v) {};
 BinaryenModule.prototype.i32;
 
 // ---------------------------------------------------------------------------
+// BinaryenModule i64 expression-builder sub-API (module.i64.*)
+// ---------------------------------------------------------------------------
+
+/**
+ * @interface
+ * @const
+ */
+var BinaryenI64Api = function () {};
+
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.eq = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.ne = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.lt_s = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.le_s = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.gt_s = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.ge_s = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.lt_u = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.le_u = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.gt_u = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI64Api.prototype.ge_u = function (l, r) {};
+
+/** @type {!BinaryenI64Api} */
+BinaryenModule.prototype.i64;
+
+// ---------------------------------------------------------------------------
 // Binaryen expression-mutation sub-APIs
 // Each sub-object exposes setter methods for its expression kind.
 // ---------------------------------------------------------------------------

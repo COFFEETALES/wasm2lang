@@ -105,7 +105,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildLocalInitStrings_ = function (b
     var /** @const {number|void} */ overrideValue = initOverrides ? initOverrides[String(localIdx)] : void 0;
     // prettier-ignore
     result[result.length] = void 0 !== overrideValue
-      ? this.renderConst_(binaryen, /** @type {number} */ (overrideValue), localType)
+      ? (Wasm2Lang.Backend.ValueType.isI64(binaryen, localType)
+        ? this.renderI64Const_(binaryen, overrideValue)
+        : this.renderConst_(binaryen, /** @type {number} */ (overrideValue), localType))
       : this.renderLocalInit_(binaryen, localType);
   }
   return result;

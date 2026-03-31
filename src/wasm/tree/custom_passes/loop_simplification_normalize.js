@@ -75,6 +75,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.invertCondition_ = funct
     if (op === binaryen.GeUInt32) return i32.lt_u(L, R);
     if (op === binaryen.GtUInt32) return i32.le_u(L, R);
     if (op === binaryen.LeUInt32) return i32.gt_u(L, R);
+    var /** @const {!BinaryenI64Api} */ i64 = module.i64;
+    if (op === binaryen.EqInt64) return i64.ne(L, R);
+    if (op === binaryen.NeInt64) return i64.eq(L, R);
+    if (op === binaryen.LtSInt64) return i64.ge_s(L, R);
+    if (op === binaryen.GeSInt64) return i64.lt_s(L, R);
+    if (op === binaryen.GtSInt64) return i64.le_s(L, R);
+    if (op === binaryen.LeSInt64) return i64.gt_s(L, R);
+    if (op === binaryen.LtUInt64) return i64.ge_u(L, R);
+    if (op === binaryen.GeUInt64) return i64.lt_u(L, R);
+    if (op === binaryen.GtUInt64) return i64.le_u(L, R);
+    if (op === binaryen.LeUInt64) return i64.gt_u(L, R);
   }
   if (info.id === binaryen.UnaryId && /** @type {number} */ (info.op) === binaryen.EqZInt32) {
     return /** @type {number} */ (info.value);
