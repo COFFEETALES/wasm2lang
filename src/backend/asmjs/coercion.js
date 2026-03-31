@@ -17,6 +17,12 @@ Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_ = function (expr) {
   if (Wasm2Lang.Backend.I32Coercion.isConstant(expr)) {
     return expr;
   }
+  // Expressions whose top-level operator is &, ^, or | are already signed
+  // in asm.js and do not need an extra |0 coercion.
+  var /** @const {number} */ top = P.topLevel(expr);
+  if (top <= P.PREC_BIT_AND_ && top >= P.PREC_BIT_OR_) {
+    return expr;
+  }
   return P.wrap(expr, P.PREC_BIT_OR_, true) + '|0';
 };
 
@@ -69,6 +75,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderFloatCoercion_ = function (expr) 
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceAtBoundary_ = function (binaryen, expr, cat, wasmType) {
+  // In the asm.js type lattice, fixnum and signed are valid return/arg types
+  // for i32 and do not need an extra |0 coercion.  INT (local.get, comparisons,
+  // eqz) and UNSIGNED (>>>) still need coercion at boundaries.
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType) && (C.FIXNUM === cat || C.SIGNED === cat)) {
+    return expr;
+  }
   return this.renderCoercionByType_(binaryen, expr, wasmType);
 };
 
@@ -154,14 +167,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitI32Unary_ = function (binaryen, una
   if (C.UNARY_EQZ === unaryCategory) {
     return {
       emittedString: Wasm2Lang.Backend.AbstractCodegen.Precedence_.renderPrefix('!', operandExpr),
-      resultCat: C.FIXNUM
+      resultCat: C.INT
     };
   }
   if (C.UNARY_CLZ === unaryCategory) {
     this.markBinding_('Math_clz32');
     return {
-      emittedString: Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(this.n_('Math_clz32') + '(' + operandExpr + ')'),
-      resultCat: C.SIGNED
+      emittedString: this.n_('Math_clz32') + '(' + operandExpr + ')',
+      resultCat: C.FIXNUM
     };
   }
   if (C.UNARY_CTZ === unaryCategory) {
@@ -195,14 +208,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitI32Unary_ = function (binaryen, una
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.i32BinaryResultCat_ = function (info) {
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  if (C.OP_COMPARISON === info.category) return C.FIXNUM;
+  if (C.OP_COMPARISON === info.category) return C.INT;
   if (C.OP_BITWISE === info.category && info.unsigned) return C.UNSIGNED;
   return C.SIGNED;
 };
 
 /** @override @protected @return {number} */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
-  return Wasm2Lang.Backend.I32Coercion.FIXNUM;
+  return Wasm2Lang.Backend.I32Coercion.INT;
 };
 
 // buildCoercedCallArgs_, buildCoercedCallIndirectArgs_, and

@@ -68,7 +68,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
   switch (id) {
     case binaryen.LocalGetId:
       result = this.localN_(/** @type {number} */ (expr['index']));
-      resultCat = C.SIGNED;
+      resultCat = C.INT;
       break;
 
     case binaryen.GlobalGetId: {
@@ -81,7 +81,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         result = this.n_(globalGetKey);
         this.markBinding_(globalGetKey);
       }
-      resultCat = A.catForCoercedType_(binaryen, globalGetType);
+      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, globalGetType)
+        ? C.INT
+        : A.catForCoercedType_(binaryen, globalGetType);
       break;
     }
 

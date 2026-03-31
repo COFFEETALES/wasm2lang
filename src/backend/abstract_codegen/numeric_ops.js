@@ -86,7 +86,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_ = function (binaryen, 
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
-    if (C.SIGNED === cat || C.FIXNUM === cat) return expr;
+    if (C.SIGNED === cat || C.FIXNUM === cat || C.UNSIGNED === cat || C.INT === cat) return expr;
     if (A.CAT_BOOL_I32 === cat) return this.renderNumericComparisonResult_(expr);
   } else if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) {
     if (A.CAT_I64 === cat) return expr;
