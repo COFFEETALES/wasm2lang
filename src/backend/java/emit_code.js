@@ -187,8 +187,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
         binaryen,
         moduleInfo.globals[jgf].globalType
       );
-    javaFieldLines[javaFieldLines.length] =
-      pad1 + jGlobalType + ' ' + this.n_(jGlobalKey) + ' = ' + moduleInfo.globals[jgf].globalInitValue + ';';
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_} */ jGlobalInfo = moduleInfo.globals[jgf];
+    var /** @const {string} */ jGlobalInit = Wasm2Lang.Backend.ValueType.isI64(binaryen, jGlobalInfo.globalType)
+        ? this.renderI64Const_(binaryen, jGlobalInfo.globalInitValue)
+        : this.renderConst_(binaryen, /** @type {number} */ (jGlobalInfo.globalInitValue), jGlobalInfo.globalType);
+    javaFieldLines[javaFieldLines.length] = pad1 + jGlobalType + ' ' + this.n_(jGlobalKey) + ' = ' + jGlobalInit + ';';
   }
   for (var /** @type {number} */ jfs = javaFieldLines.length - 1; jfs >= 0; --jfs) {
     outputParts.splice(fieldInsertIndex, 0, javaFieldLines[jfs]);

@@ -57,7 +57,7 @@ Wasm2Lang.Backend.JavaCodegen.renderBitwiseBinary_ = function (self, info, L, R)
   void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const */ bi = P.bitwiseInfo(info.opStr);
-  return P.renderInfix(L, info.opStr, R, bi.bitwisePrecedence, true);
+  return P.renderInfix(L, info.opStr, R, bi.bitwisePrecedence, bi.bitwiseAllowRightEqual);
 };
 
 /**

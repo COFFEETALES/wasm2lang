@@ -517,7 +517,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectDefinedFunctions_ = function 
  *   globalName: string,
  *   globalType: number,
  *   globalMutable: boolean,
- *   globalInitValue: number
+ *   globalInitValue: *
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_;
@@ -580,7 +580,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
         globalName: globalInfo.name,
         globalType: globalInfo.type,
         globalMutable: !!globalInfo.mutable,
-        globalInitValue: /** @type {number} */ (initExpr.value) || 0
+        globalInitValue: initExpr.value || 0
       };
     }
   }
