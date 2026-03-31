@@ -75,11 +75,19 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderFloatCoercion_ = function (expr) 
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceAtBoundary_ = function (binaryen, expr, cat, wasmType) {
-  // In the asm.js type lattice, fixnum and signed are valid return/arg types
-  // for i32 and do not need an extra |0 coercion.  INT (local.get, comparisons,
-  // eqz) and UNSIGNED (>>>) still need coercion at boundaries.
+  // Skip coercion when the expression category already satisfies the target
+  // asm.js type.  i32: fixnum/signed are valid return/arg types; INT (local.get,
+  // comparisons, eqz) and UNSIGNED (>>>) still need coercion.  f32/f64:
+  // already-typed expressions (Math_fround / +expr) don't need double wrapping.
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType) && (C.FIXNUM === cat || C.SIGNED === cat)) {
+    return expr;
+  }
+  if (A.CAT_F32 === cat && Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
+    return expr;
+  }
+  if (A.CAT_F64 === cat && Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     return expr;
   }
   return this.renderCoercionByType_(binaryen, expr, wasmType);
