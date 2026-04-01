@@ -13,6 +13,7 @@
 <p align="center">
   <a href="https://github.com/COFFEETALES/wasm2lang/stargazers"><img src="https://img.shields.io/github/stars/COFFEETALES/wasm2lang?style=flat&label=stars&color=f59e0b&logo=github&logoColor=white" alt="GitHub stars" height="28" /></a>
   <a href="https://github.com/COFFEETALES/wasm2lang/issues"><img src="https://img.shields.io/github/issues/COFFEETALES/wasm2lang?style=flat&label=issues&color=0f766e&logo=github&logoColor=white" alt="Open issues" height="28" /></a>
+  <a href="https://github.com/COFFEETALES/wasm2lang/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-what's%20new-059669?style=flat&logo=keepachangelog&logoColor=white" alt="Changelog" height="28" /></a>
   <a href="https://github.com/sponsors/COFFEETALES"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-db2777?style=flat&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" height="28" /></a>
 </p>
 
@@ -62,6 +63,28 @@ intermediate representation for source-code generation.
 
 Write once. Compile to `.wasm`. Run `wasm2lang`. Get native-feeling source code
 that each platform's toolchain can compile, inline, and optimize directly.
+
+## How it works
+
+```
+        ┌──────────────────────────────────────┐
+.wasm ─>│ WASM2LANG                            │─> source
+.wast   │ parse ─> normalize ─> passes ─> emit │    code
+        └──────────────────────────────────────┘
+```
+
+1. **Parse** -- reads `.wasm` binary or `.wast` text via the Binaryen API.
+2. **Normalize** -- optional Binaryen optimization passes restructure the IR
+   (flatten, simplify locals, reorder, vacuum).
+3. **Passes** -- wasm2lang's own structural passes analyze and transform the
+   control flow graph: loop simplification, block-loop fusion, switch dispatch
+   detection, local usage analysis, and drop-const elision.
+4. **Emit** -- a traversal-based code emitter walks each function body and
+   produces target-language source, applying type-aware coercion elimination
+   and identifier mangling along the way.
+
+No intermediate AST is constructed. The emitter produces output chunks
+directly from the traversal visitor callbacks, keeping memory overhead minimal.
 
 ## Backends
 
@@ -349,7 +372,15 @@ to pass.
 The playground includes selectable WAT samples (including data-segment
 examples that showcase metadata output), backend and normalization
 selectors, identifier mangling, and shows both the generated
-metadata + code and normalized WAT output.
+metadata + code and normalized WAT output. No install, no server --
+everything runs client-side in your browser.
+
+## Changelog
+
+Release history, new features, and breaking changes are tracked in
+[`CHANGELOG.md`](CHANGELOG.md). Each version documents what was added,
+changed, and fixed -- useful for understanding what the generated output
+looks like at a given release.
 
 ## Contributing
 

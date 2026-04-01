@@ -11,8 +11,8 @@
 
 - Post-i64-lowering pass sequence improved: `simplify-locals-notee-nostructure` + `vacuum` + `merge-blocks` + `reorder-locals` eliminates dead stores created by tee-fold and local coalescing.
 - BinaryenExpressionInfo property access converted from bracket notation (`expr['id']`) to dot notation (`expr.id`) across all backends and custom passes — 200+ sites in 12 files, enabled by the existing `@record` extern declaration.
-- Asm.js boundary coercion model refined: category tags now align with the asm.js type lattice (`INT` for local.get/comparisons, `SIGNED` for bitwise/shift results, `FIXNUM` for Math\_clz32/constants), eliminating redundant `|0` annotations at return and call boundaries.
-- Float/double boundary coercion extended: `coerceAtBoundary_` skips wrapping for `CAT_F32`/`CAT_F64` expressions (Math\_fround, +expr, typed locals), removing double `Math_fround(Math_fround(...))` and `+(+(...))` patterns.
+- Asm.js boundary coercion model refined: category tags now align with the asm.js type lattice (`INT` for local.get/comparisons, `SIGNED` for bitwise/shift results, `FIXNUM` for Math_clz32/constants), eliminating redundant `|0` annotations at return and call boundaries.
+- Float/double boundary coercion extended: `coerceAtBoundary_` skips wrapping for `CAT_F32`/`CAT_F64` expressions (Math_fround, +expr, typed locals), removing double `Math_fround(Math_fround(...))` and `+(+(...))` patterns.
 - Shared `coerceToType_` skip list extended with `INT` category for i32 local.set assignments.
 
 ### Fixed
