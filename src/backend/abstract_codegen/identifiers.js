@@ -253,10 +253,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.countFunctionLabels_ = function (was
   var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor =
     /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
       enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) {
-        var /** @const {!Object<string, *>} */ e = /** @type {!Object<string, *>} */ (nc.expression);
-        var /** @const {number} */ eId = /** @type {number} */ (e['id']);
-        if ((binaryen.BlockId === eId || binaryen.LoopId === eId) && e['name']) {
-          var /** @const {string} */ n = /** @type {string} */ (e['name']);
+        var /** @const {!BinaryenExpressionInfo} */ e = nc.expression;
+        var /** @const {number} */ eId = e.id;
+        if ((binaryen.BlockId === eId || binaryen.LoopId === eId) && e.name) {
+          var /** @const {string} */ n = /** @type {string} */ (e.name);
           if (!seen[n]) {
             seen[n] = true;
             ++count;

@@ -40,8 +40,8 @@ Wasm2Lang.Backend.AsmjsCodegen.EmitState_;
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, childResults) {
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
   var /** @const {number} */ ind = state.indent;
   var /** @type {string} */ result = '';
@@ -67,7 +67,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
   switch (id) {
     case binaryen.LocalGetId: {
-      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr['index']);
+      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr.index);
       var /** @const {number} */ localGetType = Wasm2Lang.Backend.ValueType.getLocalType(
           binaryen,
           state.functionInfo,
@@ -81,7 +81,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
 
     case binaryen.GlobalGetId: {
-      var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
+      var /** @const {string} */ globalGetName = /** @type {string} */ (expr.name);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
       if (state.stdlibGlobals && state.stdlibGlobals[globalGetName]) {
         result = this.n_(state.stdlibGlobals[globalGetName]);
@@ -97,30 +97,30 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
 
     case binaryen.LoadId: {
-      var /** @const {number} */ loadType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ loadType = expr.type;
       var /** @const {string} */ loadPtr = Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_(
           cr(0),
-          /** @type {number} */ (expr['offset'])
+          /** @type {number} */ (expr.offset)
         );
-      var /** @const {number} */ loadBytes = /** @type {number} */ (expr['bytes']);
+      var /** @const {number} */ loadBytes = /** @type {number} */ (expr.bytes);
       result = this.renderLoad_(
         binaryen,
         loadPtr,
         loadType,
         loadBytes,
-        !!expr['isSigned'],
-        /** @type {number} */ (expr['align']) || loadBytes
+        !!expr.isSigned,
+        /** @type {number} */ (expr.align) || loadBytes
       );
       resultCat = A.catForCoercedType_(binaryen, loadType);
       break;
     }
     case binaryen.StoreId: {
-      var /** @const {number} */ storeType = /** @type {number} */ (expr['valueType']) || binaryen.i32;
+      var /** @const {number} */ storeType = /** @type {number} */ (expr.valueType) || binaryen.i32;
       var /** @const {string} */ storePtr = Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_(
           cr(0),
-          /** @type {number} */ (expr['offset'])
+          /** @type {number} */ (expr.offset)
         );
-      var /** @const {number} */ storeBytes = /** @type {number} */ (expr['bytes']);
+      var /** @const {number} */ storeBytes = /** @type {number} */ (expr.bytes);
       result =
         pad(ind) +
         this.renderStore_(
@@ -129,14 +129,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           cr(1),
           storeType,
           storeBytes,
-          /** @type {number} */ (expr['align']) || storeBytes,
+          /** @type {number} */ (expr.align) || storeBytes,
           cc(1)
         ) +
         '\n';
       break;
     }
     case binaryen.GlobalSetId: {
-      var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
+      var /** @const {string} */ globalName = /** @type {string} */ (expr.name);
       var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
       var /** @const {string} */ globalSetKey = '$g_' + this.safeName_(globalName);
       this.markBinding_(globalSetKey);
@@ -144,7 +144,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.CallId: {
-      var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
+      var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
       var /** @const {string} */ stdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
       var /** @const {string} */ importBase = stdlibName ? '' : state.importedNames[callTarget] || '';
       var /** @type {string} */ callName;
@@ -163,7 +163,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           state.functionSignatures
         );
       var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
-      var /** @const {number} */ callType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ callType = expr.type;
       if (callType === binaryen.none || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
       } else {
@@ -173,8 +173,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.CallIndirectId: {
-      var /** @const {!Array<number>} */ ciParamTypes = binaryen.expandType(/** @type {number} */ (expr['params']));
-      var /** @const {number} */ ciRetType = /** @type {number} */ (expr['type']);
+      var /** @const {!Array<number>} */ ciParamTypes = binaryen.expandType(/** @type {number} */ (expr.params));
+      var /** @const {number} */ ciRetType = expr.type;
       var /** @const {string} */ ciSigKey = A.buildSignatureKey_(binaryen, ciParamTypes, ciRetType);
       var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_|void} */ ciDesc =
           state.functionTables[ciSigKey];
@@ -197,7 +197,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
 
     case binaryen.SelectId: {
-      var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ selectType = expr.type;
       result = this.renderCoercionByType_(
         binaryen,
         '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
@@ -238,7 +238,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
       break;
     case binaryen.LoopId: {
-      var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
+      var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
         var /** @const {string} */ loopLabel = loopPlan.needsLabel ? this.labelN_(state.labelMap, loopName) + ': ' : '';
@@ -257,7 +257,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.IfId: {
-      var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ ifType = expr.type;
       if (ifType !== binaryen.none && ifType !== binaryen.unreachable && 0 !== ifType) {
         result = this.renderCoercionByType_(
           binaryen,
@@ -270,7 +270,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           ind,
           cr(0),
           cr(1),
-          /** @type {number} */ (expr['ifFalse']),
+          /** @type {number} */ (expr.ifFalse),
           childResults.length,
           cr(2),
           cc(0)
@@ -282,8 +282,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       result = this.emitBreakStatement_(
         state,
         ind,
-        /** @type {string} */ (expr['name']),
-        /** @type {number} */ (expr['condition']),
+        /** @type {string} */ (expr.name),
+        /** @type {number} */ (expr.condition),
         cr(0),
         cc(0)
       ).emittedString;
@@ -294,8 +294,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         state,
         ind,
         cr(0),
-        /** @type {!Array<string>} */ (expr['names'] || []),
-        /** @type {string} */ (expr['defaultName'] || ''),
+        /** @type {!Array<string>} */ (expr.names || []),
+        /** @type {string} */ (expr.defaultName || ''),
         cc(0)
       ).emittedString;
       break;

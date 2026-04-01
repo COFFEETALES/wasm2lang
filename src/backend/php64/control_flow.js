@@ -105,8 +105,8 @@ Wasm2Lang.Backend.Php64Codegen.renderPhpJump_ = function (labelStack, targetName
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.adjustLeaveIndent_ = function (state, nodeCtx) {
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
 
@@ -115,8 +115,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.adjustLeaveIndent_ = function (state, n
     state.labelStack.pop();
   } else if (binaryen.IfId === id) {
     --state.indent;
-  } else if (binaryen.BlockId === id && expr['name']) {
-    var /** @const {string} */ bn = /** @type {string} */ (expr['name']);
+  } else if (binaryen.BlockId === id && expr.name) {
+    var /** @const {string} */ bn = /** @type {string} */ (expr.name);
     var /** @const {string} */ fn = state.functionInfo.name;
     var /** @const {boolean} */ isFused = !!this.getBlockFusionPlan_(fn, bn) || A.hasPrefix_(bn, A.LB_FUSION_PREFIX_);
     var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn) || A.hasPrefix_(bn, A.RS_ROOT_SWITCH_PREFIX_);
@@ -141,8 +141,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.adjustLeaveIndent_ = function (state, n
 Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, nodeCtx, childResults) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ pad = A.pad_;
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
   var /** @const {number} */ ind = state.indent;
   var /** @const {boolean} */ isFused =
       !!blockName &&
@@ -165,8 +165,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, no
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, childResults) {
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
   var /** @const {number} */ ind = state.indent;
   var /** @type {string} */ result = '';
@@ -197,7 +197,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
   switch (id) {
     case binaryen.LocalGetId: {
-      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr['index']);
+      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr.index);
       var /** @const {number} */ localGetType = Wasm2Lang.Backend.ValueType.getLocalType(
           binaryen,
           state.functionInfo,
@@ -209,7 +209,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
 
     case binaryen.GlobalGetId: {
-      var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
+      var /** @const {string} */ globalGetName = /** @type {string} */ (expr.name);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
       var /** @const {string} */ stdlibGlobal = state.stdlibGlobals ? state.stdlibGlobals[globalGetName] || '' : '';
       if ('' !== stdlibGlobal) {
@@ -226,10 +226,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
 
     case binaryen.LoadId: {
-      var /** @const {string} */ loadPtr = this.renderPtrWithOffset_(cr(0), /** @type {number} */ (expr['offset']));
-      var /** @const {number} */ loadBytes = /** @type {number} */ (expr['bytes']);
-      var /** @const {boolean} */ loadSigned = !!expr['isSigned'];
-      var /** @const {number} */ loadType = /** @type {number} */ (expr['type']);
+      var /** @const {string} */ loadPtr = this.renderPtrWithOffset_(cr(0), /** @type {number} */ (expr.offset));
+      var /** @const {number} */ loadBytes = /** @type {number} */ (expr.bytes);
+      var /** @const {boolean} */ loadSigned = !!expr.isSigned;
+      var /** @const {number} */ loadType = expr.type;
       var /** @const {string} */ nBuf = this.phpVar_('buffer');
       state.usedCaptures[nBuf] = true;
 
@@ -259,9 +259,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.StoreId: {
-      var /** @const {string} */ storePtr = this.renderPtrWithOffset_(cr(0), /** @type {number} */ (expr['offset']));
-      var /** @const {number} */ storeBytes = /** @type {number} */ (expr['bytes']);
-      var /** @const {number} */ storeType = /** @type {number} */ (expr['valueType']) || binaryen.i32;
+      var /** @const {string} */ storePtr = this.renderPtrWithOffset_(cr(0), /** @type {number} */ (expr.offset));
+      var /** @const {number} */ storeBytes = /** @type {number} */ (expr.bytes);
+      var /** @const {number} */ storeType = /** @type {number} */ (expr.valueType) || binaryen.i32;
       var /** @const {string} */ sBuf = this.phpVar_('buffer');
       state.usedCaptures[sBuf] = true;
 
@@ -298,7 +298,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.GlobalSetId: {
-      var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
+      var /** @const {string} */ globalName = /** @type {string} */ (expr.name);
       var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
       var /** @const {string} */ globalSetKey = '$g_' + this.safeName_(globalName);
       var /** @const {string} */ globalSetVar = this.phpVar_(globalSetKey);
@@ -308,7 +308,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.CallId: {
-      var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
+      var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
       var /** @const {string} */ phpStdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
       var /** @const {string} */ importBase = phpStdlibName ? '' : state.importedNames[callTarget] || '';
       var /** @type {string} */ callName;
@@ -330,7 +330,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
           state.functionSignatures
         );
       var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
-      var /** @const {number} */ callType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ callType = expr.type;
       if (callType === binaryen.none || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
       } else {
@@ -342,7 +342,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.CallIndirectId: {
       var /** @const {string} */ ftableVar = this.phpVar_('ftable');
       state.usedCaptures[ftableVar] = true;
-      var /** @const {number} */ ciRetType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ ciRetType = expr.type;
       var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
       var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
       var /** @const {string} */ ciCallExpr = this.phpVar_('ftable') + '[' + ciIndexExpr + '](' + ciArgs.join(', ') + ')';
@@ -359,7 +359,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
 
     case binaryen.SelectId: {
-      var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ selectType = expr.type;
       var /** @const */ selP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
       result = this.renderCoercionByType_(
         binaryen,
@@ -421,7 +421,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       );
       break;
     case binaryen.LoopId: {
-      var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
+      var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
         result = this.emitSimplifiedLoop_(state, loopPlan, ind, '', cr(0));
@@ -432,7 +432,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
 
     case binaryen.IfId: {
-      var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ ifType = expr.type;
       if (ifType !== binaryen.none && ifType !== binaryen.unreachable && 0 !== ifType) {
         var /** @const */ ifP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         result = this.renderCoercionByType_(
@@ -446,7 +446,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
           ind,
           cr(0),
           cr(1),
-          /** @type {number} */ (expr['ifFalse']),
+          /** @type {number} */ (expr.ifFalse),
           childResults.length,
           cr(2),
           cc(0)
@@ -455,8 +455,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.BreakId: {
-      var /** @const {string} */ brName = /** @type {string} */ (expr['name']);
-      var /** @const {number} */ brCondPtr = /** @type {number} */ (expr['condition']);
+      var /** @const {string} */ brName = /** @type {string} */ (expr.name);
+      var /** @const {number} */ brCondPtr = /** @type {number} */ (expr.condition);
       // Root-switch exit interception.
       if (state.rootSwitchExitMap) {
         if (brName in state.rootSwitchExitMap) {
@@ -504,8 +504,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.SwitchId: {
-      var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (expr['names'] || []);
-      var /** @const {string} */ switchDefault = /** @type {string} */ (expr['defaultName'] || '');
+      var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (expr.names || []);
+      var /** @const {string} */ switchDefault = /** @type {string} */ (expr.defaultName || '');
       var /** @const {!Array<string>} */ switchLines = [];
       switchLines[switchLines.length] = pad(ind) + 'switch (' + cr(0) + ') {\n';
       var /** @type {number} */ swIdx = 0;
@@ -696,15 +696,15 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitRootSwitch_ = function (state, node
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) {
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
 
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ hp = A.hasPrefix_;
 
   if (binaryen.BlockId === id) {
-    var /** @const {?string} */ bName = /** @type {?string} */ (expr['name']);
+    var /** @const {?string} */ bName = /** @type {?string} */ (expr.name);
     if (bName) {
       var /** @const {string} */ fName = state.functionInfo.name;
       var /** @const {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ fusionPlan = this.getBlockFusionPlan_(fName, bName);
@@ -722,7 +722,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else if (hp(bName, A.LB_FUSION_PREFIX_)) {
         // Prefix fallback for when plans are not available.
-        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr['children']);
+        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr.children);
         if (
           ch &&
           1 === ch.length &&
@@ -744,7 +744,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
       }
     }
   } else if (binaryen.LoopId === id) {
-    var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
+    var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
     if ('' !== state.pendingBlockFusion) {
       state.labelStack[state.labelStack.length] = {lbl: loopName, lk: 'loop', alias: state.pendingBlockFusion};
       state.pendingBlockFusion = '';

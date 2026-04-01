@@ -324,14 +324,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitRootSwitch_ = function (state, n
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCtx) {
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ hp = A.hasPrefix_;
 
   if (binaryen.BlockId === id) {
-    var /** @const {?string} */ bName = /** @type {?string} */ (expr['name']);
+    var /** @const {?string} */ bName = /** @type {?string} */ (expr.name);
     if (bName) {
       state.labelKinds[bName] = 'block';
       var /** @const {string} */ fName = state.functionInfo.name;
@@ -349,7 +349,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else if (hp(bName, A.LB_FUSION_PREFIX_)) {
         // Prefix fallback for when plans are not available.
-        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr['children']);
+        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr.children);
         if (
           ch &&
           1 === ch.length &&
@@ -369,7 +369,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
       }
     }
   } else if (binaryen.LoopId === id) {
-    var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
+    var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
     state.labelKinds[loopName] = 'loop';
     state.currentLoopName = loopName;
     ++state.indent;
@@ -395,13 +395,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.adjustLeaveIndent_ = function (state, nodeCtx) {
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
   if (binaryen.LoopId === id || binaryen.IfId === id) {
     --state.indent;
-  } else if (binaryen.BlockId === id && expr['name']) {
-    var /** @const {string} */ bn = /** @type {string} */ (expr['name']);
+  } else if (binaryen.BlockId === id && expr.name) {
+    var /** @const {string} */ bn = /** @type {string} */ (expr.name);
     var /** @const {string} */ fn = state.functionInfo.name;
     var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
     var /** @const {boolean} */ isFused = !!this.getBlockFusionPlan_(fn, bn) || A.hasPrefix_(bn, A.LB_FUSION_PREFIX_);
@@ -610,8 +610,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSwitchStatement_ = function (
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state, nodeCtx, childResults) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ hp = A.hasPrefix_;
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
   if (blockName) {
     var /** @const {string} */ fnName = state.functionInfo.name;
     if (this.isBlockRootSwitch_(fnName, blockName) || hp(blockName, A.RS_ROOT_SWITCH_PREFIX_)) {
@@ -638,8 +638,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state, nodeCtx, childResults) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ pad = A.pad_;
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
   var /** @const {number} */ ind = state.indent;
   var /** @const {boolean} */ isFused =
       !!blockName &&
@@ -881,7 +881,7 @@ Wasm2Lang.Backend.AbstractCodegen.buildLeaveResult_ = function (result, resultCa
  *
  * @protected
  * @param {!Binaryen} binaryen
- * @param {!Object<string, *>} expr
+ * @param {!BinaryenExpressionInfo} expr
  * @param {number} id
  * @param {number} indent
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
@@ -900,15 +900,15 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
   var /** @const */ getInfo = A.getChildResultInfo_;
 
   if (id === binaryen.ConstId) {
-    var /** @const {number} */ constType = /** @type {number} */ (expr['type']);
+    var /** @const {number} */ constType = expr.type;
     if (Wasm2Lang.Backend.ValueType.isI64(binaryen, constType)) {
       return {
-        emittedString: this.renderI64Const_(binaryen, expr['value']),
+        emittedString: this.renderI64Const_(binaryen, expr.value),
         resultCat: A.CAT_I64
       };
     }
     return {
-      emittedString: this.renderConst_(binaryen, /** @type {number} */ (expr['value']), constType),
+      emittedString: this.renderConst_(binaryen, /** @type {number} */ (expr.value), constType),
       resultCat: A.catForConstType_(binaryen, constType)
     };
   }
@@ -917,7 +917,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ binR = getInfo(childResults, 1);
     return this.emitBinaryId_(
       binaryen,
-      /** @type {number} */ (expr['op']),
+      /** @type {number} */ (expr.op),
       binL.expressionString,
       binR.expressionString,
       binL.expressionCategory,
@@ -926,7 +926,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
   }
   if (id === binaryen.UnaryId) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ unOp = getInfo(childResults, 0);
-    return this.emitUnaryId_(binaryen, /** @type {number} */ (expr['op']), unOp.expressionString, unOp.expressionCategory);
+    return this.emitUnaryId_(binaryen, /** @type {number} */ (expr.op), unOp.expressionString, unOp.expressionCategory);
   }
   if (id === binaryen.LocalSetId) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ lsOp = getInfo(childResults, 0);
@@ -934,8 +934,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
       binaryen,
       functionInfo,
       indent,
-      !!expr['isTee'],
-      /** @type {number} */ (expr['index']),
+      !!expr.isTee,
+      /** @type {number} */ (expr.index),
       lsOp.expressionString,
       lsOp.expressionCategory
     );

@@ -140,12 +140,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderHelperCall_ = function (binary
  *
  * @protected
  * @param {!Binaryen} binaryen
- * @param {!Object<string, *>} expr
+ * @param {!BinaryenExpressionInfo} expr
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallIndirectArgs_ = function (binaryen, expr, childResults) {
-  var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(/** @type {number} */ (expr['params']));
+  var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(/** @type {number} */ (expr.params));
   var /** @const {!Array<string>} */ callArgs = [];
   var /** @const */ getInfo = Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_;
 
@@ -247,7 +247,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_ = function (bi
  *
  * @protected
  * @param {!Binaryen} binaryen
- * @param {!Object<string, *>} expr
+ * @param {!BinaryenExpressionInfo} expr
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
  * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
  * @return {!Array<string>}
@@ -258,12 +258,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
   childResults,
   functionSignatures
 ) {
-  var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
+  var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ callSig = functionSignatures[callTarget] || {
       sigParams: [],
-      sigRetType: /** @type {number} */ (expr['type'])
+      sigRetType: /** @type {number} */ (expr.type)
     };
-  var /** @const {!Array<number>} */ operands = /** @type {!Array<number>} */ (expr['operands']) || [];
+  var /** @const {!Array<number>} */ operands = /** @type {!Array<number>} */ (expr.operands) || [];
   var /** @const {!Array<string>} */ callArgs = [];
 
   for (var /** @type {number} */ ai = 0, /** @const {number} */ alen = childResults.length; ai !== alen; ++ai) {

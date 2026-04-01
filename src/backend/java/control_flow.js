@@ -34,8 +34,8 @@ Wasm2Lang.Backend.JavaCodegen.EmitState_;
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, childResults) {
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
   var /** @const {number} */ ind = state.indent;
   var /** @type {string} */ result = '';
@@ -75,7 +75,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
 
   switch (id) {
     case binaryen.LocalGetId: {
-      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr['index']);
+      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr.index);
       var /** @const {number} */ localGetType = Wasm2Lang.Backend.ValueType.getLocalType(
           binaryen,
           state.functionInfo,
@@ -86,7 +86,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
     }
     case binaryen.GlobalGetId: {
-      var /** @const {string} */ globalGetName = /** @type {string} */ (expr['name']);
+      var /** @const {string} */ globalGetName = /** @type {string} */ (expr.name);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
       var /** @const {string} */ javaStdlibGlobal = state.stdlibGlobals ? state.stdlibGlobals[globalGetName] || '' : '';
       if ('' !== javaStdlibGlobal) {
@@ -103,25 +103,25 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     case binaryen.LoadId: {
       var /** @const {string} */ loadPtr = Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_(
           cr(0),
-          /** @type {number} */ (expr['offset'])
+          /** @type {number} */ (expr.offset)
         );
-      var /** @const {number} */ loadType = /** @type {number} */ (expr['type']);
-      result = this.renderLoad_(binaryen, loadPtr, loadType, /** @type {number} */ (expr['bytes']), !!expr['isSigned']);
+      var /** @const {number} */ loadType = expr.type;
+      result = this.renderLoad_(binaryen, loadPtr, loadType, /** @type {number} */ (expr.bytes), !!expr.isSigned);
       resultCat = A.catForCoercedType_(binaryen, loadType);
       break;
     }
     case binaryen.StoreId: {
-      var /** @const {number} */ storeType = /** @type {number} */ (expr['valueType']) || binaryen.i32;
+      var /** @const {number} */ storeType = /** @type {number} */ (expr.valueType) || binaryen.i32;
       var /** @const {string} */ storePtr = Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_(
           cr(0),
-          /** @type {number} */ (expr['offset'])
+          /** @type {number} */ (expr.offset)
         );
       result =
-        pad(ind) + this.renderStore_(binaryen, storePtr, cr(1), storeType, /** @type {number} */ (expr['bytes']), cc(1)) + '\n';
+        pad(ind) + this.renderStore_(binaryen, storePtr, cr(1), storeType, /** @type {number} */ (expr.bytes), cc(1)) + '\n';
       break;
     }
     case binaryen.GlobalSetId: {
-      var /** @const {string} */ globalName = /** @type {string} */ (expr['name']);
+      var /** @const {string} */ globalName = /** @type {string} */ (expr.name);
       var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
       var /** @const {string} */ javaGlobalSetKey = '$g_' + this.safeName_(globalName);
       this.markBinding_(javaGlobalSetKey);
@@ -130,7 +130,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
     }
     case binaryen.CallId: {
-      var /** @const {string} */ callTarget = /** @type {string} */ (expr['target']);
+      var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
       var /** @const {string} */ javaStdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
       var /** @const {string} */ importBase = javaStdlibName ? '' : state.importedNames[callTarget] || '';
       var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
@@ -139,7 +139,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           childResults,
           state.functionSignatures
         );
-      var /** @const {number} */ callType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ callType = expr.type;
       var /** @type {string} */ callExpr;
       if ('' !== javaStdlibName) {
         callExpr = javaStdlibName + '(' + callArgs.join(', ') + ')';
@@ -163,8 +163,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
     }
     case binaryen.CallIndirectId: {
-      var /** @const {!Array<number>} */ ciParamTypes = binaryen.expandType(/** @type {number} */ (expr['params']));
-      var /** @const {number} */ ciRetType = /** @type {number} */ (expr['type']);
+      var /** @const {!Array<number>} */ ciParamTypes = binaryen.expandType(/** @type {number} */ (expr.params));
+      var /** @const {number} */ ciRetType = expr.type;
       var /** @const {string} */ ciSigKey = A.buildSignatureKey_(binaryen, ciParamTypes, ciRetType);
       var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
       var /** @const {string} */ ciTableName = this.n_('$ftable_' + ciSigKey);
@@ -181,7 +181,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     case binaryen.DropId: {
       // Java only allows method calls, assignments, etc. as expression statements.
       // Emit only when the child is a call (side-effectful); skip pure expressions.
-      var /** @const {number} */ dropValuePtr = /** @type {number} */ (expr['value']);
+      var /** @const {number} */ dropValuePtr = /** @type {number} */ (expr.value);
       var /** @const {number} */ dropValueId = dropValuePtr
           ? Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, dropValuePtr).id
           : 0;
@@ -191,7 +191,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
     }
     case binaryen.SelectId: {
-      var /** @const {number} */ selectType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ selectType = expr.type;
       var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
       var /** @type {string} */ selCondStr;
       if (A.CAT_BOOL_I32 === cc(0)) {
@@ -237,7 +237,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
       break;
     case binaryen.LoopId: {
-      var /** @const {string} */ loopName = /** @type {string} */ (expr['name']);
+      var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
       var /** @const {string} */ loopBody = cr(0);
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
@@ -247,12 +247,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         // Raw loop fallback (unsimplified): named body blocks can complete
         // normally via `break $blockName`, so the trailing `break;` is
         // always reachable and required.
-        var /** @const {number} */ loopBodyPtr = /** @type {number} */ (expr['body']);
-        var /** @const {!Object<string, *>} */ loopBodyInfo = /** @type {!Object<string, *>} */ (
-            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, loopBodyPtr)
+        var /** @const {number} */ loopBodyPtr = /** @type {number} */ (expr.body);
+        var /** @const {!BinaryenExpressionInfo} */ loopBodyInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+            binaryen,
+            loopBodyPtr
           );
-        var /** @const {boolean} */ bodyBlockIsNamed =
-            /** @type {number} */ (loopBodyInfo['id']) === binaryen.BlockId && !!loopBodyInfo['name'];
+        var /** @const {boolean} */ bodyBlockIsNamed = loopBodyInfo.id === binaryen.BlockId && !!loopBodyInfo.name;
         var /** @const {boolean} */ needsTrailingBreak = bodyBlockIsNamed || !bodyWasTerminal;
         result =
           pad(ind) +
@@ -266,7 +266,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
     }
     case binaryen.IfId: {
-      var /** @const {number} */ ifType = /** @type {number} */ (expr['type']);
+      var /** @const {number} */ ifType = expr.type;
       if (ifType !== binaryen.none && ifType !== binaryen.unreachable && 0 !== ifType) {
         var /** @const */ IfPs = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         var /** @type {string} */ ifCondStr;
@@ -282,7 +282,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           ind,
           cr(0),
           cr(1),
-          /** @type {number} */ (expr['ifFalse']),
+          /** @type {number} */ (expr.ifFalse),
           childResults.length,
           cr(2),
           cc(0)
@@ -294,8 +294,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const */ brResult = this.emitBreakStatement_(
           state,
           ind,
-          /** @type {string} */ (expr['name']),
-          /** @type {number} */ (expr['condition']),
+          /** @type {string} */ (expr.name),
+          /** @type {number} */ (expr.condition),
           cr(0),
           cc(0)
         );
@@ -310,8 +310,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           state,
           ind,
           cr(0),
-          /** @type {!Array<string>} */ (expr['names'] || []),
-          /** @type {string} */ (expr['defaultName'] || ''),
+          /** @type {!Array<string>} */ (expr.names || []),
+          /** @type {string} */ (expr.defaultName || ''),
           cc(0)
         );
       result = swResult.emittedString;

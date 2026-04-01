@@ -456,7 +456,7 @@ BinaryenExpressionInfo.prototype.right;
 BinaryenExpressionInfo.prototype.ptr;
 
 /**
- * @type {(number|undefined)}
+ * @type {(string|undefined)}
  */
 BinaryenExpressionInfo.prototype.target;
 

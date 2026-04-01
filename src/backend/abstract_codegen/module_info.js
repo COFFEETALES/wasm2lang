@@ -660,15 +660,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
   var /** @const {!Array<string>} */ data = segInfo.data;
 
   // Evaluate offset expression to get base index.
-  var /** @const {!Object<string, *>} */ offsetExpr = /** @type {!Object<string, *>} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, segInfo.offset)
+  var /** @const {!BinaryenExpressionInfo} */ offsetExpr = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+      binaryen,
+      segInfo.offset
     );
   var /** @type {number} */ baseOffset = 0;
-  if (
-    /** @type {number} */ (offsetExpr['id']) === binaryen.ConstId &&
-    Wasm2Lang.Backend.ValueType.isI32(binaryen, /** @type {number} */ (offsetExpr['type']))
-  ) {
-    baseOffset = /** @type {number} */ (offsetExpr['value']);
+  if (offsetExpr.id === binaryen.ConstId && Wasm2Lang.Backend.ValueType.isI32(binaryen, offsetExpr.type)) {
+    baseOffset = /** @type {number} */ (offsetExpr.value);
   }
 
   // Build flat entries array.

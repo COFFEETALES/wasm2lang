@@ -130,44 +130,44 @@ Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
  * @return {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = function (binaryen, outerBlockPtr) {
-  var /** @const {!Object<string, *>} */ outerInfo = /** @type {!Object<string, *>} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, outerBlockPtr)
+  var /** @const {!BinaryenExpressionInfo} */ outerInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+      binaryen,
+      outerBlockPtr
     );
-  var /** @const {string} */ outerName = /** @type {string} */ (outerInfo['name']);
+  var /** @const {string} */ outerName = /** @type {string} */ (outerInfo.name);
 
   // Walk the chain of first-child blocks.
   // Each entry is [name, childPtrs].  chain[0] = outer, chain[N] = innermost wrapper.
   var /** @const {!Array<!Array>} */ chain = [];
   var /** @const {!Object<string, number>} */ nameToIdx = /** @type {!Object<string, number>} */ (Object.create(null));
 
-  var /** @type {!Object<string, *>} */ curInfo = outerInfo;
+  var /** @type {!BinaryenExpressionInfo} */ curInfo = outerInfo;
   for (;;) {
-    var /** @const {string} */ curName = /** @type {string} */ (curInfo['name']);
-    var /** @const {!Array<number>} */ curChildPtrs = /** @type {!Array<number>} */ (curInfo['children']);
+    var /** @const {string} */ curName = /** @type {string} */ (curInfo.name);
+    var /** @const {!Array<number>} */ curChildPtrs = /** @type {!Array<number>} */ (curInfo.children);
     nameToIdx[curName] = chain.length;
     chain[chain.length] = [curName, curChildPtrs];
 
     var /** @const {number} */ fcPtr = curChildPtrs[0];
-    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (
-        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr)
-      );
-    if (/** @type {number} */ (fcInfo['id']) !== binaryen.BlockId) {
+    var /** @const {!BinaryenExpressionInfo} */ fcInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr);
+    if (fcInfo.id !== binaryen.BlockId) {
       break;
     }
-    var /** @const {!Array<number>} */ fcChildren = /** @type {!Array<number>} */ (fcInfo['children'] || []);
+    var /** @const {!Array<number>} */ fcChildren = /** @type {!Array<number>} */ (fcInfo.children || []);
     if (1 === fcChildren.length) {
-      var /** @const {!Object<string, *>} */ soleInfo = /** @type {!Object<string, *>} */ (
-          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcChildren[0])
+      var /** @const {!BinaryenExpressionInfo} */ soleInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+          binaryen,
+          fcChildren[0]
         );
-      if (/** @type {number} */ (soleInfo['id']) === binaryen.SwitchId) {
+      if (soleInfo.id === binaryen.SwitchId) {
         // Record innermost wrapper.
-        var /** @const {string} */ wrapperName = /** @type {string} */ (fcInfo['name']);
+        var /** @const {string} */ wrapperName = /** @type {string} */ (fcInfo.name);
         nameToIdx[wrapperName] = chain.length;
         chain[chain.length] = [wrapperName, fcChildren];
 
-        var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (soleInfo['names'] || []);
-        var /** @const {string} */ switchDefault = /** @type {string} */ (soleInfo['defaultName'] || '');
-        var /** @const {number} */ conditionPtr = /** @type {number} */ (soleInfo['condition']);
+        var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (soleInfo.names || []);
+        var /** @const {string} */ switchDefault = /** @type {string} */ (soleInfo.defaultName || '');
+        var /** @const {number} */ conditionPtr = /** @type {number} */ (soleInfo.condition);
 
         // prettier-ignore
         var /** @const */ buildGroup =
@@ -194,13 +194,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
             // If the last action is an unconditional break, the case is already
             // terminated — no additional switch break is needed.
             if (nb && aPtrs.length > 0) {
-              var /** @const {!Object<string, *>} */ lastAct = /** @type {!Object<string, *>} */ (
-                  Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,aPtrs[aPtrs.length - 1])
-                );
-              if (
-                /** @type {number} */ (lastAct['id']) === binaryen.BreakId &&
-                0 === /** @type {number} */ (lastAct['condition'] || 0)
-              ) {
+              var /** @const {!BinaryenExpressionInfo} */ lastAct =
+                  Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, aPtrs[aPtrs.length - 1]);
+              if (lastAct.id === binaryen.BreakId && 0 === /** @type {number} */ (lastAct.condition || 0)) {
                 nb = false;
               }
             }
@@ -369,14 +365,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSwitchCaseActions
   var /** @type {boolean} */ strippedTerminalBreak = false;
 
   if (0 < actionCount && 'string' === typeof opt_terminalBreakTarget) {
-    var /** @const {!Object<string, *>} */ terminalInfo = /** @type {!Object<string, *>} */ (
-        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, actionPtrs[actionCount - 1])
+    var /** @const {!BinaryenExpressionInfo} */ terminalInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+        binaryen,
+        actionPtrs[actionCount - 1]
       );
     if (
-      terminalInfo['id'] === binaryen.BreakId &&
-      terminalInfo['name'] === opt_terminalBreakTarget &&
-      0 === /** @type {number} */ (terminalInfo['condition'] || 0) &&
-      0 === /** @type {number} */ (terminalInfo['value'] || 0)
+      terminalInfo.id === binaryen.BreakId &&
+      terminalInfo.name === opt_terminalBreakTarget &&
+      0 === /** @type {number} */ (terminalInfo.condition || 0) &&
+      0 === /** @type {number} */ (terminalInfo.value || 0)
     ) {
       --actionCount;
       strippedTerminalBreak = true;
@@ -385,13 +382,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSwitchCaseActions
       // already terminated — no additional switch break is needed.  This avoids
       // emitting unreachable code (Java rejects unreachable statements).
       if (0 < actionCount) {
-        var /** @const {!Object<string, *>} */ prevInfo = /** @type {!Object<string, *>} */ (
-            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, actionPtrs[actionCount - 1])
+        var /** @const {!BinaryenExpressionInfo} */ prevInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+            binaryen,
+            actionPtrs[actionCount - 1]
           );
-        if (
-          /** @type {number} */ (prevInfo['id']) === binaryen.BreakId &&
-          0 === /** @type {number} */ (prevInfo['condition'] || 0)
-        ) {
+        if (prevInfo.id === binaryen.BreakId && 0 === /** @type {number} */ (prevInfo.condition || 0)) {
           strippedTerminalBreak = false;
         }
       }
@@ -448,9 +443,10 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitRootSwitchExitCod
   );
 
   if (0 < exitPtrs.length) {
-    var /** @const {number} */ lastId = /** @type {number} */ (
-        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, exitPtrs[exitPtrs.length - 1])['id']
-      );
+    var /** @const {number} */ lastId = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+        binaryen,
+        exitPtrs[exitPtrs.length - 1]
+      ).id;
     return lastId === binaryen.ReturnId || lastId === binaryen.UnreachableId;
   }
   return false;
@@ -471,20 +467,21 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitRootSwitchExitCod
  * @return {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.RootSwitchInfo}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStructure = function (binaryen, rsBlockPtr) {
-  var /** @const {!Object<string, *>} */ outerInfo = /** @type {!Object<string, *>} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, rsBlockPtr)
+  var /** @const {!BinaryenExpressionInfo} */ outerInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+      binaryen,
+      rsBlockPtr
     );
-  var /** @const {string} */ rsBlockName = /** @type {string} */ (outerInfo['name']);
+  var /** @const {string} */ rsBlockName = /** @type {string} */ (outerInfo.name);
 
   // chain[i] = {name: blockName, childPtrs: Array<number>}
   var /** @const {!Array<!Object>} */ chain = [];
-  var /** @type {!Object<string, *>} */ curInfo = outerInfo;
+  var /** @type {!BinaryenExpressionInfo} */ curInfo = outerInfo;
   var /** @type {number} */ loopPtr = 0;
   var /** @type {string} */ loopName = '';
 
   for (;;) {
-    var /** @const {string} */ curName = /** @type {string} */ (curInfo['name']);
-    var /** @const {!Array<number>} */ curChildPtrs = /** @type {!Array<number>} */ (curInfo['children'] || []);
+    var /** @const {string} */ curName = /** @type {string} */ (curInfo.name);
+    var /** @const {!Array<number>} */ curChildPtrs = /** @type {!Array<number>} */ (curInfo.children || []);
     chain[chain.length] = {'n': curName, 'c': curChildPtrs};
 
     if (0 === curChildPtrs.length) {
@@ -492,15 +489,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
     }
 
     var /** @const {number} */ fcPtr = curChildPtrs[0];
-    var /** @const {!Object<string, *>} */ fcInfo = /** @type {!Object<string, *>} */ (
-        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr)
-      );
-    var /** @const {number} */ fcId = /** @type {number} */ (fcInfo['id']);
+    var /** @const {!BinaryenExpressionInfo} */ fcInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr);
+    var /** @const {number} */ fcId = fcInfo.id;
 
     // Direct loop child.
     if (fcId === binaryen.LoopId) {
       loopPtr = fcPtr;
-      loopName = /** @type {string} */ (fcInfo['name']);
+      loopName = /** @type {string} */ (fcInfo.name);
       break;
     }
 
@@ -508,21 +503,22 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
       break;
     }
 
-    var /** @const {string} */ fcName = /** @type {string} */ (fcInfo['name'] || '');
+    var /** @const {string} */ fcName = /** @type {string} */ (fcInfo.name || '');
 
     // lb$ fused block containing a loop.
     if (Wasm2Lang.Backend.AbstractCodegen.hasPrefix_(fcName, Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_)) {
-      var /** @const {!Array<number>} */ fusedCh = /** @type {!Array<number>} */ (fcInfo['children'] || []);
+      var /** @const {!Array<number>} */ fusedCh = /** @type {!Array<number>} */ (fcInfo.children || []);
       if (1 === fusedCh.length) {
-        var /** @const {!Object<string, *>} */ fusedChild = /** @type {!Object<string, *>} */ (
-            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fusedCh[0])
+        var /** @const {!BinaryenExpressionInfo} */ fusedChild = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+            binaryen,
+            fusedCh[0]
           );
-        if (/** @type {number} */ (fusedChild['id']) === binaryen.LoopId) {
+        if (fusedChild.id === binaryen.LoopId) {
           // Add lb$ block to the chain so that br $lb$... targets inside
           // the flat switch are intercepted by the root-switch exit map.
           chain[chain.length] = {'n': fcName, 'c': fusedCh};
           loopPtr = fusedCh[0];
-          loopName = /** @type {string} */ (fusedChild['name']);
+          loopName = /** @type {string} */ (fusedChild.name);
           break;
         }
       }
@@ -548,9 +544,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
       var /** @const {!Array<number>} */ levelPtrs = /** @type {!Array<number>} */ (chain[k]['c']);
       for (var /** @type {number} */ p = 1, /** @const {number} */ ptrLen = levelPtrs.length; p < ptrLen; ++p) {
         exitPtrs[exitPtrs.length] = levelPtrs[p];
-        var /** @const {number} */ ptrId = /** @type {number} */ (
-            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, levelPtrs[p])['id']
-          );
+        var /** @const {number} */ ptrId = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, levelPtrs[p]).id;
         if (ptrId === binaryen.ReturnId || ptrId === binaryen.UnreachableId) {
           hitTerminal = true;
           break;

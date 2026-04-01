@@ -52,23 +52,24 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.State_;
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function (state, nodeCtx) {
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
-  var /** @const {!Object<string, *>} */ expr = /** @type {!Object<string, *>} */ (nodeCtx.expression);
-  var /** @const {number} */ id = /** @type {number} */ (expr['id']);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {number} */ id = expr.id;
 
   if (binaryen.BlockId === id) {
     // Pattern A: named block whose sole child is a loop.
-    var /** @const {?string} */ blockName = /** @type {?string} */ (expr['name']);
+    var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
     if (!blockName) {
       return null;
     }
-    var /** @const {!Array<number>|void} */ children = /** @type {!Array<number>|void} */ (expr['children']);
+    var /** @const {!Array<number>|void} */ children = /** @type {!Array<number>|void} */ (expr.children);
     if (!children || 1 !== children.length) {
       return null;
     }
-    var /** @const {!Object<string, *>} */ child = /** @type {!Object<string, *>} */ (
-        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[0])
+    var /** @const {!BinaryenExpressionInfo} */ child = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+        binaryen,
+        children[0]
       );
-    if (child['id'] === binaryen.LoopId) {
+    if (child.id === binaryen.LoopId) {
       state.fusionBlocks[blockName] = true;
       var /** @const {*} */ fbRef = state.funcMetadata.fusedBlocks;
       if (fbRef) {
@@ -79,15 +80,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
     }
   } else if (binaryen.LoopId === id) {
     // Pattern B: loop whose sole body is a named block.
-    var /** @const {number} */ bodyPtr = /** @type {number} */ (expr['body']);
+    var /** @const {number} */ bodyPtr = /** @type {number} */ (expr.body);
     if (!bodyPtr) {
       return null;
     }
-    var /** @const {!Object<string, *>} */ body = /** @type {!Object<string, *>} */ (
-        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyPtr)
-      );
-    if (body['id'] === binaryen.BlockId) {
-      var /** @const {?string} */ bodyName = /** @type {?string} */ (body['name']);
+    var /** @const {!BinaryenExpressionInfo} */ body = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyPtr);
+    if (body.id === binaryen.BlockId) {
+      var /** @const {?string} */ bodyName = /** @type {?string} */ (body.name);
       if (bodyName) {
         state.fusionBlocks[bodyName] = true;
         var /** @const {*} */ fbRefB = state.funcMetadata.fusedBlocks;
