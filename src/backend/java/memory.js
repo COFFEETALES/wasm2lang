@@ -63,13 +63,13 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderLoad_ = function (binaryen, ptrExp
   }
   if (2 === bytes) {
     if (isSigned) {
-      return '(int)' + buf + '.getShort(' + ptrExpr + ')';
+      return buf + '.getShort(' + ptrExpr + ')';
     }
     return '(' + buf + '.getShort(' + ptrExpr + ') & 0xFFFF)';
   }
   // 1 byte.
   if (isSigned) {
-    return '(int)' + buf + '.get(' + ptrExpr + ')';
+    return buf + '.get(' + ptrExpr + ')';
   }
   return '(' + buf + '.get(' + ptrExpr + ') & 0xFF)';
 };

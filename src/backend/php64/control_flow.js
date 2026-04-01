@@ -333,8 +333,11 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ callType = expr.type;
       if (callType === binaryen.none || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
-      } else {
+      } else if ('' !== importBase || '' !== phpStdlibName) {
         result = this.renderCoercionByType_(binaryen, callExpr, callType);
+        resultCat = A.catForCoercedType_(binaryen, callType);
+      } else {
+        result = callExpr;
         resultCat = A.catForCoercedType_(binaryen, callType);
       }
       break;

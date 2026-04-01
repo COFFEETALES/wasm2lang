@@ -157,7 +157,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       if (callType === binaryen.none || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
       } else {
-        result = this.renderCoercionByType_(binaryen, callExpr, callType);
+        result = callExpr;
         resultCat = A.catForCoercedType_(binaryen, callType);
       }
       break;
@@ -173,7 +173,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       if (ciRetType === binaryen.none || 0 === ciRetType) {
         result = pad(ind) + ciCallExpr + ';\n';
       } else {
-        result = this.renderCoercionByType_(binaryen, ciCallExpr, ciRetType);
+        result = ciCallExpr;
         resultCat = A.catForCoercedType_(binaryen, ciRetType);
       }
       break;
@@ -199,7 +199,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       } else {
         selCondStr = Ps.renderInfix(cr(0), '!=', '0', Ps.PREC_EQUALITY_);
       }
-      result = this.renderCoercionByType_(binaryen, '(' + selCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')', selectType);
+      result = '(' + selCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')';
       resultCat = A.catForCoercedType_(binaryen, selectType);
       break;
     }
@@ -275,7 +275,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         } else {
           ifCondStr = IfPs.renderInfix(cr(0), '!=', '0', IfPs.PREC_EQUALITY_);
         }
-        result = this.renderCoercionByType_(binaryen, ifCondStr + ' ? ' + cr(1) + ' : ' + cr(2), ifType);
+        result = '(' + ifCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')';
         resultCat = A.catForCoercedType_(binaryen, ifType);
       } else {
         result = this.emitIfStatement_(
