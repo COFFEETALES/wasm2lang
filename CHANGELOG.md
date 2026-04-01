@@ -1,5 +1,26 @@
 # Changelog
 
+## v2026.04.106
+
+### Added
+
+- i64 comparison inversion in the loop simplification pass: `i64.ne`/`i64.eq` conditions now recognized for do-while and while-loop detection after i64 lowering.
+- 34 binaryen extern type definitions for i64 comparison operators.
+
+### Changed
+
+- Post-i64-lowering pass sequence improved: `simplify-locals-notee-nostructure` + `vacuum` + `merge-blocks` + `reorder-locals` eliminates dead stores created by tee-fold and local coalescing.
+- BinaryenExpressionInfo property access converted from bracket notation (`expr['id']`) to dot notation (`expr.id`) across all backends and custom passes — 200+ sites in 12 files, enabled by the existing `@record` extern declaration.
+- Asm.js boundary coercion model refined: category tags now align with the asm.js type lattice (`INT` for local.get/comparisons, `SIGNED` for bitwise/shift results, `FIXNUM` for Math\_clz32/constants), eliminating redundant `|0` annotations at return and call boundaries.
+- Float/double boundary coercion extended: `coerceAtBoundary_` skips wrapping for `CAT_F32`/`CAT_F64` expressions (Math\_fround, +expr, typed locals), removing double `Math_fround(Math_fround(...))` and `+(+(...))` patterns.
+- Shared `coerceToType_` skip list extended with `INT` category for i32 local.set assignments.
+
+### Fixed
+
+- Java backend shift operator precedence: `bitwiseAllowRightEqual` used instead of hardcoded `true`, fixing `(a >> b) ^ c` grouping.
+- i64 const rendering in local init folding: `renderI64Const_` called instead of `renderConst_` for i64-typed constants.
+- `BinaryenExpressionInfo.prototype.target` extern type corrected from `(number|undefined)` to `(string|undefined)` — matches the actual binaryen API return value for CallId expressions.
+
 ## v2026.03.105
 
 ### Added
