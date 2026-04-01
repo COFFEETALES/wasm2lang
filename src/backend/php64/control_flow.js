@@ -429,7 +429,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       if (loopPlan) {
         result = this.emitSimplifiedLoop_(state, loopPlan, ind, '', cr(0));
       } else {
-        result = pad(ind) + 'while (true) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
+        result = pad(ind) + 'for (;;) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
       }
       break;
     }

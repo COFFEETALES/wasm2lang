@@ -22,7 +22,9 @@
  *   currentLoopName: string,
  *   rootSwitchExitMap: ?Object<string, !Array<number>>,
  *   rootSwitchRsName: string,
- *   rootSwitchLoopName: string
+ *   rootSwitchLoopName: string,
+ *   breakableStack: !Array<string>,
+ *   usedLabels: !Object<string, boolean>
  * }}
  */
 Wasm2Lang.Backend.JavaCodegen.EmitState_;
@@ -241,7 +243,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {string} */ loopBody = cr(0);
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
-        var /** @const {string} */ loopLabel = loopPlan.needsLabel ? this.labelN_(state.labelMap, loopName) + ': ' : '';
+        var /** @const {string} */ loopLabel =
+            loopPlan.needsLabel || state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
         result = this.emitSimplifiedLoop_(state, loopPlan, ind, loopLabel, loopBody);
       } else {
         // Raw loop fallback (unsimplified): named body blocks can complete
@@ -254,15 +257,17 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           );
         var /** @const {boolean} */ bodyBlockIsNamed = loopBodyInfo.id === binaryen.BlockId && !!loopBodyInfo.name;
         var /** @const {boolean} */ needsTrailingBreak = bodyBlockIsNamed || !bodyWasTerminal;
+        var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
         result =
           pad(ind) +
-          this.labelN_(state.labelMap, loopName) +
-          ': while (true) {\n' +
+          rawLabel +
+          'for (;;) {\n' +
           loopBody +
           (needsTrailingBreak ? pad(ind + 1) + 'break;\n' : '') +
           pad(ind) +
           '}\n';
       }
+      --state.breakableStack.length;
       break;
     }
     case binaryen.IfId: {
@@ -337,7 +342,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
   var /** @const */ SDA = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication;
+  state.breakableStack[state.breakableStack.length] = '*';
   var /** @const */ fsResult = SDA.emitLabeledFlatSwitch(this, state, nodeCtx);
+  --state.breakableStack.length;
   state.lastExprIsTerminal = fsResult.hasDefault;
   return fsResult.emittedString;
 };

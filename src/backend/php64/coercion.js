@@ -110,7 +110,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.getRuntimeHelperPrefix_ = function () {
 
 /** @override @protected @return {string} */
 Wasm2Lang.Backend.Php64Codegen.prototype.infiniteLoopKeyword_ = function () {
-  return 'while (true)';
+  return 'for (;;)';
 };
 
 /**

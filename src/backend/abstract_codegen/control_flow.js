@@ -242,6 +242,37 @@ Wasm2Lang.Backend.AbstractCodegen.isLabelElided = function (name) {
   return Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication.isLabelElided(name);
 };
 
+/**
+ * Returns true when an unlabeled break/continue would reach the same target,
+ * meaning the explicit label can be omitted from both the jump statement and
+ * the loop declaration.
+ *
+ * For {@code 'break'}: the target must be the innermost loop or switch on the
+ * breakable stack (labeled blocks are not targets of unlabeled break).
+ * For {@code 'continue'}: the target must be the innermost loop (switches are
+ * transparent to continue).
+ *
+ * @protected
+ * @param {!Array<string>} breakableStack  Stack of loop names and {@code '*'}
+ *     sentinels for switches.
+ * @param {string} keyword  {@code 'break'} or {@code 'continue'}.
+ * @param {string} resolvedName  Already-resolved target name.
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.isBreakLabelImplicit_ = function (breakableStack, keyword, resolvedName) {
+  var /** @const {number} */ len = breakableStack.length;
+  if (0 === len) return false;
+  if ('continue' === keyword) {
+    for (var /** @type {number} */ i = len - 1; 0 <= i; --i) {
+      if ('*' !== breakableStack[i]) {
+        return breakableStack[i] === resolvedName;
+      }
+    }
+    return false;
+  }
+  return breakableStack[len - 1] === resolvedName;
+};
+
 /** @protected @typedef {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */
 Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_;
 
@@ -270,7 +301,9 @@ Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_;
  *   currentLoopName: string,
  *   rootSwitchExitMap: ?Object<string, !Array<number>>,
  *   rootSwitchRsName: string,
- *   rootSwitchLoopName: string
+ *   rootSwitchLoopName: string,
+ *   breakableStack: !Array<string>,
+ *   usedLabels: !Object<string, boolean>
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_;
@@ -298,7 +331,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceSwitchCondition_ = function (c
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch(this, state, nodeCtx).emittedString;
+  state.breakableStack[state.breakableStack.length] = '*';
+  var /** @const {string} */ r = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch(
+      this,
+      state,
+      nodeCtx
+    ).emittedString;
+  --state.breakableStack.length;
+  return r;
 };
 
 /**
@@ -310,7 +350,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitFlatSwitch_ = function (state, n
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitRootSwitch_ = function (state, nodeCtx) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledRootSwitch(this, state, nodeCtx);
+  state.breakableStack[state.breakableStack.length] = '*';
+  var /** @const {string} */ r = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledRootSwitch(
+      this,
+      state,
+      nodeCtx
+    );
+  --state.breakableStack.length;
+  return r;
 };
 
 /**
@@ -372,6 +419,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
     var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
     state.labelKinds[loopName] = 'loop';
     state.currentLoopName = loopName;
+    state.breakableStack[state.breakableStack.length] = loopName;
     ++state.indent;
     if ('' !== state.pendingBlockFusion) {
       state.fusedBlockToLoop[state.pendingBlockFusion] = loopName;
@@ -506,6 +554,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
           indent
         );
       if (!rsIsTerminal) {
+        state.usedLabels[state.rootSwitchLoopName] = true;
         rsExitLines[rsExitLines.length] =
           pad(indent) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
       }
@@ -525,6 +574,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
       return {emittedString: rsResult, isTerminal: true};
     }
     if (brName === state.rootSwitchRsName) {
+      state.usedLabels[state.rootSwitchLoopName] = true;
       var /** @const {string} */ rsBreakStmt = this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
       return {
         emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, rsBreakStmt, opt_condCat),
@@ -533,12 +583,16 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
     }
   }
 
-  var /** @const {string} */ brStmt = this.resolveBreakTarget_(
-      state.labelKinds,
-      state.fusedBlockToLoop,
-      state.labelMap,
-      brName
-    );
+  var /** @const {string} */ brKind = state.labelKinds[brName] || 'block';
+  var /** @const {string} */ brActual = state.fusedBlockToLoop[brName] || brName;
+  var /** @const {string} */ brKeyword = 'loop' === brKind ? 'continue' : 'break';
+  var /** @type {string} */ brStmt;
+  if (A.isLabelElided(brActual) || A.isBreakLabelImplicit_(state.breakableStack, brKeyword, brActual)) {
+    brStmt = brKeyword + ';\n';
+  } else {
+    state.usedLabels[brActual] = true;
+    brStmt = brKeyword + ' ' + this.labelN_(state.labelMap, brActual) + ';\n';
+  }
   return {
     emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, brStmt, opt_condCat),
     isTerminal: 0 === brCondPtr
@@ -583,10 +637,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSwitchStatement_ = function (
       lines[lines.length] = pad(indent + 1) + 'case ' + si + ':\n';
       ++si;
     }
+    var /** @const {string} */ swActual = state.fusedBlockToLoop[target] || target;
+    state.usedLabels[swActual] = true;
     lines[lines.length] =
       pad(indent + 2) + this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, target);
   }
   if ('' !== defaultName) {
+    var /** @const {string} */ defActual = state.fusedBlockToLoop[defaultName] || defaultName;
+    state.usedLabels[defActual] = true;
     lines[lines.length] = pad(indent + 1) + 'default:\n';
     lines[lines.length] =
       pad(indent + 2) + this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, defaultName);
