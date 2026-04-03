@@ -19,6 +19,7 @@
  * @param {!BinaryenFunctionInfo} funcInfo
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} emitState
  * @param {string} padStr
+ * @return {boolean} Whether the appended body ends with a return statement.
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.walkAndAppendBody_ = function (
   parts,
@@ -40,7 +41,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.walkAndAppendBody_ = function (
     });
   emitState.visitor = visitor;
   var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
-  this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, padStr);
+  return this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, padStr);
 };
 
 /**

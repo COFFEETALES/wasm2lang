@@ -48,8 +48,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderConst_ = function (binaryen, value
 
 /**
  * Renders a binaryen i64 constant as a Java {@code long} literal.
- * The value is a {@code {low: number, high: number}} object.
+ * The value is either a BigInt (binaryen 129+) or a
+ * {@code {low: number, high: number}} object.
  *
+ * @suppress {checkTypes}
  * @override
  * @protected
  * @param {!Binaryen} binaryen
@@ -58,9 +60,16 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderConst_ = function (binaryen, value
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.renderI64Const_ = function (binaryen, value) {
   void binaryen;
-  var /** @const {!Object} */ v = /** @type {!Object} */ (value);
-  var /** @const {number} */ low = v['low'] >>> 0;
-  var /** @const {number} */ high = v['high'] | 0;
+  var /** @type {number} */ low;
+  var /** @type {number} */ high;
+  if ('bigint' === typeof value) {
+    low = Number(BigInt(value) & BigInt(0xffffffff)) >>> 0;
+    high = Number((BigInt(value) >> BigInt(32)) & BigInt(0xffffffff)) | 0;
+  } else {
+    var /** @const {!Object} */ v = /** @type {!Object} */ (value);
+    low = v['low'] >>> 0;
+    high = v['high'] | 0;
+  }
   // Simple zero case.
   if (0 === low && 0 === high) return '0L';
   // Small positive: high is 0, fits in JS number precision.

@@ -6,6 +6,20 @@
 Wasm2Lang.Wasm.WasmNormalization = {};
 
 /**
+ * Feature mask shared by {@code readWasmModule} (early, so validation sees
+ * post-MVP ops) and {@code applyBinaryenNormalization_} (for optimizer
+ * passes).
+ *
+ * @private
+ * @param {!Binaryen} binaryen
+ * @return {number}
+ */
+Wasm2Lang.Wasm.WasmNormalization.getFeatureMask_ = function (binaryen) {
+  var /** @const {!BinaryenFeatures} */ f = binaryen.Features;
+  return 0 | f.NontrappingFPToInt | f.BulkMemory | f.BulkMemoryOpt | f.SignExt | f.MutableGlobals | f.SIMD128;
+};
+
+/**
  * @param {(string|!Uint8Array|null)} inputData
  * @param {!Binaryen=} opt_binaryen  Injected binaryen instance.
  * @return {!BinaryenModule}
@@ -22,6 +36,10 @@ Wasm2Lang.Wasm.WasmNormalization.readWasmModule = function (inputData, opt_binar
   } else {
     throw new Error('Unsupported input data type for WebAssembly input.');
   }
+
+  // Enable post-MVP features early so the validation pass can traverse
+  // sign-ext, mutable-globals, bulk-memory, etc. without errors.
+  wasmModule.setFeatures(Wasm2Lang.Wasm.WasmNormalization.getFeatureMask_(binaryen));
 
   Wasm2Lang.Wasm.WasmNormalization.validateInputModule_(/** @type {!BinaryenModule} */ (wasmModule));
   // prettier-ignore
@@ -108,18 +126,9 @@ Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_ = function (wasmMo
  */
 Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmModule, aggressive, skipI64Lowering) {
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {!BinaryenFeatures} */ features = binaryen.Features;
-  // Set the feature mask so binaryen's optimizer and passes recognize post-MVP
-  // ops (bulk memory, sign-ext, non-trapping float-to-int).
-  wasmModule.setFeatures(
-    0 |
-      features.NontrappingFPToInt |
-      features.BulkMemory |
-      features.BulkMemoryOpt |
-      features.SignExt |
-      features.MutableGlobals |
-      features.SIMD128
-  );
+  // Feature mask already set by readWasmModule; refresh in case the caller
+  // bypassed that entry point.
+  wasmModule.setFeatures(Wasm2Lang.Wasm.WasmNormalization.getFeatureMask_(binaryen));
 
   if (aggressive) {
     // Run a full optimization pass before i64 lowering to inline small
@@ -153,19 +162,22 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmMod
   // First round: "simplify-locals-nostructure" (tee allowed) folds
   // redundant set/get pairs that i64 lowering leaves behind.  The tee
   // nodes it creates are intentional — they let the simplifier see through
-  // block boundaries and remove dead stores.  "coalesce-locals" then
-  // merges locals whose live ranges no longer overlap, shrinking the
-  // variable set further.  After that, a second "flatten" converts every
-  // local.tee back to set+get, and "simplify-locals-notee-nostructure"
+  // block boundaries and remove dead stores.  A second "flatten" converts
+  // every local.tee back to set+get, and "simplify-locals-notee-nostructure"
   // cleans up the final IR without reintroducing tee (which causes broken
   // multi-line ternaries in the codegen).
   // "reorder-locals" compacts local indices to a tighter layout.
   // "vacuum" removes unreachable code left by earlier passes.
+  //
+  // NOTE: "coalesce-locals" is deliberately omitted.  It performs O(n²)
+  // liveness analysis to merge locals with non-overlapping lifetimes,
+  // which becomes a severe bottleneck on flatten-heavy modules (functions
+  // with 10K+ temporaries).  The extra locals only cost a few additional
+  // variable declarations in the transpiled output; correct code
+  // generation does not depend on coalescing.
   wasmModule.runPasses([
     'flatten',
     'simplify-locals-nostructure',
-    'vacuum',
-    'coalesce-locals',
     'vacuum',
     'flatten',
     'simplify-locals-notee-nostructure',

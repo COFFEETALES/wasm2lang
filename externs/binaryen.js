@@ -371,10 +371,16 @@ BinaryenModule.prototype.getExportByIndex = function (index) {};
 BinaryenModule.prototype.getNumMemorySegments = function () {};
 
 /**
- * @param {string} index
+ * @param {number} segmentPointer
  * @return {!BinaryenMemorySegmentInfo}
  */
-BinaryenModule.prototype.getMemorySegmentInfo = function (index) {};
+BinaryenModule.prototype.getMemorySegmentInfo = function (segmentPointer) {};
+
+/**
+ * @param {number} index
+ * @return {number}
+ */
+BinaryenModule.prototype.getDataSegmentByIndex = function (index) {};
 
 /**
  * @param {number} index

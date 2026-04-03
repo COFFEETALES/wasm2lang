@@ -201,7 +201,7 @@ Wasm2Lang.Wasm.Tree.NodeSchema.ensureDefaultSchema_ = function (opt_binaryen) {
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.supportsExpressionId = function (expressionId) {
   Wasm2Lang.Wasm.Tree.NodeSchema.ensureDefaultSchema_();
-  return Object.prototype.hasOwnProperty.call(Wasm2Lang.Wasm.Tree.NodeSchema.expressionEdgeSpecs_, expressionId);
+  return expressionId in Wasm2Lang.Wasm.Tree.NodeSchema.expressionEdgeSpecs_;
 };
 
 /**
@@ -209,7 +209,9 @@ Wasm2Lang.Wasm.Tree.NodeSchema.supportsExpressionId = function (expressionId) {
  * @return {!Wasm2Lang.Wasm.Tree.EdgeSpecList}
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs = function (expressionId) {
-  if (!Wasm2Lang.Wasm.Tree.NodeSchema.supportsExpressionId(expressionId)) {
+  Wasm2Lang.Wasm.Tree.NodeSchema.ensureDefaultSchema_();
+  var /** @const {*} */ specs = Wasm2Lang.Wasm.Tree.NodeSchema.expressionEdgeSpecs_[expressionId];
+  if (void 0 === specs) {
     throw new Error(
       'Wasm2Lang NodeSchema: unsupported expression ID ' +
         expressionId +
@@ -217,9 +219,7 @@ Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs = function (expressionId) {
     );
   }
   // prettier-ignore
-  return /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpecList} */ (
-    Wasm2Lang.Wasm.Tree.NodeSchema.expressionEdgeSpecs_[expressionId]
-  );
+  return /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpecList} */ (specs);
 };
 
 /**
@@ -266,16 +266,31 @@ Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_ = function (binaryen, expr
 };
 
 /**
+ * Shared empty child-edge list returned for leaf nodes — avoids allocating
+ * a fresh empty array for every ConstId, LocalGetId, NopId, etc.
+ *
+ * @private
+ * @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList}
+ */
+Wasm2Lang.Wasm.Tree.NodeSchema.EMPTY_CHILDREN_ = /** @type {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ ([]);
+
+/**
  * @param {!Wasm2Lang.Wasm.Tree.ExpressionInfo} expressionInfo
  * @return {!Wasm2Lang.Wasm.Tree.ChildEdgeList}
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren = function (expressionInfo) {
   var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression = expressionInfo;
-  var /** @const {!Object<string, *>} */ expressionMap = /** @type {!Object<string, *>} */ (expression);
   var /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpecList} */ specs = Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs(expression.id);
+  var /** @const {number} */ edgeCount = specs.length;
+  // Fast path for leaf nodes (Const, LocalGet, GlobalGet, Nop, etc.).
+  if (0 === edgeCount) {
+    return Wasm2Lang.Wasm.Tree.NodeSchema.EMPTY_CHILDREN_;
+  }
+
+  var /** @const {!Object<string, *>} */ expressionMap = /** @type {!Object<string, *>} */ (expression);
   var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ children = [];
 
-  for (var /** @type {number} */ i = 0, /** @const {number} */ edgeCount = specs.length; i !== edgeCount; ++i) {
+  for (var /** @type {number} */ i = 0; i !== edgeCount; ++i) {
     var /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpec} */ edgeSpec = specs[i];
     var /** @const {function(number, number, number): void} */ setter = /** @type {function(number, number, number): void} */ (
         edgeSpec.setter
@@ -290,11 +305,10 @@ Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren = function (expressionInfo) {
           continue;
         }
         // prettier-ignore
-        var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ listChildEdge =
+        children[children.length] =
           /** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ (
             [edgeSpec.edgePropertyName, j, edgeSpec.edgeTraversalKind, listPtr, setter]
           );
-        children[children.length] = listChildEdge;
       }
       continue;
     }
@@ -304,11 +318,10 @@ Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren = function (expressionInfo) {
       continue;
     }
     // prettier-ignore
-    var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ childEdge =
+    children[children.length] =
       /** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ (
         [edgeSpec.edgePropertyName, -1, edgeSpec.edgeTraversalKind, childPtr, setter]
       );
-    children[children.length] = childEdge;
   }
 
   return children;

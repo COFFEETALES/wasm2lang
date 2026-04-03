@@ -4,6 +4,7 @@
   const common = require('./build_common');
   const binaryen = await common.loadBinaryen();
   const rand = common.rand;
+  const i64c = common.i64c;
   const {module, heapTop, advanceHeap, storeI32, storeI64, storeF32, storeF64Safe} = common.createTestModule(binaryen, {
     memoryPages: 8,
     heapBase: 1024
@@ -85,7 +86,12 @@
         // xor chain: (a ^ b) ^ a = b
         storeI64(module.i64.xor(module.i64.xor(a64(), b64()), a64())),
         // bit packing: (a64 << 32) | (b64 & 0xFFFFFFFF)
-        storeI64(module.i64.or(module.i64.shl(a64(), module.i64.const(32, 0)), module.i64.and(b64(), module.i64.const(-1, 0)))),
+        storeI64(
+          module.i64.or(
+            module.i64.shl(a64(), module.i64.const(i64c(32, 0))),
+            module.i64.and(b64(), module.i64.const(i64c(-1, 0)))
+          )
+        ),
         module.return()
       ])
     );
@@ -267,7 +273,7 @@
         storeI64(module.i64.reinterpret(p2())),
 
         // --- chained: extend_s → add → wrap ---
-        storeI32(module.i32.wrap(module.i64.add(a64s(), module.i64.const(100, 0)))),
+        storeI32(module.i32.wrap(module.i64.add(a64s(), module.i64.const(i64c(100, 0))))),
 
         // --- extend_u → convert_u → trunc_sat ---
         storeI64(module.i64.trunc_s_sat.f64(module.f64.convert_u.i64(a64u()))),
@@ -290,134 +296,152 @@
       module.block(null, [
         // --- identity constants ---
         // 0
-        storeI64(module.i64.const(0, 0)),
+        storeI64(module.i64.const(i64c(0, 0))),
         // 1
-        storeI64(module.i64.const(1, 0)),
+        storeI64(module.i64.const(i64c(1, 0))),
         // -1 (all bits set)
-        storeI64(module.i64.const(-1, -1)),
+        storeI64(module.i64.const(i64c(-1, -1))),
         // i64 MAX = 0x7FFFFFFFFFFFFFFF
-        storeI64(module.i64.const(-1, 0x7fffffff)),
+        storeI64(module.i64.const(i64c(-1, 0x7fffffff))),
         // i64 MIN = 0x8000000000000000
-        storeI64(module.i64.const(0, 0x80000000 | 0)),
+        storeI64(module.i64.const(i64c(0, 0x80000000 | 0))),
 
         // --- overflow: MAX + 1 = MIN ---
-        storeI64(module.i64.add(module.i64.const(-1, 0x7fffffff), module.i64.const(1, 0))),
+        storeI64(module.i64.add(module.i64.const(i64c(-1, 0x7fffffff)), module.i64.const(i64c(1, 0)))),
         // --- overflow: MIN - 1 = MAX ---
-        storeI64(module.i64.sub(module.i64.const(0, 0x80000000 | 0), module.i64.const(1, 0))),
+        storeI64(module.i64.sub(module.i64.const(i64c(0, 0x80000000 | 0)), module.i64.const(i64c(1, 0)))),
         // --- overflow: MAX * 2 ---
-        storeI64(module.i64.mul(module.i64.const(-1, 0x7fffffff), module.i64.const(2, 0))),
+        storeI64(module.i64.mul(module.i64.const(i64c(-1, 0x7fffffff)), module.i64.const(i64c(2, 0)))),
         // --- negation overflow: MIN * -1 = MIN ---
-        storeI64(module.i64.mul(module.i64.const(0, 0x80000000 | 0), module.i64.const(-1, -1))),
+        storeI64(module.i64.mul(module.i64.const(i64c(0, 0x80000000 | 0)), module.i64.const(i64c(-1, -1)))),
 
         // --- values > 32 bits ---
         // 2^32 = 4294967296
-        storeI64(module.i64.const(0, 1)),
+        storeI64(module.i64.const(i64c(0, 1))),
         // 2^32 + 1
-        storeI64(module.i64.add(module.i64.const(0, 1), module.i64.const(1, 0))),
+        storeI64(module.i64.add(module.i64.const(i64c(0, 1)), module.i64.const(i64c(1, 0)))),
         // 2^32 - 1 = 0xFFFFFFFF (fits in low word)
-        storeI64(module.i64.const(-1, 0)),
+        storeI64(module.i64.const(i64c(-1, 0))),
         // (2^32 - 1) * (2^32 - 1) — large multiplication
-        storeI64(module.i64.mul(module.i64.const(-1, 0), module.i64.const(-1, 0))),
+        storeI64(module.i64.mul(module.i64.const(i64c(-1, 0)), module.i64.const(i64c(-1, 0)))),
 
         // --- unsigned division of large values ---
         // 0xFFFFFFFFFFFFFFFF /u 2 = 0x7FFFFFFFFFFFFFFF
-        storeI64(module.i64.div_u(module.i64.const(-1, -1), module.i64.const(2, 0))),
+        storeI64(module.i64.div_u(module.i64.const(i64c(-1, -1)), module.i64.const(i64c(2, 0)))),
         // 0xFFFFFFFFFFFFFFFF %u 10
-        storeI64(module.i64.rem_u(module.i64.const(-1, -1), module.i64.const(10, 0))),
+        storeI64(module.i64.rem_u(module.i64.const(i64c(-1, -1)), module.i64.const(i64c(10, 0)))),
 
         // --- bitwise on 64-bit boundaries ---
         // rotl(1, 32) = 2^32
-        storeI64(module.i64.rotl(module.i64.const(1, 0), module.i64.const(32, 0))),
+        storeI64(module.i64.rotl(module.i64.const(i64c(1, 0)), module.i64.const(i64c(32, 0)))),
         // rotr(1, 1) = 0x8000000000000000
-        storeI64(module.i64.rotr(module.i64.const(1, 0), module.i64.const(1, 0))),
+        storeI64(module.i64.rotr(module.i64.const(i64c(1, 0)), module.i64.const(i64c(1, 0)))),
         // shl(1, 63) = MIN
-        storeI64(module.i64.shl(module.i64.const(1, 0), module.i64.const(63, 0))),
+        storeI64(module.i64.shl(module.i64.const(i64c(1, 0)), module.i64.const(i64c(63, 0)))),
         // shr_s(MIN, 63) = -1
-        storeI64(module.i64.shr_s(module.i64.const(0, 0x80000000 | 0), module.i64.const(63, 0))),
+        storeI64(module.i64.shr_s(module.i64.const(i64c(0, 0x80000000 | 0)), module.i64.const(i64c(63, 0)))),
         // shr_u(MIN, 63) = 1
-        storeI64(module.i64.shr_u(module.i64.const(0, 0x80000000 | 0), module.i64.const(63, 0))),
+        storeI64(module.i64.shr_u(module.i64.const(i64c(0, 0x80000000 | 0)), module.i64.const(i64c(63, 0)))),
 
         // --- unary on edge values ---
         // clz(1) = 63
-        storeI64(module.i64.clz(module.i64.const(1, 0))),
+        storeI64(module.i64.clz(module.i64.const(i64c(1, 0)))),
         // ctz(MIN) = 63
-        storeI64(module.i64.ctz(module.i64.const(0, 0x80000000 | 0))),
+        storeI64(module.i64.ctz(module.i64.const(i64c(0, 0x80000000 | 0)))),
         // popcnt(-1) = 64
-        storeI64(module.i64.popcnt(module.i64.const(-1, -1))),
+        storeI64(module.i64.popcnt(module.i64.const(i64c(-1, -1)))),
         // popcnt(0xAAAAAAAA55555555) = 32
-        storeI64(module.i64.popcnt(module.i64.const(0x55555555, 0xaaaaaaaa | 0))),
+        storeI64(module.i64.popcnt(module.i64.const(i64c(0x55555555, 0xaaaaaaaa | 0)))),
         // eqz(0) = 1
-        storeI32(module.i64.eqz(module.i64.const(0, 0))),
+        storeI32(module.i64.eqz(module.i64.const(i64c(0, 0)))),
         // eqz(1) = 0
-        storeI32(module.i64.eqz(module.i64.const(1, 0))),
+        storeI32(module.i64.eqz(module.i64.const(i64c(1, 0)))),
 
         // --- sign extension edge cases ---
         // extend8_s(0xFF) = -1
-        storeI64(module.i64.extend8_s(module.i64.const(0xff, 0))),
+        storeI64(module.i64.extend8_s(module.i64.const(i64c(0xff, 0)))),
         // extend8_s(0x7F) = 127
-        storeI64(module.i64.extend8_s(module.i64.const(0x7f, 0))),
+        storeI64(module.i64.extend8_s(module.i64.const(i64c(0x7f, 0)))),
         // extend16_s(0xFFFF) = -1
-        storeI64(module.i64.extend16_s(module.i64.const(0xffff, 0))),
+        storeI64(module.i64.extend16_s(module.i64.const(i64c(0xffff, 0)))),
         // extend16_s(0x8000) = -32768
-        storeI64(module.i64.extend16_s(module.i64.const(0x8000, 0))),
+        storeI64(module.i64.extend16_s(module.i64.const(i64c(0x8000, 0)))),
         // extend32_s(0xFFFFFFFF) = -1
-        storeI64(module.i64.extend32_s(module.i64.const(-1, 0))),
+        storeI64(module.i64.extend32_s(module.i64.const(i64c(-1, 0)))),
         // extend32_s(0x80000000) = -2147483648 (as i64)
-        storeI64(module.i64.extend32_s(module.i64.const(0x80000000 | 0, 0))),
+        storeI64(module.i64.extend32_s(module.i64.const(i64c(0x80000000 | 0, 0)))),
 
         // --- comparison edge cases ---
         // lt_s(MIN, MAX) = 1
-        storeI32(module.i64.lt_s(module.i64.const(0, 0x80000000 | 0), module.i64.const(-1, 0x7fffffff))),
+        storeI32(module.i64.lt_s(module.i64.const(i64c(0, 0x80000000 | 0)), module.i64.const(i64c(-1, 0x7fffffff)))),
         // lt_u(MIN, MAX) = 0 (MIN as unsigned > MAX as unsigned)
-        storeI32(module.i64.lt_u(module.i64.const(0, 0x80000000 | 0), module.i64.const(-1, 0x7fffffff))),
+        storeI32(module.i64.lt_u(module.i64.const(i64c(0, 0x80000000 | 0)), module.i64.const(i64c(-1, 0x7fffffff)))),
         // eq(0, 0) = 1
-        storeI32(module.i64.eq(module.i64.const(0, 0), module.i64.const(0, 0))),
+        storeI32(module.i64.eq(module.i64.const(i64c(0, 0)), module.i64.const(i64c(0, 0)))),
 
         // --- XOR swap simulation ---
         // a=0x12345678ABCDEF01, b=0xFEDCBA9876543210
         // a^b, b^(a^b)=a, (a^b)^a=b
-        storeI64(module.i64.xor(module.i64.const(0xabcdef01 | 0, 0x12345678), module.i64.const(0x76543210, 0xfedcba98 | 0))),
+        storeI64(
+          module.i64.xor(module.i64.const(i64c(0xabcdef01 | 0, 0x12345678)), module.i64.const(i64c(0x76543210, 0xfedcba98 | 0)))
+        ),
         storeI64(
           module.i64.xor(
-            module.i64.const(0x76543210, 0xfedcba98 | 0),
-            module.i64.xor(module.i64.const(0xabcdef01 | 0, 0x12345678), module.i64.const(0x76543210, 0xfedcba98 | 0))
+            module.i64.const(i64c(0x76543210, 0xfedcba98 | 0)),
+            module.i64.xor(
+              module.i64.const(i64c(0xabcdef01 | 0, 0x12345678)),
+              module.i64.const(i64c(0x76543210, 0xfedcba98 | 0))
+            )
           )
         ),
         storeI64(
           module.i64.xor(
-            module.i64.xor(module.i64.const(0xabcdef01 | 0, 0x12345678), module.i64.const(0x76543210, 0xfedcba98 | 0)),
             module.i64.xor(
-              module.i64.const(0x76543210, 0xfedcba98 | 0),
-              module.i64.xor(module.i64.const(0xabcdef01 | 0, 0x12345678), module.i64.const(0x76543210, 0xfedcba98 | 0))
+              module.i64.const(i64c(0xabcdef01 | 0, 0x12345678)),
+              module.i64.const(i64c(0x76543210, 0xfedcba98 | 0))
+            ),
+            module.i64.xor(
+              module.i64.const(i64c(0x76543210, 0xfedcba98 | 0)),
+              module.i64.xor(
+                module.i64.const(i64c(0xabcdef01 | 0, 0x12345678)),
+                module.i64.const(i64c(0x76543210, 0xfedcba98 | 0))
+              )
             )
           )
         ),
 
         // --- division identity: q*d + r = n ---
         // n = 0x123456789ABCDEF0, d = 7
-        storeI64(module.i64.div_s(module.i64.const(0x9abcdef0 | 0, 0x12345678), module.i64.const(7, 0))),
-        storeI64(module.i64.rem_s(module.i64.const(0x9abcdef0 | 0, 0x12345678), module.i64.const(7, 0))),
+        storeI64(module.i64.div_s(module.i64.const(i64c(0x9abcdef0 | 0, 0x12345678)), module.i64.const(i64c(7, 0)))),
+        storeI64(module.i64.rem_s(module.i64.const(i64c(0x9abcdef0 | 0, 0x12345678)), module.i64.const(i64c(7, 0)))),
         storeI64(
           module.i64.add(
             module.i64.mul(
-              module.i64.div_s(module.i64.const(0x9abcdef0 | 0, 0x12345678), module.i64.const(7, 0)),
-              module.i64.const(7, 0)
+              module.i64.div_s(module.i64.const(i64c(0x9abcdef0 | 0, 0x12345678)), module.i64.const(i64c(7, 0))),
+              module.i64.const(i64c(7, 0))
             ),
-            module.i64.rem_s(module.i64.const(0x9abcdef0 | 0, 0x12345678), module.i64.const(7, 0))
+            module.i64.rem_s(module.i64.const(i64c(0x9abcdef0 | 0, 0x12345678)), module.i64.const(i64c(7, 0)))
           )
         ),
 
         // --- alternating bits ---
         // 0xAAAAAAAAAAAAAAAA + 0x5555555555555555 = -1
-        storeI64(module.i64.add(module.i64.const(0xaaaaaaaa | 0, 0xaaaaaaaa | 0), module.i64.const(0x55555555, 0x55555555))),
+        storeI64(
+          module.i64.add(module.i64.const(i64c(0xaaaaaaaa | 0, 0xaaaaaaaa | 0)), module.i64.const(i64c(0x55555555, 0x55555555)))
+        ),
 
         // --- self operations ---
         // x ^ x = 0
         storeI64(
-          module.i64.xor(module.i64.const(0xdeadbeef | 0, 0xcafebabe | 0), module.i64.const(0xdeadbeef | 0, 0xcafebabe | 0))
+          module.i64.xor(
+            module.i64.const(i64c(0xdeadbeef | 0, 0xcafebabe | 0)),
+            module.i64.const(i64c(0xdeadbeef | 0, 0xcafebabe | 0))
+          )
         ),
         // x & x = x
-        storeI64(module.i64.and(module.i64.const(0x12345678, 0x9abcdef0 | 0), module.i64.const(0x12345678, 0x9abcdef0 | 0))),
+        storeI64(
+          module.i64.and(module.i64.const(i64c(0x12345678, 0x9abcdef0 | 0)), module.i64.const(i64c(0x12345678, 0x9abcdef0 | 0)))
+        ),
 
         module.return()
       ])

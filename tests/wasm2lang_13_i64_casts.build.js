@@ -4,6 +4,7 @@
   const common = require('./build_common');
   const binaryen = await common.loadBinaryen();
   const rand = common.rand;
+  const i64c = common.i64c;
   const {module, heapTop, advanceHeap, storeI32, storeI64, storeF32, storeF64Safe} = common.createTestModule(binaryen, {
     memoryPages: 8,
     heapBase: 1024
@@ -122,16 +123,16 @@
       [],
       module.block(null, [
         // --- Signed i64 → f32 edge cases ---
-        storeF32(module.call('$cast_i64_to_f32', [module.i64.const(0, 0)], binaryen.f32)),
-        storeF32(module.call('$cast_i64_to_f32', [module.i64.const(1, 0)], binaryen.f32)),
-        storeF32(module.call('$cast_i64_to_f32', [module.i64.const(-1, -1)], binaryen.f32)),
-        storeF32(module.call('$cast_i64_to_f32', [module.i64.const(0, 1)], binaryen.f32)),
+        storeF32(module.call('$cast_i64_to_f32', [module.i64.const(i64c(0, 0))], binaryen.f32)),
+        storeF32(module.call('$cast_i64_to_f32', [module.i64.const(i64c(1, 0))], binaryen.f32)),
+        storeF32(module.call('$cast_i64_to_f32', [module.i64.const(i64c(-1, -1))], binaryen.f32)),
+        storeF32(module.call('$cast_i64_to_f32', [module.i64.const(i64c(0, 1))], binaryen.f32)),
 
         // --- Signed i64 → f64 edge cases ---
-        storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(0, 0)], binaryen.f64)),
-        storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(1, 0)], binaryen.f64)),
-        storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(-1, -1)], binaryen.f64)),
-        storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(0x7fffffff, 0)], binaryen.f64)),
+        storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(i64c(0, 0))], binaryen.f64)),
+        storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(i64c(1, 0))], binaryen.f64)),
+        storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(i64c(-1, -1))], binaryen.f64)),
+        storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(i64c(0x7fffffff, 0))], binaryen.f64)),
 
         // --- Signed f64 → i64 edge cases ---
         storeI64(module.call('$cast_f64_to_i64', [module.f64.const(0.0)], binaryen.i64)),
@@ -151,29 +152,29 @@
         storeI64(
           module.call(
             '$cast_f64_to_i64',
-            [module.call('$cast_i64_to_f64', [module.i64.const(1000000, 0)], binaryen.f64)],
+            [module.call('$cast_i64_to_f64', [module.i64.const(i64c(1000000, 0))], binaryen.f64)],
             binaryen.i64
           )
         ),
         storeI64(
           module.call(
             '$cast_f64_to_i64',
-            [module.call('$cast_i64_to_f64', [module.i64.const(-1000000, -1)], binaryen.f64)],
+            [module.call('$cast_i64_to_f64', [module.i64.const(i64c(-1000000, -1))], binaryen.f64)],
             binaryen.i64
           )
         ),
 
         // --- Unsigned u64 → f32 edge cases ---
-        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(0, 0)], binaryen.f32)),
-        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(1, 0)], binaryen.f32)),
-        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(0, 1)], binaryen.f32)),
-        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(1000000, 0)], binaryen.f32)),
+        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(i64c(0, 0))], binaryen.f32)),
+        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(i64c(1, 0))], binaryen.f32)),
+        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(i64c(0, 1))], binaryen.f32)),
+        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(i64c(1000000, 0))], binaryen.f32)),
 
         // --- Unsigned u64 → f64 edge cases ---
-        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(0, 0)], binaryen.f64)),
-        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(1, 0)], binaryen.f64)),
-        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(0, 1)], binaryen.f64)),
-        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(0x7fffffff, 0)], binaryen.f64)),
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(i64c(0, 0))], binaryen.f64)),
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(i64c(1, 0))], binaryen.f64)),
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(i64c(0, 1))], binaryen.f64)),
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(i64c(0x7fffffff, 0))], binaryen.f64)),
 
         // --- Unsigned f64 → u64 edge cases ---
         storeI64(module.call('$cast_f64_to_u64', [module.f64.const(0.0)], binaryen.i64)),
@@ -193,14 +194,14 @@
         storeI64(
           module.call(
             '$cast_f64_to_u64',
-            [module.call('$cast_u64_to_f64', [module.i64.const(1000000, 0)], binaryen.f64)],
+            [module.call('$cast_u64_to_f64', [module.i64.const(i64c(1000000, 0))], binaryen.f64)],
             binaryen.i64
           )
         ),
         storeI64(
           module.call(
             '$cast_f64_to_u64',
-            [module.call('$cast_u64_to_f64', [module.i64.const(0, 1)], binaryen.f64)],
+            [module.call('$cast_u64_to_f64', [module.i64.const(i64c(0, 1))], binaryen.f64)],
             binaryen.i64
           )
         ),

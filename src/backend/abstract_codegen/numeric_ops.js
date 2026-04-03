@@ -40,19 +40,30 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderConst_ = function (binaryen, v
 };
 
 /**
- * Backend hook for rendering an i64 constant value.  The value is a
- * binaryen i64 representation (an object with {@code low} and {@code high}
- * 32-bit halves).  Only called for backends that handle i64 natively.
+ * Backend hook for rendering an i64 constant value.  The value is either a
+ * BigInt (binaryen 129+) or an object with {@code low} and {@code high}
+ * 32-bit halves (older binaryen).  Only called for backends that handle i64
+ * natively.
  *
+ * @suppress {checkTypes}
  * @protected
  * @param {!Binaryen} binaryen
- * @param {*} value  The i64 value ({low: number, high: number}).
+ * @param {*} value  The i64 value (BigInt or {low: number, high: number}).
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderI64Const_ = function (binaryen, value) {
   void binaryen;
-  var /** @const {!Object} */ v = /** @type {!Object} */ (value);
-  return '0x' + (v['high'] >>> 0).toString(16) + ('00000000' + (v['low'] >>> 0).toString(16)).slice(-8) + '/*i64*/';
+  var /** @type {number} */ low;
+  var /** @type {number} */ high;
+  if ('bigint' === typeof value) {
+    low = Number(BigInt(value) & BigInt(0xffffffff)) >>> 0;
+    high = Number((BigInt(value) >> BigInt(32)) & BigInt(0xffffffff)) >>> 0;
+  } else {
+    var /** @const {!Object} */ v = /** @type {!Object} */ (value);
+    low = v['low'] >>> 0;
+    high = v['high'] >>> 0;
+  }
+  return '0x' + high.toString(16) + ('00000000' + low.toString(16)).slice(-8) + '/*i64*/';
 };
 
 /**

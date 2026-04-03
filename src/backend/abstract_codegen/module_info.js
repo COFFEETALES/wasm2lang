@@ -169,94 +169,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.resolveHeapSize_ = function (options
 };
 
 /**
- * Probes whether a data segment with the given name exists.  Binaryen's
- * {@code getMemorySegmentInfo} calls C++ {@code Fatal()} on lookup failure,
- * which prints "Fatal: invalid segment name." to stderr and sets
- * {@code process.exitCode = 1} even though the JS exception IS catchable.
- * This wrapper suppresses both side effects so that probing does not
- * pollute stderr output or corrupt the process exit code.
- *
- * @private
- * @param {!BinaryenModule} wasmModule
- * @param {string} name
- * @return {boolean}
- */
-Wasm2Lang.Backend.AbstractCodegen.probeSegmentName_ = function (wasmModule, name) {
-  /** @type {?function((!Buffer|string), string=, function(*=): ?=): boolean} */
-  var origWrite = null;
-  var /** @type {number|undefined} */ savedExitCode;
-  if (Wasm2Lang.Utilities.Environment.isNode()) {
-    origWrite = /** @type {function((!Buffer|string), string=, function(*=): ?=): boolean} */ (process.stderr.write);
-    savedExitCode = process.exitCode;
-    process.stderr.write = /** @type {function((!Buffer|string), string=, function(*=): ?=): boolean} */ (
-      function () {
-        return true;
-      }
-    );
-  }
-  try {
-    wasmModule.getMemorySegmentInfo(name);
-    return true;
-  } catch (e) {
-    return false;
-  } finally {
-    if (null !== origWrite) {
-      process.stderr.write = origWrite;
-      process.exitCode = savedExitCode || 0;
-    }
-  }
-};
-
-/**
- * Resolves all data segment names for a module.  Binaryen names segments
- * differently depending on whether the WAT source uses explicit names:
- *   - unnamed segments: "0", "1", "2", ...
- *   - named segments:   "d0", "d0.1", ..., "d1", "d1.1", ...
- * The sub-segment naming ("d0.1") appears after passes like remove-non-js-ops
- * that split a single passive segment into multiple active segments.
- *
- * @private
- * @param {!BinaryenModule} wasmModule
- * @param {number} numSegments
- * @return {!Array<string>}
- */
-Wasm2Lang.Backend.AbstractCodegen.resolveSegmentNames_ = function (wasmModule, numSegments) {
-  if (0 === numSegments) {
-    return [];
-  }
-
-  var /** @const {function(!BinaryenModule, string):boolean} */ probe = Wasm2Lang.Backend.AbstractCodegen.probeSegmentName_;
-
-  // Fast path: try implicit numeric naming ("0", "1", ...).
-  if (probe(wasmModule, '0')) {
-    var /** @const {!Array<string>} */ numericNames = [];
-    for (var /** @type {number} */ ni = 0; ni !== numSegments; ++ni) {
-      numericNames[numericNames.length] = String(ni);
-    }
-    return numericNames;
-  }
-
-  // Named-segment enumeration: "d0", "d0.1", "d0.2", ..., "d1", ...
-  var /** @const {!Array<string>} */ names = [];
-  for (var /** @type {number} */ base = 0; names.length < numSegments; ++base) {
-    var /** @const {string} */ baseName = 'd' + base;
-    if (!probe(wasmModule, baseName)) {
-      continue;
-    }
-    names[names.length] = baseName;
-    for (var /** @type {number} */ sub = 1; names.length < numSegments; ++sub) {
-      var /** @const {string} */ subName = 'd' + base + '.' + sub;
-      if (!probe(wasmModule, subName)) {
-        break;
-      }
-      names[names.length] = subName;
-    }
-  }
-
-  return names;
-};
-
-/**
  * Collects and merges all static memory segments from the wasm module into a
  * single Int32Array.  Used by all language backends.
  *
@@ -266,11 +178,11 @@ Wasm2Lang.Backend.AbstractCodegen.resolveSegmentNames_ = function (wasmModule, n
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.collectStaticMemory_ = function (wasmModule) {
   var /** @const {number} */ numSegments = wasmModule.getNumMemorySegments();
-  var /** @const {!Array<string>} */ segNames = Wasm2Lang.Backend.AbstractCodegen.resolveSegmentNames_(wasmModule, numSegments);
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.StaticMemorySegment_>} */ segments = [];
 
-  for (var /** @type {number} */ i = 0, /** @const {number} */ nameCount = segNames.length; i !== nameCount; ++i) {
-    var /** @const {!BinaryenMemorySegmentInfo} */ segInfo = wasmModule.getMemorySegmentInfo(segNames[i]);
+  for (var /** @type {number} */ i = 0; i !== numSegments; ++i) {
+    var /** @const {number} */ segPtr = wasmModule.getDataSegmentByIndex(i);
+    var /** @const {!BinaryenMemorySegmentInfo} */ segInfo = wasmModule.getMemorySegmentInfo(segPtr);
     if (segInfo.passive) {
       continue;
     }
@@ -680,7 +592,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
         globalName: globalInfo.name,
         globalType: globalInfo.type,
         globalMutable: !!globalInfo.mutable,
-        globalInitValue: initExpr.value || 0
+        globalInitValue: initExpr.value != null ? initExpr.value : 0
       };
     }
   }

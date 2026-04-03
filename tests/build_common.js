@@ -88,6 +88,17 @@ function emitSharedData(data) {
   }
 }
 
+/**
+ * Convert (low, high) i32 pair to a single BigInt for binaryen 129+ i64.const.
+ * @param {number} low - Lower 32 bits
+ * @param {number} high - Upper 32 bits
+ * @return {bigint}
+ */
+function i64c(low, high) {
+  var val = (BigInt(high >>> 0) << 32n) | BigInt(low >>> 0);
+  return val >= 0x8000000000000000n ? val - 0x10000000000000000n : val;
+}
+
 /** Random data generators for fuzz-augmented shared data. */
 const rand = {
   i32: () => ((Math.random() * 0xffffffff) >>> 0) - 0x80000000,
@@ -108,4 +119,4 @@ const rand = {
   }
 };
 
-module.exports = {loadBinaryen, createTestModule, finalizeAndOutput, emitSharedData, rand};
+module.exports = {loadBinaryen, createTestModule, finalizeAndOutput, emitSharedData, rand, i64c};

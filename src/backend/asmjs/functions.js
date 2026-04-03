@@ -57,8 +57,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
   }
 
   // Walk the body with the code-gen visitor.
+  var /** @type {boolean} */ bodyEndsWithReturn = false;
   if (0 !== funcInfo.body) {
-    this.walkAndAppendBody_(
+    bodyEndsWithReturn = this.walkAndAppendBody_(
       parts,
       wasmModule,
       binaryen,
@@ -88,6 +89,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
       },
       pad(2)
     );
+  }
+
+  // asm.js requires a syntactic return at the end of non-void functions.
+  // Skip when the body already ends with a return to avoid unreachable-code warnings.
+  if (!bodyEndsWithReturn && binaryen.none !== funcInfo.results && 0 !== funcInfo.results) {
+    parts[parts.length] = pad(2) + 'return ' + this.renderCoercionByType_(binaryen, '0', funcInfo.results) + ';';
   }
 
   parts[parts.length] = pad(1) + '}';

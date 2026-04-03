@@ -96,8 +96,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
   if (align < bytes && bytes > 1) {
     var /** @const {string} */ intStoreName = '$w2l_store_i' + (bytes << 3) + '_a' + align;
     this.markHelper_(intStoreName);
-    return this.n_(intStoreName) + '(' +
-      Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(ptrExpr) + ', ' + coercedValue + ');';
+    return (
+      this.n_(intStoreName) + '(' + Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(ptrExpr) + ', ' + coercedValue + ');'
+    );
   }
   return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, true) + ' = ' + coercedValue + ';';
 };

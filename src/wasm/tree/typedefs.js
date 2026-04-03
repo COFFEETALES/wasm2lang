@@ -132,15 +132,15 @@ Wasm2Lang.Wasm.Tree.TraversalDecision;
 Wasm2Lang.Wasm.Tree.TraversalDecisionInput;
 
 /**
- * @typedef {{
- *   child: !Wasm2Lang.Wasm.Tree.ChildEdge,
- *   childTraversalResult: *
- * }}
+ * A single child traversal result — the raw value returned by walkInner for
+ * one child expression.  Typically either a code string, a typed expression
+ * object ({@code {s: string, c: number}}), or an expression pointer.
+ * @typedef {*}
  */
 Wasm2Lang.Wasm.Tree.TraversalChildResult;
 
 /**
- * @typedef {!Array<!Wasm2Lang.Wasm.Tree.TraversalChildResult>}
+ * @typedef {!Array<*>}
  */
 Wasm2Lang.Wasm.Tree.TraversalChildResultList;
 

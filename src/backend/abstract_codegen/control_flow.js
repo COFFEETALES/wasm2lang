@@ -54,12 +54,17 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderImplicitReturn_ = function (bi
  * If the result is a typed expression and the function has a return type,
  * emits an implicit return statement.  Otherwise appends non-empty lines.
  *
+ * Returns {@code true} when the appended body already ends with a
+ * {@code return} statement, so callers can skip emitting a trailing
+ * default return (avoids unreachable-code warnings).
+ *
  * @protected
  * @param {!Array<string>} parts
  * @param {*} bodyResult
  * @param {!Binaryen} binaryen
  * @param {!BinaryenFunctionInfo} funcInfo
  * @param {string} padStr  Indentation string for the return statement.
+ * @return {boolean}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts, bodyResult, binaryen, funcInfo, padStr) {
   if (
@@ -70,9 +75,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
     0 !== funcInfo.results
   ) {
     parts[parts.length] = padStr + 'return ' + this.renderImplicitReturn_(binaryen, bodyResult, funcInfo.results) + ';';
-  } else {
-    Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, bodyResult);
+    return true;
   }
+  var /** @const {number} */ beforeLen = parts.length;
+  Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, bodyResult);
+  if (parts.length > beforeLen) {
+    return /^\s*return\b/.test(parts[parts.length - 1]);
+  }
+  return false;
 };
 
 /**
@@ -106,7 +116,7 @@ Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, 
     return Wasm2Lang.Backend.AbstractCodegen.EMPTY_CHILD_RESULT_;
   }
 
-  var /** @const {*} */ value = childResults[index].childTraversalResult;
+  var /** @const {*} */ value = childResults[index];
   if ('string' === typeof value) {
     return {
       hasExpression: true,

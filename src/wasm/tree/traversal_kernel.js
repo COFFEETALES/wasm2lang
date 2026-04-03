@@ -15,37 +15,16 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.Action = {
 };
 
 /**
+ * Shared frozen empty child-result list, reused for every leaf node to avoid
+ * allocating a fresh empty array per ConstId, LocalGetId, NopId, etc.
+ *
  * @private
- * @param {*} decision
- * @return {!Wasm2Lang.Wasm.Tree.TraversalDecision}
+ * @const {!Wasm2Lang.Wasm.Tree.TraversalChildResultList}
  */
-Wasm2Lang.Wasm.Tree.TraversalKernel.normalizeDecision_ = function (decision) {
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalDecision} */ normalized = {
-      decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.CONTINUE
-    };
-
-  if (!decision || 'object' !== typeof decision) {
-    return normalized;
-  }
-
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ decisionInput =
-    /** @const {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ (decision);
-
-  if ('string' === typeof decisionInput.decisionAction) {
-    normalized.decisionAction = decisionInput.decisionAction;
-  }
-  if (void 0 !== decisionInput.expressionPointer) {
-    normalized.expressionPointer = decisionInput.expressionPointer;
-  }
-  if (void 0 !== decisionInput.decisionValue) {
-    normalized.decisionValue = decisionInput.decisionValue;
-  }
-
-  return normalized;
-};
+Wasm2Lang.Wasm.Tree.TraversalKernel.EMPTY_CHILD_RESULTS_ = /** @type {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} */ ([]);
 
 /**
+ * @suppress {accessControls}
  * @param {number} exprPtr
  * @param {!Wasm2Lang.Wasm.Tree.TraversalContext} context
  * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} visitor
@@ -82,109 +61,192 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
         Object.create(null)
     );
 
+  // Cache callback references once — avoids repeated property lookups per node.
+  // prettier-ignore
+  var /** @const {(!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|void)} */ enterCallback =
+    /** @const {(!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|void)} */ (visitorObject.enter);
+  // prettier-ignore
+  var /** @const {(!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|void)} */ leaveCallback =
+    /** @const {(!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|void)} */ (visitorObject.leave);
+  var /** @const {boolean} */ hasEnter = 'function' === typeof enterCallback;
+  var /** @const {boolean} */ hasLeave = 'function' === typeof leaveCallback;
+
+  // Reusable mutable nodeContext — updated in-place per node to avoid
+  // allocating a fresh object for every expression in the tree.
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} */ nodeCtxBuf = {
+      binaryen: binaryen,
+      treeModule: module,
+      functionInfo: functionInfo,
+      treeMetadata: metadata,
+      parentExpression: null,
+      edge: null,
+      ancestors: ancestors,
+      expression: /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ ({}),
+      expressionPointer: 0
+    };
+
+  // Action constants hoisted for the inner loop.
+  var /** @const {string} */ SKIP_SUBTREE = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE;
+  var /** @const {string} */ REPLACE_NODE = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE;
+
+  // Edge specs map and edge-kind constant, cached once per walk to bypass
+  // per-node ensureDefaultSchema_ checks and iterChildren allocations.
+  Wasm2Lang.Wasm.Tree.NodeSchema.ensureDefaultSchema_(binaryen);
+  var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionEdgeSpecMap} */ specsMap = Wasm2Lang.Wasm.Tree.NodeSchema.expressionEdgeSpecs_;
+  var /** @const {string} */ LIST = Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind.LIST;
+
+  var /** @const */ safeGetInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo;
+  var /** @const */ augmentInfo = Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_;
+
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} */ EMPTY_CR =
+      Wasm2Lang.Wasm.Tree.TraversalKernel.EMPTY_CHILD_RESULTS_;
+
   /**
    * @param {?Wasm2Lang.Wasm.Tree.ExpressionInfo} parentExpression
-   * @param {?Wasm2Lang.Wasm.Tree.ChildEdge} edge
    * @param {number} currentExprPtr
    * @return {*}
    */
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalWalkInnerFn} */ walkInner = function (parentExpression, edge, currentExprPtr) {
-      if (0 === currentExprPtr) {
-        return 0;
-      }
+  var walkInner = function (parentExpression, currentExprPtr) {
+    if (0 === currentExprPtr) {
+      return 0;
+    }
 
-      var /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
-          binaryen,
-          currentExprPtr
-        );
-      Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_(binaryen, currentExprPtr, expression);
-      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} */ nodeContext = {
-          binaryen: binaryen,
-          treeModule: module,
-          functionInfo: functionInfo,
-          treeMetadata: metadata,
-          parentExpression: parentExpression,
-          edge: edge,
-          ancestors: ancestors.slice(0),
-          expression: expression,
-          expressionPointer: currentExprPtr
-        };
+    var /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression = safeGetInfo(binaryen, currentExprPtr);
+    augmentInfo(binaryen, currentExprPtr, expression);
 
-      // prettier-ignore
-      var /** @const {(!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|void)} */ enterCallback =
-      /** @const {(!Wasm2Lang.Wasm.Tree.TraversalEnterCallback|void)} */ (visitorObject.enter);
-      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalDecision} */ enterDecision =
-          Wasm2Lang.Wasm.Tree.TraversalKernel.normalizeDecision_(
-            'function' === typeof enterCallback ? enterCallback(nodeContext) : null
-          );
+    // Update reusable nodeContext in-place.
+    nodeCtxBuf.parentExpression = parentExpression;
+    nodeCtxBuf.expression = expression;
+    nodeCtxBuf.expressionPointer = currentExprPtr;
 
-      if (
-        Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE === enterDecision.decisionAction &&
-        'number' === typeof enterDecision.expressionPointer &&
-        0 !== enterDecision.expressionPointer
-      ) {
+    // -- Enter callback (inlined decision handling). --
+    var /** @type {boolean} */ skipChildren = false;
+    if (hasEnter) {
+      var /** @type {*} */ enterRaw = /** @type {!Wasm2Lang.Wasm.Tree.TraversalEnterCallback} */ (enterCallback)(nodeCtxBuf);
+      if (enterRaw && 'object' === typeof enterRaw) {
         // prettier-ignore
-        currentExprPtr = /** @const {number} */ (enterDecision.expressionPointer);
-        expression = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, currentExprPtr);
-        Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_(binaryen, currentExprPtr, expression);
-        nodeContext.expression = expression;
-        nodeContext.expressionPointer = currentExprPtr;
-      }
-
-      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} */ childResults = [];
-
-      if (Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE !== enterDecision.decisionAction) {
-        ancestors[ancestors.length] = expression;
-
-        var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ childEdges =
-            Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren(expression);
-
-        for (var /** @type {number} */ i = 0, /** @const {number} */ childCount = childEdges.length; i !== childCount; ++i) {
-          var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ childEdge = childEdges[i];
-          var /** @const {number} */ childExprPtr = /** @type {number} */ (childEdge[3]);
-          var /** @type {*} */ childWalkResult = walkInner(expression, childEdge, childExprPtr);
+        var /** @const {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ enterDec =
+            /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ (enterRaw);
+        var /** @const {*} */ enterAction = enterDec.decisionAction;
+        if (
+          REPLACE_NODE === enterAction &&
+          'number' === typeof enterDec.expressionPointer &&
+          0 !== enterDec.expressionPointer
+        ) {
           // prettier-ignore
-          var /** @const {number} */ effectiveChildPtr = /** @type {number} */ (
-            'number' === typeof childWalkResult ? childWalkResult : childExprPtr
-          );
-          if (effectiveChildPtr !== childExprPtr && 0 !== effectiveChildPtr) {
-            Wasm2Lang.Wasm.Tree.TraversalKernel.applyChildReplacement_(currentExprPtr, childEdge, effectiveChildPtr);
+          currentExprPtr = /** @type {number} */ (enterDec.expressionPointer);
+          expression = safeGetInfo(binaryen, currentExprPtr);
+          augmentInfo(binaryen, currentExprPtr, expression);
+          nodeCtxBuf.expression = expression;
+          nodeCtxBuf.expressionPointer = currentExprPtr;
+        } else if (SKIP_SUBTREE === enterAction) {
+          skipChildren = true;
+        }
+      }
+    }
+
+    // -- Walk children. --
+    var /** @type {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} */ childResults = EMPTY_CR;
+
+    if (!skipChildren) {
+      var /** @const {*} */ rawSpecs = specsMap[expression.id];
+      if (void 0 === rawSpecs) {
+        throw new Error(
+          'Wasm2Lang TraversalKernel: unsupported expression ID ' +
+            expression.id +
+            '. Register this type in NodeSchema.ensureDefaultSchema_ or file a bug.'
+        );
+      }
+      // prettier-ignore
+      var /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpecList} */ specs =
+          /** @type {!Wasm2Lang.Wasm.Tree.EdgeSpecList} */ (rawSpecs);
+      var /** @const {number} */ specCount = specs.length;
+
+      if (0 !== specCount) {
+        ancestors[ancestors.length] = expression;
+        childResults = [];
+        var /** @const {!Object<string, *>} */ expressionMap = /** @type {!Object<string, *>} */ (expression);
+
+        for (var /** @type {number} */ si = 0; si !== specCount; ++si) {
+          var /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpec} */ spec = specs[si];
+          var /** @const {function(number, number, number): void} */ setter =
+              /** @type {function(number, number, number): void} */ (spec.setter);
+
+          if (LIST === spec.edgeTraversalKind) {
+            // prettier-ignore
+            var /** @const {!Array<number>} */ childList =
+                /** @type {!Array<number>} */ (expressionMap[spec.edgePropertyName] || []);
+            for (var /** @type {number} */ j = 0, /** @const {number} */ childCount = childList.length; j !== childCount; ++j) {
+              var /** @const {number} */ listPtr = /** @type {number} */ (childList[j] || 0);
+              if (0 === listPtr) {
+                continue;
+              }
+              var /** @type {*} */ listChildResult = walkInner(expression, listPtr);
+              // prettier-ignore
+              var /** @const {number} */ effectiveListPtr = /** @type {number} */ (
+                  'number' === typeof listChildResult ? listChildResult : listPtr
+                );
+              if (effectiveListPtr !== listPtr && 0 !== effectiveListPtr) {
+                setter(currentExprPtr, j, effectiveListPtr);
+              }
+              childResults[childResults.length] = listChildResult;
+            }
+          } else {
+            var /** @const {number} */ childPtr = /** @type {number} */ (expressionMap[spec.edgePropertyName] || 0);
+            if (0 === childPtr) {
+              continue;
+            }
+            var /** @type {*} */ singleChildResult = walkInner(expression, childPtr);
+            // prettier-ignore
+            var /** @const {number} */ effectiveChildPtr = /** @type {number} */ (
+                'number' === typeof singleChildResult ? singleChildResult : childPtr
+              );
+            if (effectiveChildPtr !== childPtr && 0 !== effectiveChildPtr) {
+              setter(currentExprPtr, -1, effectiveChildPtr);
+            }
+            childResults[childResults.length] = singleChildResult;
           }
-          var /** @const {!Wasm2Lang.Wasm.Tree.TraversalChildResult} */ childResult = {
-              child: childEdge,
-              childTraversalResult: childWalkResult
-            };
-          childResults[childResults.length] = childResult;
         }
 
         --ancestors.length;
       }
+    }
 
-      // prettier-ignore
-      var /** @const {(!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|void)} */ leaveCallback =
-      /** @const {(!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback|void)} */ (visitorObject.leave);
-      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalDecision} */ leaveDecision =
-          Wasm2Lang.Wasm.Tree.TraversalKernel.normalizeDecision_(
-            'function' === typeof leaveCallback ? leaveCallback(nodeContext, childResults) : null
-          );
+    // Restore nodeContext after children — recursive walkInner calls
+    // will have mutated it, so reset the fields for the leave callback.
+    nodeCtxBuf.parentExpression = parentExpression;
+    nodeCtxBuf.expression = expression;
+    nodeCtxBuf.expressionPointer = currentExprPtr;
 
-      if (
-        Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE === leaveDecision.decisionAction &&
-        'number' === typeof leaveDecision.expressionPointer &&
-        0 !== leaveDecision.expressionPointer
-      ) {
+    // -- Leave callback (inlined decision handling). --
+    if (hasLeave) {
+      var /** @type {*} */ leaveRaw = /** @type {!Wasm2Lang.Wasm.Tree.TraversalLeaveCallback} */ (leaveCallback)(
+          nodeCtxBuf,
+          childResults
+        );
+
+      if (leaveRaw && 'object' === typeof leaveRaw) {
         // prettier-ignore
-        currentExprPtr = /** @const {number} */ (leaveDecision.expressionPointer);
+        var /** @const {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ leaveDec =
+            /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ (leaveRaw);
+        if (
+          REPLACE_NODE === leaveDec.decisionAction &&
+          'number' === typeof leaveDec.expressionPointer &&
+          0 !== leaveDec.expressionPointer
+        ) {
+          // prettier-ignore
+          currentExprPtr = /** @type {number} */ (leaveDec.expressionPointer);
+        }
+        if (void 0 !== leaveDec.decisionValue) {
+          return leaveDec.decisionValue;
+        }
       }
+    }
 
-      if (void 0 !== leaveDecision.decisionValue) {
-        return leaveDecision.decisionValue;
-      }
+    return currentExprPtr;
+  };
 
-      return currentExprPtr;
-    };
-
-  return walkInner(null, null, exprPtr);
+  return walkInner(null, exprPtr);
 };
 
 /**

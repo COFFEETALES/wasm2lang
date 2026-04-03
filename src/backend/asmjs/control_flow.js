@@ -107,16 +107,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ loadBytes = /** @type {number} */ (expr.bytes);
       // Use the direct C API to read alignment — getExpressionInfo can
       // return a stale/incorrect value for sub-naturally aligned loads.
-      var /** @const {number} */ loadAlign =
-          binaryen.Load.getAlign(nodeCtx.expressionPointer) || loadBytes;
-      result = this.renderLoad_(
-        binaryen,
-        loadPtr,
-        loadType,
-        loadBytes,
-        !!expr.isSigned,
-        loadAlign
-      );
+      var /** @const {number} */ loadAlign = binaryen.Load.getAlign(nodeCtx.expressionPointer) || loadBytes;
+      result = this.renderLoad_(binaryen, loadPtr, loadType, loadBytes, !!expr.isSigned, loadAlign);
       resultCat = A.catForCoercedType_(binaryen, loadType);
       break;
     }
@@ -129,20 +121,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ storeBytes = /** @type {number} */ (expr.bytes);
       // Use the direct C API to read alignment — getExpressionInfo can
       // return a stale/incorrect value for sub-naturally aligned stores.
-      var /** @const {number} */ storeAlign =
-          binaryen.Store.getAlign(nodeCtx.expressionPointer) || storeBytes;
-      result =
-        pad(ind) +
-        this.renderStore_(
-          binaryen,
-          storePtr,
-          cr(1),
-          storeType,
-          storeBytes,
-          storeAlign,
-          cc(1)
-        ) +
-        '\n';
+      var /** @const {number} */ storeAlign = binaryen.Store.getAlign(nodeCtx.expressionPointer) || storeBytes;
+      result = pad(ind) + this.renderStore_(binaryen, storePtr, cr(1), storeType, storeBytes, storeAlign, cc(1)) + '\n';
       break;
     }
     case binaryen.GlobalSetId: {
