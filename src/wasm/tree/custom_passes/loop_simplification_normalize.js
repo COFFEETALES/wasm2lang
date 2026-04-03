@@ -507,8 +507,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
       planCondPtr = S.invertCondition_(binaryen, module, /** @type {number} */ (brIfInfo.condition || 0));
       bodyChildren = children.slice(1, len - 1);
     } else if ('lwi' === kind || 'lyi' === kind) {
-      // Body is IfId: invert the if condition, extract ifTrue block children minus trailing br.
-      planCondPtr = S.invertCondition_(binaryen, module, /** @type {number} */ (bodyInfo.condition || 0));
+      // Body is IfId: the if condition is already the continuation condition
+      // (true → execute body and loop back), so use it directly.
+      planCondPtr = /** @type {number} */ (bodyInfo.condition || 0);
       var /** @const {number} */ lwiIfTruePtr = /** @type {number} */ (bodyInfo.ifTrue || 0);
       var /** @const {!BinaryenExpressionInfo} */ lwiIfTrueInfo = /** @type {!BinaryenExpressionInfo} */ (
           Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, lwiIfTruePtr)
