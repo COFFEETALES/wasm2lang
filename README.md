@@ -86,13 +86,24 @@ that each platform's toolchain can compile, inline, and optimize directly.
 No intermediate AST is constructed. The emitter produces output chunks
 directly from the traversal visitor callbacks, keeping memory overhead minimal.
 
+## Features
+
+- **Three production backends** -- asm.js, PHP, Java; CRC32-validated byte-identical output across all runtimes.
+- **SIMD128** -- Java backend emits `IntVector` v128 ops that HotSpot auto-vectorizes natively.
+- **Typed coercion elimination** -- expression categories eliminate redundant `|0`, `Math_fround`, and type casts.
+- **Cast-module imports** -- `"cast"` module functions lowered to native type casts instead of calls.
+- **Spec-compliant truncation trapping** -- NaN and out-of-range inputs trap instead of silently producing wrong results.
+- **Structural passes** -- loop simplification, block-loop fusion, switch dispatch detection, local init folding.
+- **Deterministic identifier mangling** -- Feistel-round permutation; same key = same output.
+- **Exported mutable globals** -- getter/setter accessors across all backends.
+
 ## Backends
 
-| Backend    | `--language-out` | Strength                                           | Status                                                                  |
-| ---------- | ---------------- | -------------------------------------------------- | ----------------------------------------------------------------------- |
-| **asm.js** | `ASMJS`          | Closest semantic match to WASM; AOT-compiled by V8 | Active -- full function-body emission, validated by V8 and SpiderMonkey |
-| **PHP**    | `PHP64`          | Runs on shared hosting with no extensions          | Active -- full function-body emission, validated by PHP CLI             |
-| **Java**   | `JAVA`           | HotSpot/Graal optimize the output directly         | Active -- full function-body emission, validated by jshell              |
+| Backend    | `--language-out` | Strength                                            | Status                                                                  |
+| ---------- | ---------------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
+| **asm.js** | `ASMJS`          | Closest semantic match to WASM; AOT-compiled by V8  | Active -- full function-body emission, validated by V8 and SpiderMonkey |
+| **PHP**    | `PHP64`          | Runs on shared hosting with no extensions           | Active -- full function-body emission, validated by PHP CLI             |
+| **Java**   | `JAVA`           | HotSpot/Graal optimize the output directly; SIMD128 | Active -- full function-body emission, validated by jshell              |
 
 **Why asm.js?** WebAssembly was designed as the binary evolution of asm.js --
 they share the same linear memory model, integer coercion semantics, and
@@ -102,10 +113,11 @@ JavaScript, and engines such as V8 still recognize the `"use asm"` directive
 and apply ahead-of-time compilation. This makes asm.js the most semantically
 natural transpilation target for WASM: the mapping is nearly a round-trip.
 
-The project currently focuses on WebAssembly MVP features for straightforward
-and reliable lowering. The longer-term ambition is broader: more WASM features,
-more backends, and deeper optimization passes -- especially where host
-capabilities like Java's SIMD intrinsics could map directly to WASM proposals.
+The project covers WebAssembly MVP features plus post-MVP extensions where they
+map well to host capabilities. The Java backend already emits SIMD128 operations
+as `IntVector` expressions via the Vector API, turning WASM SIMD intrinsics into
+code that HotSpot auto-vectorizes natively. The longer-term ambition is broader
+still: more WASM proposals, more backends, and deeper optimization passes.
 
 ## Installation
 
@@ -353,11 +365,12 @@ mkdir test_artifacts && cd test_artifacts
 ./wasm2lang_run_tests.sh
 ```
 
-The test harness:
+The test harness runs 14 tests covering MVP ops, control flow, arithmetic,
+memory types, algorithms, i64 ops, type casts, and SIMD:
 
 1. Generates `.wast` test fixtures from `tests/*.build.js` scripts.
 2. Builds each fixture in two variants -- `codegen` (with `wasm2lang:codegen` passes + mangling) and `none` (raw, no codegen passes).
-3. For each variant, transpiles to all three backends (asm.js, PHP, Java).
+3. For each variant, transpiles to all enabled backends (asm.js, PHP, Java). Per-test `.build.languages` files can restrict which backends run.
 4. Runs the original `.wasm` through V8 as a reference.
 5. Runs each backend's output through its runtime (V8, SpiderMonkey, PHP CLI, jshell).
 6. Compares stdout output and a CRC32 memory snapshot across all backends.
@@ -412,8 +425,8 @@ as native source code.
 **Deeper optimization passes** -- better loop recognition, smarter coercion
 elimination, tighter generated code.
 
-**Broader WebAssembly coverage** -- moving beyond MVP toward SIMD, threads,
-and advanced proposals.
+**Broader WebAssembly coverage** -- building on the SIMD128 foundation toward
+threads, exception handling, and advanced proposals.
 
 **Validation infrastructure** -- the cross-runtime test harness that
 guarantees correctness is not free to build or maintain.
