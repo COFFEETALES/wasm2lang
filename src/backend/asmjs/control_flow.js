@@ -151,10 +151,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
       // Direct-cast imports: emit native type coercion instead of a call.
       // asm.js type rules: fround(int) invalid, float|0 invalid, double|0 invalid.
-      // int→float: coerce to signed first, then fround/double.
+      // int→float: coerce to signed first (or unsigned for u32_to_f*), then fround/double.
       // float/double→int: use ~~ truncation (same pattern as trunc helpers).
-      var /** @const {number|undefined} */ castRetType = this.castNames_ ? this.castNames_[callTarget] : void 0;
-      if (void 0 !== castRetType) {
+      var /** @const {string|undefined} */ castBaseName = this.castNames_ ? this.castNames_[callTarget] : void 0;
+      if (void 0 !== castBaseName) {
         var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ castSig = state.functionSignatures[
             callTarget
           ] || {sigParams: [], sigRetType: callType};
@@ -170,8 +170,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           );
           resultCat = C.SIGNED;
         } else {
-          // int → float/double: coerce int to signed, then apply target coercion.
-          var /** @const {string} */ castInput = this.coerceAtBoundary_(binaryen, cr(0), cc(0), castInputType);
+          // int → float/double: coerce to signed (i32) or unsigned (u32), then apply target coercion.
+          var /** @const {boolean} */ castIsUnsigned = -1 !== castBaseName.indexOf('u');
+          var /** @const {string} */ castInput = castIsUnsigned
+              ? Wasm2Lang.Backend.AsmjsCodegen.renderUnsignedCoercion_(cr(0))
+              : this.coerceAtBoundary_(binaryen, cr(0), cc(0), castInputType);
           result = this.renderCoercionByType_(binaryen, castInput, callType);
           resultCat = A.catForCoercedType_(binaryen, callType);
         }

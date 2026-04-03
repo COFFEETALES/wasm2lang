@@ -462,7 +462,15 @@ Wasm2Lang.Backend.AbstractCodegen.CAST_IMPORTS_ = {
   'i64_to_f32': true,
   'i64_to_f64': true,
   'f32_to_i64': true,
-  'f64_to_i64': true
+  'f64_to_i64': true,
+  'f32_to_u32': true,
+  'f64_to_u32': true,
+  'u32_to_f32': true,
+  'u32_to_f64': true,
+  'f32_to_u64': true,
+  'f64_to_u64': true,
+  'u64_to_f32': true,
+  'u64_to_f64': true
 };
 
 /**
@@ -561,7 +569,7 @@ Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_;
  *   functions: !Array<!BinaryenFunctionInfo>,
  *   functionTables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>,
  *   flatTableEntries: !Array<string|null>,
- *   castNames: !Object<string, number>
+ *   castNames: !Object<string, string>
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_;
@@ -629,7 +637,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ functionSignatures =
       /** @type {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ (Object.create(null));
   var /** @const {!Object<string, string>} */ importedNames = /** @type {!Object<string, string>} */ (Object.create(null));
-  var /** @const {!Object<string, number>} */ castNames = /** @type {!Object<string, number>} */ (Object.create(null));
+  var /** @const {!Object<string, string>} */ castNames = /** @type {!Object<string, string>} */ (Object.create(null));
   var /** @const {!Object<string, boolean>} */ castImports = Wasm2Lang.Backend.AbstractCodegen.CAST_IMPORTS_;
   for (var /** @type {number} */ f = 0; f !== numFuncs; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(wasmModule.getFunctionByIndex(f));
@@ -637,7 +645,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
     if ('' !== funcInfo.base) {
       impFuncs[impFuncs.length] = {wasmFuncName: funcInfo.name, importBaseName: funcInfo.base, importModule: funcInfo.module};
       if ('cast' === funcInfo.module && funcInfo.base in castImports) {
-        castNames[funcInfo.name] = funcInfo.results;
+        castNames[funcInfo.name] = funcInfo.base;
       } else {
         importedNames[funcInfo.name] = funcInfo.base;
       }

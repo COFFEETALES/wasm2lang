@@ -312,10 +312,19 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ callType = expr.type;
 
       // Direct-cast imports: emit native type cast instead of a call.
-      var /** @const {number|undefined} */ castRetType = this.castNames_ ? this.castNames_[callTarget] : void 0;
-      if (void 0 !== castRetType) {
-        result = this.coerceToType_(binaryen, cr(0), cc(0), callType);
-        resultCat = A.catForCoercedType_(binaryen, callType);
+      // u32→float needs & 0xFFFFFFFF to reinterpret signed i32 as unsigned on PHP 64-bit.
+      var /** @const {string|undefined} */ castBaseName = this.castNames_ ? this.castNames_[callTarget] : void 0;
+      if (void 0 !== castBaseName) {
+        if (-1 !== castBaseName.indexOf('u32_to_f')) {
+          // Mask to unsigned 32-bit, then coerce to target float type.
+          // renderCoercionByType_ uses _w2l_f32 for f32 (actual f32 precision)
+          // and (float) for f64. Plain (float) would lose f32 rounding in chains.
+          result = this.renderCoercionByType_(binaryen, cr(0) + ' & 0xFFFFFFFF', callType);
+          resultCat = A.catForCoercedType_(binaryen, callType);
+        } else {
+          result = this.coerceToType_(binaryen, cr(0), cc(0), callType);
+          resultCat = A.catForCoercedType_(binaryen, callType);
+        }
         break;
       }
 

@@ -13,17 +13,20 @@
 
   // -----------------------------------------------------------------
   // Import direct-cast functions from "cast" module.
-  // i64 variants: simple language-level casts (no trunc/sat overhead).
+  // Signed and unsigned i64 variants.
   // -----------------------------------------------------------------
   module.addFunctionImport('$cast_i64_to_f32', 'cast', 'i64_to_f32', binaryen.createType([binaryen.i64]), binaryen.f32);
   module.addFunctionImport('$cast_i64_to_f64', 'cast', 'i64_to_f64', binaryen.createType([binaryen.i64]), binaryen.f64);
   module.addFunctionImport('$cast_f32_to_i64', 'cast', 'f32_to_i64', binaryen.createType([binaryen.f32]), binaryen.i64);
   module.addFunctionImport('$cast_f64_to_i64', 'cast', 'f64_to_i64', binaryen.createType([binaryen.f64]), binaryen.i64);
+  module.addFunctionImport('$cast_f32_to_u64', 'cast', 'f32_to_u64', binaryen.createType([binaryen.f32]), binaryen.i64);
+  module.addFunctionImport('$cast_f64_to_u64', 'cast', 'f64_to_u64', binaryen.createType([binaryen.f64]), binaryen.i64);
+  module.addFunctionImport('$cast_u64_to_f32', 'cast', 'u64_to_f32', binaryen.createType([binaryen.i64]), binaryen.f32);
+  module.addFunctionImport('$cast_u64_to_f64', 'cast', 'u64_to_f64', binaryen.createType([binaryen.i64]), binaryen.f64);
 
   // =================================================================
-  // exerciseI64Casts: direct casts between i64 and f32/f64 using
-  // imported cast functions.  Params are i32 extended to i64.
-  // Params: (a: i32, b: f32, c: f64)
+  // exerciseI64Casts: signed casts between i64 and f32/f64.
+  // Params: (a: i32, b: f32, c: f64)  — a is sign-extended to i64.
   // =================================================================
   {
     const p0 = () => module.local.get(0, binaryen.i32);
@@ -65,7 +68,51 @@
   }
 
   // =================================================================
-  // exerciseI64CastEdgeCases: constant-driven edge cases.
+  // exerciseU64Casts: unsigned casts between i64 and f32/f64.
+  // Params: (a: i32, b: f32, c: f64)  — a is sign-extended to i64.
+  // =================================================================
+  {
+    const p0 = () => module.local.get(0, binaryen.i32);
+    const p1 = () => module.local.get(1, binaryen.f32);
+    const p2 = () => module.local.get(2, binaryen.f64);
+    const a64 = () => module.i64.extend_s(p0());
+
+    module.addFunction(
+      'exerciseU64Casts',
+      binaryen.createType([binaryen.i32, binaryen.f32, binaryen.f64]),
+      binaryen.none,
+      [],
+      module.block(null, [
+        // Basic casts — all 4 directions
+        storeF32(module.call('$cast_u64_to_f32', [a64()], binaryen.f32)),
+        storeF64Safe(module.call('$cast_u64_to_f64', [a64()], binaryen.f64)),
+        storeI64(module.call('$cast_f32_to_u64', [p1()], binaryen.i64)),
+        storeI64(module.call('$cast_f64_to_u64', [p2()], binaryen.i64)),
+
+        // Round-trip chains: u64→f32→u64, u64→f64→u64
+        storeI64(module.call('$cast_f32_to_u64', [module.call('$cast_u64_to_f32', [a64()], binaryen.f32)], binaryen.i64)),
+        storeI64(module.call('$cast_f64_to_u64', [module.call('$cast_u64_to_f64', [a64()], binaryen.f64)], binaryen.i64)),
+
+        // Round-trip chains: f32→u64→f32, f64→u64→f64
+        storeF32(module.call('$cast_u64_to_f32', [module.call('$cast_f32_to_u64', [p1()], binaryen.i64)], binaryen.f32)),
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.call('$cast_f64_to_u64', [p2()], binaryen.i64)], binaryen.f64)),
+
+        // Cross-type chains: f32→u64→f64, f64→u64→f32
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.call('$cast_f32_to_u64', [p1()], binaryen.i64)], binaryen.f64)),
+        storeF32(module.call('$cast_u64_to_f32', [module.call('$cast_f64_to_u64', [p2()], binaryen.i64)], binaryen.f32)),
+
+        // Wrap cast result to i32
+        storeI32(module.i32.wrap(module.call('$cast_f64_to_u64', [p2()], binaryen.i64))),
+        storeI32(module.i32.wrap(module.call('$cast_f32_to_u64', [p1()], binaryen.i64))),
+
+        module.return()
+      ])
+    );
+  }
+
+  // =================================================================
+  // exerciseI64CastEdgeCases: constant-driven edge cases for signed
+  // and unsigned i64 casts.
   // =================================================================
   {
     module.addFunction(
@@ -74,19 +121,19 @@
       binaryen.none,
       [],
       module.block(null, [
-        // i64 → f32 edge cases
+        // --- Signed i64 → f32 edge cases ---
         storeF32(module.call('$cast_i64_to_f32', [module.i64.const(0, 0)], binaryen.f32)),
         storeF32(module.call('$cast_i64_to_f32', [module.i64.const(1, 0)], binaryen.f32)),
         storeF32(module.call('$cast_i64_to_f32', [module.i64.const(-1, -1)], binaryen.f32)),
         storeF32(module.call('$cast_i64_to_f32', [module.i64.const(0, 1)], binaryen.f32)),
 
-        // i64 → f64 edge cases
+        // --- Signed i64 → f64 edge cases ---
         storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(0, 0)], binaryen.f64)),
         storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(1, 0)], binaryen.f64)),
         storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(-1, -1)], binaryen.f64)),
         storeF64Safe(module.call('$cast_i64_to_f64', [module.i64.const(0x7fffffff, 0)], binaryen.f64)),
 
-        // f64 → i64 edge cases
+        // --- Signed f64 → i64 edge cases ---
         storeI64(module.call('$cast_f64_to_i64', [module.f64.const(0.0)], binaryen.i64)),
         storeI64(module.call('$cast_f64_to_i64', [module.f64.const(0.5)], binaryen.i64)),
         storeI64(module.call('$cast_f64_to_i64', [module.f64.const(-0.5)], binaryen.i64)),
@@ -94,13 +141,13 @@
         storeI64(module.call('$cast_f64_to_i64', [module.f64.const(-1e15)], binaryen.i64)),
         storeI64(module.call('$cast_f64_to_i64', [module.f64.const(4294967296.0)], binaryen.i64)),
 
-        // f32 → i64 edge cases
+        // --- Signed f32 → i64 edge cases ---
         storeI64(module.call('$cast_f32_to_i64', [module.f32.const(0.0)], binaryen.i64)),
         storeI64(module.call('$cast_f32_to_i64', [module.f32.const(42.5)], binaryen.i64)),
         storeI64(module.call('$cast_f32_to_i64', [module.f32.const(-42.5)], binaryen.i64)),
         storeI64(module.call('$cast_f32_to_i64', [module.f32.const(1e8)], binaryen.i64)),
 
-        // Round-trip: i64→f64→i64 preserves for values within f64 precision
+        // --- Signed round-trip: i64→f64→i64 preserves for values within f64 precision ---
         storeI64(
           module.call(
             '$cast_f64_to_i64',
@@ -116,6 +163,48 @@
           )
         ),
 
+        // --- Unsigned u64 → f32 edge cases ---
+        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(0, 0)], binaryen.f32)),
+        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(1, 0)], binaryen.f32)),
+        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(0, 1)], binaryen.f32)),
+        storeF32(module.call('$cast_u64_to_f32', [module.i64.const(1000000, 0)], binaryen.f32)),
+
+        // --- Unsigned u64 → f64 edge cases ---
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(0, 0)], binaryen.f64)),
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(1, 0)], binaryen.f64)),
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(0, 1)], binaryen.f64)),
+        storeF64Safe(module.call('$cast_u64_to_f64', [module.i64.const(0x7fffffff, 0)], binaryen.f64)),
+
+        // --- Unsigned f64 → u64 edge cases ---
+        storeI64(module.call('$cast_f64_to_u64', [module.f64.const(0.0)], binaryen.i64)),
+        storeI64(module.call('$cast_f64_to_u64', [module.f64.const(0.5)], binaryen.i64)),
+        storeI64(module.call('$cast_f64_to_u64', [module.f64.const(42.99)], binaryen.i64)),
+        storeI64(module.call('$cast_f64_to_u64', [module.f64.const(1e15)], binaryen.i64)),
+        storeI64(module.call('$cast_f64_to_u64', [module.f64.const(4294967296.0)], binaryen.i64)),
+        storeI64(module.call('$cast_f64_to_u64', [module.f64.const(1e18)], binaryen.i64)),
+
+        // --- Unsigned f32 → u64 edge cases ---
+        storeI64(module.call('$cast_f32_to_u64', [module.f32.const(0.0)], binaryen.i64)),
+        storeI64(module.call('$cast_f32_to_u64', [module.f32.const(42.5)], binaryen.i64)),
+        storeI64(module.call('$cast_f32_to_u64', [module.f32.const(1e8)], binaryen.i64)),
+        storeI64(module.call('$cast_f32_to_u64', [module.f32.const(1e15)], binaryen.i64)),
+
+        // --- Unsigned round-trip: u64→f64→u64 preserves for values within f64 precision ---
+        storeI64(
+          module.call(
+            '$cast_f64_to_u64',
+            [module.call('$cast_u64_to_f64', [module.i64.const(1000000, 0)], binaryen.f64)],
+            binaryen.i64
+          )
+        ),
+        storeI64(
+          module.call(
+            '$cast_f64_to_u64',
+            [module.call('$cast_u64_to_f64', [module.i64.const(0, 1)], binaryen.f64)],
+            binaryen.i64
+          )
+        ),
+
         module.return()
       ])
     );
@@ -123,6 +212,7 @@
 
   // --- exports ---
   module.addFunctionExport('exerciseI64Casts', 'exerciseI64Casts');
+  module.addFunctionExport('exerciseU64Casts', 'exerciseU64Casts');
   module.addFunctionExport('exerciseI64CastEdgeCases', 'exerciseI64CastEdgeCases');
 
   common.finalizeAndOutput(module);
@@ -139,7 +229,9 @@
       [1000000, 1e6, 1e6],
       [-1000000, -1e6, -1e6],
       [0x7fffffff, 1e10, 1e10],
-      [0x80000000 | 0, -1e10, -1e10]
+      [0x80000000 | 0, -1e10, -1e10],
+      [0x7fffffff, 1e14, 1e14],
+      [-1, 100.25, 1e8]
     ]
   };
   const data = {};

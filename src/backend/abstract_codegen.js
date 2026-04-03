@@ -132,7 +132,7 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
   /** @protected @type {?Object<string, boolean>} */
   this.usedBindings_ = null;
 
-  /** @protected @type {?Object<string, number>} */
+  /** @protected @type {?Object<string, string>} */
   this.castNames_ = null;
 
   /** @protected @type {?Wasm2Lang.Backend.IdentifierMangler} */

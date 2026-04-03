@@ -135,17 +135,31 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
       var /** @const {number} */ callType = expr.type;
 
-      // Direct-cast imports: emit native type cast instead of a call.
-      // Java's renderCoercionByType_ for i32 is a no-op, so float/double→int
-      // needs an explicit (int) cast.
-      var /** @const {number|undefined} */ castRetType = this.castNames_ ? this.castNames_[callTarget] : void 0;
-      if (void 0 !== castRetType) {
+      // Direct-cast imports: emit native language-level type cast instead of a call.
+      // No helpers, no range checks — just the raw target-language cast.
+      var /** @const {string|undefined} */ castBaseName = this.castNames_ ? this.castNames_[callTarget] : void 0;
+      if (void 0 !== castBaseName) {
         if (Wasm2Lang.Backend.ValueType.isI32(binaryen, callType)) {
-          result = '(int)' + A.Precedence_.wrap(cr(0), A.Precedence_.PREC_UNARY_, true);
+          // float → i32/u32: (int)(long) wraps like JS ~~x|0. Plain (int) saturates at INT_MAX/MIN.
+          result = '(int)(long)' + A.Precedence_.wrap(cr(0), A.Precedence_.PREC_UNARY_, true);
+          resultCat = C.SIGNED;
+        } else if (Wasm2Lang.Backend.ValueType.isI64(binaryen, callType)) {
+          // float → i64/u64: plain (long) cast.
+          result = '(long)' + A.Precedence_.wrap(cr(0), A.Precedence_.PREC_UNARY_, true);
+          resultCat = A.CAT_I64;
+        } else if (-1 !== castBaseName.indexOf('u32_to_f')) {
+          // u32 → float/double: unsigned interpretation via Integer.toUnsignedLong.
+          result =
+            (Wasm2Lang.Backend.ValueType.isF32(binaryen, callType) ? '(float)' : '(double)') +
+            'Integer.toUnsignedLong(' +
+            cr(0) +
+            ')';
+          resultCat = A.catForCoercedType_(binaryen, callType);
         } else {
+          // i32/i64/u64 → float/double: plain coercion.
           result = this.coerceToType_(binaryen, cr(0), cc(0), callType);
+          resultCat = A.catForCoercedType_(binaryen, callType);
         }
-        resultCat = A.catForCoercedType_(binaryen, callType);
         break;
       }
 
