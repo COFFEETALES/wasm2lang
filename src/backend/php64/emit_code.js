@@ -264,7 +264,19 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     outputParts[outputParts.length] = pad1 + pegGetterVar + ' = function() use (&' + pegVar + ') { return ' + pegVar + '; };';
     if (moduleInfo.expGlobals[peg].globalMutable) {
       var /** @const {string} */ pegSetterVar = this.phpVar_('$set_' + this.safeName_(moduleInfo.expGlobals[peg].exportName));
-      outputParts[outputParts.length] = pad1 + pegSetterVar + ' = function($v) use (&' + pegVar + ') { ' + pegVar + ' = $v; };';
+      var /** @const {string} */ pegSetterParam = this.localN_(0);
+      outputParts[outputParts.length] =
+        pad1 +
+        pegSetterVar +
+        ' = function(' +
+        pegSetterParam +
+        ') use (&' +
+        pegVar +
+        ') { ' +
+        pegVar +
+        ' = ' +
+        pegSetterParam +
+        '; };';
     }
   }
 
