@@ -1207,6 +1207,12 @@ var BinaryenLoadApi = function () {};
 BinaryenLoadApi.prototype.setPtr = function (ptr, ptrExpr) {};
 
 /**
+ * @param {number} ptr
+ * @return {number}
+ */
+BinaryenLoadApi.prototype.getAlign = function (ptr) {};
+
+/**
  * @type {!BinaryenLoadApi}
  */
 Binaryen.prototype.Load;
@@ -1225,6 +1231,12 @@ var BinaryenStoreApi = function () {};
  * @return {void}
  */
 BinaryenStoreApi.prototype.setPtr = function (ptr, ptrExpr) {};
+
+/**
+ * @param {number} ptr
+ * @return {number}
+ */
+BinaryenStoreApi.prototype.getAlign = function (ptr) {};
 
 /**
  * @param {number} ptr

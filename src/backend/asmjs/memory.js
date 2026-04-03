@@ -32,6 +32,19 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLoad_ = function (binaryen, ptrEx
       wasmType
     );
   }
+  // Integer loads with sub-natural alignment: the asm.js typed-array shift
+  // (>> 1 for HEAP16, >> 2 for HEAP32) truncates the address to an aligned
+  // boundary, silently reading from a rounded-down offset.  Fall back to
+  // smaller-width loads for correctness.
+  if (align < bytes && bytes > 1) {
+    var /** @const {string} */ intLoadName = '$w2l_load_i' + (bytes << 3) + '_a' + align;
+    return this.renderHelperCall_(
+      binaryen,
+      intLoadName,
+      [Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(ptrExpr)],
+      wasmType
+    );
+  }
   return this.renderCoercionByType_(binaryen, this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, isSigned), wasmType);
 };
 
@@ -75,6 +88,16 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
     var /** @const {string} */ storeName = '$w2l_store_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, wasmType);
     this.markHelper_(storeName);
     return this.n_(storeName) + '(' + ptrExpr + ', ' + coercedValue + ');';
+  }
+  // Integer stores with sub-natural alignment: the asm.js typed-array shift
+  // (>> 1 for HEAP16, >> 2 for HEAP32) truncates the address to an aligned
+  // boundary, silently writing to a rounded-down offset.  Fall back to a
+  // helper that decomposes into smaller-width stores.
+  if (align < bytes && bytes > 1) {
+    var /** @const {string} */ intStoreName = '$w2l_store_i' + (bytes << 3) + '_a' + align;
+    this.markHelper_(intStoreName);
+    return this.n_(intStoreName) + '(' +
+      Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(ptrExpr) + ', ' + coercedValue + ');';
   }
   return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, true) + ' = ' + coercedValue + ';';
 };
