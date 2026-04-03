@@ -833,15 +833,7 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_ = function (sta
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionString_ = function (state, conditionPtr) {
-  return Wasm2Lang.Backend.AbstractCodegen.subWalkString_(
-    Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_(
-      state.wasmModule,
-      state.binaryen,
-      state.functionInfo,
-      /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor),
-      conditionPtr
-    )
-  );
+  return Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_(state, conditionPtr).s;
 };
 
 /**

@@ -45,7 +45,11 @@ Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_;
  * @protected
  * @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_}
  */
-Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ ({
+Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ (
+  /** @return {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ (function () {
+    // prettier-ignore
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P =
+    /** @type {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ ({
   PREC_ASSIGN_: 1,
   PREC_CONDITIONAL_: 2,
   PREC_BIT_OR_: 3,
@@ -120,7 +124,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    * @return {number}
    */
   topLevel: function (expr) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+
     var /** @const {string} */ s = expr.replace(/^\s+|\s+$/g, '');
     var /** @type {number} */ depthParen = 0;
     var /** @type {number} */ depthBracket = 0;
@@ -262,7 +266,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    * @return {string}
    */
   wrap: function (expr, requiredPrecedence, allowEqual) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+
     var /** @const {number} */ actualPrecedence = P.topLevel(expr);
 
     if (
@@ -281,7 +285,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    * @return {string}
    */
   renderPrefix: function (op, expr) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+
     return op + P.wrap(expr, P.PREC_UNARY_, true);
   },
 
@@ -294,7 +298,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    * @return {string}
    */
   renderInfix: function (L, op, R, precedence, opt_allowRightEqual) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+
     return P.wrap(L, precedence, true) + ' ' + op + ' ' + P.wrap(R, precedence, !!opt_allowRightEqual);
   },
 
@@ -303,7 +307,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    * @return {string}
    */
   formatCondition: function (expr) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+
     if ('' === expr) {
       return '(0)';
     }
@@ -322,7 +326,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    * @return {string}
    */
   stripOuter: function (expr) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+
     return P.isFullyParenthesized(expr) ? expr.slice(1, -1) : expr;
   },
 
@@ -334,14 +338,17 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    * @return {{bitwisePrecedence: number, bitwiseAllowRightEqual: boolean}}
    */
   bitwiseInfo: function (opStr) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.PrecedenceHelper_} */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+
     if ('&' === opStr) return {bitwisePrecedence: P.PREC_BIT_AND_, bitwiseAllowRightEqual: true};
     if ('^' === opStr) return {bitwisePrecedence: P.PREC_BIT_XOR_, bitwiseAllowRightEqual: true};
     if ('<<' === opStr || '>>' === opStr || '>>>' === opStr)
       return {bitwisePrecedence: P.PREC_SHIFT_, bitwiseAllowRightEqual: false};
     return {bitwisePrecedence: P.PREC_BIT_OR_, bitwiseAllowRightEqual: true};
   }
-});
+  });
+    return P;
+  })()
+);
 
 /**
  * Formats an expression for use as a boolean condition in control flow

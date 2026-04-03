@@ -72,6 +72,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   // Function bodies (emitted first to discover which helpers and bindings are needed).
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  this.castNames_ = moduleInfo.castNames;
   var /** @const {!Array<string>} */ functionParts = [];
   for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
@@ -97,6 +98,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
       this.heapPageCount_
     );
   this.usedHelpers_ = null;
+  this.castNames_ = null;
   this.heapPageCount_ = 0;
 
   // Insert conditional heap views and stdlib imports at the reserved position.

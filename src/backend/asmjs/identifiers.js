@@ -92,15 +92,3 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getAllHelperNames_ = function () {
     '$w2l_memory_grow'
   ];
 };
-
-/**
- * @override
- * @param {string} name
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.safeName_ = function (name) {
-  return Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_(
-    Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name),
-    Wasm2Lang.Backend.AsmjsCodegen.RESERVED_
-  );
-};

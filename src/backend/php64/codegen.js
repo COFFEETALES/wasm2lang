@@ -7,6 +7,9 @@
 Wasm2Lang.Backend.Php64Codegen = function () {
   Wasm2Lang.Backend.AbstractCodegen.call(this);
   this.f32WidensToF64_ = true;
+  this.reservedWords_ = Wasm2Lang.Backend.Php64Codegen.RESERVED_;
+  this.caseInsensitiveReserved_ = true;
+  this.preSanitizeRegex_ = /[^a-zA-Z0-9_]/g;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ H = Wasm2Lang.Backend.Php64Codegen;
   this.binaryRenderers_[C.OP_ARITHMETIC] = H.renderArithmeticBinary_;

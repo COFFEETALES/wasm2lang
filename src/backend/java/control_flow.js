@@ -133,6 +133,22 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     }
     case binaryen.CallId: {
       var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
+      var /** @const {number} */ callType = expr.type;
+
+      // Direct-cast imports: emit native type cast instead of a call.
+      // Java's renderCoercionByType_ for i32 is a no-op, so float/double→int
+      // needs an explicit (int) cast.
+      var /** @const {number|undefined} */ castRetType = this.castNames_ ? this.castNames_[callTarget] : void 0;
+      if (void 0 !== castRetType) {
+        if (Wasm2Lang.Backend.ValueType.isI32(binaryen, callType)) {
+          result = '(int)' + A.Precedence_.wrap(cr(0), A.Precedence_.PREC_UNARY_, true);
+        } else {
+          result = this.coerceToType_(binaryen, cr(0), cc(0), callType);
+        }
+        resultCat = A.catForCoercedType_(binaryen, callType);
+        break;
+      }
+
       var /** @const {string} */ javaStdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
       var /** @const {string} */ importBase = javaStdlibName ? '' : state.importedNames[callTarget] || '';
       var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
@@ -141,13 +157,15 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           childResults,
           state.functionSignatures
         );
-      var /** @const {number} */ callType = expr.type;
       var /** @type {string} */ callExpr;
       if ('' !== javaStdlibName) {
         callExpr = javaStdlibName + '(' + callArgs.join(', ') + ')';
       } else if ('' !== importBase) {
         this.markBinding_('$if_' + this.safeName_(importBase));
-        callExpr = this.renderImportCallExpr_(binaryen, importBase, callArgs, callType);
+        var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ impSig = state.functionSignatures[
+            callTarget
+          ] || {sigParams: [], sigRetType: callType};
+        callExpr = this.renderImportCallExpr_(binaryen, importBase, callArgs, callType, impSig.sigParams);
       } else {
         var /** @const {boolean} */ callIsExported = callTarget in state.exportNameMap;
         var /** @const {string} */ resolvedName = callIsExported ? state.exportNameMap[callTarget] : callTarget;

@@ -147,6 +147,37 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.CallId: {
       var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
+      var /** @const {number} */ callType = expr.type;
+
+      // Direct-cast imports: emit native type coercion instead of a call.
+      // asm.js type rules: fround(int) invalid, float|0 invalid, double|0 invalid.
+      // int→float: coerce to signed first, then fround/double.
+      // float/double→int: use ~~ truncation (same pattern as trunc helpers).
+      var /** @const {number|undefined} */ castRetType = this.castNames_ ? this.castNames_[callTarget] : void 0;
+      if (void 0 !== castRetType) {
+        var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ castSig = state.functionSignatures[
+            callTarget
+          ] || {sigParams: [], sigRetType: callType};
+        var /** @const {number} */ castInputType = castSig.sigParams.length ? castSig.sigParams[0] : callType;
+        if (Wasm2Lang.Backend.ValueType.isI32(binaryen, callType)) {
+          // float/double → i32: promote float to double with +, then ~~ truncation.
+          var /** @type {string} */ castTruncInput = cr(0);
+          if (Wasm2Lang.Backend.ValueType.isF32(binaryen, castInputType)) {
+            castTruncInput = Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_(castTruncInput);
+          }
+          result = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
+            '~~' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.wrap(castTruncInput, A.Precedence_.PREC_UNARY_, false)
+          );
+          resultCat = C.SIGNED;
+        } else {
+          // int → float/double: coerce int to signed, then apply target coercion.
+          var /** @const {string} */ castInput = this.coerceAtBoundary_(binaryen, cr(0), cc(0), castInputType);
+          result = this.renderCoercionByType_(binaryen, castInput, callType);
+          resultCat = A.catForCoercedType_(binaryen, callType);
+        }
+        break;
+      }
+
       var /** @const {string} */ stdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
       var /** @const {string} */ importBase = stdlibName ? '' : state.importedNames[callTarget] || '';
       var /** @type {string} */ callName;
@@ -164,10 +195,25 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           childResults,
           state.functionSignatures
         );
+      // asm.js FFI calls accept int or double args only — promote f32 to double.
+      if ('' !== importBase) {
+        var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ ffiSig = state.functionSignatures[
+            callTarget
+          ] || {sigParams: [], sigRetType: 0};
+        for (var /** @type {number} */ fai = 0; fai < callArgs.length; ++fai) {
+          if (fai < ffiSig.sigParams.length && binaryen.f32 === ffiSig.sigParams[fai]) {
+            callArgs[fai] = Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_(callArgs[fai]);
+          }
+        }
+      }
       var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
-      var /** @const {number} */ callType = expr.type;
       if (callType === binaryen.none || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
+      } else if ('' !== importBase && binaryen.f32 === callType) {
+        // asm.js FFI calls return int or double only — coerce to double
+        // first, then apply fround.
+        result = this.renderCoercionByType_(binaryen, Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_(callExpr), callType);
+        resultCat = A.catForCoercedType_(binaryen, callType);
       } else {
         result = this.renderCoercionByType_(binaryen, callExpr, callType);
         resultCat = A.catForCoercedType_(binaryen, callType);

@@ -73,6 +73,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   }
 
   // Emit function bodies first to discover which helpers and bindings are needed.
+  this.castNames_ = moduleInfo.castNames;
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   var /** @const {!Array<string>} */ functionParts = [];
@@ -95,6 +96,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   }
   var /** @const {!Object<string, boolean>} */ used = this.usedHelpers_;
   this.usedHelpers_ = null;
+  this.castNames_ = null;
   var /** @const {!Object<string, boolean>} */ usedB = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
   this.usedBindings_ = null;
 

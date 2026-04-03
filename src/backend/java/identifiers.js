@@ -47,18 +47,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.getAllHelperNames_ = function () {
 };
 
 /**
- * @override
- * @param {string} name
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.prototype.safeName_ = function (name) {
-  return Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_(
-    Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name.replace(/[^a-zA-Z0-9_$]/g, '_')),
-    Wasm2Lang.Backend.JavaCodegen.RESERVED_
-  );
-};
-
-/**
  * Maps a wasm value type to a Java type name.
  *
  * @param {!Binaryen} binaryen

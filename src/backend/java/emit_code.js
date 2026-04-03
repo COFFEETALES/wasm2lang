@@ -135,6 +135,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Function bodies (emitted first to discover which helpers and bindings are needed).
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  this.castNames_ = moduleInfo.castNames;
   var /** @const {!Array<string>} */ functionParts = [];
   for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
@@ -155,6 +156,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Helper methods (only those referenced by function bodies).
   var /** @const {!Array<string>} */ helperLines = this.emitHelpers_();
   this.usedHelpers_ = null;
+  this.castNames_ = null;
   var /** @const {!Object<string, boolean>} */ jub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
   this.usedBindings_ = null;
 

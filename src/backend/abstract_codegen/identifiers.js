@@ -211,16 +211,22 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.resolveBreakTarget_ = function (
 };
 
 /**
- * Backend hook: sanitises a raw binaryen name for the target language,
- * applying invalid-character replacement, leading-digit guard, and
- * reserved-word resolution.  Backends override with their own rules.
+ * Sanitises a raw binaryen name for the target language, applying
+ * optional pre-sanitize regex, invalid-character replacement, leading-digit
+ * guard, and reserved-word resolution.  Behavior is configured via instance
+ * fields set by concrete backend constructors: {@code reservedWords_},
+ * {@code caseInsensitiveReserved_}, and {@code preSanitizeRegex_}.
  *
  * @protected
  * @param {string} name
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.safeName_ = function (name) {
-  return Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name);
+  if (this.preSanitizeRegex_) name = name.replace(this.preSanitizeRegex_, '_');
+  var /** @const {string} */ safe = Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(name);
+  return this.reservedWords_
+    ? Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_(safe, this.reservedWords_, this.caseInsensitiveReserved_)
+    : safe;
 };
 
 /**

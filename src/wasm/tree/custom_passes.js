@@ -77,33 +77,28 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyLeaveRenaming_ = function (marker, targetS
 };
 
 /**
- * Applies label-prefix renaming to BreakId, SwitchId, and BlockId nodes
- * whose label is in the target set (and not in the optional exclusion set).
- * Returns a REPLACE_NODE decision if renaming was applied, null otherwise.
+ * Applies dynamic label-prefix renaming to BreakId, SwitchId, and BlockId
+ * nodes.  For each candidate name, {@code resolveMarker} is called; a
+ * non-null return value is prepended to the original name.
  *
- * This is the shared rename infrastructure for marker-based passes (sw$, lb$,
- * rs$) that detect a pattern in enter_, build a set of affected labels, then
- * rename matching labels in leave_.
- *
- * @param {string} marker
- * @param {!Object<string, boolean>} targetSet
- * @param {?Object<string, boolean>} exclusionSet
+ * @param {function(string): ?string} resolveMarker
  * @param {!Binaryen} binaryen
  * @param {!BinaryenModule} module
  * @param {!BinaryenExpressionInfo} expr
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_ = function (marker, targetSet, exclusionSet, binaryen, module, expr) {
+Wasm2Lang.Wasm.Tree.CustomPasses.applyMappedRenaming_ = function (resolveMarker, binaryen, module, expr) {
   var /** @const {number} */ id = expr.id;
   var /** @const {string} */ REPLACE_NODE = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE;
 
   if (id === binaryen.BreakId) {
     var /** @const {?string} */ breakName = /** @type {?string} */ (expr.name);
-    if (breakName && breakName in targetSet && (!exclusionSet || !(breakName in exclusionSet))) {
+    var /** @const {?string} */ breakMarker = breakName ? resolveMarker(breakName) : null;
+    if (breakMarker) {
       return {
         decisionAction: REPLACE_NODE,
         expressionPointer: module.break(
-          marker + breakName,
+          breakMarker + breakName,
           /** @type {number} */ (expr.condition || 0),
           /** @type {number} */ (expr.value || 0)
         )
@@ -118,17 +113,21 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_ = function (marker, target
     var /** @type {number} */ i = 0;
 
     for (i = 0; i !== nameCount; ++i) {
-      if (names[i] in targetSet && (!exclusionSet || !(names[i] in exclusionSet))) {
-        names[i] = marker + names[i];
+      var /** @const {?string} */ nameMarker = resolveMarker(names[i]);
+      if (nameMarker) {
+        names[i] = nameMarker + names[i];
         hasChanges = true;
       }
     }
 
     var /** @const {string} */ defaultName = /** @type {string} */ (expr.defaultName || '');
     var /** @type {string} */ newDefault = defaultName;
-    if ('' !== defaultName && defaultName in targetSet && (!exclusionSet || !(defaultName in exclusionSet))) {
-      newDefault = marker + defaultName;
-      hasChanges = true;
+    if ('' !== defaultName) {
+      var /** @const {?string} */ defMarker = resolveMarker(defaultName);
+      if (defMarker) {
+        newDefault = defMarker + defaultName;
+        hasChanges = true;
+      }
     }
 
     if (hasChanges) {
@@ -146,11 +145,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_ = function (marker, target
 
   if (id === binaryen.BlockId) {
     var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
-    if (blockName && blockName in targetSet && (!exclusionSet || !(blockName in exclusionSet))) {
+    var /** @const {?string} */ blockMarker = blockName ? resolveMarker(blockName) : null;
+    if (blockMarker) {
       return {
         decisionAction: REPLACE_NODE,
         expressionPointer: module.block(
-          marker + blockName,
+          blockMarker + blockName,
           /** @type {!Array<number>} */ ((expr.children || []).slice(0)),
           expr.type
         )
@@ -159,6 +159,30 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_ = function (marker, target
   }
 
   return null;
+};
+
+/**
+ * Applies label-prefix renaming to BreakId, SwitchId, and BlockId nodes
+ * whose label is in the target set (and not in the optional exclusion set).
+ * Delegates to {@code applyMappedRenaming_} with a static-marker resolver.
+ *
+ * @param {string} marker
+ * @param {!Object<string, boolean>} targetSet
+ * @param {?Object<string, boolean>} exclusionSet
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} module
+ * @param {!BinaryenExpressionInfo} expr
+ * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_ = function (marker, targetSet, exclusionSet, binaryen, module, expr) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.applyMappedRenaming_(
+    /** @param {string} name @return {?string} */ function (name) {
+      return name in targetSet && (!exclusionSet || !(name in exclusionSet)) ? marker : null;
+    },
+    binaryen,
+    module,
+    expr
+  );
 };
 
 // ---------------------------------------------------------------------------

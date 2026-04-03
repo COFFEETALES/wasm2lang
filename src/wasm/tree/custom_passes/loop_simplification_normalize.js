@@ -465,54 +465,18 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
   var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
   var /** @const {string} */ REPLACE_NODE = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE;
 
-  // Rename break targets pointing to simplified loops.
-  if (id === binaryen.BreakId) {
-    var /** @const {?string} */ breakName = /** @type {?string} */ (expr.name);
-    if (breakName && breakName in state.simplifiedLoops) {
-      var /** @const {string} */ brM = /** @type {string} */ (S.VARIANT_INFO_[state.simplifiedLoops[breakName]][0]);
-      return {
-        decisionAction: REPLACE_NODE,
-        expressionPointer: module.break(
-          brM + breakName,
-          /** @type {number} */ (expr.condition || 0),
-          /** @type {number} */ (expr.value || 0)
-        )
-      };
-    }
-  }
-
-  // Rename switch targets pointing to simplified loops.
-  if (id === binaryen.SwitchId) {
-    var /** @const {!Array<string>} */ names = /** @type {!Array<string>} */ ((expr.names || []).slice(0));
-    var /** @const {number} */ nameCount = names.length;
-    var /** @type {boolean} */ hasChanges = false;
-    var /** @type {number} */ i = 0;
-
-    for (i = 0; i !== nameCount; ++i) {
-      if (names[i] in state.simplifiedLoops) {
-        names[i] = S.VARIANT_INFO_[state.simplifiedLoops[names[i]]][0] + names[i];
-        hasChanges = true;
-      }
-    }
-
-    var /** @const {string} */ defaultName = /** @type {string} */ (expr.defaultName || '');
-    var /** @type {string} */ newDefault = defaultName;
-    if ('' !== defaultName && defaultName in state.simplifiedLoops) {
-      newDefault = S.VARIANT_INFO_[state.simplifiedLoops[defaultName]][0] + defaultName;
-      hasChanges = true;
-    }
-
-    if (hasChanges) {
-      return {
-        decisionAction: REPLACE_NODE,
-        expressionPointer: module.switch(
-          names,
-          newDefault,
-          /** @type {number} */ (expr.condition || 0),
-          /** @type {number} */ (expr.value || 0)
-        )
-      };
-    }
+  // Rename break/switch targets pointing to simplified loops.
+  var /** @const {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ renameResult =
+      Wasm2Lang.Wasm.Tree.CustomPasses.applyMappedRenaming_(
+        /** @param {string} name @return {?string} */ function (name) {
+          return name in state.simplifiedLoops ? /** @type {string} */ (S.VARIANT_INFO_[state.simplifiedLoops[name]][0]) : null;
+        },
+        binaryen,
+        module,
+        expr
+      );
+  if (renameResult) {
+    return renameResult;
   }
 
   // Modify the loop: rename label and restructure body block.

@@ -116,6 +116,35 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderStore_ = function (binaryen, ptrEx
 };
 
 /**
+ * Returns the Java functional-interface lane for a wasm type.
+ * i32 → 'Int', i64 → 'Long', f32/f64 → 'Double'.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaCodegen.javaLane_ = function (binaryen, wasmType) {
+  if (binaryen.i64 === wasmType) return 'Long';
+  if (binaryen.f32 === wasmType || binaryen.f64 === wasmType) return 'Double';
+  return 'Int';
+};
+
+/**
+ * @const {!Object<string, !Array<string>>}
+ */
+Wasm2Lang.Backend.JavaCodegen.UNARY_IFACE_ = {
+  'Int_Int': ['IntUnaryOperator', 'applyAsInt'],
+  'Int_Long': ['IntToLongFunction', 'applyAsLong'],
+  'Int_Double': ['IntToDoubleFunction', 'applyAsDouble'],
+  'Long_Int': ['LongToIntFunction', 'applyAsInt'],
+  'Long_Long': ['LongUnaryOperator', 'applyAsLong'],
+  'Long_Double': ['LongToDoubleFunction', 'applyAsDouble'],
+  'Double_Int': ['DoubleToIntFunction', 'applyAsInt'],
+  'Double_Long': ['DoubleToLongFunction', 'applyAsLong'],
+  'Double_Double': ['DoubleUnaryOperator', 'applyAsDouble']
+};
+
+/**
  * Renders a call to an imported function, choosing the appropriate Java
  * functional interface and invocation method based on the wasm signature.
  *
@@ -123,28 +152,67 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderStore_ = function (binaryen, ptrEx
  * @param {string} importBaseName
  * @param {!Array<string>} callArgs
  * @param {number} callType
+ * @param {!Array<number>=} opt_paramTypes
  * @return {string}
  */
-Wasm2Lang.Backend.JavaCodegen.prototype.renderImportCallExpr_ = function (binaryen, importBaseName, callArgs, callType) {
+Wasm2Lang.Backend.JavaCodegen.prototype.renderImportCallExpr_ = function (
+  binaryen,
+  importBaseName,
+  callArgs,
+  callType,
+  opt_paramTypes
+) {
   var /** @const {string} */ field = 'this.' + this.n_('$if_' + this.safeName_(importBaseName));
   var /** @const {boolean} */ isVoid = callType === binaryen.none || 0 === callType;
   var /** @const {number} */ numArgs = callArgs.length;
+  var /** @const {function(!Binaryen, number): string} */ lane = Wasm2Lang.Backend.JavaCodegen.javaLane_;
+  var /** @const {string} */ retLane = isVoid ? 'Void' : lane(binaryen, callType);
+  var /** @const {boolean} */ needsFloatCast = binaryen.f32 === callType;
 
-  if (isVoid && 0 === numArgs) {
-    return '((Runnable)' + field + ').run()';
+  // --- 0 args ---
+  if (0 === numArgs) {
+    if (isVoid) return '((Runnable)' + field + ').run()';
+    var /** @const {string} */ supplier =
+        'Long' === retLane ? 'LongSupplier' : 'Double' === retLane ? 'DoubleSupplier' : 'IntSupplier';
+    var /** @const {string} */ getMethod = 'Long' === retLane ? 'getAsLong' : 'Double' === retLane ? 'getAsDouble' : 'getAsInt';
+    var /** @type {string} */ sup = '((java.util.function.' + supplier + ')' + field + ').' + getMethod + '()';
+    return needsFloatCast ? '(float)' + sup : sup;
   }
+
+  var /** @const {string} */ paramLane = lane(
+      binaryen,
+      opt_paramTypes && opt_paramTypes.length > 0 ? opt_paramTypes[0] : binaryen.i32
+    );
+
+  // --- 1 arg, void return ---
   if (isVoid && 1 === numArgs) {
-    return '((java.util.function.IntConsumer)' + field + ').accept(' + callArgs[0] + ')';
+    var /** @const {string} */ consumer =
+        'Long' === paramLane ? 'LongConsumer' : 'Double' === paramLane ? 'DoubleConsumer' : 'IntConsumer';
+    return '((java.util.function.' + consumer + ')' + field + ').accept(' + callArgs[0] + ')';
   }
-  if (!isVoid && 0 === numArgs) {
-    return '((java.util.function.IntSupplier)' + field + ').getAsInt()';
+
+  // --- 1 arg, non-void return ---
+  if (1 === numArgs) {
+    var /** @const {string} */ key = paramLane + '_' + retLane;
+    var /** @const {!Array<string>|undefined} */ entry = Wasm2Lang.Backend.JavaCodegen.UNARY_IFACE_[key];
+    if (entry) {
+      var /** @type {string} */ r =
+          '((java.util.function.' + entry[0] + ')' + field + ').' + entry[1] + '(' + callArgs[0] + ')';
+      return needsFloatCast ? '(float)' + r : r;
+    }
   }
-  if (!isVoid && 1 === numArgs) {
-    return '((java.util.function.IntUnaryOperator)' + field + ').applyAsInt(' + callArgs[0] + ')';
-  }
+
+  // --- 2 args, non-void return ---
   if (!isVoid && 2 === numArgs) {
-    return '((java.util.function.IntBinaryOperator)' + field + ').applyAsInt(' + callArgs[0] + ', ' + callArgs[1] + ')';
+    var /** @const {string} */ binIface =
+        'Long' === paramLane ? 'LongBinaryOperator' : 'Double' === paramLane ? 'DoubleBinaryOperator' : 'IntBinaryOperator';
+    var /** @const {string} */ binMethod =
+        'Long' === paramLane ? 'applyAsLong' : 'Double' === paramLane ? 'applyAsDouble' : 'applyAsInt';
+    var /** @type {string} */ bin =
+        '((java.util.function.' + binIface + ')' + field + ').' + binMethod + '(' + callArgs[0] + ', ' + callArgs[1] + ')';
+    return needsFloatCast ? '(float)' + bin : bin;
   }
+
   // Fallback: direct call (will not compile, but documents intent).
   return field + '(' + callArgs.join(', ') + ')';
 };

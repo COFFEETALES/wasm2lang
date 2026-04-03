@@ -50,12 +50,20 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo;
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.RootSwitchInfo;
 
 // ---------------------------------------------------------------------------
-// Accessors
+// Accessors + analysis descriptors
 // ---------------------------------------------------------------------------
 
+/** @const {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} */
+var extractSwDispatch_ = /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+  return fm.switchDispatchNames;
+};
+
+/** @const {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} */
+var extractRootSwitch_ = /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+  return fm.rootSwitchNames;
+};
+
 /**
- * Returns true if the given block is a switch-dispatch block.
- *
  * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
  * @param {string} funcName
  * @param {string} blockName
@@ -66,19 +74,10 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockSwitchDispatch
   funcName,
   blockName
 ) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag(
-    passRunResultIndex,
-    funcName,
-    /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-      return fm.switchDispatchNames;
-    },
-    blockName
-  );
+  return Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag(passRunResultIndex, funcName, extractSwDispatch_, blockName);
 };
 
 /**
- * Returns true if the given block is a root-switch block.
- *
  * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
  * @param {string} funcName
  * @param {string} blockName
@@ -89,33 +88,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockRootSwitch = f
   funcName,
   blockName
 ) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag(
-    passRunResultIndex,
-    funcName,
-    /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-      return fm.rootSwitchNames;
-    },
-    blockName
-  );
+  return Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag(passRunResultIndex, funcName, extractRootSwitch_, blockName);
 };
 
-// ---------------------------------------------------------------------------
-// Analysis descriptors
-// ---------------------------------------------------------------------------
-
-Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
-  'switchDispatch',
-  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-    return fm.switchDispatchNames;
-  }
-);
-
-Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
-  'rootSwitch',
-  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-    return fm.rootSwitchNames;
-  }
-);
+Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor('switchDispatch', extractSwDispatch_);
+Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor('rootSwitch', extractRootSwitch_);
 
 // ---------------------------------------------------------------------------
 // Extraction

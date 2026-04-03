@@ -309,6 +309,16 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.CallId: {
       var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
+      var /** @const {number} */ callType = expr.type;
+
+      // Direct-cast imports: emit native type cast instead of a call.
+      var /** @const {number|undefined} */ castRetType = this.castNames_ ? this.castNames_[callTarget] : void 0;
+      if (void 0 !== castRetType) {
+        result = this.coerceToType_(binaryen, cr(0), cc(0), callType);
+        resultCat = A.catForCoercedType_(binaryen, callType);
+        break;
+      }
+
       var /** @const {string} */ phpStdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
       var /** @const {string} */ importBase = phpStdlibName ? '' : state.importedNames[callTarget] || '';
       var /** @type {string} */ callName;
@@ -330,7 +340,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
           state.functionSignatures
         );
       var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
-      var /** @const {number} */ callType = expr.type;
       if (callType === binaryen.none || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
       } else if ('' !== importBase || '' !== phpStdlibName) {
@@ -717,9 +726,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
         } else {
           state.labelStack[state.labelStack.length - 1].alias = bName;
         }
-      } else if (this.isBlockRootSwitch_(fName, bName)) {
+      } else if (this.isBlockRootSwitch_(fName, bName) || hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (this.isBlockSwitchDispatch_(fName, bName)) {
+      } else if (this.isBlockSwitchDispatch_(fName, bName) || hp(bName, A.SW_DISPATCH_PREFIX_)) {
         state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
         ++state.indent;
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
@@ -735,12 +744,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
         } else {
           state.labelStack[state.labelStack.length - 1].alias = bName;
         }
-      } else if (hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
-        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (hp(bName, A.SW_DISPATCH_PREFIX_)) {
-        state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
-        ++state.indent;
-        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else {
         state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
         ++state.indent;

@@ -132,6 +132,9 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
   /** @protected @type {?Object<string, boolean>} */
   this.usedBindings_ = null;
 
+  /** @protected @type {?Object<string, number>} */
+  this.castNames_ = null;
+
   /** @protected @type {?Wasm2Lang.Backend.IdentifierMangler} */
   this.mangler_ = null;
 
@@ -144,6 +147,25 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
    * @protected @type {boolean}
    */
   this.f32WidensToF64_ = false;
+
+  /**
+   * Reserved-word lookup table for the target language.  Set by concrete
+   * backend constructors; when non-null, safeName_ applies reserved-word
+   * resolution via resolveReservedIdentifier_.
+   * @protected @type {?Object<string, boolean>}
+   */
+  this.reservedWords_ = null;
+
+  /** @protected @type {boolean} */
+  this.caseInsensitiveReserved_ = false;
+
+  /**
+   * Optional pre-sanitize regex applied by safeName_ before safeIdentifier_.
+   * PHP sets this to strip {@code $} characters that are not valid in PHP
+   * identifiers (PHP uses {@code $} as a variable sigil).
+   * @protected @type {?RegExp}
+   */
+  this.preSanitizeRegex_ = null;
 
   /**
    * Per-category binary-op renderers, populated by each backend constructor.

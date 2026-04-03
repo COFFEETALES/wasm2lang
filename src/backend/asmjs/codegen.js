@@ -6,6 +6,7 @@
  */
 Wasm2Lang.Backend.AsmjsCodegen = function () {
   Wasm2Lang.Backend.AbstractCodegen.call(this);
+  this.reservedWords_ = Wasm2Lang.Backend.AsmjsCodegen.RESERVED_;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ B = Wasm2Lang.Backend.AsmjsCodegen;
   this.binaryRenderers_[C.OP_ARITHMETIC] = B.renderArithmeticBinary_;

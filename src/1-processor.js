@@ -424,10 +424,9 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
   var params = Wasm2Lang.CLI.CommandLineParser.parseArgv();
 
   if ('object' === typeof params['--help']) {
-    Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.isNode()](
-      Wasm2Lang.Utilities.Environment.LogLevel.NONE,
-      '\nWasm2Lang CLI Help:'
-    );
+    var /** @const */ log = Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.isNode()];
+    var /** @const {!Wasm2Lang.Utilities.Environment.LogLevel} */ NONE = Wasm2Lang.Utilities.Environment.LogLevel.NONE;
+    log(NONE, '\nWasm2Lang CLI Help:');
 
     /** @const {!Array<!Wasm2Lang.Options.Schema.OptionKey>} */
     var props = Object.keys(Wasm2Lang.Options.Schema.optionSchema);
@@ -435,18 +434,10 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
     for (var /** @type {number} */ i = 0, /** @const {number} */ len = props.length; i !== len; ++i) {
       var /** @const {!Wasm2Lang.Options.Schema.OptionKey} */ key = props[i];
       var entry = Wasm2Lang.Options.Schema.optionSchema[key];
-      var /** @const {string} */ description = entry.optionDesc;
-      Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.isNode()](
-        Wasm2Lang.Utilities.Environment.LogLevel.NONE,
-        '\n--' + key.replace(/(?=[A-Z])/g, '-').toLowerCase() + ':\n',
-        description
-      );
+      log(NONE, '\n--' + key.replace(/(?=[A-Z])/g, '-').toLowerCase() + ':\n', entry.optionDesc);
     }
 
-    Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.isNode()](
-      Wasm2Lang.Utilities.Environment.LogLevel.NONE,
-      ''
-    );
+    log(NONE, '');
     // prettier-ignore
     return /** @const {!Wasm2Lang.Processor.TranspileResult} */ (
       Object.create(null)

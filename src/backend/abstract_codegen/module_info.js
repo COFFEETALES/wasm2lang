@@ -70,25 +70,33 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectI32InitOps_ = function (i32, 
   var /** @type {number} */ repeatEnd;
   var /** @const {number} */ endIndex = i32.length;
 
+  function scanRepeat() {
+    repeatEnd = index + 1;
+    while (repeatEnd !== endIndex && i32[repeatEnd] === i32[index]) {
+      ++repeatEnd;
+    }
+  }
+
+  function emitFill() {
+    ops[ops.length] = {
+      opKind: 'fill',
+      startWordIndex: startWordIndex + index,
+      fillValueI32: i32[index],
+      fillCountWords: repeatEnd - index,
+      setWordsI32: []
+    };
+  }
+
   while (index !== endIndex) {
     if (0 === i32[index]) {
       ++index;
       continue;
     }
 
-    repeatEnd = index + 1;
-    while (repeatEnd !== endIndex && i32[repeatEnd] === i32[index]) {
-      ++repeatEnd;
-    }
+    scanRepeat();
 
     if (fillThreshold <= repeatEnd - index) {
-      ops[ops.length] = {
-        opKind: 'fill',
-        startWordIndex: startWordIndex + index,
-        fillValueI32: i32[index],
-        fillCountWords: repeatEnd - index,
-        setWordsI32: []
-      };
+      emitFill();
       index = repeatEnd;
       continue;
     }
@@ -101,10 +109,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectI32InitOps_ = function (i32, 
         break;
       }
 
-      repeatEnd = index + 1;
-      while (repeatEnd !== endIndex && i32[repeatEnd] === i32[index]) {
-        ++repeatEnd;
-      }
+      scanRepeat();
 
       if (fillThreshold <= repeatEnd - index) {
         break;
@@ -127,14 +132,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectI32InitOps_ = function (i32, 
 
     // Reached only when the very first word of the 'set' scan is itself
     // fill-worthy — the inner loop broke immediately, leaving setWords empty.
-    // Emit a fill op for that run instead of re-entering the outer loop.
-    ops[ops.length] = {
-      opKind: 'fill',
-      startWordIndex: startWordIndex + index,
-      fillValueI32: i32[index],
-      fillCountWords: repeatEnd - index,
-      setWordsI32: []
-    };
+    emitFill();
     index = repeatEnd;
   }
 
@@ -397,6 +395,21 @@ Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport = function (importModule,
 };
 
 /**
+ * Known direct-cast import base names (module = 'cast').
+ * @const {!Object<string, boolean>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.CAST_IMPORTS_ = {
+  'i32_to_f32': true,
+  'i32_to_f64': true,
+  'f32_to_i32': true,
+  'f64_to_i32': true,
+  'i64_to_f32': true,
+  'i64_to_f64': true,
+  'f32_to_i64': true,
+  'f64_to_i64': true
+};
+
+/**
  * Descriptor for a single wasm-level imported global.
  *
  * @protected
@@ -491,7 +504,8 @@ Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_;
  *   expGlobals: !Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedGlobalInfo_>,
  *   functions: !Array<!BinaryenFunctionInfo>,
  *   functionTables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>,
- *   flatTableEntries: !Array<string|null>
+ *   flatTableEntries: !Array<string|null>,
+ *   castNames: !Object<string, number>
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_;
@@ -559,12 +573,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ functionSignatures =
       /** @type {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} */ (Object.create(null));
   var /** @const {!Object<string, string>} */ importedNames = /** @type {!Object<string, string>} */ (Object.create(null));
+  var /** @const {!Object<string, number>} */ castNames = /** @type {!Object<string, number>} */ (Object.create(null));
+  var /** @const {!Object<string, boolean>} */ castImports = Wasm2Lang.Backend.AbstractCodegen.CAST_IMPORTS_;
   for (var /** @type {number} */ f = 0; f !== numFuncs; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(wasmModule.getFunctionByIndex(f));
     functionSignatures[funcInfo.name] = {sigParams: binaryen.expandType(funcInfo.params), sigRetType: funcInfo.results};
     if ('' !== funcInfo.base) {
       impFuncs[impFuncs.length] = {wasmFuncName: funcInfo.name, importBaseName: funcInfo.base, importModule: funcInfo.module};
-      importedNames[funcInfo.name] = funcInfo.base;
+      if ('cast' === funcInfo.module && funcInfo.base in castImports) {
+        castNames[funcInfo.name] = funcInfo.results;
+      } else {
+        importedNames[funcInfo.name] = funcInfo.base;
+      }
     } else {
       functions[functions.length] = funcInfo;
     }
@@ -636,7 +656,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
     expGlobals: expGlobals,
     functions: functions,
     functionTables: tableResult.tables,
-    flatTableEntries: tableResult.flatEntries
+    flatTableEntries: tableResult.flatEntries,
+    castNames: castNames
   };
 };
 

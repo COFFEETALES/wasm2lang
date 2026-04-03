@@ -7,6 +7,7 @@
 Wasm2Lang.Backend.JavaCodegen = function () {
   Wasm2Lang.Backend.AbstractCodegen.call(this);
   this.f32WidensToF64_ = true;
+  this.reservedWords_ = Wasm2Lang.Backend.JavaCodegen.RESERVED_;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ J = Wasm2Lang.Backend.JavaCodegen;
   this.binaryRenderers_[C.OP_ARITHMETIC] = J.renderArithmeticBinary_;
