@@ -12,24 +12,9 @@ Wasm2Lang.Backend.AsmjsCodegen.HELPER_DEPS_ = {
   '$w2l_trunc_u_f64_to_i32': ['$w2l_trunc_f64']
 };
 
-/**
- * Records a helper as used and transitively marks its dependencies.
- *
- * @override
- * @protected
- * @param {string} name
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.markHelper_ = function (name) {
-  if (!this.usedHelpers_ || this.usedHelpers_[name]) {
-    return;
-  }
-  this.usedHelpers_[name] = true;
-  var /** @const {!Array<string>|void} */ deps = Wasm2Lang.Backend.AsmjsCodegen.HELPER_DEPS_[name];
-  if (deps) {
-    for (var /** @type {number} */ i = 0, /** @const {number} */ len = deps.length; i !== len; ++i) {
-      this.markHelper_(deps[i]);
-    }
-  }
+/** @override @protected @return {?Object<string, !Array<string>>} */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.getHelperDeps_ = function () {
+  return Wasm2Lang.Backend.AsmjsCodegen.HELPER_DEPS_;
 };
 
 /**

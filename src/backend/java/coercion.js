@@ -22,6 +22,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderCoercionByType_ = function (binary
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     return '(double)' + P.wrap(expr, P.PREC_UNARY_, true);
   }
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    return expr;
+  }
   return expr;
 };
 
@@ -36,6 +39,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderCoercionByType_ = function (binary
 Wasm2Lang.Backend.JavaCodegen.prototype.renderConst_ = function (binaryen, value, wasmType) {
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
     return String(value);
+  }
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    return Wasm2Lang.Backend.JavaCodegen.renderV128Const_(value);
   }
   return Wasm2Lang.Backend.JavaCodegen.formatJavaFloat_(value, Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType));
 };
@@ -83,7 +89,30 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderLocalInit_ = function (binaryen, w
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     return '0.0';
   }
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    return 'IntVector.zero(IntVector.SPECIES_128)';
+  }
   return '0';
+};
+
+/**
+ * Renders a v128 constant as a Java IntVector literal.  The binaryen v128
+ * value is an ArrayLike of 16 bytes (little-endian); we reinterpret them
+ * as four i32 lanes.
+ *
+ * @param {*} value  16-byte array-like from binaryen.
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaCodegen.renderV128Const_ = function (value) {
+  var /** @const {!Array<number>} */ bytes = /** @type {!Array<number>} */ (value);
+  var /** @const {!Array<number>} */ lanes = [];
+  for (var /** @type {number} */ i = 0; i < 4; ++i) {
+    var /** @const {number} */ off = i * 4;
+    // Little-endian byte order → i32 lane.
+    lanes[i] =
+      (bytes[off] & 0xff) | ((bytes[off + 1] & 0xff) << 8) | ((bytes[off + 2] & 0xff) << 16) | (bytes[off + 3] << 24) | 0;
+  }
+  return 'IntVector.fromArray(IntVector.SPECIES_128, new int[]{' + lanes.join(', ') + '}, 0)';
 };
 
 /**

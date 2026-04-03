@@ -89,6 +89,7 @@ if [ ${#0} -ne ${#prefix} ]; then
           -R-Dline.separator="$LF"                         \
           -R-Dw2l.testname="$filebase"                     \
           --class-path "$GSON_LIBRARY"                     \
+          --add-modules jdk.incubator.vector               \
           -q                                               \
           "./wasm2lang_java_runner.jsh"                    \
           "${filebase}".java                               \

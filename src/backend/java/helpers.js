@@ -1,6 +1,36 @@
 'use strict';
 
 /**
+ * Inter-helper dependencies (opcode-specific helpers only).
+ *
+ * @const {!Object<string, !Array<string>>}
+ */
+Wasm2Lang.Backend.JavaCodegen.HELPER_DEPS_ = {
+  '$w2l_trunc_f32': ['$w2l_trunc_f64'],
+  '$w2l_trunc_s_f32_to_i32': ['$w2l_trunc_s_f64_to_i32'],
+  '$w2l_trunc_s_f64_to_i32': ['$w2l_trunc_f64'],
+  '$w2l_trunc_u_f32_to_i32': ['$w2l_trunc_u_f64_to_i32'],
+  '$w2l_trunc_u_f64_to_i32': ['$w2l_trunc_f64'],
+  '$w2l_trunc_sat_s_f32_to_i32': ['$w2l_trunc_sat_s_f64_to_i32'],
+  '$w2l_trunc_sat_s_f64_to_i32': ['$w2l_trunc_f64'],
+  '$w2l_trunc_sat_u_f32_to_i32': ['$w2l_trunc_sat_u_f64_to_i32'],
+  '$w2l_trunc_sat_u_f64_to_i32': ['$w2l_trunc_f64'],
+  '$w2l_trunc_s_f32_to_i64': ['$w2l_trunc_s_f64_to_i64'],
+  '$w2l_trunc_s_f64_to_i64': ['$w2l_trunc_f64'],
+  '$w2l_trunc_u_f32_to_i64': ['$w2l_trunc_u_f64_to_i64'],
+  '$w2l_trunc_u_f64_to_i64': ['$w2l_trunc_f64'],
+  '$w2l_trunc_sat_s_f32_to_i64': ['$w2l_trunc_sat_s_f64_to_i64'],
+  '$w2l_trunc_sat_s_f64_to_i64': ['$w2l_trunc_f64'],
+  '$w2l_trunc_sat_u_f32_to_i64': ['$w2l_trunc_sat_u_f64_to_i64'],
+  '$w2l_trunc_sat_u_f64_to_i64': ['$w2l_trunc_f64']
+};
+
+/** @override @protected @return {?Object<string, !Array<string>>} */
+Wasm2Lang.Backend.JavaCodegen.prototype.getHelperDeps_ = function () {
+  return Wasm2Lang.Backend.JavaCodegen.HELPER_DEPS_;
+};
+
+/**
  * Emits only the helpers that were referenced during function body emission.
  *
  * @return {!Array<string>}
@@ -8,26 +38,6 @@
 Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
   var /** @const {!Array<string>} */ lines = [];
   var /** @const {!Object<string, boolean>} */ used = this.usedHelpers_ || {};
-
-  // Resolve transitive dependencies: f32 helpers delegate to their f64
-  // counterparts, and trunc helpers depend on $w2l_trunc_f64.
-  if (used['$w2l_trunc_f32']) used['$w2l_trunc_f64'] = true;
-  if (used['$w2l_trunc_s_f32_to_i32']) used['$w2l_trunc_s_f64_to_i32'] = true;
-  if (used['$w2l_trunc_u_f32_to_i32']) used['$w2l_trunc_u_f64_to_i32'] = true;
-  if (used['$w2l_trunc_sat_s_f32_to_i32']) used['$w2l_trunc_sat_s_f64_to_i32'] = true;
-  if (used['$w2l_trunc_sat_u_f32_to_i32']) used['$w2l_trunc_sat_u_f64_to_i32'] = true;
-  if (used['$w2l_trunc_s_f64_to_i32']) used['$w2l_trunc_f64'] = true;
-  if (used['$w2l_trunc_u_f64_to_i32']) used['$w2l_trunc_f64'] = true;
-  if (used['$w2l_trunc_sat_s_f64_to_i32']) used['$w2l_trunc_f64'] = true;
-  if (used['$w2l_trunc_sat_u_f64_to_i32']) used['$w2l_trunc_f64'] = true;
-  if (used['$w2l_trunc_s_f32_to_i64']) used['$w2l_trunc_s_f64_to_i64'] = true;
-  if (used['$w2l_trunc_u_f32_to_i64']) used['$w2l_trunc_u_f64_to_i64'] = true;
-  if (used['$w2l_trunc_sat_s_f32_to_i64']) used['$w2l_trunc_sat_s_f64_to_i64'] = true;
-  if (used['$w2l_trunc_sat_u_f32_to_i64']) used['$w2l_trunc_sat_u_f64_to_i64'] = true;
-  if (used['$w2l_trunc_s_f64_to_i64']) used['$w2l_trunc_f64'] = true;
-  if (used['$w2l_trunc_u_f64_to_i64']) used['$w2l_trunc_f64'] = true;
-  if (used['$w2l_trunc_sat_s_f64_to_i64']) used['$w2l_trunc_f64'] = true;
-  if (used['$w2l_trunc_sat_u_f64_to_i64']) used['$w2l_trunc_f64'] = true;
 
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const {string} */ pad1 = pad(1);
@@ -45,11 +55,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
   if (used['$w2l_trunc_f64']) {
     lines[lines.length] = pad1 + 'static double ' + this.n_('$w2l_trunc_f64') + '(double ' + l0 + ') {';
     lines[lines.length] = pad2 + 'return ' + l0 + ' < 0.0 ? Math.ceil(' + l0 + ') : Math.floor(' + l0 + ');';
-    lines[lines.length] = pad1 + '}';
-  }
-  if (used['$w2l_trunc_f32']) {
-    lines[lines.length] = pad1 + 'static float ' + this.n_('$w2l_trunc_f32') + '(float ' + l0 + ') {';
-    lines[lines.length] = pad2 + 'return (float)' + this.n_('$w2l_trunc_f64') + '((double)' + l0 + ');';
     lines[lines.length] = pad1 + '}';
   }
 
@@ -73,11 +78,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] = pad2 + 'return (int)' + l0 + ';';
     lines[lines.length] = pad1 + '}';
   }
-  if (used['$w2l_trunc_s_f32_to_i32']) {
-    lines[lines.length] = pad1 + 'static int ' + this.n_('$w2l_trunc_s_f32_to_i32') + '(float ' + l0 + ') {';
-    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_s_f64_to_i32') + '((double)' + l0 + ');';
-    lines[lines.length] = pad1 + '}';
-  }
   if (used['$w2l_trunc_u_f64_to_i32']) {
     lines[lines.length] = pad1 + 'static int ' + this.n_('$w2l_trunc_u_f64_to_i32') + '(double ' + l0 + ') {';
     lines[lines.length] = pad2 + 'if (Double.isNaN(' + l0 + ')) throw new ArithmeticException();';
@@ -85,11 +85,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] = pad2 + 'if (' + l0 + ' >= 4294967296.0 || ' + l0 + ' < 0.0) throw new ArithmeticException();';
     lines[lines.length] = pad2 + 'if (' + l0 + ' >= 2147483648.0) return (int)(' + l0 + ' - 2147483648.0) + -2147483648;';
     lines[lines.length] = pad2 + 'return (int)' + l0 + ';';
-    lines[lines.length] = pad1 + '}';
-  }
-  if (used['$w2l_trunc_u_f32_to_i32']) {
-    lines[lines.length] = pad1 + 'static int ' + this.n_('$w2l_trunc_u_f32_to_i32') + '(float ' + l0 + ') {';
-    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_u_f64_to_i32') + '((double)' + l0 + ');';
     lines[lines.length] = pad1 + '}';
   }
 
@@ -112,23 +107,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] = pad2 + 'return (int)' + l0 + ';';
     lines[lines.length] = pad1 + '}';
   }
-  if (used['$w2l_trunc_sat_s_f32_to_i32']) {
-    lines[lines.length] = pad1 + 'static int ' + this.n_('$w2l_trunc_sat_s_f32_to_i32') + '(float ' + l0 + ') {';
-    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_sat_s_f64_to_i32') + '((double)' + l0 + ');';
-    lines[lines.length] = pad1 + '}';
-  }
-  if (used['$w2l_trunc_sat_u_f32_to_i32']) {
-    lines[lines.length] = pad1 + 'static int ' + this.n_('$w2l_trunc_sat_u_f32_to_i32') + '(float ' + l0 + ') {';
-    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_sat_u_f64_to_i32') + '((double)' + l0 + ');';
-    lines[lines.length] = pad1 + '}';
-  }
 
   if (used['$w2l_convert_u_i32_to_f32']) {
     lines[lines.length] = pad1 + 'static float ' + this.n_('$w2l_convert_u_i32_to_f32') + '(int ' + l0 + ') {';
     lines[lines.length] = pad2 + 'return (float)Integer.toUnsignedLong(' + l0 + ');';
     lines[lines.length] = pad1 + '}';
   }
-  // i64 helpers.
   if (used['$w2l_convert_u_i64_to_f32']) {
     lines[lines.length] = pad1 + 'static float ' + this.n_('$w2l_convert_u_i64_to_f32') + '(long ' + l0 + ') {';
     lines[lines.length] = pad2 + 'if (' + l0 + ' >= 0L) return (float)' + l0 + ';';
@@ -150,11 +134,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] = pad2 + 'return (long)' + l0 + ';';
     lines[lines.length] = pad1 + '}';
   }
-  if (used['$w2l_trunc_s_f32_to_i64']) {
-    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_s_f32_to_i64') + '(float ' + l0 + ') {';
-    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_s_f64_to_i64') + '((double)' + l0 + ');';
-    lines[lines.length] = pad1 + '}';
-  }
   if (used['$w2l_trunc_u_f64_to_i64']) {
     lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_u_f64_to_i64') + '(double ' + l0 + ') {';
     lines[lines.length] = pad2 + 'if (Double.isNaN(' + l0 + ')) throw new ArithmeticException();';
@@ -166,11 +145,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] = pad2 + 'return (long)' + l0 + ';';
     lines[lines.length] = pad1 + '}';
   }
-  if (used['$w2l_trunc_u_f32_to_i64']) {
-    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_u_f32_to_i64') + '(float ' + l0 + ') {';
-    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_u_f64_to_i64') + '((double)' + l0 + ');';
-    lines[lines.length] = pad1 + '}';
-  }
+
   if (used['$w2l_trunc_sat_s_f64_to_i64']) {
     lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_sat_s_f64_to_i64') + '(double ' + l0 + ') {';
     lines[lines.length] = pad2 + 'if (Double.isNaN(' + l0 + ')) return 0L;';
@@ -189,16 +164,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] =
       pad2 + 'if (' + l0 + ' >= 9.223372036854776E18) return (long)(' + l0 + ' - 9.223372036854776E18) + Long.MIN_VALUE;';
     lines[lines.length] = pad2 + 'return (long)' + l0 + ';';
-    lines[lines.length] = pad1 + '}';
-  }
-  if (used['$w2l_trunc_sat_s_f32_to_i64']) {
-    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_sat_s_f32_to_i64') + '(float ' + l0 + ') {';
-    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_sat_s_f64_to_i64') + '((double)' + l0 + ');';
-    lines[lines.length] = pad1 + '}';
-  }
-  if (used['$w2l_trunc_sat_u_f32_to_i64']) {
-    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_sat_u_f32_to_i64') + '(float ' + l0 + ') {';
-    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_sat_u_f64_to_i64') + '((double)' + l0 + ');';
     lines[lines.length] = pad1 + '}';
   }
 
@@ -262,6 +227,74 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] = pad2 + l2 + '.put(0, this.' + nBuf + ', 0, this.' + nBuf + '.capacity());';
     lines[lines.length] = pad2 + 'this.' + nBuf + ' = ' + l2 + ';';
     lines[lines.length] = pad2 + 'return ' + l1 + ';';
+    lines[lines.length] = pad1 + '}';
+  }
+
+  if (used['$w2l_v128_load']) {
+    lines[lines.length] =
+      pad1 + 'static IntVector ' + n('$w2l_v128_load') + '(java.nio.ByteBuffer ' + l0 + ', int ' + l1 + ') {';
+    lines[lines.length] =
+      pad2 +
+      'return IntVector.fromArray(IntVector.SPECIES_128, new int[]{' +
+      l0 +
+      '.getInt(' +
+      l1 +
+      '), ' +
+      l0 +
+      '.getInt(' +
+      l1 +
+      ' + 4), ' +
+      l0 +
+      '.getInt(' +
+      l1 +
+      ' + 8), ' +
+      l0 +
+      '.getInt(' +
+      l1 +
+      ' + 12)}, 0);';
+    lines[lines.length] = pad1 + '}';
+  }
+
+  if (used['$w2l_v128_store']) {
+    lines[lines.length] =
+      pad1 + 'static void ' + n('$w2l_v128_store') + '(java.nio.ByteBuffer ' + l0 + ', int ' + l1 + ', IntVector ' + l2 + ') {';
+    lines[lines.length] = pad2 + l0 + '.putInt(' + l1 + ', ' + l2 + '.lane(0));';
+    lines[lines.length] = pad2 + l0 + '.putInt(' + l1 + ' + 4, ' + l2 + '.lane(1));';
+    lines[lines.length] = pad2 + l0 + '.putInt(' + l1 + ' + 8, ' + l2 + '.lane(2));';
+    lines[lines.length] = pad2 + l0 + '.putInt(' + l1 + ' + 12, ' + l2 + '.lane(3));';
+    lines[lines.length] = pad1 + '}';
+  }
+
+  // f32→f64 delegation stubs: all follow the same cast-and-delegate pattern.
+  var /** @const {!Array<string>} */ F32_DELEGATES = [
+      '$w2l_trunc_f32',
+      '$w2l_trunc_s_f32_to_i32',
+      '$w2l_trunc_u_f32_to_i32',
+      '$w2l_trunc_sat_s_f32_to_i32',
+      '$w2l_trunc_sat_u_f32_to_i32',
+      '$w2l_trunc_s_f32_to_i64',
+      '$w2l_trunc_u_f32_to_i64',
+      '$w2l_trunc_sat_s_f32_to_i64',
+      '$w2l_trunc_sat_u_f32_to_i64'
+    ];
+  for (var /** @type {number} */ di = 0; di < F32_DELEGATES.length; ++di) {
+    var /** @type {string} */ dName = F32_DELEGATES[di];
+    if (!used[dName]) continue;
+    var /** @type {string} */ dTarget = dName.replace('_f32', '_f64');
+    var /** @type {string} */ dRet;
+    var /** @type {string} */ dCast;
+    if (dName.indexOf('_to_i64') !== -1) {
+      dRet = 'long';
+      dCast = '';
+    } else if (dName.indexOf('_to_i32') !== -1) {
+      dRet = 'int';
+      dCast = '';
+    } else {
+      dRet = 'float';
+      dCast = '(float)';
+    }
+    lines[lines.length] = pad1 + 'static ' + dRet + ' ' + n(dName) + '(float ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'return ' + dCast + n(dTarget) + '((double)' + l0 + ');';
     lines[lines.length] = pad1 + '}';
   }
 

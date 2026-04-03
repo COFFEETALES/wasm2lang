@@ -112,7 +112,13 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmMod
   // Set the feature mask so binaryen's optimizer and passes recognize post-MVP
   // ops (bulk memory, sign-ext, non-trapping float-to-int).
   wasmModule.setFeatures(
-    0 | features.NontrappingFPToInt | features.BulkMemory | features.BulkMemoryOpt | features.SignExt | features.MutableGlobals
+    0 |
+      features.NontrappingFPToInt |
+      features.BulkMemory |
+      features.BulkMemoryOpt |
+      features.SignExt |
+      features.MutableGlobals |
+      features.SIMD128
   );
 
   if (aggressive) {

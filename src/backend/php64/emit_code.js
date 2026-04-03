@@ -19,58 +19,26 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     internalFuncNames[internalFuncNames.length] = this.safeName_(moduleInfo.functions[fn].name);
   }
 
-  // Classify imports as stdlib or foreign.
-  var /** @const {!Object<string, string>} */ phpStdlibNames = /** @type {!Object<string, string>} */ (Object.create(null));
-  var /** @const {!Object<string, string>} */ phpStdlibGlobals = /** @type {!Object<string, string>} */ (Object.create(null));
-  var /** @const */ classify = Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport;
-  /** @const {!Object<string, string>} */
-  var PHP_MATH_FUNCS_ = {
-    'acos': 'acos',
-    'asin': 'asin',
-    'atan': 'atan',
-    'cos': 'cos',
-    'sin': 'sin',
-    'tan': 'tan',
-    'exp': 'exp',
-    'log': 'log',
-    'ceil': 'ceil',
-    'floor': 'floor',
-    'sqrt': 'sqrt',
-    'abs': 'abs',
-    'atan2': 'atan2',
-    'pow': 'pow',
-    'min': 'min',
-    'max': 'max'
-  };
-  /** @const {!Object<string, string>} */
-  var PHP_MATH_CONSTS_ = {
-    'E': 'M_E',
-    'LN10': 'M_LN10',
-    'LN2': 'M_LN2',
-    'LOG2E': 'M_LOG2E',
-    'LOG10E': 'M_LOG10E',
-    'PI': 'M_PI',
-    'SQRT1_2': 'M_SQRT1_2',
-    'SQRT2': 'M_SQRT2'
-  };
-  for (var /** @type {number} */ si = 0, /** @const {number} */ siLen = moduleInfo.impFuncs.length; si !== siLen; ++si) {
-    var /** @const {string} */ siKind = classify(moduleInfo.impFuncs[si].importModule, moduleInfo.impFuncs[si].importBaseName);
-    if ('math_func' === siKind && PHP_MATH_FUNCS_[moduleInfo.impFuncs[si].importBaseName]) {
-      phpStdlibNames[moduleInfo.impFuncs[si].wasmFuncName] = PHP_MATH_FUNCS_[moduleInfo.impFuncs[si].importBaseName];
-    }
-  }
-  for (var /** @type {number} */ sgi = 0, /** @const {number} */ sgiLen = moduleInfo.impGlobals.length; sgi !== sgiLen; ++sgi) {
-    var /** @const {string} */ sgiKind = classify(
-        moduleInfo.impGlobals[sgi].importModule,
-        moduleInfo.impGlobals[sgi].importBaseName
-      );
-    if ('math_const' === sgiKind && PHP_MATH_CONSTS_[moduleInfo.impGlobals[sgi].importBaseName]) {
-      phpStdlibGlobals[moduleInfo.impGlobals[sgi].globalName] = PHP_MATH_CONSTS_[moduleInfo.impGlobals[sgi].importBaseName];
-    } else if ('global_value' === sgiKind) {
-      phpStdlibGlobals[moduleInfo.impGlobals[sgi].globalName] =
-        'Infinity' === moduleInfo.impGlobals[sgi].importBaseName ? 'INF' : 'NAN';
-    }
-  }
+  // Resolve stdlib imports.
+  var /** @const */ stdlibBindings = Wasm2Lang.Backend.AbstractCodegen.resolveStdlibBindings_(
+      moduleInfo.impFuncs,
+      moduleInfo.impGlobals,
+      '',
+      {
+        'E': 'M_E',
+        'LN10': 'M_LN10',
+        'LN2': 'M_LN2',
+        'LOG2E': 'M_LOG2E',
+        'LOG10E': 'M_LOG10E',
+        'PI': 'M_PI',
+        'SQRT1_2': 'M_SQRT1_2',
+        'SQRT2': 'M_SQRT2'
+      },
+      'INF',
+      'NAN'
+    );
+  var /** @const {!Object<string, string>} */ phpStdlibNames = stdlibBindings.names;
+  var /** @const {!Object<string, string>} */ phpStdlibGlobals = stdlibBindings.globals;
 
   // Emit function bodies first to discover which helpers and bindings are needed.
   this.castNames_ = moduleInfo.castNames;

@@ -395,6 +395,62 @@ Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport = function (importModule,
 };
 
 /**
+ * asm.js-specific Math functions excluded by non-asm.js backends.
+ * @private
+ * @const {!Object<string, boolean>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.ASMJS_ONLY_MATH_FUNCS_ = {
+  'imul': true,
+  'fround': true,
+  'clz32': true
+};
+
+/**
+ * Resolves stdlib imports into target-language binding names.  Functions are
+ * mapped as {@code funcPrefix + baseName}; asm.js-only functions are excluded.
+ * Constants use the provided {@code constMap}; Infinity/NaN use the provided
+ * literal expressions.
+ *
+ * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_>} impFuncs
+ * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>} impGlobals
+ * @param {string} funcPrefix
+ * @param {!Object<string, string>} constMap
+ * @param {string} infinityExpr
+ * @param {string} nanExpr
+ * @return {{names: !Object<string, string>, globals: !Object<string, string>}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.resolveStdlibBindings_ = function (
+  impFuncs,
+  impGlobals,
+  funcPrefix,
+  constMap,
+  infinityExpr,
+  nanExpr
+) {
+  var /** @const */ classify = Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport;
+  var /** @const */ skip = Wasm2Lang.Backend.AbstractCodegen.ASMJS_ONLY_MATH_FUNCS_;
+  var /** @const {!Object<string, string>} */ names = /** @type {!Object<string, string>} */ (Object.create(null));
+  var /** @const {!Object<string, string>} */ globals = /** @type {!Object<string, string>} */ (Object.create(null));
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = impFuncs.length; i !== len; ++i) {
+    var /** @const {string} */ baseName = impFuncs[i].importBaseName;
+    if ('math_func' === classify(impFuncs[i].importModule, baseName) && !skip[baseName]) {
+      names[impFuncs[i].wasmFuncName] = funcPrefix + baseName;
+    }
+  }
+  for (var /** @type {number} */ g = 0, /** @const {number} */ glen = impGlobals.length; g !== glen; ++g) {
+    var /** @const {string} */ gBase = impGlobals[g].importBaseName;
+    var /** @const {string} */ kind = classify(impGlobals[g].importModule, gBase);
+    if ('math_const' === kind) {
+      var /** @type {string|void} */ mapped = constMap[gBase];
+      if (mapped) globals[impGlobals[g].globalName] = mapped;
+    } else if ('global_value' === kind) {
+      globals[impGlobals[g].globalName] = 'Infinity' === gBase ? infinityExpr : nanExpr;
+    }
+  }
+  return {names: names, globals: globals};
+};
+
+/**
  * Known direct-cast import base names (module = 'cast').
  * @const {!Object<string, boolean>}
  */

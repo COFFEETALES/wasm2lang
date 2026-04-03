@@ -40,6 +40,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.formatCondition_ = function (expr, opt_c
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.renderLoad_ = function (binaryen, ptrExpr, wasmType, bytes, isSigned) {
   var /** @const {string} */ buf = 'this.' + this.n_('buffer');
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    this.markHelper_('$w2l_v128_load');
+    return this.n_('$w2l_v128_load') + '(' + buf + ', ' + ptrExpr + ')';
+  }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     return buf + '.getDouble(' + ptrExpr + ')';
   }
@@ -86,6 +90,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderLoad_ = function (binaryen, ptrExp
 Wasm2Lang.Backend.JavaCodegen.prototype.renderStore_ = function (binaryen, ptrExpr, valueExpr, wasmType, bytes, opt_valueCat) {
   var /** @const {number} */ valueCat = void 0 !== opt_valueCat ? opt_valueCat : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
   var /** @const {string} */ buf = 'this.' + this.n_('buffer');
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    this.markHelper_('$w2l_v128_store');
+    return this.n_('$w2l_v128_store') + '(' + buf + ', ' + ptrExpr + ', ' + valueExpr + ');';
+  }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     return buf + '.putDouble(' + ptrExpr + ', ' + this.coerceToType_(binaryen, valueExpr, valueCat, wasmType) + ');';
   }

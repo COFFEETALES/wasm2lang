@@ -106,15 +106,34 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.isBlockRootSwitch_ = function (funcN
 };
 
 /**
- * Records a helper function name as used.  Concrete backends may override
- * to add dependency resolution.
+ * Returns the backend's helper dependency map, or null if none.
+ * Concrete backends override this to return their static HELPER_DEPS_.
+ *
+ * @protected
+ * @return {?Object<string, !Array<string>>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getHelperDeps_ = function () {
+  return null;
+};
+
+/**
+ * Records a helper function name as used and transitively marks its
+ * dependencies via {@code getHelperDeps_}.
  *
  * @protected
  * @param {string} name
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.markHelper_ = function (name) {
-  if (this.usedHelpers_) {
-    this.usedHelpers_[name] = true;
+  if (!this.usedHelpers_ || this.usedHelpers_[name]) return;
+  this.usedHelpers_[name] = true;
+  var /** @const {?Object<string, !Array<string>>} */ depsMap = this.getHelperDeps_();
+  if (depsMap) {
+    var /** @const {!Array<string>|void} */ deps = depsMap[name];
+    if (deps) {
+      for (var /** @type {number} */ i = 0, /** @const {number} */ len = deps.length; i !== len; ++i) {
+        this.markHelper_(deps[i]);
+      }
+    }
   }
 };
 
@@ -146,6 +165,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.markBinding_ = function (name) {
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_RAW = 7;
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 = 8;
 /** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_I64 = 9;
+/** @const {number} */ Wasm2Lang.Backend.AbstractCodegen.CAT_V128 = 10;
 
 /**
  * Shared type→category dispatch.  {@code catForCoercedType_} and
@@ -163,6 +183,7 @@ Wasm2Lang.Backend.AbstractCodegen.catForType_ = function (binaryen, wasmType, i3
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) return Wasm2Lang.Backend.AbstractCodegen.CAT_F32;
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) return Wasm2Lang.Backend.AbstractCodegen.CAT_F64;
   if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) return Wasm2Lang.Backend.AbstractCodegen.CAT_I64;
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) return Wasm2Lang.Backend.AbstractCodegen.CAT_V128;
   return defaultCat;
 };
 

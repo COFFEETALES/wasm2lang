@@ -42,7 +42,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.getAllHelperNames_ = function () {
     '$w2l_trunc_u_f64_to_i64',
     '$w2l_memory_copy',
     '$w2l_memory_fill',
-    '$w2l_memory_grow'
+    '$w2l_memory_grow',
+    '$w2l_v128_load',
+    '$w2l_v128_store'
   ];
 };
 
@@ -58,6 +60,7 @@ Wasm2Lang.Backend.JavaCodegen.javaTypeName_ = function (binaryen, wasmType) {
   if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) return 'long';
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) return 'float';
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) return 'double';
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) return 'IntVector';
   return 'void';
 };
 

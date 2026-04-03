@@ -36,22 +36,7 @@ Wasm2Lang.Backend.Php64Codegen.HELPER_DEPS_ = {
   '_w2l_memory_grow': []
 };
 
-/**
- * Records a helper as used and transitively marks its dependencies.
- *
- * @override
- * @protected
- * @param {string} name
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.markHelper_ = function (name) {
-  if (!this.usedHelpers_ || this.usedHelpers_[name]) {
-    return;
-  }
-  this.usedHelpers_[name] = true;
-  var /** @const {!Array<string>|void} */ deps = Wasm2Lang.Backend.Php64Codegen.HELPER_DEPS_[name];
-  if (deps) {
-    for (var /** @type {number} */ i = 0, /** @const {number} */ len = deps.length; i !== len; ++i) {
-      this.markHelper_(deps[i]);
-    }
-  }
+/** @override @protected @return {?Object<string, !Array<string>>} */
+Wasm2Lang.Backend.Php64Codegen.prototype.getHelperDeps_ = function () {
+  return Wasm2Lang.Backend.Php64Codegen.HELPER_DEPS_;
 };

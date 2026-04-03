@@ -341,6 +341,105 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       state.lastExprIsTerminal = swResult.hasDefault;
       break;
     }
+    case binaryen.SIMDExtractId: {
+      this.markBinding_('$v128');
+      var /** @const {number} */ seIndex = /** @type {number} */ (expr.index);
+      result = cr(0) + '.lane(' + seIndex + ')';
+      resultCat = A.catForCoercedType_(binaryen, expr.type);
+      break;
+    }
+    case binaryen.SIMDReplaceId: {
+      this.markBinding_('$v128');
+      var /** @const {number} */ srIndex = /** @type {number} */ (expr.index);
+      result = cr(0) + '.withLane(' + srIndex + ', ' + cr(1) + ')';
+      resultCat = A.CAT_V128;
+      break;
+    }
+    case binaryen.SIMDShuffleId: {
+      this.markBinding_('$v128');
+      var /** @const {!Array<number>} */ shuffleMask = /** @type {!Array<number>} */ (expr.mask);
+      // Convert 16-byte mask to 4-lane i32 shuffle indices.
+      var /** @const {!Array<number>} */ shuffleLanes = [];
+      for (var /** @type {number} */ si = 0; si < 4; ++si) {
+        shuffleLanes[si] = shuffleMask[si * 4] >> 2;
+      }
+      result =
+        cr(0) + '.rearrange(VectorShuffle.fromValues(IntVector.SPECIES_128, ' + shuffleLanes.join(', ') + '), ' + cr(1) + ')';
+      resultCat = A.CAT_V128;
+      break;
+    }
+    case binaryen.SIMDTernaryId: {
+      this.markBinding_('$v128');
+      // Bitselect: (a & c) | (b & ~c)
+      result =
+        cr(0) +
+        '.lanewise(VectorOperators.AND, ' +
+        cr(2) +
+        ').lanewise(VectorOperators.OR, ' +
+        cr(1) +
+        '.lanewise(VectorOperators.AND, ' +
+        cr(2) +
+        '.lanewise(VectorOperators.NOT)))';
+      resultCat = A.CAT_V128;
+      break;
+    }
+    case binaryen.SIMDShiftId: {
+      this.markBinding_('$v128');
+      var /** @const {number} */ shiftOp = /** @type {number} */ (expr.op);
+      var /** @const {string} */ shiftExpr = cr(1);
+      var /** @type {string} */ shiftVecOp = 'LSHL';
+      if (
+        shiftOp === binaryen.ShrSVecI8x16 ||
+        shiftOp === binaryen.ShrSVecI16x8 ||
+        shiftOp === binaryen.ShrSVecI32x4 ||
+        shiftOp === binaryen.ShrSVecI64x2
+      ) {
+        shiftVecOp = 'ASHR';
+      } else if (
+        shiftOp === binaryen.ShrUVecI8x16 ||
+        shiftOp === binaryen.ShrUVecI16x8 ||
+        shiftOp === binaryen.ShrUVecI32x4 ||
+        shiftOp === binaryen.ShrUVecI64x2
+      ) {
+        shiftVecOp = 'LSHR';
+      }
+      result = cr(0) + '.lanewise(VectorOperators.' + shiftVecOp + ', ' + shiftExpr + ')';
+      resultCat = A.CAT_V128;
+      break;
+    }
+    case binaryen.SIMDLoadId: {
+      this.markBinding_('$v128');
+      var /** @const {string} */ slPtr = Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_(
+          cr(0),
+          /** @type {number} */ (expr.offset)
+        );
+      this.markHelper_('$w2l_v128_load');
+      result = this.n_('$w2l_v128_load') + '(this.' + this.n_('buffer') + ', ' + slPtr + ')';
+      resultCat = A.CAT_V128;
+      break;
+    }
+    case binaryen.SIMDLoadStoreLaneId: {
+      this.markBinding_('$v128');
+      var /** @const {number} */ lslOp = /** @type {number} */ (expr.op);
+      var /** @const {string} */ lslPtr = Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_(
+          cr(0),
+          /** @type {number} */ (expr.offset)
+        );
+      var /** @const {boolean} */ isLslStore =
+          lslOp === binaryen.Store8LaneVec128 ||
+          lslOp === binaryen.Store16LaneVec128 ||
+          lslOp === binaryen.Store32LaneVec128 ||
+          lslOp === binaryen.Store64LaneVec128;
+      if (isLslStore) {
+        var /** @const {number} */ storeLane = /** @type {number} */ (expr.index);
+        result = pad(ind) + 'this.' + this.n_('buffer') + '.putInt(' + lslPtr + ', ' + cr(1) + '.lane(' + storeLane + '));\n';
+      } else {
+        var /** @const {number} */ loadLane = /** @type {number} */ (expr.index);
+        result = cr(1) + '.withLane(' + loadLane + ', this.' + this.n_('buffer') + '.getInt(' + lslPtr + '))';
+        resultCat = A.CAT_V128;
+      }
+      break;
+    }
     default:
       result = '/* unknown expr id=' + id + ' */';
       break;

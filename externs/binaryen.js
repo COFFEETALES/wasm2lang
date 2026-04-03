@@ -249,6 +249,11 @@ Binaryen.prototype.i64;
 /**
  * @type {number}
  */
+Binaryen.prototype.v128;
+
+/**
+ * @type {number}
+ */
 Binaryen.prototype.BlockId;
 
 /**
@@ -538,6 +543,42 @@ BinaryenExpressionInfo.prototype.bytes;
 BinaryenExpressionInfo.prototype.align;
 
 /**
+ * SIMD: vector operand pointer.
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.vec;
+
+/**
+ * SIMD Shuffle: 16-byte lane mask array.
+ * @type {(!Array<number>|undefined)}
+ */
+BinaryenExpressionInfo.prototype.mask;
+
+/**
+ * SIMD Ternary: first operand pointer.
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.a;
+
+/**
+ * SIMD Ternary: second operand pointer.
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.b;
+
+/**
+ * SIMD Ternary: third operand pointer (condition/mask).
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.c;
+
+/**
+ * SIMD Shift: shift amount pointer.
+ * @type {(number|undefined)}
+ */
+BinaryenExpressionInfo.prototype.shift;
+
+/**
  * @type {(boolean|undefined)}
  */
 BinaryenExpressionInfo.prototype.isTee;
@@ -668,6 +709,18 @@ Binaryen.prototype.MemoryFillId;
  * @type {number}
  */
 Binaryen.prototype.MemoryCopyId;
+
+// ---------------------------------------------------------------------------
+// SIMD expression-type IDs
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.SIMDExtractId;
+/** @type {number} */ Binaryen.prototype.SIMDReplaceId;
+/** @type {number} */ Binaryen.prototype.SIMDShuffleId;
+/** @type {number} */ Binaryen.prototype.SIMDTernaryId;
+/** @type {number} */ Binaryen.prototype.SIMDShiftId;
+/** @type {number} */ Binaryen.prototype.SIMDLoadId;
+/** @type {number} */ Binaryen.prototype.SIMDLoadStoreLaneId;
 
 // ---------------------------------------------------------------------------
 // BinaryenModule expression-builder methods
@@ -1475,3 +1528,331 @@ var BinaryenGlobalInfo;
 /** @type {number} */ Binaryen.prototype.GtFloat64;
 /** @type {number} */ Binaryen.prototype.LeFloat64;
 /** @type {number} */ Binaryen.prototype.GeFloat64;
+
+// ---------------------------------------------------------------------------
+// SIMD operation constants — v128 bitwise
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.NotVec128;
+/** @type {number} */ Binaryen.prototype.AndVec128;
+/** @type {number} */ Binaryen.prototype.OrVec128;
+/** @type {number} */ Binaryen.prototype.XorVec128;
+/** @type {number} */ Binaryen.prototype.AndNotVec128;
+/** @type {number} */ Binaryen.prototype.BitselectVec128;
+/** @type {number} */ Binaryen.prototype.AnyTrueVec128;
+
+// ---------------------------------------------------------------------------
+// SIMD operation constants — i8x16
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.SplatVecI8x16;
+/** @type {number} */ Binaryen.prototype.ExtractLaneSVecI8x16;
+/** @type {number} */ Binaryen.prototype.ExtractLaneUVecI8x16;
+/** @type {number} */ Binaryen.prototype.ReplaceLaneVecI8x16;
+/** @type {number} */ Binaryen.prototype.EqVecI8x16;
+/** @type {number} */ Binaryen.prototype.NeVecI8x16;
+/** @type {number} */ Binaryen.prototype.LtSVecI8x16;
+/** @type {number} */ Binaryen.prototype.LtUVecI8x16;
+/** @type {number} */ Binaryen.prototype.GtSVecI8x16;
+/** @type {number} */ Binaryen.prototype.GtUVecI8x16;
+/** @type {number} */ Binaryen.prototype.LeSVecI8x16;
+/** @type {number} */ Binaryen.prototype.LeUVecI8x16;
+/** @type {number} */ Binaryen.prototype.GeSVecI8x16;
+/** @type {number} */ Binaryen.prototype.GeUVecI8x16;
+/** @type {number} */ Binaryen.prototype.AbsVecI8x16;
+/** @type {number} */ Binaryen.prototype.NegVecI8x16;
+/** @type {number} */ Binaryen.prototype.AllTrueVecI8x16;
+/** @type {number} */ Binaryen.prototype.BitmaskVecI8x16;
+/** @type {number} */ Binaryen.prototype.PopcntVecI8x16;
+/** @type {number} */ Binaryen.prototype.ShlVecI8x16;
+/** @type {number} */ Binaryen.prototype.ShrSVecI8x16;
+/** @type {number} */ Binaryen.prototype.ShrUVecI8x16;
+/** @type {number} */ Binaryen.prototype.AddVecI8x16;
+/** @type {number} */ Binaryen.prototype.AddSatSVecI8x16;
+/** @type {number} */ Binaryen.prototype.AddSatUVecI8x16;
+/** @type {number} */ Binaryen.prototype.SubVecI8x16;
+/** @type {number} */ Binaryen.prototype.SubSatSVecI8x16;
+/** @type {number} */ Binaryen.prototype.SubSatUVecI8x16;
+/** @type {number} */ Binaryen.prototype.MinSVecI8x16;
+/** @type {number} */ Binaryen.prototype.MinUVecI8x16;
+/** @type {number} */ Binaryen.prototype.MaxSVecI8x16;
+/** @type {number} */ Binaryen.prototype.MaxUVecI8x16;
+/** @type {number} */ Binaryen.prototype.AvgrUVecI8x16;
+/** @type {number} */ Binaryen.prototype.NarrowSVecI16x8ToVecI8x16;
+/** @type {number} */ Binaryen.prototype.NarrowUVecI16x8ToVecI8x16;
+/** @type {number} */ Binaryen.prototype.SwizzleVecI8x16;
+
+// ---------------------------------------------------------------------------
+// SIMD operation constants — i16x8
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.SplatVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtractLaneSVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtractLaneUVecI16x8;
+/** @type {number} */ Binaryen.prototype.ReplaceLaneVecI16x8;
+/** @type {number} */ Binaryen.prototype.EqVecI16x8;
+/** @type {number} */ Binaryen.prototype.NeVecI16x8;
+/** @type {number} */ Binaryen.prototype.LtSVecI16x8;
+/** @type {number} */ Binaryen.prototype.LtUVecI16x8;
+/** @type {number} */ Binaryen.prototype.GtSVecI16x8;
+/** @type {number} */ Binaryen.prototype.GtUVecI16x8;
+/** @type {number} */ Binaryen.prototype.LeSVecI16x8;
+/** @type {number} */ Binaryen.prototype.LeUVecI16x8;
+/** @type {number} */ Binaryen.prototype.GeSVecI16x8;
+/** @type {number} */ Binaryen.prototype.GeUVecI16x8;
+/** @type {number} */ Binaryen.prototype.AbsVecI16x8;
+/** @type {number} */ Binaryen.prototype.NegVecI16x8;
+/** @type {number} */ Binaryen.prototype.AllTrueVecI16x8;
+/** @type {number} */ Binaryen.prototype.BitmaskVecI16x8;
+/** @type {number} */ Binaryen.prototype.ShlVecI16x8;
+/** @type {number} */ Binaryen.prototype.ShrSVecI16x8;
+/** @type {number} */ Binaryen.prototype.ShrUVecI16x8;
+/** @type {number} */ Binaryen.prototype.AddVecI16x8;
+/** @type {number} */ Binaryen.prototype.AddSatSVecI16x8;
+/** @type {number} */ Binaryen.prototype.AddSatUVecI16x8;
+/** @type {number} */ Binaryen.prototype.SubVecI16x8;
+/** @type {number} */ Binaryen.prototype.SubSatSVecI16x8;
+/** @type {number} */ Binaryen.prototype.SubSatUVecI16x8;
+/** @type {number} */ Binaryen.prototype.MulVecI16x8;
+/** @type {number} */ Binaryen.prototype.MinSVecI16x8;
+/** @type {number} */ Binaryen.prototype.MinUVecI16x8;
+/** @type {number} */ Binaryen.prototype.MaxSVecI16x8;
+/** @type {number} */ Binaryen.prototype.MaxUVecI16x8;
+/** @type {number} */ Binaryen.prototype.AvgrUVecI16x8;
+/** @type {number} */ Binaryen.prototype.Q15MulrSatSVecI16x8;
+/** @type {number} */ Binaryen.prototype.DotSVecI16x8ToVecI32x4;
+/** @type {number} */ Binaryen.prototype.NarrowSVecI32x4ToVecI16x8;
+/** @type {number} */ Binaryen.prototype.NarrowUVecI32x4ToVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtendLowSVecI8x16ToVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtendHighSVecI8x16ToVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtendLowUVecI8x16ToVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtendHighUVecI8x16ToVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtMulLowSVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtMulHighSVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtMulLowUVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtMulHighUVecI16x8;
+/** @type {number} */ Binaryen.prototype.ExtAddPairwiseSVecI8x16ToI16x8;
+/** @type {number} */ Binaryen.prototype.ExtAddPairwiseUVecI8x16ToI16x8;
+
+// ---------------------------------------------------------------------------
+// SIMD operation constants — i32x4
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.SplatVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtractLaneVecI32x4;
+/** @type {number} */ Binaryen.prototype.ReplaceLaneVecI32x4;
+/** @type {number} */ Binaryen.prototype.EqVecI32x4;
+/** @type {number} */ Binaryen.prototype.NeVecI32x4;
+/** @type {number} */ Binaryen.prototype.LtSVecI32x4;
+/** @type {number} */ Binaryen.prototype.LtUVecI32x4;
+/** @type {number} */ Binaryen.prototype.GtSVecI32x4;
+/** @type {number} */ Binaryen.prototype.GtUVecI32x4;
+/** @type {number} */ Binaryen.prototype.LeSVecI32x4;
+/** @type {number} */ Binaryen.prototype.LeUVecI32x4;
+/** @type {number} */ Binaryen.prototype.GeSVecI32x4;
+/** @type {number} */ Binaryen.prototype.GeUVecI32x4;
+/** @type {number} */ Binaryen.prototype.AbsVecI32x4;
+/** @type {number} */ Binaryen.prototype.NegVecI32x4;
+/** @type {number} */ Binaryen.prototype.AllTrueVecI32x4;
+/** @type {number} */ Binaryen.prototype.BitmaskVecI32x4;
+/** @type {number} */ Binaryen.prototype.ShlVecI32x4;
+/** @type {number} */ Binaryen.prototype.ShrSVecI32x4;
+/** @type {number} */ Binaryen.prototype.ShrUVecI32x4;
+/** @type {number} */ Binaryen.prototype.AddVecI32x4;
+/** @type {number} */ Binaryen.prototype.SubVecI32x4;
+/** @type {number} */ Binaryen.prototype.MulVecI32x4;
+/** @type {number} */ Binaryen.prototype.MinSVecI32x4;
+/** @type {number} */ Binaryen.prototype.MinUVecI32x4;
+/** @type {number} */ Binaryen.prototype.MaxSVecI32x4;
+/** @type {number} */ Binaryen.prototype.MaxUVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtendLowSVecI16x8ToVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtendHighSVecI16x8ToVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtendLowUVecI16x8ToVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtendHighUVecI16x8ToVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtMulLowSVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtMulHighSVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtMulLowUVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtMulHighUVecI32x4;
+/** @type {number} */ Binaryen.prototype.ExtAddPairwiseSVecI16x8ToI32x4;
+/** @type {number} */ Binaryen.prototype.ExtAddPairwiseUVecI16x8ToI32x4;
+/** @type {number} */ Binaryen.prototype.TruncSatSVecF32x4ToVecI32x4;
+/** @type {number} */ Binaryen.prototype.TruncSatUVecF32x4ToVecI32x4;
+/** @type {number} */ Binaryen.prototype.TruncSatZeroSVecF64x2ToVecI32x4;
+/** @type {number} */ Binaryen.prototype.TruncSatZeroUVecF64x2ToVecI32x4;
+
+// ---------------------------------------------------------------------------
+// SIMD operation constants — i64x2
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.SplatVecI64x2;
+/** @type {number} */ Binaryen.prototype.ExtractLaneVecI64x2;
+/** @type {number} */ Binaryen.prototype.ReplaceLaneVecI64x2;
+/** @type {number} */ Binaryen.prototype.EqVecI64x2;
+/** @type {number} */ Binaryen.prototype.NeVecI64x2;
+/** @type {number} */ Binaryen.prototype.LtSVecI64x2;
+/** @type {number} */ Binaryen.prototype.GtSVecI64x2;
+/** @type {number} */ Binaryen.prototype.LeSVecI64x2;
+/** @type {number} */ Binaryen.prototype.GeSVecI64x2;
+/** @type {number} */ Binaryen.prototype.AbsVecI64x2;
+/** @type {number} */ Binaryen.prototype.NegVecI64x2;
+/** @type {number} */ Binaryen.prototype.AllTrueVecI64x2;
+/** @type {number} */ Binaryen.prototype.BitmaskVecI64x2;
+/** @type {number} */ Binaryen.prototype.ShlVecI64x2;
+/** @type {number} */ Binaryen.prototype.ShrSVecI64x2;
+/** @type {number} */ Binaryen.prototype.ShrUVecI64x2;
+/** @type {number} */ Binaryen.prototype.AddVecI64x2;
+/** @type {number} */ Binaryen.prototype.SubVecI64x2;
+/** @type {number} */ Binaryen.prototype.MulVecI64x2;
+/** @type {number} */ Binaryen.prototype.ExtendLowSVecI32x4ToVecI64x2;
+/** @type {number} */ Binaryen.prototype.ExtendHighSVecI32x4ToVecI64x2;
+/** @type {number} */ Binaryen.prototype.ExtendLowUVecI32x4ToVecI64x2;
+/** @type {number} */ Binaryen.prototype.ExtendHighUVecI32x4ToVecI64x2;
+/** @type {number} */ Binaryen.prototype.ExtMulLowSVecI64x2;
+/** @type {number} */ Binaryen.prototype.ExtMulHighSVecI64x2;
+/** @type {number} */ Binaryen.prototype.ExtMulLowUVecI64x2;
+/** @type {number} */ Binaryen.prototype.ExtMulHighUVecI64x2;
+
+// ---------------------------------------------------------------------------
+// SIMD operation constants — f32x4
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.SplatVecF32x4;
+/** @type {number} */ Binaryen.prototype.ExtractLaneVecF32x4;
+/** @type {number} */ Binaryen.prototype.ReplaceLaneVecF32x4;
+/** @type {number} */ Binaryen.prototype.EqVecF32x4;
+/** @type {number} */ Binaryen.prototype.NeVecF32x4;
+/** @type {number} */ Binaryen.prototype.LtVecF32x4;
+/** @type {number} */ Binaryen.prototype.GtVecF32x4;
+/** @type {number} */ Binaryen.prototype.LeVecF32x4;
+/** @type {number} */ Binaryen.prototype.GeVecF32x4;
+/** @type {number} */ Binaryen.prototype.AbsVecF32x4;
+/** @type {number} */ Binaryen.prototype.NegVecF32x4;
+/** @type {number} */ Binaryen.prototype.SqrtVecF32x4;
+/** @type {number} */ Binaryen.prototype.AddVecF32x4;
+/** @type {number} */ Binaryen.prototype.SubVecF32x4;
+/** @type {number} */ Binaryen.prototype.MulVecF32x4;
+/** @type {number} */ Binaryen.prototype.DivVecF32x4;
+/** @type {number} */ Binaryen.prototype.MinVecF32x4;
+/** @type {number} */ Binaryen.prototype.MaxVecF32x4;
+/** @type {number} */ Binaryen.prototype.PMinVecF32x4;
+/** @type {number} */ Binaryen.prototype.PMaxVecF32x4;
+/** @type {number} */ Binaryen.prototype.CeilVecF32x4;
+/** @type {number} */ Binaryen.prototype.FloorVecF32x4;
+/** @type {number} */ Binaryen.prototype.TruncVecF32x4;
+/** @type {number} */ Binaryen.prototype.NearestVecF32x4;
+/** @type {number} */ Binaryen.prototype.ConvertSVecI32x4ToVecF32x4;
+/** @type {number} */ Binaryen.prototype.ConvertUVecI32x4ToVecF32x4;
+/** @type {number} */ Binaryen.prototype.DemoteZeroVecF64x2ToVecF32x4;
+
+// ---------------------------------------------------------------------------
+// SIMD operation constants — f64x2
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.SplatVecF64x2;
+/** @type {number} */ Binaryen.prototype.ExtractLaneVecF64x2;
+/** @type {number} */ Binaryen.prototype.ReplaceLaneVecF64x2;
+/** @type {number} */ Binaryen.prototype.EqVecF64x2;
+/** @type {number} */ Binaryen.prototype.NeVecF64x2;
+/** @type {number} */ Binaryen.prototype.LtVecF64x2;
+/** @type {number} */ Binaryen.prototype.GtVecF64x2;
+/** @type {number} */ Binaryen.prototype.LeVecF64x2;
+/** @type {number} */ Binaryen.prototype.GeVecF64x2;
+/** @type {number} */ Binaryen.prototype.AbsVecF64x2;
+/** @type {number} */ Binaryen.prototype.NegVecF64x2;
+/** @type {number} */ Binaryen.prototype.SqrtVecF64x2;
+/** @type {number} */ Binaryen.prototype.AddVecF64x2;
+/** @type {number} */ Binaryen.prototype.SubVecF64x2;
+/** @type {number} */ Binaryen.prototype.MulVecF64x2;
+/** @type {number} */ Binaryen.prototype.DivVecF64x2;
+/** @type {number} */ Binaryen.prototype.MinVecF64x2;
+/** @type {number} */ Binaryen.prototype.MaxVecF64x2;
+/** @type {number} */ Binaryen.prototype.PMinVecF64x2;
+/** @type {number} */ Binaryen.prototype.PMaxVecF64x2;
+/** @type {number} */ Binaryen.prototype.CeilVecF64x2;
+/** @type {number} */ Binaryen.prototype.FloorVecF64x2;
+/** @type {number} */ Binaryen.prototype.TruncVecF64x2;
+/** @type {number} */ Binaryen.prototype.NearestVecF64x2;
+/** @type {number} */ Binaryen.prototype.ConvertLowSVecI32x4ToVecF64x2;
+/** @type {number} */ Binaryen.prototype.ConvertLowUVecI32x4ToVecF64x2;
+/** @type {number} */ Binaryen.prototype.PromoteLowVecF32x4ToVecF64x2;
+
+// ---------------------------------------------------------------------------
+// SIMD operation constants — special loads
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.Load8SplatVec128;
+/** @type {number} */ Binaryen.prototype.Load16SplatVec128;
+/** @type {number} */ Binaryen.prototype.Load32SplatVec128;
+/** @type {number} */ Binaryen.prototype.Load64SplatVec128;
+/** @type {number} */ Binaryen.prototype.Load8x8SVec128;
+/** @type {number} */ Binaryen.prototype.Load8x8UVec128;
+/** @type {number} */ Binaryen.prototype.Load16x4SVec128;
+/** @type {number} */ Binaryen.prototype.Load16x4UVec128;
+/** @type {number} */ Binaryen.prototype.Load32x2SVec128;
+/** @type {number} */ Binaryen.prototype.Load32x2UVec128;
+/** @type {number} */ Binaryen.prototype.Load32ZeroVec128;
+/** @type {number} */ Binaryen.prototype.Load64ZeroVec128;
+
+// ---------------------------------------------------------------------------
+// SIMD operation constants — lane loads/stores
+// ---------------------------------------------------------------------------
+
+/** @type {number} */ Binaryen.prototype.Load8LaneVec128;
+/** @type {number} */ Binaryen.prototype.Load16LaneVec128;
+/** @type {number} */ Binaryen.prototype.Load32LaneVec128;
+/** @type {number} */ Binaryen.prototype.Load64LaneVec128;
+/** @type {number} */ Binaryen.prototype.Store8LaneVec128;
+/** @type {number} */ Binaryen.prototype.Store16LaneVec128;
+/** @type {number} */ Binaryen.prototype.Store32LaneVec128;
+/** @type {number} */ Binaryen.prototype.Store64LaneVec128;
+
+// ---------------------------------------------------------------------------
+// SIMD expression-mutation sub-APIs
+// ---------------------------------------------------------------------------
+
+/** @interface @const */ var BinaryenSIMDExtractApi = function () {};
+/** @param {number} ptr @param {number} vec @return {void} */
+BinaryenSIMDExtractApi.prototype.setVec = function (ptr, vec) {};
+/** @type {!BinaryenSIMDExtractApi} */ Binaryen.prototype.SIMDExtract;
+
+/** @interface @const */ var BinaryenSIMDReplaceApi = function () {};
+/** @param {number} ptr @param {number} vec @return {void} */
+BinaryenSIMDReplaceApi.prototype.setVec = function (ptr, vec) {};
+/** @param {number} ptr @param {number} value @return {void} */
+BinaryenSIMDReplaceApi.prototype.setValue = function (ptr, value) {};
+/** @type {!BinaryenSIMDReplaceApi} */ Binaryen.prototype.SIMDReplace;
+
+/** @interface @const */ var BinaryenSIMDShuffleApi = function () {};
+/** @param {number} ptr @param {number} left @return {void} */
+BinaryenSIMDShuffleApi.prototype.setLeft = function (ptr, left) {};
+/** @param {number} ptr @param {number} right @return {void} */
+BinaryenSIMDShuffleApi.prototype.setRight = function (ptr, right) {};
+/** @type {!BinaryenSIMDShuffleApi} */ Binaryen.prototype.SIMDShuffle;
+
+/** @interface @const */ var BinaryenSIMDTernaryApi = function () {};
+/** @param {number} ptr @param {number} a @return {void} */
+BinaryenSIMDTernaryApi.prototype.setA = function (ptr, a) {};
+/** @param {number} ptr @param {number} b @return {void} */
+BinaryenSIMDTernaryApi.prototype.setB = function (ptr, b) {};
+/** @param {number} ptr @param {number} c @return {void} */
+BinaryenSIMDTernaryApi.prototype.setC = function (ptr, c) {};
+/** @type {!BinaryenSIMDTernaryApi} */ Binaryen.prototype.SIMDTernary;
+
+/** @interface @const */ var BinaryenSIMDShiftApi = function () {};
+/** @param {number} ptr @param {number} vec @return {void} */
+BinaryenSIMDShiftApi.prototype.setVec = function (ptr, vec) {};
+/** @param {number} ptr @param {number} shift @return {void} */
+BinaryenSIMDShiftApi.prototype.setShift = function (ptr, shift) {};
+/** @type {!BinaryenSIMDShiftApi} */ Binaryen.prototype.SIMDShift;
+
+/** @interface @const */ var BinaryenSIMDLoadApi = function () {};
+/** @param {number} ptr @param {number} ptrExpr @return {void} */
+BinaryenSIMDLoadApi.prototype.setPtr = function (ptr, ptrExpr) {};
+/** @type {!BinaryenSIMDLoadApi} */ Binaryen.prototype.SIMDLoad;
+
+/** @interface @const */ var BinaryenSIMDLoadStoreLaneApi = function () {};
+/** @param {number} ptr @param {number} ptrExpr @return {void} */
+BinaryenSIMDLoadStoreLaneApi.prototype.setPtr = function (ptr, ptrExpr) {};
+/** @param {number} ptr @param {number} vec @return {void} */
+BinaryenSIMDLoadStoreLaneApi.prototype.setVec = function (ptr, vec) {};
+/** @type {!BinaryenSIMDLoadStoreLaneApi} */ Binaryen.prototype.SIMDLoadStoreLane;

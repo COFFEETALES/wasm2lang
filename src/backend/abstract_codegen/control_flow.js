@@ -151,25 +151,6 @@ Wasm2Lang.Backend.AbstractCodegen.SW_DISPATCH_PREFIX_ = 'sw$';
 Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_ = 'lb$';
 
 /**
- * Prefix for loops whose trailing self-continue was removed by the
- * LoopSimplificationPass.  Backend emitters emit `for(;;)` with no
- * trailing break.
- *
- * @protected
- * @const {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.LC_CONTINUE_PREFIX_ = 'lc$';
-
-/**
- * Prefix for loops converted to do-while by the LoopSimplificationPass.
- * The body block's last child is the bare condition expression.
- *
- * @protected
- * @const {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.LD_DOWHILE_PREFIX_ = 'ld$';
-
-/**
  * Prefix for label-elided for(;;) loops (no label needed in output).
  *
  * @protected
@@ -184,15 +165,6 @@ Wasm2Lang.Backend.AbstractCodegen.LF_FORLOOP_PREFIX_ = 'lf$';
  * @const {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.LE_DOWHILE_PREFIX_ = 'le$';
-
-/**
- * Prefix for labeled while loops (condition hoisted from loop body).
- * The body block's last child is the inverted condition expression.
- *
- * @protected
- * @const {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.LW_WHILE_PREFIX_ = 'lw$';
 
 /**
  * Prefix for label-elided while loops (no label needed in output).

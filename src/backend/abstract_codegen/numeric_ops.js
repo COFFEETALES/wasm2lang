@@ -97,6 +97,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_ = function (binaryen, 
     // Languages where float widens to double automatically (Java, PHP)
     // can skip the explicit f64 cast when the source is already f32.
     if (A.CAT_F32 === cat && this.f32WidensToF64_) return expr;
+  } else if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    if (A.CAT_V128 === cat) return expr;
   }
   return this.renderCoercionByType_(binaryen, expr, wasmType);
 };
@@ -280,6 +282,45 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
 };
 
 /**
+ * Backend hook for SIMD binary operations.  Returns the rendered expression
+ * and category.  Concrete backends override this.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Wasm2Lang.Backend.SIMDOps.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDBinaryOp_ = function (binaryen, info, L, R) {
+  void binaryen;
+  void info;
+  return {
+    emittedString: '/* unsupported SIMD binary: ' + info.opName + '(' + L + ', ' + R + ') */',
+    resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_V128
+  };
+};
+
+/**
+ * Backend hook for SIMD unary operations.  Returns the rendered expression
+ * and category.  Concrete backends override this.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Wasm2Lang.Backend.SIMDOps.UnaryOpInfo} info
+ * @param {string} operandExpr
+ * @return {{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDUnaryOp_ = function (binaryen, info, operandExpr) {
+  void binaryen;
+  void info;
+  return {
+    emittedString: '/* unsupported SIMD unary: ' + info.opName + '(' + operandExpr + ') */',
+    resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_V128
+  };
+};
+
+/**
  * Dispatches a classified i32 binary operation to the backend-specific
  * renderer registered in {@code binaryRenderers_}.
  *
@@ -428,6 +469,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, u
       resultCat: A.catForCoercedType_(binaryen, numInfo.retType)
     };
   }
+  var /** @const {?Wasm2Lang.Backend.SIMDOps.UnaryOpInfo} */ simdUnInfo = Wasm2Lang.Backend.SIMDOps.classifyUnaryOp(
+      binaryen,
+      unaryOp
+    );
+  if (simdUnInfo) {
+    this.markBinding_('$v128');
+    return this.emitSIMDUnaryOp_(binaryen, simdUnInfo, operandExpr);
+  }
   return {emittedString: '0 /* unknown unop ' + unaryOp + ' */', resultCat: A.CAT_RAW};
 };
 
@@ -517,6 +566,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, 
       emittedString: this.renderNumericBinaryOp_(binaryen, numInfo, L, R, catL, catR),
       resultCat: numInfo.isComparison ? this.numericComparisonCat_() : A.catForCoercedType_(binaryen, numInfo.retType)
     };
+  }
+  var /** @const {?Wasm2Lang.Backend.SIMDOps.BinaryOpInfo} */ simdInfo = Wasm2Lang.Backend.SIMDOps.classifyBinaryOp(
+      binaryen,
+      binaryOp
+    );
+  if (simdInfo) {
+    this.markBinding_('$v128');
+    return this.emitSIMDBinaryOp_(binaryen, simdInfo, L, R);
   }
   return {emittedString: '0 /* unknown binop ' + binaryOp + ' */', resultCat: A.CAT_RAW};
 };

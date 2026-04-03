@@ -43,61 +43,26 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Buffer field.
   outputParts[outputParts.length] = pad1 + 'java.nio.ByteBuffer ' + this.n_('buffer') + ';';
 
-  // Classify imports as stdlib or foreign.
-  var /** @const {!Object<string, string>} */ javaStdlibNames = /** @type {!Object<string, string>} */ (Object.create(null));
-  var /** @const {!Object<string, string>} */ javaStdlibGlobals = /** @type {!Object<string, string>} */ (Object.create(null));
-  var /** @const */ classify = Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport;
-  /** @const {!Object<string, string>} */
-  var JAVA_MATH_FUNCS_ = {
-    'acos': 'Math.acos',
-    'asin': 'Math.asin',
-    'atan': 'Math.atan',
-    'cos': 'Math.cos',
-    'sin': 'Math.sin',
-    'tan': 'Math.tan',
-    'exp': 'Math.exp',
-    'log': 'Math.log',
-    'ceil': 'Math.ceil',
-    'floor': 'Math.floor',
-    'sqrt': 'Math.sqrt',
-    'abs': 'Math.abs',
-    'atan2': 'Math.atan2',
-    'pow': 'Math.pow',
-    'min': 'Math.min',
-    'max': 'Math.max'
-  };
-  /** @const {!Object<string, string>} */
-  var JAVA_MATH_CONSTS_ = {
-    'E': 'Math.E',
-    'LN10': '2.302585092994046',
-    'LN2': '0.6931471805599453',
-    'LOG2E': '1.4426950408889634',
-    'LOG10E': '0.4342944819032518',
-    'PI': 'Math.PI',
-    'SQRT1_2': '0.7071067811865476',
-    'SQRT2': '1.4142135623730951'
-  };
-  for (var /** @type {number} */ jsi = 0, /** @const {number} */ jsiLen = moduleInfo.impFuncs.length; jsi !== jsiLen; ++jsi) {
-    var /** @const {string} */ jsiKind = classify(
-        moduleInfo.impFuncs[jsi].importModule,
-        moduleInfo.impFuncs[jsi].importBaseName
-      );
-    if ('math_func' === jsiKind && JAVA_MATH_FUNCS_[moduleInfo.impFuncs[jsi].importBaseName]) {
-      javaStdlibNames[moduleInfo.impFuncs[jsi].wasmFuncName] = JAVA_MATH_FUNCS_[moduleInfo.impFuncs[jsi].importBaseName];
-    }
-  }
-  for (var /** @type {number} */ jgi = 0, /** @const {number} */ jgiLen = moduleInfo.impGlobals.length; jgi !== jgiLen; ++jgi) {
-    var /** @const {string} */ jgiKind = classify(
-        moduleInfo.impGlobals[jgi].importModule,
-        moduleInfo.impGlobals[jgi].importBaseName
-      );
-    if ('math_const' === jgiKind && JAVA_MATH_CONSTS_[moduleInfo.impGlobals[jgi].importBaseName]) {
-      javaStdlibGlobals[moduleInfo.impGlobals[jgi].globalName] = JAVA_MATH_CONSTS_[moduleInfo.impGlobals[jgi].importBaseName];
-    } else if ('global_value' === jgiKind) {
-      javaStdlibGlobals[moduleInfo.impGlobals[jgi].globalName] =
-        'Infinity' === moduleInfo.impGlobals[jgi].importBaseName ? 'Double.POSITIVE_INFINITY' : 'Double.NaN';
-    }
-  }
+  // Resolve stdlib imports.
+  var /** @const */ stdlibBindings = Wasm2Lang.Backend.AbstractCodegen.resolveStdlibBindings_(
+      moduleInfo.impFuncs,
+      moduleInfo.impGlobals,
+      'Math.',
+      {
+        'E': 'Math.E',
+        'LN10': '2.302585092994046',
+        'LN2': '0.6931471805599453',
+        'LOG2E': '1.4426950408889634',
+        'LOG10E': '0.4342944819032518',
+        'PI': 'Math.PI',
+        'SQRT1_2': '0.7071067811865476',
+        'SQRT2': '1.4142135623730951'
+      },
+      'Double.POSITIVE_INFINITY',
+      'Double.NaN'
+    );
+  var /** @const {!Object<string, string>} */ javaStdlibNames = stdlibBindings.names;
+  var /** @const {!Object<string, string>} */ javaStdlibGlobals = stdlibBindings.globals;
 
   // Import fields and global fields are emitted conditionally after function
   // body traversal (see usedBindings_ below).  Reserve an insertion index.
@@ -296,6 +261,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   }
 
   outputParts[outputParts.length] = '}';
+
+  // Emit Vector API import when any SIMD operation was emitted.
+  if (jub['$v128']) {
+    outputParts.splice(0, 0, 'import jdk.incubator.vector.*;');
+  }
 
   // Traversal summary.
   // prettier-ignore

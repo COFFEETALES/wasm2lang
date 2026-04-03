@@ -41,6 +41,14 @@ Wasm2Lang.Backend.I64Coercion = {};
 Wasm2Lang.Backend.NumericOps = {};
 
 /**
+ * Shared SIMD128 op classification for v128 operations that flow through
+ * BinaryId and UnaryId.
+ *
+ * @const
+ */
+Wasm2Lang.Backend.SIMDOps = {};
+
+/**
  * @namespace
  */
 Wasm2Lang.CLI = {};

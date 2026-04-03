@@ -159,6 +159,31 @@ Wasm2Lang.Wasm.Tree.NodeSchema.ensureDefaultSchema_ = function (opt_binaryen) {
     single('size', binaryen.MemoryCopy, 'setSize')
   ]);
 
+  // SIMD expression IDs.
+  register(binaryen.SIMDExtractId, [single('vec', binaryen.SIMDExtract, 'setVec')]);
+  register(binaryen.SIMDReplaceId, [
+    single('vec', binaryen.SIMDReplace, 'setVec'),
+    single('value', binaryen.SIMDReplace, 'setValue')
+  ]);
+  register(binaryen.SIMDShuffleId, [
+    single('left', binaryen.SIMDShuffle, 'setLeft'),
+    single('right', binaryen.SIMDShuffle, 'setRight')
+  ]);
+  register(binaryen.SIMDTernaryId, [
+    single('a', binaryen.SIMDTernary, 'setA'),
+    single('b', binaryen.SIMDTernary, 'setB'),
+    single('c', binaryen.SIMDTernary, 'setC')
+  ]);
+  register(binaryen.SIMDShiftId, [
+    single('vec', binaryen.SIMDShift, 'setVec'),
+    single('shift', binaryen.SIMDShift, 'setShift')
+  ]);
+  register(binaryen.SIMDLoadId, [single('ptr', binaryen.SIMDLoad, 'setPtr')]);
+  register(binaryen.SIMDLoadStoreLaneId, [
+    single('ptr', binaryen.SIMDLoadStoreLane, 'setPtr'),
+    single('vec', binaryen.SIMDLoadStoreLane, 'setVec')
+  ]);
+
   // Leaf nodes: no expression-pointer children.
   registerLeaf(binaryen.NopId);
   registerLeaf(binaryen.UnreachableId);

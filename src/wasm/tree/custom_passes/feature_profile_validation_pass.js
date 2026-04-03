@@ -42,7 +42,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.validate
       features.BulkMemory |
       features.BulkMemoryOpt |
       features.SignExt |
-      features.MutableGlobals;
+      features.MutableGlobals |
+      features.SIMD128;
   var /** @type {number} */ isValidAllowedProfile = 0;
 
   try {
