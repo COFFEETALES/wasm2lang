@@ -233,7 +233,7 @@ Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs = function (expressionId) {
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo = function (binaryen, exprPtr) {
   var /** @const {number} */ id = binaryen.getExpressionId(exprPtr);
-  if (id === binaryen.NopId || id === binaryen.UnreachableId) {
+  if (binaryen.NopId === id || binaryen.UnreachableId === id) {
     // prettier-ignore
     return /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (
       { id: id, type: binaryen.getExpressionType(exprPtr) }
@@ -254,11 +254,11 @@ Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo = function (binaryen, exprP
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_ = function (binaryen, exprPtr, info) {
   var /** @const {number} */ id = info.id;
-  if (id === binaryen.MemoryFillId) {
+  if (binaryen.MemoryFillId === id) {
     /** @type {!Object<string, *>} */ (info)['dest'] = binaryen.MemoryFill.getDest(exprPtr);
     /** @type {!Object<string, *>} */ (info)['value'] = binaryen.MemoryFill.getValue(exprPtr);
     /** @type {!Object<string, *>} */ (info)['size'] = binaryen.MemoryFill.getSize(exprPtr);
-  } else if (id === binaryen.MemoryCopyId) {
+  } else if (binaryen.MemoryCopyId === id) {
     /** @type {!Object<string, *>} */ (info)['dest'] = binaryen.MemoryCopy.getDest(exprPtr);
     /** @type {!Object<string, *>} */ (info)['source'] = binaryen.MemoryCopy.getSource(exprPtr);
     /** @type {!Object<string, *>} */ (info)['size'] = binaryen.MemoryCopy.getSize(exprPtr);

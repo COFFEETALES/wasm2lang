@@ -127,7 +127,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
 
     var /** @const {number} */ fcPtr = curChildPtrs[0];
     var /** @const {!BinaryenExpressionInfo} */ fcInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr);
-    if (fcInfo.id !== binaryen.BlockId) {
+    if (binaryen.BlockId !== fcInfo.id) {
       break;
     }
     var /** @const {!Array<number>} */ fcChildren = /** @type {!Array<number>} */ (fcInfo.children || []);
@@ -136,7 +136,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
           binaryen,
           fcChildren[0]
         );
-      if (soleInfo.id === binaryen.SwitchId) {
+      if (binaryen.SwitchId === soleInfo.id) {
         // Record innermost wrapper.
         var /** @const {string} */ wrapperName = /** @type {string} */ (fcInfo.name);
         nameToIdx[wrapperName] = chain.length;
@@ -173,7 +173,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
             if (nb && aPtrs.length > 0) {
               var /** @const {!BinaryenExpressionInfo} */ lastAct =
                   Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, aPtrs[aPtrs.length - 1]);
-              if (lastAct.id === binaryen.BreakId && 0 === /** @type {number} */ (lastAct.condition || 0)) {
+              if (binaryen.BreakId === lastAct.id && 0 === /** @type {number} */ (lastAct.condition || 0)) {
                 nb = false;
               }
             }
@@ -347,7 +347,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSwitchCaseActions
         actionPtrs[actionCount - 1]
       );
     if (
-      terminalInfo.id === binaryen.BreakId &&
+      binaryen.BreakId === terminalInfo.id &&
       terminalInfo.name === opt_terminalBreakTarget &&
       0 === /** @type {number} */ (terminalInfo.condition || 0) &&
       0 === /** @type {number} */ (terminalInfo.value || 0)
@@ -363,7 +363,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSwitchCaseActions
             binaryen,
             actionPtrs[actionCount - 1]
           );
-        if (prevInfo.id === binaryen.BreakId && 0 === /** @type {number} */ (prevInfo.condition || 0)) {
+        if (binaryen.BreakId === prevInfo.id && 0 === /** @type {number} */ (prevInfo.condition || 0)) {
           strippedTerminalBreak = false;
         }
       }
@@ -424,7 +424,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitRootSwitchExitCod
         binaryen,
         exitPtrs[exitPtrs.length - 1]
       ).id;
-    return lastId === binaryen.ReturnId || lastId === binaryen.UnreachableId;
+    return binaryen.ReturnId === lastId || binaryen.UnreachableId === lastId;
   }
   return false;
 };
@@ -470,13 +470,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
     var /** @const {number} */ fcId = fcInfo.id;
 
     // Direct loop child.
-    if (fcId === binaryen.LoopId) {
+    if (binaryen.LoopId === fcId) {
       loopPtr = fcPtr;
       loopName = /** @type {string} */ (fcInfo.name);
       break;
     }
 
-    if (fcId !== binaryen.BlockId) {
+    if (binaryen.BlockId !== fcId) {
       break;
     }
 
@@ -490,7 +490,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
             binaryen,
             fusedCh[0]
           );
-        if (fusedChild.id === binaryen.LoopId) {
+        if (binaryen.LoopId === fusedChild.id) {
           // Add lb$ block to the chain so that br $lb$... targets inside
           // the flat switch are intercepted by the root-switch exit map.
           chain[chain.length] = {'n': fcName, 'c': fusedCh};
@@ -522,7 +522,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
       for (var /** @type {number} */ p = 1, /** @const {number} */ ptrLen = levelPtrs.length; p < ptrLen; ++p) {
         exitPtrs[exitPtrs.length] = levelPtrs[p];
         var /** @const {number} */ ptrId = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, levelPtrs[p]).id;
-        if (ptrId === binaryen.ReturnId || ptrId === binaryen.UnreachableId) {
+        if (binaryen.ReturnId === ptrId || binaryen.UnreachableId === ptrId) {
           hitTerminal = true;
           break;
         }

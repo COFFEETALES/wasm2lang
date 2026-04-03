@@ -91,7 +91,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyMappedRenaming_ = function (resolveMarker,
   var /** @const {number} */ id = expr.id;
   var /** @const {string} */ REPLACE_NODE = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE;
 
-  if (id === binaryen.BreakId) {
+  if (binaryen.BreakId === id) {
     var /** @const {?string} */ breakName = /** @type {?string} */ (expr.name);
     var /** @const {?string} */ breakMarker = breakName ? resolveMarker(breakName) : null;
     if (breakMarker) {
@@ -106,7 +106,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyMappedRenaming_ = function (resolveMarker,
     }
   }
 
-  if (id === binaryen.SwitchId) {
+  if (binaryen.SwitchId === id) {
     var /** @const {!Array<string>} */ names = /** @type {!Array<string>} */ ((expr.names || []).slice(0));
     var /** @const {number} */ nameCount = names.length;
     var /** @type {boolean} */ hasChanges = false;
@@ -143,7 +143,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyMappedRenaming_ = function (resolveMarker,
     }
   }
 
-  if (id === binaryen.BlockId) {
+  if (binaryen.BlockId === id) {
     var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
     var /** @const {?string} */ blockMarker = blockName ? resolveMarker(blockName) : null;
     if (blockMarker) {

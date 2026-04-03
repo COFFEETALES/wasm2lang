@@ -10,7 +10,7 @@
 Wasm2Lang.Backend.AsmjsCodegen.renderArithmeticBinary_ = function (self, info, L, R) {
   void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_));
+  return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_);
 };
 
 /**
@@ -37,22 +37,18 @@ Wasm2Lang.Backend.AsmjsCodegen.renderDivisionBinary_ = function (self, info, L, 
   void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (info.unsigned) {
-    return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
-      P.renderInfix(
-        Wasm2Lang.Backend.AsmjsCodegen.renderUnsignedCoercion_(L),
-        info.opStr,
-        Wasm2Lang.Backend.AsmjsCodegen.renderUnsignedCoercion_(R),
-        P.PREC_MULTIPLICATIVE_
-      )
+    return P.renderInfix(
+      Wasm2Lang.Backend.AsmjsCodegen.renderUnsignedCoercion_(L),
+      info.opStr,
+      Wasm2Lang.Backend.AsmjsCodegen.renderUnsignedCoercion_(R),
+      P.PREC_MULTIPLICATIVE_
     );
   }
-  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
-    P.renderInfix(
-      Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(L),
-      info.opStr,
-      Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(R),
-      P.PREC_MULTIPLICATIVE_
-    )
+  return P.renderInfix(
+    Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(L),
+    info.opStr,
+    Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(R),
+    P.PREC_MULTIPLICATIVE_
   );
 };
 

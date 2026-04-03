@@ -53,7 +53,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
   // Reset terminal flag for all non-Block expressions (Block propagates from
   // its last child).  Terminal handlers (Return, unconditional Break, Switch
   // with default) override to true so LoopId can omit an unreachable break.
-  if (id !== binaryen.BlockId) {
+  if (binaryen.BlockId !== id) {
     state.lastExprIsTerminal = false;
   }
 
@@ -71,7 +71,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
 
   var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
   if (common) {
-    if (id === binaryen.ReturnId) state.lastExprIsTerminal = true;
+    if (binaryen.ReturnId === id) state.lastExprIsTerminal = true;
     return A.buildLeaveResult_(common.emittedString, common.resultCat);
   }
 
@@ -188,7 +188,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
             : this.n_(this.safeName_(resolvedName));
         callExpr = callMethodName + '(' + callArgs.join(', ') + ')';
       }
-      if (callType === binaryen.none || 0 === callType) {
+      if (binaryen.none === callType || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
       } else {
         result = callExpr;
@@ -204,7 +204,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {string} */ ciTableName = this.n_('$ftable_' + ciSigKey);
       var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
       var /** @const {string} */ ciCallExpr = 'this.' + ciTableName + '[' + ciIndexExpr + '].call(' + ciArgs.join(', ') + ')';
-      if (ciRetType === binaryen.none || 0 === ciRetType) {
+      if (binaryen.none === ciRetType || 0 === ciRetType) {
         result = pad(ind) + ciCallExpr + ';\n';
       } else {
         result = ciCallExpr;
@@ -219,7 +219,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {number} */ dropValueId = dropValuePtr
           ? Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, dropValuePtr).id
           : 0;
-      if (dropValueId === binaryen.CallId || dropValueId === binaryen.CallIndirectId) {
+      if (binaryen.CallId === dropValueId || binaryen.CallIndirectId === dropValueId) {
         result = pad(ind) + cr(0) + ';\n';
       }
       break;
@@ -250,7 +250,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
 
     case binaryen.MemoryFillId:
     case binaryen.MemoryCopyId: {
-      var /** @const {string} */ javaMemHelper = id === binaryen.MemoryFillId ? '$w2l_memory_fill' : '$w2l_memory_copy';
+      var /** @const {string} */ javaMemHelper = binaryen.MemoryFillId === id ? '$w2l_memory_fill' : '$w2l_memory_copy';
       this.markHelper_(javaMemHelper);
       result =
         pad(ind) +
@@ -287,7 +287,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
             binaryen,
             loopBodyPtr
           );
-        var /** @const {boolean} */ bodyBlockIsNamed = loopBodyInfo.id === binaryen.BlockId && !!loopBodyInfo.name;
+        var /** @const {boolean} */ bodyBlockIsNamed = binaryen.BlockId === loopBodyInfo.id && !!loopBodyInfo.name;
         var /** @const {boolean} */ needsTrailingBreak = bodyBlockIsNamed || !bodyWasTerminal;
         var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
         result =
@@ -304,7 +304,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     }
     case binaryen.IfId: {
       var /** @const {number} */ ifType = expr.type;
-      if (ifType !== binaryen.none && ifType !== binaryen.unreachable && 0 !== ifType) {
+      if (binaryen.none !== ifType && binaryen.unreachable !== ifType && 0 !== ifType) {
         var /** @const */ IfPs = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         var /** @type {string} */ ifCondStr;
         if (A.CAT_BOOL_I32 === cc(0)) {
@@ -403,17 +403,17 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {string} */ shiftExpr = cr(1);
       var /** @type {string} */ shiftVecOp = 'LSHL';
       if (
-        shiftOp === binaryen.ShrSVecI8x16 ||
-        shiftOp === binaryen.ShrSVecI16x8 ||
-        shiftOp === binaryen.ShrSVecI32x4 ||
-        shiftOp === binaryen.ShrSVecI64x2
+        binaryen.ShrSVecI8x16 === shiftOp ||
+        binaryen.ShrSVecI16x8 === shiftOp ||
+        binaryen.ShrSVecI32x4 === shiftOp ||
+        binaryen.ShrSVecI64x2 === shiftOp
       ) {
         shiftVecOp = 'ASHR';
       } else if (
-        shiftOp === binaryen.ShrUVecI8x16 ||
-        shiftOp === binaryen.ShrUVecI16x8 ||
-        shiftOp === binaryen.ShrUVecI32x4 ||
-        shiftOp === binaryen.ShrUVecI64x2
+        binaryen.ShrUVecI8x16 === shiftOp ||
+        binaryen.ShrUVecI16x8 === shiftOp ||
+        binaryen.ShrUVecI32x4 === shiftOp ||
+        binaryen.ShrUVecI64x2 === shiftOp
       ) {
         shiftVecOp = 'LSHR';
       }
@@ -440,10 +440,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           /** @type {number} */ (expr.offset)
         );
       var /** @const {boolean} */ isLslStore =
-          lslOp === binaryen.Store8LaneVec128 ||
-          lslOp === binaryen.Store16LaneVec128 ||
-          lslOp === binaryen.Store32LaneVec128 ||
-          lslOp === binaryen.Store64LaneVec128;
+          binaryen.Store8LaneVec128 === lslOp ||
+          binaryen.Store16LaneVec128 === lslOp ||
+          binaryen.Store32LaneVec128 === lslOp ||
+          binaryen.Store64LaneVec128 === lslOp;
       if (isLslStore) {
         var /** @const {number} */ storeLane = /** @type {number} */ (expr.index);
         result = pad(ind) + 'this.' + this.n_('buffer') + '.putInt(' + lslPtr + ', ' + cr(1) + '.lane(' + storeLane + '));\n';

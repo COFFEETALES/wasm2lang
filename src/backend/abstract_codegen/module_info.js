@@ -775,7 +775,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
       segInfo.offset
     );
   var /** @type {number} */ baseOffset = 0;
-  if (offsetExpr.id === binaryen.ConstId && Wasm2Lang.Backend.ValueType.isI32(binaryen, offsetExpr.type)) {
+  if (binaryen.ConstId === offsetExpr.id && Wasm2Lang.Backend.ValueType.isI32(binaryen, offsetExpr.type)) {
     baseOffset = /** @type {number} */ (offsetExpr.value);
   }
 

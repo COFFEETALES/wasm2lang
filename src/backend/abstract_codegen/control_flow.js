@@ -66,7 +66,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
     bodyResult &&
     'string' !== typeof bodyResult &&
     'string' === typeof bodyResult['s'] &&
-    funcInfo.results !== binaryen.none &&
+    binaryen.none !== funcInfo.results &&
     0 !== funcInfo.results
   ) {
     parts[parts.length] = padStr + 'return ' + this.renderImplicitReturn_(binaryen, bodyResult, funcInfo.results) + ';';
@@ -372,7 +372,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
         if (
           ch &&
           1 === ch.length &&
-          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[0]).id === binaryen.LoopId
+          binaryen.LoopId === Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[0]).id
         ) {
           state.pendingBlockFusion = bName;
         } else {
@@ -916,7 +916,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ getInfo = A.getChildResultInfo_;
 
-  if (id === binaryen.ConstId) {
+  if (binaryen.ConstId === id) {
     var /** @const {number} */ constType = expr.type;
     if (Wasm2Lang.Backend.ValueType.isI64(binaryen, constType)) {
       return {
@@ -929,7 +929,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
       resultCat: A.catForConstType_(binaryen, constType)
     };
   }
-  if (id === binaryen.BinaryId) {
+  if (binaryen.BinaryId === id) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ binL = getInfo(childResults, 0);
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ binR = getInfo(childResults, 1);
     return this.emitBinaryId_(
@@ -941,11 +941,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
       binR.expressionCategory
     );
   }
-  if (id === binaryen.UnaryId) {
+  if (binaryen.UnaryId === id) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ unOp = getInfo(childResults, 0);
     return this.emitUnaryId_(binaryen, /** @type {number} */ (expr.op), unOp.expressionString, unOp.expressionCategory);
   }
-  if (id === binaryen.LocalSetId) {
+  if (binaryen.LocalSetId === id) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ lsOp = getInfo(childResults, 0);
     return this.emitLocalSet_(
       binaryen,
@@ -957,7 +957,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
       lsOp.expressionCategory
     );
   }
-  if (id === binaryen.ReturnId) {
+  if (binaryen.ReturnId === id) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ retOp = getInfo(childResults, 0);
     var /** @type {string} */ retStr;
     if (retOp.hasExpression) {
@@ -971,7 +971,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
     }
     return {emittedString: retStr, resultCat: A.CAT_VOID};
   }
-  if (id === binaryen.NopId || id === binaryen.UnreachableId) {
+  if (binaryen.NopId === id || binaryen.UnreachableId === id) {
     return {emittedString: '', resultCat: A.CAT_VOID};
   }
   return null;

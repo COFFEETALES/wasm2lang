@@ -29,7 +29,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass.prototype.enter_ = functio
   var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression =
     /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (nodeCtx.expression);
 
-  if (expression.id !== binaryen.DropId) {
+  if (binaryen.DropId !== expression.id) {
     return null;
   }
 
@@ -42,7 +42,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass.prototype.enter_ = functio
       binaryen,
       valuePtr
     );
-  if (valueInfo.id !== binaryen.ConstId) {
+  if (binaryen.ConstId !== valueInfo.id) {
     return null;
   }
 

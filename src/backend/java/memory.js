@@ -171,7 +171,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderImportCallExpr_ = function (
   opt_paramTypes
 ) {
   var /** @const {string} */ field = 'this.' + this.n_('$if_' + this.safeName_(importBaseName));
-  var /** @const {boolean} */ isVoid = callType === binaryen.none || 0 === callType;
+  var /** @const {boolean} */ isVoid = binaryen.none === callType || 0 === callType;
   var /** @const {number} */ numArgs = callArgs.length;
   var /** @const {function(!Binaryen, number): string} */ lane = Wasm2Lang.Backend.JavaCodegen.javaLane_;
   var /** @const {string} */ retLane = isVoid ? 'Void' : lane(binaryen, callType);

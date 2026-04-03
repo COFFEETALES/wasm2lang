@@ -99,7 +99,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitMetadata = function (wasmModule, op
   }
 
   // Handle trailing odd word.
-  if (wordCount % 2 !== 0) {
+  if (0 !== wordCount % 2) {
     concatParts[concatParts.length] = "pack('V', " + String(i32[wordCount - 1]) + ')';
   }
 

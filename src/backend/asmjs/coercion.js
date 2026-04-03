@@ -218,12 +218,29 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.i32BinaryResultCat_ = function (info) {
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   if (C.OP_COMPARISON === info.category) return C.INT;
   if (C.OP_BITWISE === info.category && info.unsigned) return C.UNSIGNED;
-  return C.SIGNED;
+  if (C.OP_BITWISE === info.category) return C.SIGNED;
+  if (C.OP_MULTIPLY === info.category) return C.SIGNED;
+  if (C.OP_ROTATE === info.category) return C.SIGNED;
+  return C.INTISH;
 };
 
 /** @override @protected @return {number} */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
   return Wasm2Lang.Backend.I32Coercion.INT;
+};
+
+/**
+ * @override
+ * @protected
+ * @param {string} operand
+ * @param {number} cat
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat) {
+  if (Wasm2Lang.Backend.I32Coercion.INTISH === cat) {
+    return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(operand);
+  }
+  return operand;
 };
 
 // buildCoercedCallArgs_, buildCoercedCallIndirectArgs_, and

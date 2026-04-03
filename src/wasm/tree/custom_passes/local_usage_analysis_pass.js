@@ -29,7 +29,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalUsageAnalysisPass.prototype.enter_ = funct
   var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression =
     /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (nodeCtx.expression);
 
-  if (expression.id !== binaryen.LocalGetId) {
+  if (binaryen.LocalGetId !== expression.id) {
     return null;
   }
 

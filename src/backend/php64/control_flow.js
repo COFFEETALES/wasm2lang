@@ -349,7 +349,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
           state.functionSignatures
         );
       var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
-      if (callType === binaryen.none || 0 === callType) {
+      if (binaryen.none === callType || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
       } else if ('' !== importBase || '' !== phpStdlibName) {
         result = this.renderCoercionByType_(binaryen, callExpr, callType);
@@ -367,7 +367,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
       var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
       var /** @const {string} */ ciCallExpr = this.phpVar_('ftable') + '[' + ciIndexExpr + '](' + ciArgs.join(', ') + ')';
-      if (ciRetType === binaryen.none || 0 === ciRetType) {
+      if (binaryen.none === ciRetType || 0 === ciRetType) {
         result = pad(ind) + ciCallExpr + ';\n';
       } else {
         result = this.renderCoercionByType_(binaryen, ciCallExpr, ciRetType);
@@ -417,7 +417,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.MemoryCopyId: {
       var /** @const {string} */ phpMemBuf = this.phpVar_('buffer');
       state.usedCaptures[phpMemBuf] = true;
-      var /** @const {string} */ phpMemHelper = id === binaryen.MemoryFillId ? '_w2l_memory_fill' : '_w2l_memory_copy';
+      var /** @const {string} */ phpMemHelper = binaryen.MemoryFillId === id ? '_w2l_memory_fill' : '_w2l_memory_copy';
       this.markHelper_(phpMemHelper);
       result =
         pad(ind) +
@@ -454,7 +454,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
     case binaryen.IfId: {
       var /** @const {number} */ ifType = expr.type;
-      if (ifType !== binaryen.none && ifType !== binaryen.unreachable && 0 !== ifType) {
+      if (binaryen.none !== ifType && binaryen.unreachable !== ifType && 0 !== ifType) {
         var /** @const */ ifP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         result = this.renderCoercionByType_(
           binaryen,
@@ -747,7 +747,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
         if (
           ch &&
           1 === ch.length &&
-          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[0]).id === binaryen.LoopId
+          binaryen.LoopId === Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[0]).id
         ) {
           state.pendingBlockFusion = bName;
         } else {

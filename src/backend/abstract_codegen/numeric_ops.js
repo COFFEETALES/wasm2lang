@@ -336,6 +336,21 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOp_ = function (info, L,
 };
 
 /**
+ * Prepares an i32 binary operand for use as input to a binary operation.
+ * Asm.js overrides to coerce INTISH operands to SIGNED (asm.js binary ops
+ * require INT, not INTISH).  Other backends no-op.
+ *
+ * @protected
+ * @param {string} operand
+ * @param {number} cat  Expression category of the operand.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat) {
+  void cat;
+  return operand;
+};
+
+/**
  * Dispatches a classified i64 binary operation to the backend-specific
  * renderer registered in {@code i64BinaryRenderers_}.
  *
@@ -446,7 +461,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, u
     var /** @const {?{emittedString: string, resultCat: number}} */ i32Result = this.emitI32Unary_(
         binaryen,
         unCat,
-        operandExpr
+        this.prepareI32BinaryOperand_(operandExpr, operandCat)
       );
     if (i32Result) return i32Result;
   }
@@ -465,7 +480,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, u
     );
   if (numInfo) {
     return {
-      emittedString: this.renderNumericUnaryOp_(binaryen, numInfo, operandExpr, operandCat),
+      emittedString: this.renderNumericUnaryOp_(
+        binaryen,
+        numInfo,
+        this.prepareI32BinaryOperand_(operandExpr, operandCat),
+        operandCat
+      ),
       resultCat: A.catForCoercedType_(binaryen, numInfo.retType)
     };
   }
@@ -548,6 +568,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, 
   if (A.CAT_BOOL_I32 === catR) R = this.renderNumericComparisonResult_(R);
   var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = C.classifyBinaryOp(binaryen, binaryOp);
   if (binInfo) {
+    L = this.prepareI32BinaryOperand_(L, catL);
+    R = this.prepareI32BinaryOperand_(R, catR);
     return {emittedString: this.renderBinaryOp_(binInfo, L, R), resultCat: this.i32BinaryResultCat_(binInfo)};
   }
   var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ i64Info = Wasm2Lang.Backend.I64Coercion.classifyBinaryOp(

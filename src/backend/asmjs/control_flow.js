@@ -165,9 +165,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           if (Wasm2Lang.Backend.ValueType.isF32(binaryen, castInputType)) {
             castTruncInput = Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_(castTruncInput);
           }
-          result = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
-            '~~' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.wrap(castTruncInput, A.Precedence_.PREC_UNARY_, false)
-          );
+          result = '~~' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.wrap(castTruncInput, A.Precedence_.PREC_UNARY_, false);
           resultCat = C.SIGNED;
         } else {
           // int → float/double: coerce to signed (i32) or unsigned (u32), then apply target coercion.
@@ -210,7 +208,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         }
       }
       var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
-      if (callType === binaryen.none || 0 === callType) {
+      if (binaryen.none === callType || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
       } else if ('' !== importBase && binaryen.f32 === callType) {
         // asm.js FFI calls return int or double only — coerce to double
@@ -235,7 +233,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       // asm.js requires the table index to be exactly (expr) & mask form.
       // Use the raw expression without |0 coercion since & mask serves as int coercion.
       var /** @const {string} */ ciCallExpr = ciTableName + '[(' + cr(0) + ') & ' + ciMask + '](' + ciArgs.join(', ') + ')';
-      if (ciRetType === binaryen.none || 0 === ciRetType) {
+      if (binaryen.none === ciRetType || 0 === ciRetType) {
         result = pad(ind) + ciCallExpr + ';\n';
       } else {
         result = this.renderCoercionByType_(binaryen, ciCallExpr, ciRetType);
@@ -249,12 +247,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = expr.type;
-      result = this.renderCoercionByType_(
-        binaryen,
-        '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
-        selectType
-      );
-      resultCat = A.catForCoercedType_(binaryen, selectType);
+      var /** @const {string} */ selectTrue = this.coerceAtBoundary_(binaryen, cr(1), cc(1), selectType);
+      var /** @const {string} */ selectFalse = this.coerceAtBoundary_(binaryen, cr(2), cc(2), selectType);
+      result = '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + selectTrue + ' : ' + selectFalse + ')';
+      // Ternary produces INT for i32 (not SIGNED) — return/call sites will add |0.
+      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, selectType) ? C.INT : A.catForCoercedType_(binaryen, selectType);
       break;
     }
     case binaryen.MemorySizeId:
@@ -270,7 +267,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
     case binaryen.MemoryFillId:
     case binaryen.MemoryCopyId: {
-      var /** @const {string} */ memHelperName = id === binaryen.MemoryFillId ? '$w2l_memory_fill' : '$w2l_memory_copy';
+      var /** @const {string} */ memHelperName = binaryen.MemoryFillId === id ? '$w2l_memory_fill' : '$w2l_memory_copy';
       this.markHelper_(memHelperName);
       result =
         pad(ind) +
@@ -304,13 +301,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.IfId: {
       var /** @const {number} */ ifType = expr.type;
-      if (ifType !== binaryen.none && ifType !== binaryen.unreachable && 0 !== ifType) {
-        result = this.renderCoercionByType_(
-          binaryen,
-          '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + cr(1) + ' : ' + cr(2) + ')',
-          ifType
-        );
-        resultCat = A.catForCoercedType_(binaryen, ifType);
+      if (binaryen.none !== ifType && binaryen.unreachable !== ifType && 0 !== ifType) {
+        var /** @const {string} */ ifTrue = this.coerceAtBoundary_(binaryen, cr(1), cc(1), ifType);
+        var /** @const {string} */ ifFalse = this.coerceAtBoundary_(binaryen, cr(2), cc(2), ifType);
+        result = '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + ifTrue + ' : ' + ifFalse + ')';
+        // Ternary produces INT for i32 (not SIGNED) — return/call sites will add |0.
+        resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, ifType) ? C.INT : A.catForCoercedType_(binaryen, ifType);
       } else {
         result = this.emitIfStatement_(
           ind,

@@ -61,7 +61,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
   opt_valueCat
 ) {
   var /** @const {number} */ valueCat = void 0 !== opt_valueCat ? opt_valueCat : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
-  var /** @const {string} */ coercedValue = this.coerceToType_(binaryen, valueExpr, valueCat, wasmType);
+  // asm.js heap stores accept intish for i32 — skip coercion when already intish.
+  var /** @const {string} */ coercedValue =
+      Wasm2Lang.Backend.I32Coercion.INTISH === valueCat && Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)
+        ? valueExpr
+        : this.coerceToType_(binaryen, valueExpr, valueCat, wasmType);
   if (Wasm2Lang.Backend.ValueType.isFloat(binaryen, wasmType)) {
     // Use direct HEAPF32/HEAPF64 when alignment is declared sufficient.
     // Fall back to byte-copy helpers for sub-natural alignment.

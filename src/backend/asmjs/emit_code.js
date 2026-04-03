@@ -263,7 +263,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
           pad1 + pad1 + spName + ' = ' + this.renderCoercionByType_(binaryen, spName, ftDesc.signatureParams[sp]) + ';';
       }
       var /** @type {string} */ stubReturn = '';
-      if (ftDesc.signatureReturnType !== binaryen.none && 0 !== ftDesc.signatureReturnType) {
+      if (binaryen.none !== ftDesc.signatureReturnType && 0 !== ftDesc.signatureReturnType) {
         stubReturn = pad1 + pad1 + 'return ' + this.renderCoercionByType_(binaryen, '0', ftDesc.signatureReturnType) + ';\n';
       }
       outputParts[outputParts.length] =

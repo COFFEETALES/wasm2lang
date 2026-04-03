@@ -189,7 +189,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     var /** @const {string} */ ftaIfaceName = this.n_('$ftsig_' + ftaSigKey);
     var /** @const {string} */ ftaArrayName = this.n_('$ftable_' + ftaSigKey);
     var /** @const {boolean} */ ftaHasReturn =
-        ftDescA.signatureReturnType !== binaryen.none && 0 !== ftDescA.signatureReturnType;
+        binaryen.none !== ftDescA.signatureReturnType && 0 !== ftDescA.signatureReturnType;
     // Build stub lambda for null entries.
     var /** @const {!Array<string>} */ lambdaParams = [];
     for (var /** @type {number} */ lp = 0, /** @const {number} */ lpLen = ftDescA.signatureParams.length; lp !== lpLen; ++lp) {

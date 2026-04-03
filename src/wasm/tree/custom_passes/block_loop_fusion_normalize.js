@@ -69,7 +69,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
         binaryen,
         children[0]
       );
-    if (child.id === binaryen.LoopId) {
+    if (binaryen.LoopId === child.id) {
       state.fusionBlocks[blockName] = true;
       var /** @const {*} */ fbRef = state.funcMetadata.fusedBlocks;
       if (fbRef) {
@@ -85,7 +85,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
       return null;
     }
     var /** @const {!BinaryenExpressionInfo} */ body = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyPtr);
-    if (body.id === binaryen.BlockId) {
+    if (binaryen.BlockId === body.id) {
       var /** @const {?string} */ bodyName = /** @type {?string} */ (body.name);
       if (bodyName) {
         state.fusionBlocks[bodyName] = true;
