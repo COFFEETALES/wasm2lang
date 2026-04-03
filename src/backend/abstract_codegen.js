@@ -108,6 +108,21 @@ Wasm2Lang.Backend.buildReservedSet = function (words) {
 };
 
 /**
+ * Builds a standard rejectName function for a mangler profile.
+ * Rejects names starting with a digit or matching a reserved word.
+ *
+ * @param {!Object<string, boolean>} reserved
+ * @param {boolean} caseInsensitive  If true, lower-cases before lookup.
+ * @return {function(string): boolean}
+ */
+Wasm2Lang.Backend.buildRejectName = function (reserved, caseInsensitive) {
+  return /** @param {string} name @return {boolean} */ function (name) {
+    var /** @const {number} */ ch = name.charCodeAt(0);
+    return (48 <= ch && ch <= 57) || !!reserved[caseInsensitive ? name.toLowerCase() : name];
+  };
+};
+
+/**
  * @constructor
  */
 Wasm2Lang.Backend.AbstractCodegen = function () {

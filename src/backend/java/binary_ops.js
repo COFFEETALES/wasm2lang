@@ -1,31 +1,10 @@
 'use strict';
 
-/**
- * @param {!Wasm2Lang.Backend.AbstractCodegen} self
- * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
- * @param {string} L
- * @param {string} R
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.renderArithmeticBinary_ = function (self, info, L, R) {
-  void self;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_);
-};
+/** @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} */
+Wasm2Lang.Backend.JavaCodegen.renderArithmeticBinary_ = Wasm2Lang.Backend.AbstractCodegen.renderPlainArithmeticBinary_;
 
-/**
- * @param {!Wasm2Lang.Backend.AbstractCodegen} self
- * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
- * @param {string} L
- * @param {string} R
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.renderMultiplyBinary_ = function (self, info, L, R) {
-  void self;
-  void info;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return P.renderInfix(L, '*', R, P.PREC_MULTIPLICATIVE_);
-};
+/** @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} */
+Wasm2Lang.Backend.JavaCodegen.renderMultiplyBinary_ = Wasm2Lang.Backend.AbstractCodegen.renderPlainMultiplyBinary_;
 
 /**
  * @param {!Wasm2Lang.Backend.AbstractCodegen} self
@@ -46,19 +25,8 @@ Wasm2Lang.Backend.JavaCodegen.renderDivisionBinary_ = function (self, info, L, R
   return P.renderInfix(L, info.opStr, R, P.PREC_MULTIPLICATIVE_);
 };
 
-/**
- * @param {!Wasm2Lang.Backend.AbstractCodegen} self
- * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
- * @param {string} L
- * @param {string} R
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.renderBitwiseBinary_ = function (self, info, L, R) {
-  void self;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const */ bi = P.bitwiseInfo(info.opStr);
-  return P.renderInfix(L, info.opStr, R, bi.bitwisePrecedence, bi.bitwiseAllowRightEqual);
-};
+/** @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} */
+Wasm2Lang.Backend.JavaCodegen.renderBitwiseBinary_ = Wasm2Lang.Backend.AbstractCodegen.renderPlainBitwiseBinary_;
 
 /**
  * @param {!Wasm2Lang.Backend.AbstractCodegen} self

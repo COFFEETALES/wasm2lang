@@ -96,6 +96,8 @@ const rand = {
   f64: () => (Math.random() - 0.5) * 200,
   uF32: () => Math.fround(Math.random() * 100),
   uF64: () => Math.random() * 100,
+  wideF32: () => Math.fround((Math.random() - 0.5) * 8e9),
+  wideF64: () => (Math.random() - 0.5) * 1e15,
   uSmall: () => (Math.random() * 10) | 0,
   u8: () => (Math.random() * 256) | 0,
   randString: function (maxLen) {

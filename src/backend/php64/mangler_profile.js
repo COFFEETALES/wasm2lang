@@ -82,10 +82,7 @@ Wasm2Lang.Backend.Php64Codegen.RESERVED_ = Wasm2Lang.Backend.buildReservedSet([
 
 Wasm2Lang.Backend.registerManglerProfile('php64', {
   reservedWords: Wasm2Lang.Backend.Php64Codegen.RESERVED_,
-  rejectName: /** @param {string} name @return {boolean} */ function (name) {
-    var /** @const {number} */ ch = name.charCodeAt(0);
-    return (48 <= ch && ch <= 57) || !!Wasm2Lang.Backend.Php64Codegen.RESERVED_[name.toLowerCase()];
-  },
+  rejectName: Wasm2Lang.Backend.buildRejectName(Wasm2Lang.Backend.Php64Codegen.RESERVED_, true),
   singleCharset: 'abcdefghijklmnopqrstuvwxyz_',
   blockCharset: 'abcdefghijklmnopqrstuvwxyz_0123456789',
   caseInsensitive: true

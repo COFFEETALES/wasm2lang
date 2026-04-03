@@ -37,6 +37,24 @@ Wasm2Lang.Wasm.Tree.CustomPasses.createEnterVisitor = function (target, enterFn,
 };
 
 /**
+ * Creates a traversal visitor with enter and leave callbacks, binding both to
+ * the pass instance and a per-function state object.
+ *
+ * @param {!Object} target
+ * @param {!Function} enterFn
+ * @param {!Function} leaveFn
+ * @param {*} state
+ * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.createEnterLeaveVisitor = function (target, enterFn, leaveFn, state) {
+  // prettier-ignore
+  return /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
+    enter: enterFn.bind(target, state),
+    leave: leaveFn.bind(target, state)
+  });
+};
+
+/**
  * Convenience wrapper that extracts binaryen/module/expr from a traversal
  * node context and delegates to {@code applyMarkerRenaming_}.  Used by
  * leave_ callbacks that only need marker renaming (no additional logic).

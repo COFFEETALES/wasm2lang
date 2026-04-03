@@ -39,27 +39,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication.getLoopPlan = fun
 };
 
 // ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-
-/**
- * Returns true if the given loop name carries a label-elided prefix,
- * meaning backends should omit the label and emit plain break/continue.
- *
- * @suppress {accessControls}
- * @param {string} name
- * @return {boolean}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication.isLabelElided = function (name) {
-  var /** @const */ hp = Wasm2Lang.Backend.AbstractCodegen.hasPrefix_;
-  return (
-    hp(name, Wasm2Lang.Backend.AbstractCodegen.LF_FORLOOP_PREFIX_) ||
-    hp(name, Wasm2Lang.Backend.AbstractCodegen.LE_DOWHILE_PREFIX_) ||
-    hp(name, Wasm2Lang.Backend.AbstractCodegen.LY_WHILE_PREFIX_)
-  );
-};
-
-// ---------------------------------------------------------------------------
 // Analysis descriptor
 // ---------------------------------------------------------------------------
 

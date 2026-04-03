@@ -264,13 +264,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.createVis
       chainBlocks: /** @type {!Object<string, boolean>} */ (Object.create(null)),
       funcMetadata: funcMetadata
     });
-  var /** @const */ self = this;
-
-  // prettier-ignore
-  return /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-    enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { return self.enter_(state, nc); },
-    leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList=} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) { void cr; return self.leave_(state, nc); }
-  });
+  return Wasm2Lang.Wasm.Tree.CustomPasses.createEnterLeaveVisitor(this, this.enter_, this.leave_, state);
 };
 
 // ===========================================================================================
@@ -523,11 +517,5 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.createVisitor
       rootSwitchOuters: /** @type {!Object<string, boolean>} */ (Object.create(null)),
       funcMetadata: funcMetadata
     });
-  var /** @const */ self = this;
-
-  // prettier-ignore
-  return /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-    enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { return self.enter_(st, nc); },
-    leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList=} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) { void cr; return self.leave_(st, nc); }
-  });
+  return Wasm2Lang.Wasm.Tree.CustomPasses.createEnterLeaveVisitor(this, this.enter_, this.leave_, st);
 };

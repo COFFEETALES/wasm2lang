@@ -10,17 +10,21 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
   var /** @const {!Object<string, boolean>} */ used = this.usedHelpers_ || {};
 
   // Resolve transitive dependencies: f32 helpers delegate to their f64
-  // counterparts, and sat/trunc helpers depend on $w2l_trunc_f64.
+  // counterparts, and trunc helpers depend on $w2l_trunc_f64.
   if (used['$w2l_trunc_f32']) used['$w2l_trunc_f64'] = true;
+  if (used['$w2l_trunc_s_f32_to_i32']) used['$w2l_trunc_s_f64_to_i32'] = true;
   if (used['$w2l_trunc_u_f32_to_i32']) used['$w2l_trunc_u_f64_to_i32'] = true;
   if (used['$w2l_trunc_sat_s_f32_to_i32']) used['$w2l_trunc_sat_s_f64_to_i32'] = true;
   if (used['$w2l_trunc_sat_u_f32_to_i32']) used['$w2l_trunc_sat_u_f64_to_i32'] = true;
+  if (used['$w2l_trunc_s_f64_to_i32']) used['$w2l_trunc_f64'] = true;
   if (used['$w2l_trunc_u_f64_to_i32']) used['$w2l_trunc_f64'] = true;
   if (used['$w2l_trunc_sat_s_f64_to_i32']) used['$w2l_trunc_f64'] = true;
   if (used['$w2l_trunc_sat_u_f64_to_i32']) used['$w2l_trunc_f64'] = true;
+  if (used['$w2l_trunc_s_f32_to_i64']) used['$w2l_trunc_s_f64_to_i64'] = true;
   if (used['$w2l_trunc_u_f32_to_i64']) used['$w2l_trunc_u_f64_to_i64'] = true;
   if (used['$w2l_trunc_sat_s_f32_to_i64']) used['$w2l_trunc_sat_s_f64_to_i64'] = true;
   if (used['$w2l_trunc_sat_u_f32_to_i64']) used['$w2l_trunc_sat_u_f64_to_i64'] = true;
+  if (used['$w2l_trunc_s_f64_to_i64']) used['$w2l_trunc_f64'] = true;
   if (used['$w2l_trunc_u_f64_to_i64']) used['$w2l_trunc_f64'] = true;
   if (used['$w2l_trunc_sat_s_f64_to_i64']) used['$w2l_trunc_f64'] = true;
   if (used['$w2l_trunc_sat_u_f64_to_i64']) used['$w2l_trunc_f64'] = true;
@@ -60,9 +64,25 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] = pad1 + '}';
   }
 
+  if (used['$w2l_trunc_s_f64_to_i32']) {
+    lines[lines.length] = pad1 + 'static int ' + this.n_('$w2l_trunc_s_f64_to_i32') + '(double ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'if (Double.isNaN(' + l0 + ')) throw new ArithmeticException();';
+    lines[lines.length] = pad2 + l0 + ' = ' + this.n_('$w2l_trunc_f64') + '(' + l0 + ');';
+    lines[lines.length] =
+      pad2 + 'if (' + l0 + ' >= 2147483648.0 || ' + l0 + ' < -2147483648.0) throw new ArithmeticException();';
+    lines[lines.length] = pad2 + 'return (int)' + l0 + ';';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_trunc_s_f32_to_i32']) {
+    lines[lines.length] = pad1 + 'static int ' + this.n_('$w2l_trunc_s_f32_to_i32') + '(float ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_s_f64_to_i32') + '((double)' + l0 + ');';
+    lines[lines.length] = pad1 + '}';
+  }
   if (used['$w2l_trunc_u_f64_to_i32']) {
     lines[lines.length] = pad1 + 'static int ' + this.n_('$w2l_trunc_u_f64_to_i32') + '(double ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'if (Double.isNaN(' + l0 + ')) throw new ArithmeticException();';
     lines[lines.length] = pad2 + l0 + ' = ' + this.n_('$w2l_trunc_f64') + '(' + l0 + ');';
+    lines[lines.length] = pad2 + 'if (' + l0 + ' >= 4294967296.0 || ' + l0 + ' < 0.0) throw new ArithmeticException();';
     lines[lines.length] = pad2 + 'if (' + l0 + ' >= 2147483648.0) return (int)(' + l0 + ' - 2147483648.0) + -2147483648;';
     lines[lines.length] = pad2 + 'return (int)' + l0 + ';';
     lines[lines.length] = pad1 + '}';
@@ -121,11 +141,28 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     lines[lines.length] = pad2 + 'return (double)((' + l0 + ' >>> 1) | (' + l0 + ' & 1L)) * 2.0;';
     lines[lines.length] = pad1 + '}';
   }
+  if (used['$w2l_trunc_s_f64_to_i64']) {
+    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_s_f64_to_i64') + '(double ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'if (Double.isNaN(' + l0 + ')) throw new ArithmeticException();';
+    lines[lines.length] = pad2 + l0 + ' = ' + this.n_('$w2l_trunc_f64') + '(' + l0 + ');';
+    // prettier-ignore
+    lines[lines.length] = pad2 + 'if (' + l0 + ' >= 9.223372036854776E18 || ' + l0 + ' < -9.223372036854776E18) throw new ArithmeticException();';
+    lines[lines.length] = pad2 + 'return (long)' + l0 + ';';
+    lines[lines.length] = pad1 + '}';
+  }
+  if (used['$w2l_trunc_s_f32_to_i64']) {
+    lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_s_f32_to_i64') + '(float ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'return ' + this.n_('$w2l_trunc_s_f64_to_i64') + '((double)' + l0 + ');';
+    lines[lines.length] = pad1 + '}';
+  }
   if (used['$w2l_trunc_u_f64_to_i64']) {
     lines[lines.length] = pad1 + 'static long ' + this.n_('$w2l_trunc_u_f64_to_i64') + '(double ' + l0 + ') {';
+    lines[lines.length] = pad2 + 'if (Double.isNaN(' + l0 + ')) throw new ArithmeticException();';
     lines[lines.length] = pad2 + l0 + ' = ' + this.n_('$w2l_trunc_f64') + '(' + l0 + ');';
     lines[lines.length] =
-      pad2 + 'if (' + l0 + ' >= 9.223372036854776E18) return (long)(' + l0 + ' - 9.223372036854776E18) + Long.MIN_VALUE;';
+      pad2 + 'if (' + l0 + ' >= 1.8446744073709552E19 || ' + l0 + ' < 0.0) throw new ArithmeticException();';
+    // prettier-ignore
+    lines[lines.length] = pad2 + 'if (' + l0 + ' >= 9.223372036854776E18) return (long)(' + l0 + ' - 9.223372036854776E18) + Long.MIN_VALUE;';
     lines[lines.length] = pad2 + 'return (long)' + l0 + ';';
     lines[lines.length] = pad1 + '}';
   }

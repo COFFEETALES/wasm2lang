@@ -1,6 +1,38 @@
 'use strict';
 
 /**
+ * Inter-helper dependencies (opcode-specific helpers only).
+ *
+ * @const {!Object<string, !Array<string>>}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.HELPER_DEPS_ = {
+  '$w2l_trunc_s_f32_to_i32': ['$w2l_trunc_s_f64_to_i32'],
+  '$w2l_trunc_s_f64_to_i32': ['$w2l_trunc_f64'],
+  '$w2l_trunc_u_f32_to_i32': ['$w2l_trunc_u_f64_to_i32'],
+  '$w2l_trunc_u_f64_to_i32': ['$w2l_trunc_f64']
+};
+
+/**
+ * Records a helper as used and transitively marks its dependencies.
+ *
+ * @override
+ * @protected
+ * @param {string} name
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.markHelper_ = function (name) {
+  if (!this.usedHelpers_ || this.usedHelpers_[name]) {
+    return;
+  }
+  this.usedHelpers_[name] = true;
+  var /** @const {!Array<string>|void} */ deps = Wasm2Lang.Backend.AsmjsCodegen.HELPER_DEPS_[name];
+  if (deps) {
+    for (var /** @type {number} */ i = 0, /** @const {number} */ len = deps.length; i !== len; ++i) {
+      this.markHelper_(deps[i]);
+    }
+  }
+};
+
+/**
  * Emits only the helpers that were referenced during function body emission.
  *
  * @param {number} scratchByteOffset
@@ -187,24 +219,64 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + 'return ' + nMathFround + '(' + l1 + ' + 1.0);\n' +
     pad1 + '}');
 
+  var /** @const {string} */ nTrap = n('$w2l_trap');
+  var /** @const {string} */ nTruncF64 = n('$w2l_trunc_f64');
+
   // prettier-ignore
-  h('$w2l_trunc_u_f32_to_i32', ['Math_fround'],
-    pad1 + 'function ' + n('$w2l_trunc_u_f32_to_i32') + '(' + l0 + ') {\n' +
-    pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');\n' +
-    pad2 + 'if (+' + l0 + ' >= 2147483648.0) {\n' +
-    pad3 + 'return (~~(+' + l0 + ' - 2147483648.0) + -2147483648)|0;\n' +
+  h('$w2l_trunc_s_f64_to_i32', ['$w2l_trap'],
+    pad1 + 'function ' + n('$w2l_trunc_s_f64_to_i32') + '(' + l0 + ') {\n' +
+    pad2 + l0 + ' = +' + l0 + ';\n' +
+    pad2 + 'if (' + l0 + ' != ' + l0 + ') {\n' +
+    pad3 + nTrap + '();\n' +
+    pad3 + 'return 0;\n' +
     pad2 + '}\n' +
-    pad2 + 'return ~~+' + l0 + '|0;\n' +
+    pad2 + l0 + ' = +' + nTruncF64 + '(' + l0 + ');\n' +
+    pad2 + 'if (' + l0 + ' >= 2147483648.0) {\n' +
+    pad3 + nTrap + '();\n' +
+    pad3 + 'return 0;\n' +
+    pad2 + '}\n' +
+    pad2 + 'if (' + l0 + ' < -2147483648.0) {\n' +
+    pad3 + nTrap + '();\n' +
+    pad3 + 'return 0;\n' +
+    pad2 + '}\n' +
+    pad2 + 'return ~~' + l0 + '|0;\n' +
     pad1 + '}');
 
   // prettier-ignore
-  h('$w2l_trunc_u_f64_to_i32', [],
+  h('$w2l_trunc_s_f32_to_i32', ['Math_fround', '$w2l_trap'],
+    pad1 + 'function ' + n('$w2l_trunc_s_f32_to_i32') + '(' + l0 + ') {\n' +
+    pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');\n' +
+    pad2 + 'return ' + n('$w2l_trunc_s_f64_to_i32') + '(+' + l0 + ')|0;\n' +
+    pad1 + '}');
+
+  // prettier-ignore
+  h('$w2l_trunc_u_f64_to_i32', ['$w2l_trap'],
     pad1 + 'function ' + n('$w2l_trunc_u_f64_to_i32') + '(' + l0 + ') {\n' +
     pad2 + l0 + ' = +' + l0 + ';\n' +
+    pad2 + 'if (' + l0 + ' != ' + l0 + ') {\n' +
+    pad3 + nTrap + '();\n' +
+    pad3 + 'return 0;\n' +
+    pad2 + '}\n' +
+    pad2 + l0 + ' = +' + nTruncF64 + '(' + l0 + ');\n' +
+    pad2 + 'if (' + l0 + ' >= 4294967296.0) {\n' +
+    pad3 + nTrap + '();\n' +
+    pad3 + 'return 0;\n' +
+    pad2 + '}\n' +
+    pad2 + 'if (' + l0 + ' < 0.0) {\n' +
+    pad3 + nTrap + '();\n' +
+    pad3 + 'return 0;\n' +
+    pad2 + '}\n' +
     pad2 + 'if (' + l0 + ' >= 2147483648.0) {\n' +
     pad3 + 'return (~~(' + l0 + ' - 2147483648.0) + -2147483648)|0;\n' +
     pad2 + '}\n' +
     pad2 + 'return ~~' + l0 + '|0;\n' +
+    pad1 + '}');
+
+  // prettier-ignore
+  h('$w2l_trunc_u_f32_to_i32', ['Math_fround', '$w2l_trap'],
+    pad1 + 'function ' + n('$w2l_trunc_u_f32_to_i32') + '(' + l0 + ') {\n' +
+    pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');\n' +
+    pad2 + 'return ' + n('$w2l_trunc_u_f64_to_i32') + '(+' + l0 + ')|0;\n' +
     pad1 + '}');
 
   // prettier-ignore

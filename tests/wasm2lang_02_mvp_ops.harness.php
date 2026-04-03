@@ -14,8 +14,19 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
         $exports['exerciseMVPOps']($t[0], $t[1], $t[2]);
     }
 
+    // Trunc/convert chains with wide-range random float input.
+    foreach ($data['trunc_convert_pairs'] as $p) {
+        $exports['exerciseTruncConvert']($p[0], $p[1]);
+    }
+
     $exports['exerciseOverflowOps']();
     $exports['exerciseEdgeCases']();
+
+    // Exported mutable global: exercise via getter/setter and function.
+    $exports['counter$set'](42);
+    $exports['exerciseGlobalExports']($exports['counter']());
+    $exports['counter$set'](100);
+    $exports['exerciseGlobalExports']($exports['counter']());
 };
 
 $dumpMemory = true;

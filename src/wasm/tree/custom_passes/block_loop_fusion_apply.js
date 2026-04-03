@@ -39,22 +39,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionApplication.getBlockFusionPlan =
   );
 };
 
-/**
- * Returns true if the given block is a fused block (either by plan or lb$ prefix).
- *
- * @suppress {accessControls}
- * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
- * @param {string} funcName
- * @param {string} blockName
- * @return {boolean}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionApplication.isFusedBlock = function (passRunResultIndex, funcName, blockName) {
-  return (
-    !!Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionApplication.getBlockFusionPlan(passRunResultIndex, funcName, blockName) ||
-    0 === blockName.indexOf(Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_)
-  );
-};
-
 // ---------------------------------------------------------------------------
 // Analysis descriptor
 // ---------------------------------------------------------------------------

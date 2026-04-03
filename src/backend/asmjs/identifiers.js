@@ -50,7 +50,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getFixedModuleBindings_ = function (opt
       'Math_SQRT1_2',
       'Math_SQRT2',
       '$g_Infinity',
-      '$g_NaN'
+      '$g_NaN',
+      '$w2l_trap'
     ];
   if ('string' === typeof options.emitMetadata) {
     bindings[bindings.length] = 'i32_array';
@@ -78,6 +79,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getAllHelperNames_ = function () {
     '$w2l_store_f64',
     '$w2l_trunc_f32',
     '$w2l_trunc_f64',
+    '$w2l_trunc_s_f32_to_i32',
+    '$w2l_trunc_s_f64_to_i32',
     '$w2l_trunc_sat_s_f32_to_i32',
     '$w2l_trunc_sat_s_f64_to_i32',
     '$w2l_trunc_sat_u_f32_to_i32',

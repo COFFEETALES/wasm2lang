@@ -140,23 +140,13 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
       var /** @const {string} */ ch = s.charAt(i);
 
       // --- string literal pass-through ---
-      if (inSingle) {
+      if (inSingle || inDouble) {
         if (escaped) {
           escaped = false;
         } else if ('\\' === ch) {
           escaped = true;
-        } else if ("'" === ch) {
-          inSingle = false;
-        }
-        continue;
-      }
-      if (inDouble) {
-        if (escaped) {
-          escaped = false;
-        } else if ('\\' === ch) {
-          escaped = true;
-        } else if ('"' === ch) {
-          inDouble = false;
+        } else if (inSingle ? "'" === ch : '"' === ch) {
+          inSingle = inDouble = false;
         }
         continue;
       }

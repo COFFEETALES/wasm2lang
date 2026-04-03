@@ -157,6 +157,16 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   this.usedHelpers_ = null;
   var /** @const {!Object<string, boolean>} */ jub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
   this.usedBindings_ = null;
+
+  // Force-mark exported globals as used so their field bindings are emitted.
+  for (
+    var /** @type {number} */ jegm = 0, /** @const {number} */ jegmLen = moduleInfo.expGlobals.length;
+    jegm !== jegmLen;
+    ++jegm
+  ) {
+    jub['$g_' + this.safeName_(moduleInfo.expGlobals[jegm].internalName)] = true;
+  }
+
   for (var /** @type {number} */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
     outputParts[outputParts.length] = helperLines[hi];
   }
@@ -250,6 +260,37 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Append function bodies.
   for (var /** @type {number} */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
     outputParts[outputParts.length] = functionParts[fi];
+  }
+
+  // Exported global accessor methods.
+  for (var /** @type {number} */ jeg = 0, /** @const {number} */ jegLen = moduleInfo.expGlobals.length; jeg !== jegLen; ++jeg) {
+    // prettier-ignore
+    var /** @const {string} */ jegType =
+        Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, moduleInfo.expGlobals[jeg].globalType);
+    var /** @const {string} */ jegField = this.n_('$g_' + this.safeName_(moduleInfo.expGlobals[jeg].internalName));
+    var /** @const {string} */ jegGetterName = this.safeName_(moduleInfo.expGlobals[jeg].exportName);
+    outputParts[outputParts.length] =
+      pad1 + 'public ' + jegType + ' ' + jegGetterName + '() {\n' + pad2 + 'return this.' + jegField + ';\n' + pad1 + '}';
+    if (moduleInfo.expGlobals[jeg].globalMutable) {
+      var /** @const {string} */ jegSetterParam = this.localN_(0);
+      outputParts[outputParts.length] =
+        pad1 +
+        'public void ' +
+        this.safeName_(moduleInfo.expGlobals[jeg].exportName + '$set') +
+        '(' +
+        jegType +
+        ' ' +
+        jegSetterParam +
+        ') {\n' +
+        pad2 +
+        'this.' +
+        jegField +
+        ' = ' +
+        jegSetterParam +
+        ';\n' +
+        pad1 +
+        '}';
+    }
   }
 
   outputParts[outputParts.length] = '}';

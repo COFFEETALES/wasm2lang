@@ -19,7 +19,7 @@ Wasm2Lang.Backend.Php64Codegen.HELPER_DEPS_ = {
   '_w2l_trunc_f32': ['_w2l_trunc_f64'],
   '_w2l_nearest_f64': [],
   '_w2l_nearest_f32': ['_w2l_nearest_f64'],
-  '_w2l_trunc_s_f32_to_i32': ['_w2l_trunc_f64'],
+  '_w2l_trunc_s_f32_to_i32': ['_w2l_trunc_s_f64_to_i32'],
   '_w2l_trunc_u_f32_to_i32': ['_w2l_trunc_u_f64_to_i32'],
   '_w2l_trunc_s_f64_to_i32': ['_w2l_trunc_f64'],
   '_w2l_trunc_u_f64_to_i32': ['_w2l_trunc_f64'],

@@ -976,8 +976,8 @@
         [42, 3.5, 2.75],
         [0, 0.0, 0.0],
         [-1, -1.5, -1.5],
-        [100, 0.125, 100.0],
-        [255, 10.0, -50.0]
+        [100, 0.125, 100.375],
+        [255, 10.25, -50.75]
       ]
     };
     const data = {};
@@ -985,7 +985,7 @@
       Array.from({length: 6}, () => [common.rand.smallI32(), common.rand.smallI32()])
     );
     data.mixed_type_cases = staticData.mixed_type_cases.concat(
-      Array.from({length: 6}, () => [common.rand.smallI32(), common.rand.f32(), common.rand.f64()])
+      Array.from({length: 10}, () => [common.rand.smallI32(), common.rand.f32(), common.rand.f64()])
     );
     common.emitSharedData(data);
   }

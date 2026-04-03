@@ -432,6 +432,53 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, u
 };
 
 /**
+ * Shared bitwise binary renderer (used by asm.js + Java unchanged).
+ *
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.renderPlainBitwiseBinary_ = function (self, info, L, R) {
+  void self;
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @const */ bi = P.bitwiseInfo(info.opStr);
+  return P.renderInfix(L, info.opStr, R, bi.bitwisePrecedence, bi.bitwiseAllowRightEqual);
+};
+
+/**
+ * Shared plain additive binary renderer (used by Java i32+i64 unchanged).
+ *
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.renderPlainArithmeticBinary_ = function (self, info, L, R) {
+  void self;
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_);
+};
+
+/**
+ * Shared plain multiply binary renderer (used by Java i32+i64 unchanged).
+ *
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.renderPlainMultiplyBinary_ = function (self, info, L, R) {
+  void self;
+  void info;
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  return P.renderInfix(L, '*', R, P.PREC_MULTIPLICATIVE_);
+};
+
+/**
  * Shared BinaryId dispatch.  Classifies the op as either i32 or numeric,
  * renders it, and returns the result string and category.
  * Asm.js overrides to use different resultCat for i32 binary ops.

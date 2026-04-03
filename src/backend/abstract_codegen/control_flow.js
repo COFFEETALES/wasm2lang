@@ -85,6 +85,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
  */
 Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_;
 
+/** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */
+Wasm2Lang.Backend.AbstractCodegen.EMPTY_CHILD_RESULT_ = {
+  hasExpression: false,
+  expressionString: '0',
+  expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+};
+
 /**
  * Normalizes one traversal child result into the string/category shape used
  * by string-emitting backends.
@@ -96,11 +103,7 @@ Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_;
  */
 Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, index) {
   if (index >= childResults.length) {
-    return {
-      hasExpression: false,
-      expressionString: '0',
-      expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
-    };
+    return Wasm2Lang.Backend.AbstractCodegen.EMPTY_CHILD_RESULT_;
   }
 
   var /** @const {*} */ value = childResults[index].childTraversalResult;
@@ -120,11 +123,7 @@ Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, 
     };
   }
 
-  return {
-    hasExpression: false,
-    expressionString: '0',
-    expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
-  };
+  return Wasm2Lang.Backend.AbstractCodegen.EMPTY_CHILD_RESULT_;
 };
 
 // ---------------------------------------------------------------------------
@@ -232,14 +231,15 @@ Wasm2Lang.Backend.AbstractCodegen.hasPrefix_ = function (name, prefix) {
 /**
  * Returns true if the given loop name carries a label-elided prefix,
  * meaning backends should omit the label and emit plain break/continue.
- * Delegates to LoopSimplificationApplication.
  *
  * @protected
  * @param {string} name
  * @return {boolean}
  */
 Wasm2Lang.Backend.AbstractCodegen.isLabelElided = function (name) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication.isLabelElided(name);
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  // prettier-ignore
+  return A.hasPrefix_(name, A.LF_FORLOOP_PREFIX_) || A.hasPrefix_(name, A.LE_DOWHILE_PREFIX_) || A.hasPrefix_(name, A.LY_WHILE_PREFIX_);
 };
 
 /**
@@ -389,9 +389,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
         } else {
           state.fusedBlockToLoop[bName] = state.currentLoopName;
         }
-      } else if (this.isBlockRootSwitch_(fName, bName)) {
+      } else if (this.isBlockRootSwitch_(fName, bName) || hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (this.isBlockSwitchDispatch_(fName, bName)) {
+      } else if (this.isBlockSwitchDispatch_(fName, bName) || hp(bName, A.SW_DISPATCH_PREFIX_)) {
         ++state.indent;
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else if (hp(bName, A.LB_FUSION_PREFIX_)) {
@@ -406,11 +406,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
         } else {
           state.fusedBlockToLoop[bName] = state.currentLoopName;
         }
-      } else if (hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
-        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (hp(bName, A.SW_DISPATCH_PREFIX_)) {
-        ++state.indent;
-        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else {
         ++state.indent;
       }

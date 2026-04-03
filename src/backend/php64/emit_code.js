@@ -98,6 +98,15 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   var /** @const {!Object<string, boolean>} */ usedB = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
   this.usedBindings_ = null;
 
+  // Force-mark exported globals as used so their bindings are emitted.
+  for (
+    var /** @type {number} */ pegm = 0, /** @const {number} */ pegmLen = moduleInfo.expGlobals.length;
+    pegm !== pegmLen;
+    ++pegm
+  ) {
+    usedB['$g_' + this.safeName_(moduleInfo.expGlobals[pegm].internalName)] = true;
+  }
+
   // Conditional helper emission via local shorthand.
   var /** @const */ self = this;
   /** @param {string} s @return {string} */
@@ -149,14 +158,23 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   h('_w2l_trunc_f32', '($x): float { return ' + nF32 + '(' + n('_w2l_trunc_f64') + '($x)); }');
   h('_w2l_nearest_f64', '($x): float { return round((float)$x, 0, PHP_ROUND_HALF_EVEN); }');
   h('_w2l_nearest_f32', '($x): float { return ' + nF32 + '(' + n('_w2l_nearest_f64') + '($x)); }');
-  h('_w2l_trunc_s_f32_to_i32', '($x): int { return ' + nI + '((int)' + n('_w2l_trunc_f64') + '(' + nF32 + '($x))); }');
+  h('_w2l_trunc_s_f32_to_i32', '($x): int { return ' + n('_w2l_trunc_s_f64_to_i32') + '(' + nF32 + '($x)); }');
   h('_w2l_trunc_u_f32_to_i32', '($x): int { return ' + n('_w2l_trunc_u_f64_to_i32') + '(' + nF32 + '($x)); }');
-  h('_w2l_trunc_s_f64_to_i32', '($x): int { return ' + nI + '((int)' + n('_w2l_trunc_f64') + '((float)$x)); }');
+  // prettier-ignore
+  h(
+    '_w2l_trunc_s_f64_to_i32',
+    '($x): int { if (is_nan($x) || is_infinite($x)) throw new \\RuntimeException(); $x = ' +
+      n('_w2l_trunc_f64') +
+      '((float)$x); if ($x >= 2147483648.0 || $x < -2147483648.0) throw new \\RuntimeException(); return ' +
+      nI +
+      '((int)$x); }'
+  );
+  // prettier-ignore
   h(
     '_w2l_trunc_u_f64_to_i32',
-    '($x): int { $x = ' +
+    '($x): int { if (is_nan($x) || is_infinite($x)) throw new \\RuntimeException(); $x = ' +
       n('_w2l_trunc_f64') +
-      '((float)$x); return $x >= 2147483648.0 ? ' +
+      '((float)$x); if ($x >= 4294967296.0 || $x < 0.0) throw new \\RuntimeException(); return $x >= 2147483648.0 ? ' +
       nI +
       '((int)($x - 2147483648.0) + -2147483648) : ' +
       nI +
@@ -269,6 +287,17 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     outputParts[outputParts.length] = pad1 + this.phpVar_('ftable') + ' = [' + ftEntries.join(', ') + '];';
   }
 
+  // Exported global accessor closures.
+  for (var /** @type {number} */ peg = 0, /** @const {number} */ pegLen = moduleInfo.expGlobals.length; peg !== pegLen; ++peg) {
+    var /** @const {string} */ pegVar = this.phpVar_('$g_' + this.safeName_(moduleInfo.expGlobals[peg].internalName));
+    var /** @const {string} */ pegGetterVar = this.phpVar_('$get_' + this.safeName_(moduleInfo.expGlobals[peg].exportName));
+    outputParts[outputParts.length] = pad1 + pegGetterVar + ' = function() use (&' + pegVar + ') { return ' + pegVar + '; };';
+    if (moduleInfo.expGlobals[peg].globalMutable) {
+      var /** @const {string} */ pegSetterVar = this.phpVar_('$set_' + this.safeName_(moduleInfo.expGlobals[peg].exportName));
+      outputParts[outputParts.length] = pad1 + pegSetterVar + ' = function($v) use (&' + pegVar + ') { ' + pegVar + ' = $v; };';
+    }
+  }
+
   // Return array.
   var /** @const {!Array<string>} */ returnEntries = [];
   for (
@@ -278,6 +307,21 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   ) {
     returnEntries[returnEntries.length] =
       "'" + moduleInfo.expFuncs[r].exportName + "' => " + this.phpVar_(this.safeName_(moduleInfo.expFuncs[r].internalName));
+  }
+  for (var /** @type {number} */ pegr = 0; pegr !== pegLen; ++pegr) {
+    returnEntries[returnEntries.length] =
+      "'" +
+      moduleInfo.expGlobals[pegr].exportName +
+      "' => " +
+      this.phpVar_('$get_' + this.safeName_(moduleInfo.expGlobals[pegr].exportName));
+    if (moduleInfo.expGlobals[pegr].globalMutable) {
+      returnEntries[returnEntries.length] =
+        "'" +
+        moduleInfo.expGlobals[pegr].exportName +
+        '$set' +
+        "' => " +
+        this.phpVar_('$set_' + this.safeName_(moduleInfo.expGlobals[pegr].exportName));
+    }
   }
   outputParts[outputParts.length] = pad1 + 'return [' + returnEntries.join(', ') + '];';
   outputParts[outputParts.length] = '};';

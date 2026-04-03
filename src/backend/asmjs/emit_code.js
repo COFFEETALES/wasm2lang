@@ -103,6 +103,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   var /** @const {!Object<string, boolean>} */ ub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
   this.usedBindings_ = null;
 
+  // Force-mark exported globals as used so their bindings are emitted.
+  for (var /** @type {number} */ egm = 0, /** @const {number} */ egmLen = moduleInfo.expGlobals.length; egm !== egmLen; ++egm) {
+    ub['$g_' + this.safeName_(moduleInfo.expGlobals[egm].internalName)] = true;
+  }
+
   // Mark stdlib function imports as used so their bindings are emitted.
   var /** @const {!Array<string>} */ stdlibFuncKeys = Object.keys(stdlibNames);
   for (var /** @type {number} */ sf = 0, /** @const {number} */ sfLen = stdlibFuncKeys.length; sf !== sfLen; ++sf) {
@@ -213,6 +218,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
         pad1 + 'var ' + this.n_(ciKey) + ' = ' + foreignName + '.' + moduleInfo.impFuncs[ci].importBaseName + ';';
     }
   }
+  // Conditional trap import (emitted when non-saturating truncation helpers are used).
+  if (ub['$w2l_trap']) {
+    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('$w2l_trap') + ' = ' + foreignName + '.__wasm2lang_trap;';
+  }
   // Conditional module-level globals.
   for (var /** @type {number} */ cgi = 0, /** @const {number} */ cgLen = moduleInfo.globals.length; cgi !== cgLen; ++cgi) {
     var /** @const {string} */ cgKey = '$g_' + this.safeName_(moduleInfo.globals[cgi].globalName);
@@ -288,6 +297,49 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
     outputParts[outputParts.length] = pad1 + 'var ' + ftTableName + ' = [' + tableEntryNames.join(', ') + '];';
   }
 
+  // Exported global accessor functions.
+  for (var /** @type {number} */ eg = 0, /** @const {number} */ egLen = moduleInfo.expGlobals.length; eg !== egLen; ++eg) {
+    var /** @const {string} */ egVarName = this.n_('$g_' + this.safeName_(moduleInfo.expGlobals[eg].internalName));
+    var /** @const {string} */ egGetterName = this.n_('$get_' + this.safeName_(moduleInfo.expGlobals[eg].exportName));
+    outputParts[outputParts.length] =
+      pad1 +
+      'function ' +
+      egGetterName +
+      '() {\n' +
+      pad1 +
+      pad1 +
+      'return ' +
+      this.renderCoercionByType_(binaryen, egVarName, moduleInfo.expGlobals[eg].globalType) +
+      ';\n' +
+      pad1 +
+      '}';
+    if (moduleInfo.expGlobals[eg].globalMutable) {
+      var /** @const {string} */ egSetterName = this.n_('$set_' + this.safeName_(moduleInfo.expGlobals[eg].exportName));
+      var /** @const {string} */ egParam = this.localN_(0);
+      outputParts[outputParts.length] =
+        pad1 +
+        'function ' +
+        egSetterName +
+        '(' +
+        egParam +
+        ') {\n' +
+        pad1 +
+        pad1 +
+        egParam +
+        ' = ' +
+        this.renderCoercionByType_(binaryen, egParam, moduleInfo.expGlobals[eg].globalType) +
+        ';\n' +
+        pad1 +
+        pad1 +
+        egVarName +
+        ' = ' +
+        egParam +
+        ';\n' +
+        pad1 +
+        '}';
+    }
+  }
+
   // Return object.
   var /** @const {!Array<string>} */ returnEntries = [];
   for (
@@ -297,6 +349,16 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, option
   ) {
     returnEntries[returnEntries.length] =
       moduleInfo.expFuncs[r].exportName + ': ' + this.n_(this.safeName_(moduleInfo.expFuncs[r].internalName));
+  }
+  for (var /** @type {number} */ egr = 0; egr !== egLen; ++egr) {
+    returnEntries[returnEntries.length] =
+      moduleInfo.expGlobals[egr].exportName + ': ' + this.n_('$get_' + this.safeName_(moduleInfo.expGlobals[egr].exportName));
+    if (moduleInfo.expGlobals[egr].globalMutable) {
+      returnEntries[returnEntries.length] =
+        moduleInfo.expGlobals[egr].exportName +
+        '$set: ' +
+        this.n_('$set_' + this.safeName_(moduleInfo.expGlobals[egr].exportName));
+    }
   }
   outputParts[outputParts.length] = pad1 + 'return { ' + returnEntries.join(', ') + ' };';
   outputParts[outputParts.length] = '};';

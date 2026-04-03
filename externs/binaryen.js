@@ -60,6 +60,11 @@ Binaryen.prototype.getExportInfo = function (exportPtr) {};
 Binaryen.prototype.ExternalFunction;
 
 /**
+ * @type {number}
+ */
+Binaryen.prototype.ExternalGlobal;
+
+/**
  * @interface
  * @const
  */
@@ -82,6 +87,13 @@ Binaryen.prototype.getExpressionType = function (exprPtr) {};
  * @return {!BinaryenExpressionInfo}
  */
 Binaryen.prototype.getExpressionInfo = function (exprPtr) {};
+
+/**
+ * @param {number} funcPtr
+ * @param {number} type
+ * @return {number}
+ */
+Binaryen.prototype._BinaryenFunctionAddVar = function (funcPtr, type) {};
 
 /**
  * @record
@@ -182,6 +194,11 @@ BinaryenFeatures.prototype.BulkMemoryOpt;
  * @type {number}
  */
 BinaryenFeatures.prototype.SignExt;
+
+/**
+ * @type {number}
+ */
+BinaryenFeatures.prototype.MutableGlobals;
 
 /**
  * @type {number}
@@ -456,7 +473,7 @@ BinaryenExpressionInfo.prototype.right;
 BinaryenExpressionInfo.prototype.ptr;
 
 /**
- * @type {(string|undefined)}
+ * @type {(string|number|undefined)}
  */
 BinaryenExpressionInfo.prototype.target;
 
@@ -692,6 +709,24 @@ BinaryenModule.prototype.switch = function (names, defaultName, condition, value
  * @return {number}
  */
 BinaryenModule.prototype.nop = function () {};
+
+// ---------------------------------------------------------------------------
+// BinaryenModule local expression-builder sub-API (module.local.*)
+// ---------------------------------------------------------------------------
+
+/**
+ * @interface
+ * @const
+ */
+var BinaryenLocalApi = function () {};
+
+/** @param {number} index @param {number} type @return {number} */
+BinaryenLocalApi.prototype.get = function (index, type) {};
+/** @param {number} index @param {number} value @return {number} */
+BinaryenLocalApi.prototype.set = function (index, value) {};
+
+/** @type {!BinaryenLocalApi} */
+BinaryenModule.prototype.local;
 
 // ---------------------------------------------------------------------------
 // BinaryenModule i32 expression-builder sub-API (module.i32.*)

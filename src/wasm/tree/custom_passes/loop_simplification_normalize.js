@@ -103,18 +103,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.invertCondition_ = funct
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_;
 
 /**
- * Returns true if the subtree rooted at {@code ptr} contains a nested
- * breakable construct — an inner loop or a sw$-prefixed switch-dispatch
- * block.  When the body of a simplified loop has no such nesting, every
- * break/continue targeting the loop resolves to the innermost breakable
- * scope and the loop label can be elided.
+ * Walks a subtree and returns true when {@code testFn} returns true for any
+ * node.  {@code testFn} should return true/false to short-circuit or
+ * {@code null} to let the walker recurse into children.
  *
  * @private
  * @param {!Binaryen} binaryen
  * @param {number} ptr
+ * @param {function(!BinaryenExpressionInfo, number): ?boolean} testFn
  * @return {boolean}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting_ = function (binaryen, ptr) {
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.walkSubtree_ = function (binaryen, ptr, testFn) {
   if (!ptr) {
     return false;
   }
@@ -122,77 +121,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting
       Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
     );
   var /** @const {number} */ id = info.id;
-  var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
-
-  if (id === binaryen.LoopId || id === binaryen.SwitchId) {
-    return true;
+  var /** @const {?boolean} */ verdict = testFn(info, id);
+  if (null !== verdict) {
+    return verdict;
   }
-  if (id === binaryen.BlockId) {
-    var /** @const {?string} */ bName = /** @type {?string} */ (info.name);
-    if (bName && 0 === bName.indexOf('sw$')) {
-      return true;
-    }
-    var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
-    if (ch) {
-      for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
-        if (S.containsBreakableNesting_(binaryen, ch[ci])) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-  if (id === binaryen.IfId) {
-    return (
-      S.containsBreakableNesting_(binaryen, /** @type {number} */ (info.ifTrue || 0)) ||
-      S.containsBreakableNesting_(binaryen, /** @type {number} */ (info.ifFalse || 0))
-    );
-  }
-  if (id === binaryen.DropId || id === binaryen.ReturnId || id === binaryen.LocalSetId || id === binaryen.GlobalSetId) {
-    return S.containsBreakableNesting_(binaryen, /** @type {number} */ (info.value || 0));
-  }
-  return false;
-};
-
-/**
- * Returns true if the subtree rooted at {@code ptr} contains a BreakId or
- * SwitchId whose target label matches {@code targetName}.  Used for smarter
- * label-elision decisions: when no branch inside the loop body references the
- * loop name, the label can be omitted.
- *
- * @private
- * @param {!Binaryen} binaryen
- * @param {number} ptr
- * @param {string} targetName
- * @return {boolean}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_ = function (binaryen, ptr, targetName) {
-  if (!ptr) {
-    return false;
-  }
-  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
-    );
-  var /** @const {number} */ id = info.id;
-  var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
-
-  if (id === binaryen.BreakId) {
-    return /** @type {?string} */ (info.name) === targetName;
-  }
-  if (id === binaryen.SwitchId) {
-    var /** @const {!Array<string>} */ sNames = /** @type {!Array<string>} */ (info.names || []);
-    for (var /** @type {number} */ si = 0, /** @const {number} */ sNamesLen = sNames.length; si < sNamesLen; ++si) {
-      if (sNames[si] === targetName) {
-        return true;
-      }
-    }
-    return /** @type {string} */ (info.defaultName || '') === targetName;
-  }
+  var /** @const {function(!Binaryen, number, function(!BinaryenExpressionInfo, number): ?boolean): boolean} */ walk =
+      Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.walkSubtree_;
   if (id === binaryen.BlockId) {
     var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
     if (ch) {
       for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
-        if (S.containsTargetingBranch_(binaryen, ch[ci], targetName)) {
+        if (walk(binaryen, ch[ci], testFn)) {
           return true;
         }
       }
@@ -200,18 +139,63 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_
     return false;
   }
   if (id === binaryen.LoopId) {
-    return S.containsTargetingBranch_(binaryen, /** @type {number} */ (info.body || 0), targetName);
+    return walk(binaryen, /** @type {number} */ (info.body || 0), testFn);
   }
   if (id === binaryen.IfId) {
     return (
-      S.containsTargetingBranch_(binaryen, /** @type {number} */ (info.ifTrue || 0), targetName) ||
-      S.containsTargetingBranch_(binaryen, /** @type {number} */ (info.ifFalse || 0), targetName)
+      walk(binaryen, /** @type {number} */ (info.ifTrue || 0), testFn) ||
+      walk(binaryen, /** @type {number} */ (info.ifFalse || 0), testFn)
     );
   }
   if (id === binaryen.DropId || id === binaryen.ReturnId || id === binaryen.LocalSetId || id === binaryen.GlobalSetId) {
-    return S.containsTargetingBranch_(binaryen, /** @type {number} */ (info.value || 0), targetName);
+    return walk(binaryen, /** @type {number} */ (info.value || 0), testFn);
   }
   return false;
+};
+
+/**
+ * @private
+ * @param {!Binaryen} binaryen
+ * @param {number} ptr
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting_ = function (binaryen, ptr) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.walkSubtree_(
+    binaryen,
+    ptr,
+    /** @param {!BinaryenExpressionInfo} info @param {number} id @return {?boolean} */
+    function (info, id) {
+      if (id === binaryen.LoopId || id === binaryen.SwitchId) return true;
+      if (id === binaryen.BlockId && info.name && 0 === /** @type {string} */ (info.name).indexOf('sw$')) return true;
+      return null;
+    }
+  );
+};
+
+/**
+ * @private
+ * @param {!Binaryen} binaryen
+ * @param {number} ptr
+ * @param {string} targetName
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_ = function (binaryen, ptr, targetName) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.walkSubtree_(
+    binaryen,
+    ptr,
+    /** @param {!BinaryenExpressionInfo} info @param {number} id @return {?boolean} */
+    function (info, id) {
+      if (id === binaryen.BreakId) return /** @type {?string} */ (info.name) === targetName;
+      if (id === binaryen.SwitchId) {
+        var /** @const {!Array<string>} */ sn = /** @type {!Array<string>} */ (info.names || []);
+        for (var /** @type {number} */ si = 0, /** @const {number} */ snLen = sn.length; si < snLen; ++si) {
+          if (sn[si] === targetName) return true;
+        }
+        return /** @type {string} */ (info.defaultName || '') === targetName;
+      }
+      return null;
+    }
+  );
 };
 
 /**
@@ -614,11 +598,5 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.createVisitor 
       simplifiedLoops: /** @type {!Object<string, string>} */ (Object.create(null)),
       funcMetadata: funcMetadata
     });
-  var /** @const */ self = this;
-
-  // prettier-ignore
-  return /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-    enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { return self.enter_(state, nc); },
-    leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList=} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) { void cr; return self.leave_(state, nc); }
-  });
+  return Wasm2Lang.Wasm.Tree.CustomPasses.createEnterLeaveVisitor(this, this.enter_, this.leave_, state);
 };

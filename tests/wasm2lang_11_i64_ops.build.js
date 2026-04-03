@@ -424,6 +424,50 @@
     );
   }
 
+  // =================================================================
+  // exerciseI64TruncConvert: sat trunc/convert chains with wide-range
+  // random float input.  Uses sat trunc exclusively so any value
+  // (negative, huge, near boundary) is safe.
+  // =================================================================
+  {
+    const tf0 = () => module.local.get(0, binaryen.f32);
+    const tf1 = () => module.local.get(1, binaryen.f64);
+
+    module.addFunction(
+      'exerciseI64TruncConvert',
+      binaryen.createType([binaryen.f32, binaryen.f64]),
+      binaryen.none,
+      [],
+      module.block(null, [
+        // Saturating truncation — all 4 variants
+        storeI64(module.i64.trunc_s_sat.f32(tf0())),
+        storeI64(module.i64.trunc_u_sat.f32(module.f32.abs(tf0()))),
+        storeI64(module.i64.trunc_s_sat.f64(tf1())),
+        storeI64(module.i64.trunc_u_sat.f64(module.f64.abs(tf1()))),
+
+        // Sat trunc → convert roundtrip (i64→float after float→i64)
+        storeF32(module.f32.convert_s.i64(module.i64.trunc_s_sat.f32(tf0()))),
+        storeF64Safe(module.f64.convert_s.i64(module.i64.trunc_s_sat.f64(tf1()))),
+        storeF32(module.f32.convert_u.i64(module.i64.trunc_u_sat.f32(module.f32.abs(tf0())))),
+        storeF64Safe(module.f64.convert_u.i64(module.i64.trunc_u_sat.f64(module.f64.abs(tf1())))),
+
+        // Promote → sat trunc, demote → sat trunc
+        storeI64(module.i64.trunc_s_sat.f64(module.f64.promote(tf0()))),
+        storeI64(module.i64.trunc_s_sat.f32(module.f32.demote(tf1()))),
+
+        // Reinterpret roundtrip: f64 → i64 → f64
+        storeI64(module.i64.reinterpret(tf1())),
+        storeF64Safe(module.f64.reinterpret(module.i64.reinterpret(tf1()))),
+
+        // Wrap sat trunc result to i32
+        storeI32(module.i32.wrap(module.i64.trunc_s_sat.f64(tf1()))),
+        storeI32(module.i32.wrap(module.i64.trunc_u_sat.f64(module.f64.abs(tf1())))),
+
+        module.return()
+      ])
+    );
+  }
+
   // --- exports ---
   module.addFunctionExport('exerciseI64Arithmetic', 'exerciseI64Arithmetic');
   module.addFunctionExport('exerciseI64Bitwise', 'exerciseI64Bitwise');
@@ -432,6 +476,7 @@
   module.addFunctionExport('exerciseI64Memory', 'exerciseI64Memory');
   module.addFunctionExport('exerciseI64Conversions', 'exerciseI64Conversions');
   module.addFunctionExport('exerciseI64EdgeCases', 'exerciseI64EdgeCases');
+  module.addFunctionExport('exerciseI64TruncConvert', 'exerciseI64TruncConvert');
 
   common.finalizeAndOutput(module);
 
@@ -456,9 +501,9 @@
       [42, 3.5, 2.75],
       [0, 0.0, 0.0],
       [-1, -1.5, -1.5],
-      [100, 50.25, 100.0],
-      [255, 10.0, -50.0],
-      [0x7fffffff, 1.0, 1.0],
+      [100, 50.25, 100.375],
+      [255, 10.25, -50.75],
+      [0x7fffffff, 1.125, 1.875],
       [-100, 99.9, -99.9]
     ]
   };
@@ -466,7 +511,14 @@
   data.i32_values = staticData.i32_values.concat(Array.from({length: 10}, rand.i32));
   data.i32_pairs = staticData.i32_pairs.concat(Array.from({length: 8}, () => [rand.i32(), rand.i32()]));
   data.conversion_cases = staticData.conversion_cases.concat(
-    Array.from({length: 5}, () => [rand.smallI32(), rand.f32(), rand.f64()])
+    Array.from({length: 10}, () => [rand.smallI32(), rand.f32(), rand.f64()])
   );
+  data.trunc_convert_pairs = [
+    [0.0, 0.0],
+    [1.5, -1.5],
+    [Math.fround(-1e10), 1e15],
+    [Math.fround(4294967296.0), -9.223372036854776e18],
+    [Math.fround(0.001953125), -0.00390625]
+  ].concat(Array.from({length: 12}, () => [rand.wideF32(), rand.wideF64()]));
   common.emitSharedData(data);
 })();

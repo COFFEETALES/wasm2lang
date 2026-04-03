@@ -48,12 +48,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNumericUnaryOp_ = function (binar
   }
 
   if ('trunc_s_f32_to_i32' === name) {
-    return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
-      '~~' + P.wrap(P.renderPrefix('+', valueExpr), P.PREC_UNARY_, true)
-    );
+    return this.renderHelperCall_(binaryen, '$w2l_trunc_s_f32_to_i32', [valueExpr], info.retType);
   }
   if ('trunc_s_f64_to_i32' === name) {
-    return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_('~~' + P.wrap(valueExpr, P.PREC_UNARY_, true));
+    return this.renderHelperCall_(binaryen, '$w2l_trunc_s_f64_to_i32', [valueExpr], info.retType);
   }
 
   return Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_.call(this, binaryen, info, valueExpr, opt_valueCat);

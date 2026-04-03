@@ -430,6 +430,19 @@ Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_;
 Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_;
 
 /**
+ * Descriptor for a single wasm-level exported global.
+ *
+ * @protected
+ * @typedef {{
+ *   exportName: string,
+ *   internalName: string,
+ *   globalType: number,
+ *   globalMutable: boolean
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.ExportedGlobalInfo_;
+
+/**
  * Signature information for a wasm function.
  *
  * @protected
@@ -475,6 +488,7 @@ Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_;
  *   globals: !Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>,
  *   globalTypes: !Object<string, number>,
  *   expFuncs: !Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>,
+ *   expGlobals: !Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedGlobalInfo_>,
  *   functions: !Array<!BinaryenFunctionInfo>,
  *   functionTables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>,
  *   flatTableEntries: !Array<string|null>
@@ -561,9 +575,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ImportedGlobalInfo_>} */ impGlobals = [];
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_>} */ globals = [];
   var /** @const {!Object<string, number>} */ globalTypes = /** @type {!Object<string, number>} */ (Object.create(null));
+  var /** @const {!Object<string, boolean>} */ globalMutableMap = /** @type {!Object<string, boolean>} */ (Object.create(null));
   for (var /** @type {number} */ gi = 0; gi !== numGlobals; ++gi) {
     var /** @const {!BinaryenGlobalInfo} */ globalInfo = binaryen.getGlobalInfo(wasmModule.getGlobalByIndex(gi));
     globalTypes[globalInfo.name] = globalInfo.type;
+    globalMutableMap[globalInfo.name] = !!globalInfo.mutable;
     if ('' !== globalInfo.base) {
       impGlobals[impGlobals.length] = {
         globalName: globalInfo.name,
@@ -588,6 +604,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   // -- Exports. --
   var /** @const {number} */ numExports = wasmModule.getNumExports();
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_>} */ expFuncs = [];
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedGlobalInfo_>} */ expGlobals = [];
   for (var /** @type {number} */ e = 0; e !== numExports; ++e) {
     var /** @const {!BinaryenExportInfo} */ exportInfo = binaryen.getExportInfo(wasmModule.getExportByIndex(e));
     if (binaryen.ExternalFunction === exportInfo.kind) {
@@ -595,6 +612,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
         exportName: exportInfo.name,
         internalName: exportInfo.value,
         stubName: Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(exportInfo.value)
+      };
+    } else if (binaryen.ExternalGlobal === exportInfo.kind) {
+      expGlobals[expGlobals.length] = {
+        exportName: exportInfo.name,
+        internalName: exportInfo.value,
+        globalType: globalTypes[exportInfo.value] || binaryen.i32,
+        globalMutable: !!globalMutableMap[exportInfo.value]
       };
     }
   }
@@ -609,6 +633,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
     globals: globals,
     globalTypes: globalTypes,
     expFuncs: expFuncs,
+    expGlobals: expGlobals,
     functions: functions,
     functionTables: tableResult.tables,
     flatTableEntries: tableResult.flatEntries

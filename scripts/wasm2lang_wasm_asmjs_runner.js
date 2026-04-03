@@ -87,7 +87,11 @@ const wasm = !!obj['wasm'];
       }
     }
 
-    const l = module(isNode ? global : globalThis, harness.moduleImports, memBuffer);
+    const foreign = harness.moduleImports || {};
+    foreign.__wasm2lang_trap = function () {
+      throw new Error('wasm trap: integer overflow');
+    };
+    const l = module(isNode ? global : globalThis, foreign, memBuffer);
     harness.runTest((instanceMemoryBuffer = memBuffer), stdoutWrite, l, sharedData);
   }
 

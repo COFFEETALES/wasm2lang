@@ -30,6 +30,11 @@ const runTest = function (buff, out, exports, data) {
     exports.exerciseI64Conversions(t[0], Math.fround(t[1]), t[2]);
   }
 
+  // Trunc/convert chains with wide-range random float input.
+  for (const p of data.trunc_convert_pairs) {
+    exports.exerciseI64TruncConvert(Math.fround(p[0]), p[1]);
+  }
+
   exports.exerciseI64EdgeCases();
 };
 

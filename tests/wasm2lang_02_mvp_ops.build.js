@@ -432,9 +432,86 @@
     ])
   );
 
+  // -----------------------------------------------------------------
+  // Exported mutable global: exercises getter/setter generation in
+  // all three backends.
+  // -----------------------------------------------------------------
+  module.setFeatures(module.getFeatures() | binaryen.Features.MutableGlobals);
+  module.addGlobal('counter', binaryen.i32, /* mutable */ true, module.i32.const(0));
+  module.addGlobalExport('counter', 'counter');
+
+  // exerciseGlobalExports: sets the exported global, reads it back,
+  // stores intermediate values to memory for CRC verification.
+  module.addFunction(
+    'exerciseGlobalExports',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [
+      // Set counter to the parameter value.
+      module.global.set('counter', module.local.get(0, binaryen.i32)),
+      // Store the current counter value.
+      storeI32(module.global.get('counter', binaryen.i32)),
+      // Increment counter by 10.
+      module.global.set('counter', module.i32.add(module.global.get('counter', binaryen.i32), module.i32.const(10))),
+      // Store incremented value.
+      storeI32(module.global.get('counter', binaryen.i32)),
+      // Multiply counter by 3.
+      module.global.set('counter', module.i32.mul(module.global.get('counter', binaryen.i32), module.i32.const(3))),
+      // Store multiplied value.
+      storeI32(module.global.get('counter', binaryen.i32)),
+      module.return()
+    ])
+  );
+
+  // -----------------------------------------------------------------
+  // exerciseTruncConvert: dedicated trunc/convert chains exercised
+  // with wide-range random float input.  Uses sat trunc exclusively
+  // so that any float value (negative, huge, near boundary) is safe.
+  // -----------------------------------------------------------------
+  var tc0 = () => module.local.get(0, binaryen.f32);
+  var tc1 = () => module.local.get(1, binaryen.f64);
+  module.addFunction(
+    'exerciseTruncConvert',
+    binaryen.createType([binaryen.f32, binaryen.f64]),
+    binaryen.none,
+    [],
+    module.block(null, [
+      // Saturating truncation — all 4 variants
+      storeI32(module.i32.trunc_s_sat.f32(tc0())),
+      storeI32(module.i32.trunc_u_sat.f32(tc0())),
+      storeI32(module.i32.trunc_s_sat.f64(tc1())),
+      storeI32(module.i32.trunc_u_sat.f64(tc1())),
+
+      // Sat trunc → convert roundtrip (i32→float after float→i32)
+      storeF32(module.f32.convert_s.i32(module.i32.trunc_s_sat.f32(tc0()))),
+      storeF32(module.f32.convert_u.i32(module.i32.trunc_u_sat.f32(tc0()))),
+      storeF64Safe(module.f64.convert_s.i32(module.i32.trunc_s_sat.f64(tc1()))),
+      storeF64Safe(module.f64.convert_u.i32(module.i32.trunc_u_sat.f64(tc1()))),
+
+      // Promote → sat trunc, demote → sat trunc
+      storeI32(module.i32.trunc_s_sat.f64(module.f64.promote(tc0()))),
+      storeI32(module.i32.trunc_u_sat.f64(module.f64.promote(tc0()))),
+      storeI32(module.i32.trunc_s_sat.f32(module.f32.demote(tc1()))),
+      storeI32(module.i32.trunc_u_sat.f32(module.f32.demote(tc1()))),
+
+      // Reinterpret roundtrip: f32 → i32 → f32
+      storeI32(module.i32.reinterpret(tc0())),
+      storeF32(module.f32.reinterpret(module.i32.reinterpret(tc0()))),
+
+      // Convert from sat-trunc result, then promote/demote
+      storeF64Safe(module.f64.promote(module.f32.convert_s.i32(module.i32.trunc_s_sat.f32(tc0())))),
+      storeF32(module.f32.demote(module.f64.convert_u.i32(module.i32.trunc_u_sat.f64(tc1())))),
+
+      module.return()
+    ])
+  );
+
   module.addFunctionExport('exerciseMVPOps', 'exerciseMVPOps');
   module.addFunctionExport('exerciseOverflowOps', 'exerciseOverflowOps');
   module.addFunctionExport('exerciseEdgeCases', 'exerciseEdgeCases');
+  module.addFunctionExport('exerciseGlobalExports', 'exerciseGlobalExports');
+  module.addFunctionExport('exerciseTruncConvert', 'exerciseTruncConvert');
 
   common.finalizeAndOutput(module);
 
@@ -444,19 +521,28 @@
       [42, 3.5, 2.75],
       [0, 0.0, 0.0],
       [-1, 0.5, 0.5],
-      [2147483647, 100.0, 100.0],
-      [1, 1.0, 1.0],
-      [-2147483648, 3.0, 3.0],
+      [2147483647, 100.625, 100.875],
+      [1, 1.25, 1.75],
+      [-2147483648, 3.125, 3.375],
       [255, 0.125, 0.125],
-      [16, 4.0, 4.0],
+      [16, 4.5, 4.25],
       [65535, 0.0, 99.5],
-      [-100, 50.0, 0.0],
-      [1024, 1.0, 0.5]
+      [-100, 50.75, 0.0],
+      [1024, 1.125, 0.5]
     ]
   };
   const data = {};
   data.i32_f32_f64_triples = staticData.i32_f32_f64_triples.concat(
-    Array.from({length: 8}, () => [common.rand.i32(), common.rand.uF32(), common.rand.uF64()])
+    Array.from({length: 12}, () => [common.rand.i32(), common.rand.uF32(), common.rand.uF64()])
   );
+  data.trunc_convert_pairs = [
+    [0.0, 0.0],
+    [-0.0, -0.0],
+    [1.5, -1.5],
+    [-2147483648.0, 2147483647.0],
+    [Math.fround(4294967296.0), -4294967296.0],
+    [Math.fround(-1e10), 1e12],
+    [Math.fround(0.001953125), -0.00390625]
+  ].concat(Array.from({length: 15}, () => [common.rand.wideF32(), common.rand.wideF64()]));
   common.emitSharedData(data);
 })();

@@ -72,6 +72,8 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
     throw new Error('Unknown normalization bundle(s): ' + unknownBundles.join(', '));
   }
 
+  var /** @const {boolean} */ hasCodegen = -1 !== bundles.indexOf('wasm2lang:codegen');
+
   if (-1 === bundles.indexOf('binaryen:none')) {
     Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_(
       wasmModule,
@@ -80,7 +82,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
     );
   }
 
-  if (-1 !== bundles.indexOf('wasm2lang:codegen')) {
+  if (hasCodegen) {
     return Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_(wasmModule, options);
   }
   return null;
@@ -109,7 +111,9 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmMod
   var /** @const {!BinaryenFeatures} */ features = binaryen.Features;
   // Set the feature mask so binaryen's optimizer and passes recognize post-MVP
   // ops (bulk memory, sign-ext, non-trapping float-to-int).
-  wasmModule.setFeatures(0 | features.NontrappingFPToInt | features.BulkMemory | features.BulkMemoryOpt | features.SignExt);
+  wasmModule.setFeatures(
+    0 | features.NontrappingFPToInt | features.BulkMemory | features.BulkMemoryOpt | features.SignExt | features.MutableGlobals
+  );
 
   if (aggressive) {
     // Run a full optimization pass before i64 lowering to inline small
@@ -137,6 +141,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmMod
       'duplicate-function-elimination'
     ]);
   }
+
   // "flatten" inserts explicit returns at block ends so later codegen sees
   // concrete control flow.
   // First round: "simplify-locals-nostructure" (tee allowed) folds

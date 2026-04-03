@@ -56,19 +56,8 @@ Wasm2Lang.Backend.AsmjsCodegen.renderDivisionBinary_ = function (self, info, L, 
   );
 };
 
-/**
- * @param {!Wasm2Lang.Backend.AbstractCodegen} self
- * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
- * @param {string} L
- * @param {string} R
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.renderBitwiseBinary_ = function (self, info, L, R) {
-  void self;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const */ bi = P.bitwiseInfo(info.opStr);
-  return P.renderInfix(L, info.opStr, R, bi.bitwisePrecedence, bi.bitwiseAllowRightEqual);
-};
+/** @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} */
+Wasm2Lang.Backend.AsmjsCodegen.renderBitwiseBinary_ = Wasm2Lang.Backend.AbstractCodegen.renderPlainBitwiseBinary_;
 
 /**
  * @param {!Wasm2Lang.Backend.AbstractCodegen} self

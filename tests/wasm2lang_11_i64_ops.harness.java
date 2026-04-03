@@ -31,6 +31,10 @@
         mod.exerciseI64Conversions(t.get(0).intValue(), t.get(1).floatValue(), t.get(2));
     }
 
+    for (java.util.List<Double> p : w2lNested(_data, "trunc_convert_pairs")) {
+        mod.exerciseI64TruncConvert(p.get(0).floatValue(), p.get(1));
+    }
+
     mod.exerciseI64EdgeCases();
 
     w2lDumpCRC(memBuffer);

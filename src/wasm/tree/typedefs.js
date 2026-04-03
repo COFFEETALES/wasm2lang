@@ -34,6 +34,8 @@ Wasm2Lang.Wasm.Tree.BlockFusionPlan;
 /**
  * @typedef {{
  *   passFuncName: (string|void),
+ *   passFuncPtr: (number|void),
+ *   passTreeModule: (!BinaryenModule|void),
  *   bodyReplaced: (boolean|void),
  *   dropConstEliminations: (number|void),
  *   localGetCounts: (!Object<string, number>|void),

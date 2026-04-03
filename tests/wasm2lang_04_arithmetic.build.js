@@ -418,9 +418,25 @@
       // (f64.promote(b) * c) + f64.convert_s(a)
       storeF64Safe(module.f64.add(module.f64.mul(module.f64.promote(p1()), p2()), module.f64.convert_s.i32(p0()))),
 
-      // --- saturating trunc + nested float ---
+      // --- unsigned trunc ---
+      // trunc_u(f32.abs(b))
+      storeI32(module.i32.trunc_u.f32(module.f32.abs(p1()))),
+      // trunc_u(f64.abs(c))
+      storeI32(module.i32.trunc_u.f64(module.f64.abs(p2()))),
+      // trunc_u(f32.mul(f32.abs(b), 10.0))
+      storeI32(module.i32.trunc_u.f32(module.f32.mul(module.f32.abs(p1()), module.f32.const(10.0)))),
+      // trunc_u(f64.mul(f64.abs(c), 10.0))
+      storeI32(module.i32.trunc_u.f64(module.f64.mul(module.f64.abs(p2()), module.f64.const(10.0)))),
+
+      // --- saturating trunc (all variants) ---
       // trunc_u_sat(f32.abs(b) * 1000.0)
       storeI32(module.i32.trunc_u_sat.f32(module.f32.mul(module.f32.abs(p1()), module.f32.const(1000.0)))),
+      // trunc_s_sat(f32.mul(b, 100.0))
+      storeI32(module.i32.trunc_s_sat.f32(module.f32.mul(p1(), module.f32.const(100.0)))),
+      // trunc_s_sat(f64.mul(c, 100.0))
+      storeI32(module.i32.trunc_s_sat.f64(module.f64.mul(p2(), module.f64.const(100.0)))),
+      // trunc_u_sat(f64.abs(c) * 1000.0)
+      storeI32(module.i32.trunc_u_sat.f64(module.f64.mul(module.f64.abs(p2()), module.f64.const(1000.0)))),
       // trunc_s(f64.nearest(c * 3.0))
       storeI32(module.i32.trunc_s.f64(module.f64.nearest(module.f64.mul(p2(), module.f64.const(3.0))))),
 
@@ -608,15 +624,15 @@
       [42, 3.5, 2.75],
       [0, 0.0, 0.0],
       [-1, -1.5, -1.5],
-      [100, 0.125, 100.0],
-      [255, 10.0, -50.0]
+      [100, 0.125, 100.375],
+      [255, 10.25, -50.75]
     ]
   };
   const data = {};
   data.i32_values = staticData.i32_values.concat(Array.from({length: 7}, rand.i32));
   data.i32_pairs = staticData.i32_pairs.concat(Array.from({length: 6}, () => [rand.i32(), rand.i32()]));
   data.mixed_type_cases = staticData.mixed_type_cases.concat(
-    Array.from({length: 6}, () => [rand.smallI32(), rand.f32(), rand.f64()])
+    Array.from({length: 10}, () => [rand.smallI32(), rand.f32(), rand.f64()])
   );
   common.emitSharedData(data);
 })();
