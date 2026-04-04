@@ -4,9 +4,10 @@
  * @override
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @return {!Array<!Wasm2Lang.OutputSink.ChunkEntry>}
+ * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, options) {
+  this.initDiagnostics_();
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {string} */ moduleName = /** @type {string} */ (options.emitCode);
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_} */ moduleInfo =
@@ -308,9 +309,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   outputParts[outputParts.length] = pad1 + 'return [' + returnEntries.join(', ') + '];';
   outputParts[outputParts.length] = '};';
 
-  // Traversal summary.
-  // prettier-ignore
-  outputParts[outputParts.length] = /** @type {string} */ (Wasm2Lang.Backend.AbstractCodegen.prototype.emitCode.call(this, wasmModule, options));
+  // Traversal summary from data collected during the codegen traversal above.
+  outputParts[outputParts.length] = this.emitDiagnosticSummary_(wasmModule, options);
 
-  return Wasm2Lang.OutputSink.interleaveNewlines(outputParts);
+  return outputParts.join('\n');
 };

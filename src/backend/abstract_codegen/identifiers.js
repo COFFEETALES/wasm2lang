@@ -46,6 +46,31 @@ Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_ = function (name, r
 };
 
 /**
+ * Pre-built indentation strings indexed by indent level.  Populated once
+ * by {@code initPadCache_} on first use.
+ *
+ * @private
+ * @type {?Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.padCache_ = null;
+
+/**
+ * @private
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.initPadCache_ = function () {
+  var /** @const {number} */ MAX = 24;
+  var /** @const {!Array<string>} */ cache = new Array(MAX);
+  var /** @type {string} */ s = '';
+  for (var /** @type {number} */ k = 0; k < MAX; ++k) {
+    cache[k] = s;
+    s += '  ';
+  }
+  Wasm2Lang.Backend.AbstractCodegen.padCache_ = cache;
+  return cache;
+};
+
+/**
  * Returns a string of {@code indent} two-space indentation units.
  *
  * @protected
@@ -53,6 +78,9 @@ Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_ = function (name, r
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.pad_ = function (indent) {
+  var /** @const {!Array<string>} */ cache =
+      Wasm2Lang.Backend.AbstractCodegen.padCache_ || Wasm2Lang.Backend.AbstractCodegen.initPadCache_();
+  if (indent < cache.length) return cache[indent];
   var /** @type {string} */ s = '';
   for (var /** @type {number} */ k = 0; k !== indent; ++k) {
     s += '  ';

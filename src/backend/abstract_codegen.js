@@ -181,6 +181,19 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
    * @protected @type {!Array<!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined>}
    */
   this.i64BinaryRenderers_ = [];
+
+  /**
+   * Per-function node counts collected during walkAndAppendBody_.
+   * Eliminates the need for the abstract emitCode's separate traversal.
+   * @protected @type {?Object<string, number>}
+   */
+  this.diagnosticNodeCounts_ = null;
+
+  /**
+   * Expression IDs seen across all function bodies during codegen traversal.
+   * @protected @type {?Object<number, boolean>}
+   */
+  this.diagnosticSeenIds_ = null;
 };
 
 /**

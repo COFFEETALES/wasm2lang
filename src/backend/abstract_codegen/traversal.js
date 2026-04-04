@@ -11,6 +11,9 @@
  * backend behavior is dispatched through emitEnter_, adjustLeaveIndent_,
  * and emitLeave_ virtual methods.
  *
+ * Also collects per-function node counts and seen expression IDs for the
+ * diagnostic summary, eliminating the need for a separate traversal.
+ *
  * @suppress {checkTypes, reportUnknownTypes}
  * @protected
  * @param {!Array<string>} parts
@@ -30,10 +33,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.walkAndAppendBody_ = function (
   padStr
 ) {
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ self = this;
+  var /** @type {number} */ nodeCount = 0;
+  var /** @const {!Object<number, boolean>} */ seenIds =
+      this.diagnosticSeenIds_ || /** @type {!Object<number, boolean>} */ (Object.create(null));
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor =
     /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-      enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { return self.emitEnter_(emitState, nc); },
+      enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { ++nodeCount; seenIds[nc.expression.id] = true; return self.emitEnter_(emitState, nc); },
       leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) {
         self.adjustLeaveIndent_(emitState, nc);
         return self.emitLeave_(emitState, nc, cr || []);
@@ -41,6 +47,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.walkAndAppendBody_ = function (
     });
   emitState.visitor = visitor;
   var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
+  // Store diagnostic data for emitDiagnosticSummary_.
+  if (this.diagnosticNodeCounts_) {
+    this.diagnosticNodeCounts_[funcInfo.name] = nodeCount;
+  }
   return this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, padStr);
 };
 
@@ -165,6 +175,61 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.traversalEnter_ = function (state, n
   }
 
   return null;
+};
+
+/**
+ * Initializes diagnostic collection fields so that walkAndAppendBody_ can
+ * accumulate node counts and seen IDs during the main codegen traversal.
+ * Call once before emitting function bodies.
+ *
+ * @protected
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.initDiagnostics_ = function () {
+  this.diagnosticNodeCounts_ = /** @type {!Object<string, number>} */ (Object.create(null));
+  this.diagnosticSeenIds_ = /** @type {!Object<number, boolean>} */ (Object.create(null));
+};
+
+/**
+ * Emits the diagnostic summary lines from data collected during the main
+ * codegen traversal (via walkAndAppendBody_), avoiding a separate
+ * traversal pass over all function bodies.
+ *
+ * Falls back to the full traversal when diagnostic data was not collected
+ * (e.g. when called from the abstract base emitCode).
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitDiagnosticSummary_ = function (wasmModule, options) {
+  if (!this.diagnosticNodeCounts_) {
+    // Fallback: no collected data — run the old full-traversal emitCode.
+    return /** @type {string} */ (this.emitCode(wasmModule, options));
+  }
+
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @const {!Array<string>} */ outputParts = [];
+  var /** @const {!Array<!BinaryenFunctionInfo>} */ functions = this.collectDefinedFunctions_(wasmModule);
+  var /** @const {!Object<string, number>} */ counts = /** @type {!Object<string, number>} */ (this.diagnosticNodeCounts_);
+
+  for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = functions.length; f !== funcCount; ++f) {
+    var /** @const {string} */ funcName = functions[f].name;
+    var /** @const {number} */ nodeCount = counts[funcName] || 0;
+    outputParts[outputParts.length] = '// ' + funcName + ' [nodes:' + nodeCount + ']';
+  }
+
+  // Build seen-ids line from collected expression IDs.
+  var /** @const {!Object<number, boolean>} */ seenIds = /** @type {!Object<number, boolean>} */ (this.diagnosticSeenIds_);
+  var /** @const {!Array<string>} */ seenIdNames = [];
+  var /** @const {!Array<string>} */ idKeys = Object.keys(seenIds);
+  for (var /** @type {number} */ k = 0, /** @const {number} */ kLen = idKeys.length; k !== kLen; ++k) {
+    seenIdNames[seenIdNames.length] = this.idName_(binaryen, Number(idKeys[k]));
+  }
+  outputParts[outputParts.length] = '// [ids seen: ' + (0 !== seenIdNames.length ? seenIdNames.join(', ') : '(none)') + ']';
+
+  return outputParts.join('\n');
 };
 
 /**

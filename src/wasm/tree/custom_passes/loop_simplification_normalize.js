@@ -497,7 +497,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     var /** @const {number} */ len = children.length;
     var /** @type {number} */ planCondPtr = 0;
 
-    // Compute trimmed children and condition pointer per variant.
+    // Compute condition pointer per variant.  The body children are always
+    // preserved intact so the IR is self-contained after a serialize-
+    // deserialize round-trip (the backend fallback emits for(;;){body;break;}
+    // — original branches inside body will continue/break correctly before
+    // the added break is reached, even when loopPlan metadata is unavailable).
     var /** @type {!Array<number>} */ bodyChildren = children;
 
     if ('lw' === kind || 'ly' === kind) {
@@ -505,29 +509,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
           Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[0])
         );
       planCondPtr = S.invertCondition_(binaryen, module, /** @type {number} */ (brIfInfo.condition || 0));
-      bodyChildren = children.slice(1, len - 1);
     } else if ('lwi' === kind || 'lyi' === kind) {
-      // Body is IfId: the if condition is already the continuation condition
-      // (true → execute body and loop back), so use it directly.
       planCondPtr = /** @type {number} */ (bodyInfo.condition || 0);
-      var /** @const {number} */ lwiIfTruePtr = /** @type {number} */ (bodyInfo.ifTrue || 0);
-      var /** @const {!BinaryenExpressionInfo} */ lwiIfTrueInfo = /** @type {!BinaryenExpressionInfo} */ (
-          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, lwiIfTruePtr)
-        );
-      var /** @const {!Array<number>} */ lwiThenCh = /** @type {!Array<number>} */ ((lwiIfTrueInfo.children || []).slice(0));
-      lwiThenCh.length = lwiThenCh.length - 1;
-      bodyChildren = lwiThenCh;
-    } else if ('lc' === kind || 'lf' === kind) {
-      children.length = len - 1;
     } else if ('ldb' === kind || 'leb' === kind) {
       if (len > 0) {
         var /** @const {!BinaryenExpressionInfo} */ brIfB = /** @type {!BinaryenExpressionInfo} */ (
             Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[len - 1])
           );
         planCondPtr = /** @type {number} */ (brIfB.condition || 0);
-        children.length = len - 1;
       } else {
-        // Body is directly a conditional br_if (no block wrapper).
         planCondPtr = /** @type {number} */ (bodyInfo.condition || 0);
       }
     } else if ('lda' === kind || 'lea' === kind) {
@@ -535,9 +525,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
           Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[len - 2])
         );
       planCondPtr = /** @type {number} */ (brIfA.condition || 0);
-      children.length = len - 2;
     }
-    // else: lcs/lfs/lct/lft — keep all children as-is.
+    // All variants: keep bodyChildren as-is (lcs/lfs/lct/lft always did).
 
     var /** @const {?string} */ bodyBlockName = binaryen.BlockId === bodyInfo.id ? bodyInfo.name || null : null;
     var /** @const {number} */ newBody = module.block(bodyBlockName, bodyChildren, binaryen.none);

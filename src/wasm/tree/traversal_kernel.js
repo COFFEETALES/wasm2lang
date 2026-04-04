@@ -93,7 +93,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
   // per-node ensureDefaultSchema_ checks and iterChildren allocations.
   Wasm2Lang.Wasm.Tree.NodeSchema.ensureDefaultSchema_(binaryen);
   var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionEdgeSpecMap} */ specsMap = Wasm2Lang.Wasm.Tree.NodeSchema.expressionEdgeSpecs_;
-  var /** @const {string} */ LIST = Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind.LIST;
+  var /** @const {number} */ LIST = Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind.LIST;
 
   var /** @const */ safeGetInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo;
   var /** @const */ augmentInfo = Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_;
@@ -112,7 +112,12 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
     }
 
     var /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression = safeGetInfo(binaryen, currentExprPtr);
-    augmentInfo(binaryen, currentExprPtr, expression);
+    // Inline the augment guard — only MemoryFillId/MemoryCopyId need patching;
+    // skip the function call for the 99%+ of nodes that don't.
+    var /** @const {number} */ exprId = expression.id;
+    if (binaryen.MemoryFillId === exprId || binaryen.MemoryCopyId === exprId) {
+      augmentInfo(binaryen, currentExprPtr, expression);
+    }
 
     // Update reusable nodeContext in-place.
     nodeCtxBuf.parentExpression = parentExpression;
@@ -136,7 +141,9 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
           // prettier-ignore
           currentExprPtr = /** @type {number} */ (enterDec.expressionPointer);
           expression = safeGetInfo(binaryen, currentExprPtr);
-          augmentInfo(binaryen, currentExprPtr, expression);
+          if (binaryen.MemoryFillId === expression.id || binaryen.MemoryCopyId === expression.id) {
+            augmentInfo(binaryen, currentExprPtr, expression);
+          }
           nodeCtxBuf.expression = expression;
           nodeCtxBuf.expressionPointer = currentExprPtr;
         } else if (SKIP_SUBTREE === enterAction) {

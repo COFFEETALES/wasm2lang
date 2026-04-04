@@ -68,6 +68,16 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_b
     funcMetadata.passTreeModule = wasmModule;
     funcMetadata.bodyReplaced = false;
 
+    // Reuse a single TraversalContext per function — only the ancestors array
+    // needs resetting between passes (walkExpression reads it on entry).
+    var /** @const {!Wasm2Lang.Wasm.Tree.TraversalContext} */ traversalContext = {
+        binaryen: binaryen,
+        treeModule: wasmModule,
+        functionInfo: funcInfo,
+        treeMetadata: funcMetadata,
+        ancestors: []
+      };
+
     for (var /** @type {number} */ p = 0, /** @const {number} */ passCount = passes.length; p !== passCount; ++p) {
       var /** @const {!Wasm2Lang.Wasm.Tree.Pass} */ pass = passes[p];
 
@@ -83,14 +93,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_b
       );
       var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor = createVisitorFn.call(pass, funcMetadata);
 
-      var /** @const {!Wasm2Lang.Wasm.Tree.TraversalContext} */ traversalContext = {
-          binaryen: binaryen,
-          treeModule: wasmModule,
-          functionInfo: funcInfo,
-          treeMetadata: funcMetadata,
-          ancestors: []
-        };
-
+      traversalContext.ancestors = [];
       var /** @const {*} */ walkResult = Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression(
           currentBodyPtr,
           traversalContext,

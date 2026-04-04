@@ -52,7 +52,7 @@ Wasm2Lang.Wasm.Tree.PassMetadata;
 /**
  * @typedef {{
  *   edgePropertyName: string,
- *   edgeTraversalKind: !Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind,
+ *   edgeTraversalKind: number,
  *   setter: (function(number, number, number): void|void)
  * }}
  */

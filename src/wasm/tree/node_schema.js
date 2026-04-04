@@ -6,11 +6,11 @@
 Wasm2Lang.Wasm.Tree.NodeSchema = {};
 
 /**
- * @enum {string}
+ * @enum {number}
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind = {
-  SINGLE: 'single',
-  LIST: 'list'
+  SINGLE: 0,
+  LIST: 1
 };
 
 /**
@@ -34,14 +34,14 @@ Wasm2Lang.Wasm.Tree.NodeSchema.defaultSchemaInitialized_ = false;
 Wasm2Lang.Wasm.Tree.NodeSchema.registerEdgeSpecs_ = function (expressionId, edgeSpecs) {
   // prettier-ignore
   Wasm2Lang.Wasm.Tree.NodeSchema.expressionEdgeSpecs_[expressionId] = /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpecList} */ (
-    edgeSpecs.slice(0)
+    edgeSpecs
   );
 };
 
 /**
  * @private
  * @param {string} edgePropertyName
- * @param {!Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind} edgeTraversalKind
+ * @param {number} edgeTraversalKind
  * @param {function(number, number, number): void} setter
  * @return {!Wasm2Lang.Wasm.Tree.EdgeSpec}
  */

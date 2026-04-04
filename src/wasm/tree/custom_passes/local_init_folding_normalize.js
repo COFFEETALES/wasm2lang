@@ -136,9 +136,22 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
           var /** @const {!BinaryenExpressionInfo} */ valueInfo =
             /** @type {!BinaryenExpressionInfo} */ (Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,valuePtr));
           if (binaryen.ConstId === valueInfo.id) {
-            foldPtrs[String(childPtr)] = true;
-            initOverrides[String(localIdx)] = /** @type {number} */ (valueInfo.value);
+            var /** @const {number} */ constVal = /** @type {number} */ (valueInfo.value);
+            // Only elide the local.set from the IR when the value equals the
+            // WASM default (0).  Non-zero initializers are recorded as
+            // overrides for the backend but the local.set is preserved in the
+            // IR so that a serialize-deserialize round-trip (normalization in
+            // one process, codegen in another) still produces correct code
+            // even when the metadata is unavailable.
+            if (0 === constVal) {
+              foldPtrs[String(childPtr)] = true;
+              continue;
+            }
             hasOverrides = true;
+            initOverrides[String(localIdx)] = constVal;
+            // Mark the local as set so subsequent local.set for the same
+            // index are not folded (the non-zero IR set must be preserved).
+            setLocals[localIdx] = true;
             continue;
           }
         }
