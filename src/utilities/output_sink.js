@@ -233,6 +233,35 @@ Wasm2Lang.OutputSink.interleaveNewlines = function (parts) {
  *
  * @return {!Wasm2Lang.OutputSink.WriteFn}
  */
+/**
+ * Creates a write function that writes resolved chunks to a file.
+ * The file is truncated on creation; subsequent chunks are appended.
+ *
+ * @param {string} filePath
+ * @return {!Wasm2Lang.OutputSink.WriteFn}
+ */
+Wasm2Lang.OutputSink.createFileSink = function (filePath) {
+  // prettier-ignore
+  var /** @const {!NodeFileSystem} */ fs = /** @type {!NodeFileSystem} */ (require('fs'));
+  var /** @const {number} */ fd = fs.openSync(filePath, 'w');
+  return /** @type {!Wasm2Lang.OutputSink.WriteFn} */ (
+    /** @param {!Wasm2Lang.OutputSink.Chunk} chunk */ function (chunk) {
+      if (chunk instanceof Uint8Array) {
+        fs.writeSync(fd, Buffer.from(/** @type {!Uint8Array} */ (chunk)));
+      } else {
+        fs.writeSync(fd, /** @type {string} */ (chunk));
+      }
+    }
+  );
+};
+
+/**
+ * Creates a write function that sends resolved chunks to the standard
+ * output stream.  On Node.js this writes directly to {@code process.stdout};
+ * in a browser environment it falls back to {@code console.log}.
+ *
+ * @return {!Wasm2Lang.OutputSink.WriteFn}
+ */
 Wasm2Lang.OutputSink.createStdoutSink = function () {
   if (Wasm2Lang.Utilities.Environment.isNode()) {
     return /** @type {!Wasm2Lang.OutputSink.WriteFn} */ (

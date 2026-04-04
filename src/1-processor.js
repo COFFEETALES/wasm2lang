@@ -241,7 +241,8 @@ Wasm2Lang.Processor.normalizeUserOptions_ = function (userOptions) {
         emitMetadata: Wasm2Lang.Processor.normalizeEmitOption_(userOptions, 'emitMetadata', 'metadata'),
         emitCode: Wasm2Lang.Processor.normalizeEmitOption_(userOptions, 'emitCode', 'code'),
         emitWebAssembly: Wasm2Lang.Processor.normalizeEmitOption_(userOptions, 'emitWebAssembly', ''),
-        mangler: userMangler || null
+        mangler: userMangler || null,
+        outFile: null
       });
 
   return o;
@@ -332,7 +333,8 @@ Wasm2Lang.Processor.getPassAnalysis = function (binaryenModule, wastString) {
       emitMetadata: null,
       emitCode: null,
       emitWebAssembly: null,
-      mangler: null
+      mangler: null,
+      outFile: null
     });
 
   var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ passes = Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses(options);
@@ -452,7 +454,9 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
    * @return {!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>}
    */
   function drainAndReturn(results) {
-    var /** @const {!Wasm2Lang.OutputSink.WriteFn} */ sink = Wasm2Lang.OutputSink.createStdoutSink();
+    var /** @const {!Wasm2Lang.OutputSink.WriteFn} */ sink = options.outFile
+        ? Wasm2Lang.OutputSink.createFileSink(options.outFile)
+        : Wasm2Lang.OutputSink.createStdoutSink();
     var /** @const {(!Promise<void>|void)} */ drainResult = Wasm2Lang.Processor.drainResults_(results, sink);
     if (drainResult) {
       return drainResult.then(function () {

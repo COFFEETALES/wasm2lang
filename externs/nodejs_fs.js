@@ -59,13 +59,13 @@ NodeFileSystem.prototype.openSync = function (path, flags) {};
 
 /**
  * @param {number} fd
- * @param {!Buffer} buff
- * @param {number=} offset
+ * @param {(!Buffer|string)} buff
+ * @param {number=} offsetOrPosition
  * @param {number=} length
  * @param {number=} position
  * @return {number}
  */
-NodeFileSystem.prototype.writeSync = function (fd, buff, offset, length, position) {};
+NodeFileSystem.prototype.writeSync = function (fd, buff, offsetOrPosition, length, position) {};
 
 /**
  * @nosideeffects

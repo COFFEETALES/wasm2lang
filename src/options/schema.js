@@ -17,7 +17,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
   EMIT_METADATA: 'emitMetadata',
   EMIT_CODE: 'emitCode',
   EMIT_WEBASSEMBLY: 'emitWebAssembly',
-  MANGLER: 'mangler'
+  MANGLER: 'mangler',
+  OUT_FILE: 'outFile'
 };
 
 /**
@@ -30,7 +31,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
  *   emitMetadata: (string|null),
  *   emitCode: (string|null),
  *   emitWebAssembly: (string|null),
- *   mangler: (string|null)
+ *   mangler: (string|null),
+ *   outFile: (string|null)
  * }}
  */
 Wasm2Lang.Options.Schema.NormalizedOptions;
@@ -107,7 +109,8 @@ Wasm2Lang.Options.Schema.defaultOptions = {
   emitMetadata: null,
   emitCode: null,
   emitWebAssembly: null,
-  mangler: null
+  mangler: null,
+  outFile: null
 };
 
 /**
@@ -216,6 +219,16 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.MANGLE
 };
 
 /**
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @param {!Array<string>} strs
+ */
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.OUT_FILE] = function (options, strs) {
+  if (0 !== strs.length) {
+    options.outFile = strs[strs.length - 1];
+  }
+};
+
+/**
  * @const {
  *  !Object<
  *    !Wasm2Lang.Options.Schema.OptionKey, {
@@ -273,5 +286,9 @@ Wasm2Lang.Options.Schema.optionSchema = {
     optionType: 'string|null',
     optionDesc:
       'Enables deterministic keyed identifier mangling for generated output. Internal identifiers are replaced with short, opaque names derived from the given key. Same key produces identical output; different keys produce different names.'
+  },
+  'outFile': {
+    optionType: 'string|null',
+    optionDesc: 'Writes output to the specified file instead of stdout.'
   }
 };
