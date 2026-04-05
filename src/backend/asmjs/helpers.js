@@ -113,6 +113,24 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad1 + '}');
 
   // prettier-ignore
+  h('$w2l_rotl', [],
+    pad1 + 'function ' + n('$w2l_rotl') + '(' + l0 + ', ' + l1 + ') {\n' +
+    pad2 + l0 + ' = ' + l0 + '|0;\n' +
+    pad2 + l1 + ' = ' + l1 + '|0;\n' +
+    pad2 + l1 + ' = ' + l1 + ' & 31;\n' +
+    pad2 + 'return ' + l0 + ' << ' + l1 + ' | (' + l0 + ' >>> 0) >>> (32 - ' + l1 + '|0)|0;\n' +
+    pad1 + '}');
+
+  // prettier-ignore
+  h('$w2l_rotr', [],
+    pad1 + 'function ' + n('$w2l_rotr') + '(' + l0 + ', ' + l1 + ') {\n' +
+    pad2 + l0 + ' = ' + l0 + '|0;\n' +
+    pad2 + l1 + ' = ' + l1 + '|0;\n' +
+    pad2 + l1 + ' = ' + l1 + ' & 31;\n' +
+    pad2 + 'return (' + l0 + ' >>> 0) >>> ' + l1 + ' | ' + l0 + ' << (32 - ' + l1 + '|0)|0;\n' +
+    pad1 + '}');
+
+  // prettier-ignore
   h('$w2l_copysign_f64', ['Math_abs'],
     pad1 + 'function ' + n('$w2l_copysign_f64') + '(' + l0 + ', ' + l1 + ') {\n' +
     pad2 + l0 + ' = +' + l0 + ';\n' +

@@ -63,30 +63,10 @@ Wasm2Lang.Backend.AsmjsCodegen.renderBitwiseBinary_ = Wasm2Lang.Backend.Abstract
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.renderRotateBinary_ = function (self, info, L, R) {
-  void self;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ shiftMask = P.renderInfix(R, '&', '31', P.PREC_BIT_AND_, true);
-  var /** @const {string} */ reverseShift = P.renderInfix('32', '-', shiftMask, P.PREC_ADDITIVE_);
-
-  if (info.rotateLeft) {
-    return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
-      P.renderInfix(
-        P.renderInfix(L, '<<', shiftMask, P.PREC_SHIFT_),
-        '|',
-        P.renderInfix(Wasm2Lang.Backend.AsmjsCodegen.renderUnsignedCoercion_(L), '>>>', reverseShift, P.PREC_SHIFT_),
-        P.PREC_BIT_OR_,
-        true
-      )
-    );
-  }
+  var /** @const {string} */ helperName = info.rotateLeft ? '$w2l_rotl' : '$w2l_rotr';
+  self.markHelper_(helperName);
   return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
-    P.renderInfix(
-      P.renderInfix(Wasm2Lang.Backend.AsmjsCodegen.renderUnsignedCoercion_(L), '>>>', shiftMask, P.PREC_SHIFT_),
-      '|',
-      P.renderInfix(L, '<<', reverseShift, P.PREC_SHIFT_),
-      P.PREC_BIT_OR_,
-      true
-    )
+    self.n_(helperName) + '(' + L + ', ' + R + ')'
   );
 };
 

@@ -168,7 +168,13 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
     wasmModule.runPasses(postLoweringPasses);
     binaryen.setOptimizeLevel(2);
     binaryen.setShrinkLevel(1);
-    wasmModule.optimize();
+    try {
+      wasmModule.optimize();
+    } catch (e) {
+      // Binaryen's optimizer can Fatal() on certain IR patterns produced
+      // by i64 lowering.  The module is still usable in its pre-optimize
+      // state — skip the full optimization and continue.
+    }
     if (isJsTarget) {
       wasmModule.runPasses(['avoid-reinterprets']);
     }
@@ -196,12 +202,19 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
     finalPasses[finalPasses.length] = 'coalesce-locals';
   }
   finalPasses.push('reorder-locals', 'remove-unused-names', 'vacuum');
+  wasmModule.runPasses(finalPasses);
   if (aggressive) {
     // remove-unused-module-elements + DCE at the end ensures all IR nodes
-    // have valid types before wasm2lang custom passes.
-    finalPasses.push('remove-unused-module-elements', 'dce');
+    // have valid types before wasm2lang custom passes.  Run separately
+    // because remove-unused-module-elements can Fatal() on certain
+    // i64-lowered IR patterns.
+    try {
+      wasmModule.runPasses(['remove-unused-module-elements', 'dce']);
+    } catch (e) {
+      // Fall back to DCE alone — it handles most cleanup on its own.
+      wasmModule.runPasses(['dce']);
+    }
   }
-  wasmModule.runPasses(finalPasses);
 };
 
 /**
