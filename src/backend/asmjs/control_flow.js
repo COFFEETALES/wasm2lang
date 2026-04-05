@@ -100,10 +100,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
     case binaryen.LoadId: {
       var /** @const {number} */ loadType = expr.type;
-      var /** @const {string} */ loadPtr = Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_(
-          cr(0),
-          /** @type {number} */ (expr.offset)
-        );
+      var /** @const {number} */ loadOffset = /** @type {number} */ (expr.offset);
+      // When a non-zero offset is present, the base+offset addition requires
+      // both operands to be int.  Intish bases (from arithmetic/div/rem) must
+      // be coerced to signed first.
+      var /** @type {string} */ loadBase = cr(0);
+      if (0 !== loadOffset && C.INTISH === cc(0)) {
+        loadBase = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(loadBase);
+      }
+      var /** @const {string} */ loadPtr = Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_(loadBase, loadOffset);
       var /** @const {number} */ loadBytes = /** @type {number} */ (expr.bytes);
       // Use the direct C API to read alignment — getExpressionInfo can
       // return a stale/incorrect value for sub-naturally aligned loads.
@@ -114,10 +119,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.StoreId: {
       var /** @const {number} */ storeType = /** @type {number} */ (expr.valueType) || binaryen.i32;
-      var /** @const {string} */ storePtr = Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_(
-          cr(0),
-          /** @type {number} */ (expr.offset)
-        );
+      var /** @const {number} */ storeOffset = /** @type {number} */ (expr.offset);
+      var /** @type {string} */ storeBase = cr(0);
+      if (0 !== storeOffset && C.INTISH === cc(0)) {
+        storeBase = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(storeBase);
+      }
+      var /** @const {string} */ storePtr = Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_(storeBase, storeOffset);
       var /** @const {number} */ storeBytes = /** @type {number} */ (expr.bytes);
       // Use the direct C API to read alignment — getExpressionInfo can
       // return a stale/incorrect value for sub-naturally aligned stores.
@@ -277,8 +284,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
-        var /** @const {string} */ loopLabel =
-            loopPlan.needsLabel || state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
+        var /** @const {string} */ loopLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
         result = this.emitSimplifiedLoop_(state, loopPlan, ind, loopLabel, cr(0));
       } else {
         var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';

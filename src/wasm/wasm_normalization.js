@@ -96,7 +96,8 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
     Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_(
       wasmModule,
       -1 !== bundles.indexOf('binaryen:max'),
-      !!opt_skipI64Lowering
+      !!opt_skipI64Lowering,
+      options.languageOut || 'asmjs'
     );
   }
 
@@ -122,21 +123,29 @@ Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_ = function (wasmMo
  * @param {!BinaryenModule} wasmModule
  * @param {boolean} aggressive
  * @param {boolean} skipI64Lowering
+ * @param {string} targetLanguage
  * @return {void}
  */
-Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmModule, aggressive, skipI64Lowering) {
+Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
+  wasmModule,
+  aggressive,
+  skipI64Lowering,
+  targetLanguage
+) {
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+  var /** @const {boolean} */ isJsTarget = 'asmjs' === targetLanguage;
   // Feature mask already set by readWasmModule; refresh in case the caller
   // bypassed that entry point.
   wasmModule.setFeatures(Wasm2Lang.Wasm.WasmNormalization.getFeatureMask_(binaryen));
 
-  if (aggressive) {
-    // Run a full optimization pass before i64 lowering to inline small
-    // functions, eliminate duplicates, and simplify instructions.
-    binaryen.setOptimizeLevel(2);
-    binaryen.setShrinkLevel(1);
-    wasmModule.optimize();
+  // Phase 1 — Pre-lowering.
+  if (isJsTarget) {
+    // Simplify ops that map poorly to JS (e.g. reinterprets, copysign)
+    // before any lowering touches the IR.
+    wasmModule.runPasses(['optimize-for-js']);
   }
+
+  // Phase 2 — i64 lowering.
   // Lower i64 to pairs of i32 so backends only need to handle i32/f32/f64.
   // Backends that handle i64 natively (e.g. Java via `long`) skip this.
   // "remove-non-js-ops" converts i64 selects to if/else which the lowering
@@ -144,19 +153,28 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmMod
   if (!skipI64Lowering) {
     wasmModule.runPasses(['flatten', 'remove-non-js-ops', 'flatten', 'i64-to-i32-lowering']);
   }
+
+  // Phase 3 — Post-lowering optimization (aggressive only).
+  // Following wasm2js's approach: propagate constants first (especially
+  // effective on i64 lowering artifacts), then run a full optimization
+  // pass to inline, simplify, and eliminate dead code.
   if (aggressive) {
-    // Cleanup passes before the final flatten to reduce dead code and simplify.
-    wasmModule.runPasses([
-      'optimize-instructions',
-      'precompute',
-      'dce',
-      'remove-unused-brs',
-      'remove-unused-names',
-      'simplify-globals',
-      'duplicate-function-elimination'
-    ]);
+    var /** @const {!Array<string>} */ postLoweringPasses = ['simplify-locals-nonesting', 'precompute-propagate'];
+    if (isJsTarget) {
+      // Avoid-reinterprets benefits from propagation; run before and after
+      // full optimization since the optimizer can reintroduce patterns.
+      postLoweringPasses[postLoweringPasses.length] = 'avoid-reinterprets';
+    }
+    wasmModule.runPasses(postLoweringPasses);
+    binaryen.setOptimizeLevel(2);
+    binaryen.setShrinkLevel(1);
+    wasmModule.optimize();
+    if (isJsTarget) {
+      wasmModule.runPasses(['avoid-reinterprets']);
+    }
   }
 
+  // Phase 4 — Final IR preparation (shared).
   // "flatten" inserts explicit returns at block ends so later codegen sees
   // concrete control flow.
   // First round: "simplify-locals-nostructure" (tee allowed) folds
@@ -166,24 +184,24 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (wasmMod
   // every local.tee back to set+get, and "simplify-locals-notee-nostructure"
   // cleans up the final IR without reintroducing tee (which causes broken
   // multi-line ternaries in the codegen).
+  // "merge-blocks" merges adjacent blocks, reducing nesting.
   // "reorder-locals" compacts local indices to a tighter layout.
+  // "remove-unused-names" strips unreferenced block/loop labels.
   // "vacuum" removes unreachable code left by earlier passes.
-  //
-  // NOTE: "coalesce-locals" is deliberately omitted.  It performs O(n²)
-  // liveness analysis to merge locals with non-overlapping lifetimes,
-  // which becomes a severe bottleneck on flatten-heavy modules (functions
-  // with 10K+ temporaries).  The extra locals only cost a few additional
-  // variable declarations in the transpiled output; correct code
-  // generation does not depend on coalescing.
-  wasmModule.runPasses([
-    'flatten',
-    'simplify-locals-nostructure',
-    'vacuum',
-    'flatten',
-    'simplify-locals-notee-nostructure',
-    'reorder-locals',
-    'vacuum'
-  ]);
+  var /** @const {!Array<string>} */ finalPasses = ['flatten', 'simplify-locals-nostructure', 'vacuum', 'merge-blocks'];
+  finalPasses.push('flatten', 'simplify-locals-notee-nostructure');
+  if (aggressive) {
+    // coalesce-locals merges non-interfering locals.  O(n²) but acceptable
+    // in max mode; most locals already reduced by this point.
+    finalPasses[finalPasses.length] = 'coalesce-locals';
+  }
+  finalPasses.push('reorder-locals', 'remove-unused-names', 'vacuum');
+  if (aggressive) {
+    // remove-unused-module-elements + DCE at the end ensures all IR nodes
+    // have valid types before wasm2lang custom passes.
+    finalPasses.push('remove-unused-module-elements', 'dce');
+  }
+  wasmModule.runPasses(finalPasses);
 };
 
 /**

@@ -685,6 +685,19 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
     return blockBody;
   }
   if (blockName) {
+    var /** @const {!Binaryen} */ binaryen = state.binaryen;
+    var /** @const {number} */ blockType = expr.type;
+    if (binaryen.none !== blockType && 0 !== blockType && binaryen.unreachable !== blockType) {
+      throw new Error(
+        "Wasm2Lang codegen: named block '" +
+          blockName +
+          '\' in function "' +
+          state.functionInfo.name +
+          '" has a value result type. ' +
+          'The target language cannot use labeled blocks as expressions. ' +
+          'Use binaryen:min normalization to flatten value-typed blocks before codegen.'
+      );
+    }
     return pad(ind) + this.labelN_(state.labelMap, blockName) + ': {\n' + blockBody + pad(ind) + '}\n';
   }
   return blockBody;

@@ -150,7 +150,22 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, no
   var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
   var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, childResults.length, childInd);
   if (isFused) return blockBody;
-  if (blockName) return pad(ind) + 'do {\n' + blockBody + pad(ind) + '} while (false);\n';
+  if (blockName) {
+    var /** @const {!Binaryen} */ binaryen = state.binaryen;
+    var /** @const {number} */ blockType = expr.type;
+    if (binaryen.none !== blockType && 0 !== blockType && binaryen.unreachable !== blockType) {
+      throw new Error(
+        "Wasm2Lang codegen: named block '" +
+          blockName +
+          '\' in function "' +
+          state.functionInfo.name +
+          '" has a value result type. ' +
+          'The target language cannot use labeled blocks as expressions. ' +
+          'Use binaryen:min normalization to flatten value-typed blocks before codegen.'
+      );
+    }
+    return pad(ind) + 'do {\n' + blockBody + pad(ind) + '} while (false);\n';
+  }
   return blockBody;
 };
 

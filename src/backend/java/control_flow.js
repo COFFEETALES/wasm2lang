@@ -275,8 +275,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {string} */ loopBody = cr(0);
       var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
       if (loopPlan) {
-        var /** @const {string} */ loopLabel =
-            loopPlan.needsLabel || state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
+        var /** @const {string} */ loopLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
         result = this.emitSimplifiedLoop_(state, loopPlan, ind, loopLabel, loopBody);
       } else {
         // Raw loop fallback (unsimplified): named body blocks can complete

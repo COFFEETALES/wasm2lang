@@ -497,11 +497,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     var /** @const {number} */ len = children.length;
     var /** @type {number} */ planCondPtr = 0;
 
-    // Compute condition pointer per variant.  The body children are always
-    // preserved intact so the IR is self-contained after a serialize-
-    // deserialize round-trip (the backend fallback emits for(;;){body;break;}
-    // — original branches inside body will continue/break correctly before
-    // the added break is reached, even when loopPlan metadata is unavailable).
+    // Compute condition pointer per variant, then strip consumed terminal
+    // brs from the body so backends don't emit redundant continue/break.
+    // Condition extraction reads children by index before any stripping.
     var /** @type {!Array<number>} */ bodyChildren = children;
 
     if ('lw' === kind || 'ly' === kind) {
@@ -509,14 +507,29 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
           Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[0])
         );
       planCondPtr = S.invertCondition_(binaryen, module, /** @type {number} */ (brIfInfo.condition || 0));
+      // Strip exit guard (first) and self-continue (last).
+      bodyChildren = children.slice(1, len - 1);
     } else if ('lwi' === kind || 'lyi' === kind) {
+      // Loop body is an If (not a Block).  The if condition IS the
+      // continuation condition — use it directly.  Extract the then-arm
+      // block's children minus the trailing br $loop.
       planCondPtr = /** @type {number} */ (bodyInfo.condition || 0);
+      var /** @const {number} */ lwiThenPtr = /** @type {number} */ (bodyInfo.ifTrue || 0);
+      var /** @const {!BinaryenExpressionInfo} */ lwiThenInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+          binaryen,
+          lwiThenPtr
+        );
+      var /** @const {!Array<number>} */ lwiThenCh = /** @type {!Array<number>} */ ((lwiThenInfo.children || []).slice(0));
+      // Strip trailing unconditional br $loop.
+      bodyChildren = lwiThenCh.length > 0 ? lwiThenCh.slice(0, lwiThenCh.length - 1) : lwiThenCh;
     } else if ('ldb' === kind || 'leb' === kind) {
       if (len > 0) {
         var /** @const {!BinaryenExpressionInfo} */ brIfB = /** @type {!BinaryenExpressionInfo} */ (
             Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[len - 1])
           );
         planCondPtr = /** @type {number} */ (brIfB.condition || 0);
+        // Strip conditional self-continue.
+        bodyChildren = children.slice(0, len - 1);
       } else {
         planCondPtr = /** @type {number} */ (bodyInfo.condition || 0);
       }
@@ -525,8 +538,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
           Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[len - 2])
         );
       planCondPtr = /** @type {number} */ (brIfA.condition || 0);
+      // Strip conditional self-continue + unconditional exit.
+      bodyChildren = children.slice(0, len - 2);
+    } else if ('lc' === kind || 'lf' === kind) {
+      // Strip trailing self-continue.
+      bodyChildren = children.slice(0, len - 1);
     }
-    // All variants: keep bodyChildren as-is (lcs/lfs/lct/lft always did).
+    // lcs/lfs/lct/lft: keep bodyChildren as-is (switch/exit-break needed).
 
     var /** @const {?string} */ bodyBlockName = binaryen.BlockId === bodyInfo.id ? bodyInfo.name || null : null;
     var /** @const {number} */ newBody = module.block(bodyBlockName, bodyChildren, binaryen.none);

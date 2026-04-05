@@ -605,11 +605,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledGroupBody_
         );
       state.indent = savedInd2;
       if (!terminal) {
+        state.usedLabels[rsLoopName] = true;
         lines[lines.length] = pad(indent) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
       }
     } else if (rsRsName && group.externalTarget === rsRsName) {
+      state.usedLabels[rsLoopName] = true;
       lines[lines.length] = pad(indent) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
     } else {
+      var /** @const {string} */ extActual = state.fusedBlockToLoop[group.externalTarget] || group.externalTarget;
+      state.usedLabels[extActual] = true;
       lines[lines.length] =
         pad(indent) +
         codegen.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, group.externalTarget);
