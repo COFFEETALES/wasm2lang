@@ -188,6 +188,53 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericComparisonResult_ = fun
 };
 
 /**
+ * Attempts to negate a comparison expression string by flipping the
+ * top-level operator (e.g. {@code <} → {@code >=}).  Only operators at
+ * parenthesis depth 0 are considered, so wrapped sub-expressions are
+ * never accidentally rewritten.
+ *
+ * Returns the negated string on success, or {@code null} if no top-level
+ * comparison operator is found (caller should fall back to {@code !}).
+ *
+ * @private
+ * @param {string} expr
+ * @return {?string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.negateComparison_ = function (expr) {
+  // Check longest operators first to avoid partial matches (e.g. <= before <).
+  var /** @const {!Array<!Array<string>>} */ ops = [
+      [' !== ', ' === '],
+      [' === ', ' !== '],
+      [' <= ', ' > '],
+      [' >= ', ' < '],
+      [' != ', ' == '],
+      [' == ', ' != '],
+      [' < ', ' >= '],
+      [' > ', ' <= ']
+    ];
+  var /** @type {number} */ depth = 0;
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = expr.length; i < len; ++i) {
+    var /** @const {string} */ ch = expr.charAt(i);
+    if ('(' === ch) {
+      ++depth;
+      continue;
+    }
+    if (')' === ch) {
+      --depth;
+      continue;
+    }
+    if (0 !== depth) continue;
+    for (var /** @type {number} */ j = 0; j < 8; ++j) {
+      var /** @const {string} */ opStr = ops[j][0];
+      if (i + opStr.length <= len && opStr === expr.substr(i, opStr.length)) {
+        return expr.substr(0, i) + ops[j][1] + expr.substr(i + opStr.length);
+      }
+    }
+  }
+  return null;
+};
+
+/**
  * Shared rendering for non-i32 numeric binary operations.
  *
  * @protected
@@ -466,8 +513,19 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitI64Unary_ = function (binaryen, 
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, unaryOp, operandExpr, operandCat) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  if (A.CAT_BOOL_I32 === operandCat) operandExpr = this.renderNumericComparisonResult_(operandExpr);
   var /** @const {number} */ unCat = C.classifyUnaryOp(binaryen, unaryOp);
+  // Eqz on a comparison: negate the operator directly rather than wrapping
+  // with `!` or materializing to integer then testing for zero.
+  // Produces `$l0 >= $l3` instead of `($l0 < $l3 ? 1 : 0) == 0` (Java/PHP)
+  // or `!(($l0|0) < ($l3|0))` (asm.js).
+  if (C.UNARY_EQZ === unCat) {
+    var /** @const {?string} */ negated = A.negateComparison_(operandExpr);
+    if (negated) return {emittedString: negated, resultCat: operandCat};
+    if (A.CAT_BOOL_I32 === operandCat) {
+      return {emittedString: A.Precedence_.renderPrefix('!', operandExpr), resultCat: A.CAT_BOOL_I32};
+    }
+  }
+  if (A.CAT_BOOL_I32 === operandCat) operandExpr = this.renderNumericComparisonResult_(operandExpr);
   if (-1 !== unCat) {
     var /** @const {?{emittedString: string, resultCat: number}} */ i32Result = this.emitI32Unary_(
         binaryen,
