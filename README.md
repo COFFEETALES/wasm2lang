@@ -168,6 +168,7 @@ source files directly from `src/`.
 | `--emit-web-assembly [text]` | `string` | Emit the (normalized) WebAssembly module. Defaults to binary format; pass `text` for WAT output.                                                                    |
 | `--define <K=V>`             | `string` | Set a compile-time define (repeatable). Used to configure backend constants.                                                                                        |
 | `--mangler <key>`            | `string` | Enable deterministic identifier mangling. Same key = same output; different keys = different names.                                                                 |
+| `--out-file <path>`          | `string` | Write output to a file instead of stdout.                                                                                                                           |
 | `--help`                     | --       | Print option descriptions to stderr and exit.                                                                                                                       |
 
 ### Normalization bundles
@@ -175,12 +176,12 @@ source files directly from `src/`.
 Bundles are passed as a comma-separated list to `--normalize-wasm` and
 control how the WebAssembly IR is transformed before code emission.
 
-| Bundle              | Phase     | Description                                                                                          |
-| ------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
-| `binaryen:none`     | binaryen  | No Binaryen normalization; raw input is used as-is.                                                  |
-| `binaryen:min`      | binaryen  | Minimal Binaryen passes (flatten, simplify-locals, reorder-locals, vacuum).                          |
-| `binaryen:max`      | binaryen  | Aggressive Binaryen optimization for code generation.                                                |
-| `wasm2lang:codegen` | wasm2lang | Internal wasm2lang passes (loop simplification, block-loop fusion, switch dispatch detection, etc.). |
+| Bundle              | Phase     | Description                                                                                                         |
+| ------------------- | --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `binaryen:none`     | binaryen  | No Binaryen normalization; raw input is used as-is.                                                                 |
+| `binaryen:min`      | binaryen  | Lightweight Binaryen passes: flatten, simplify-locals, merge-blocks, reorder-locals, vacuum.                        |
+| `binaryen:max`      | binaryen  | Full post-lowering optimization (constant propagation, inlining, local coalescing, DCE) for smaller, faster output. |
+| `wasm2lang:codegen` | wasm2lang | Internal wasm2lang passes (loop simplification, block-loop fusion, switch dispatch detection, etc.).                |
 
 Common combinations:
 
