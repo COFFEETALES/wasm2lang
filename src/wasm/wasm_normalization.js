@@ -158,6 +158,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // Following wasm2js's approach: propagate constants first (especially
   // effective on i64 lowering artifacts), then run a full optimization
   // pass to inline, simplify, and eliminate dead code.
+  var /** @type {boolean} */ optimizeSucceeded = false;
   if (aggressive) {
     var /** @const {!Array<string>} */ postLoweringPasses = ['simplify-locals-nonesting', 'precompute-propagate'];
     if (isJsTarget) {
@@ -170,6 +171,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
     binaryen.setShrinkLevel(1);
     try {
       wasmModule.optimize();
+      optimizeSucceeded = true;
     } catch (e) {
       // Binaryen's optimizer can Fatal() on certain IR patterns produced
       // by i64 lowering.  The module is still usable in its pre-optimize
@@ -196,9 +198,9 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // "vacuum" removes unreachable code left by earlier passes.
   var /** @const {!Array<string>} */ finalPasses = ['flatten', 'simplify-locals-nostructure', 'vacuum', 'merge-blocks'];
   finalPasses.push('flatten', 'simplify-locals-notee-nostructure');
-  if (aggressive) {
+  if (optimizeSucceeded) {
     // coalesce-locals merges non-interfering locals.  O(n²) but acceptable
-    // in max mode; most locals already reduced by this point.
+    // when optimize() reduced the IR; prohibitively slow on unoptimized IR.
     finalPasses[finalPasses.length] = 'coalesce-locals';
   }
   finalPasses.push('reorder-locals', 'remove-unused-names', 'vacuum');
