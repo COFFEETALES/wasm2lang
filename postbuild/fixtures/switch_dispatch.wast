@@ -39,6 +39,58 @@
     (local.get $result)
   )
 
+  ;; Non-wrapping dispatch: the dispatch outer has trailing children
+  ;; (case action code) but is NOT the first child of its parent,
+  ;; so the detection pass renames rather than wrapping.  The trailing
+  ;; children are case actions, not epilogue.
+  (func $nonWrappingDispatch (param $idx i32) (result i32)
+    (local $result i32)
+    (local.set $result (i32.const 100))
+    (block $exit
+      (block $case2
+        (block $case1
+          (block $case0
+            (br_table $case0 $case1 $case2 $exit (local.get $idx)))
+          (local.set $result (i32.const 10))
+          (br $exit))
+        (local.set $result (i32.const 20))
+        (br $exit))
+      (local.set $result (i32.const 30)))
+    (local.get $result)
+  )
+
+  ;; Wrapping dispatch with epilogue: the dispatch outer IS the first child
+  ;; of the loop body with trailing siblings.  The detection pass wraps the
+  ;; dispatch + epilogue into a new sw$-prefixed block.  Epilogue breaks
+  ;; must target the outer exit block with correct depth.
+  (func $wrappingDispatchEpilogue (param $idx i32) (param $state i32) (result i32)
+    (local $result i32)
+    (block $completed
+      (loop $loop
+        (block $stateTwo
+          (block $stateOne
+            (block $stateZero
+              (br_table $stateZero $stateOne $stateTwo $completed
+                (local.get $state)))
+            (local.set $idx (i32.mul (local.get $idx) (i32.const 2)))
+            (local.set $state (i32.const 1))
+            (br $loop))
+          (local.set $idx (i32.sub (local.get $idx) (i32.const 1)))
+          (local.set $state (i32.const 2))
+          (br $loop))
+        ;; epilogue: runs when stateTwo falls through
+        (if (i32.gt_s (local.get $idx) (i32.const 50))
+          (then
+            (local.set $result (i32.const -1))
+            (br $completed)))
+        (local.set $idx (i32.add (local.get $idx) (i32.const 25)))
+        (local.set $state (i32.const 0))
+        (br $loop)))
+    (if (i32.eqz (local.get $result))
+      (then (local.set $result (local.get $idx))))
+    (local.get $result)
+  )
+
   ;; Root switch: outer blocks wrapping a loop whose body contains a
   ;; switch dispatch followed by unconditional break to an outer block.
   ;; Requires >=2 outer wrapper blocks with exit code (children.length >= 2)

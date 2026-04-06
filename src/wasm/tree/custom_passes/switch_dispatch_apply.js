@@ -205,11 +205,22 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
 
         // Epilogue: wrapper's trailing children that run after the switch.
         // In the wrapping scenario, chain[0] is the sw$-prefixed wrapper
-        // with the original chain outer as first child and epilogue code as
-        // trailing children.  Cases that resolve to pIdx===0 should break
-        // out of the switch to reach the epilogue, not absorb it as actions.
+        // created by the detection pass with the original chain outer as
+        // first child and epilogue code as trailing children.  Cases that
+        // resolve to pIdx===0 should break out of the switch to reach the
+        // epilogue, not absorb it as actions.
+        //
+        // When NO wrapping was done, chain[0] is the renamed original outer
+        // (sw$X where chain[1] is not X).  Its trailing children are the
+        // action code for the case targeting chain[1], not common epilogue.
         var /** @const {!Array<number>} */ wrapperTrail = /** @type {!Array<number>} */ (chain[0][1]).slice(1);
-        var /** @type {!Array<number>} */ epilogue = chain.length > 2 && wrapperTrail.length > 0 ? wrapperTrail : [];
+        var /** @const {string} */ swPrefix = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER;
+        var /** @const {boolean} */ isWrappedStructure =
+            chain.length > 2 &&
+            outerName.length > swPrefix.length &&
+            outerName.substring(0, swPrefix.length) === swPrefix &&
+            outerName.substring(swPrefix.length) === /** @type {string} */ (chain[1][0]);
+        var /** @type {!Array<number>} */ epilogue = isWrappedStructure && wrapperTrail.length > 0 ? wrapperTrail : [];
 
         // prettier-ignore
         var /** @const */ buildGroup =

@@ -522,6 +522,135 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // nonWrappingDispatch: Flat switch dispatch where the outer dispatch
+  // block is NOT the first child of its parent, so the detection pass
+  // renames it (sw$) rather than wrapping.  The outer block's trailing
+  // children are case action code, not epilogue — the emitter must not
+  // route all case breaks through the epilogue path.
+  //
+  // Structure (before pass):
+  //   (local.set $default ...)          ;; makes $exit not first child
+  //   (block $exit
+  //     (block $case2 (block $case1 (block $case0
+  //       (br_table $case0 $case1 $case2 $exit (idx)))))
+  //     case0: result = a + b; break $exit
+  //     case1: result = a * b; break $exit
+  //     case2: result = default)        ;; trailing child — NOT epilogue
+  //   (return result)
+  //
+  // params: idx(0), a(1), b(2)  locals: result(3), default(4)
+  // Returns: idx=0 → a+b, idx=1 → a*b, idx=2 → default(a-b),
+  //          default(idx>=3) → default(a-b).
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'nonWrappingDispatch',
+    binaryen.createType([binaryen.i32, binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(4, module.i32.sub(p(1), p(2))),
+      module.block('nwExit', [
+        module.block('nwCase2', [
+          module.block('nwCase1', [
+            module.block('nwCase0', [module.switch(['nwCase0', 'nwCase1', 'nwCase2'], 'nwExit', p(0))]),
+            // case 0: result = a + b
+            module.local.set(3, module.i32.add(p(1), p(2))),
+            module.br('nwExit')
+          ]),
+          // case 1: result = a * b
+          module.local.set(3, module.i32.mul(p(1), p(2))),
+          module.br('nwExit')
+        ]),
+        // case 2: result = default (trailing child of $nwExit — not epilogue)
+        module.local.set(3, p(4))
+      ]),
+      module.return(p(3))
+    ])
+  );
+
+  // exerciseNonWrappingDispatch(idx: i32, a: i32, b: i32): void
+  module.addFunction(
+    'exerciseNonWrappingDispatch',
+    binaryen.createType([binaryen.i32, binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('nonWrappingDispatch', [p(0), p(1), p(2)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // wrappingDispatchEpilogue: Flat switch dispatch where the outer dispatch
+  // block IS the first child of the loop body with trailing siblings.
+  // The detection pass wraps the dispatch + trailing siblings into a new
+  // sw$-prefixed block.  The trailing siblings are the epilogue — breaks
+  // within the epilogue must target the outer exit block with correct
+  // depth (must not count the now-closed switch as an enclosing level).
+  //
+  // Structure (before pass):
+  //   (block $completed
+  //     (loop $loop
+  //       (block $stateTwo
+  //         (block $stateOne (block $stateZero
+  //           (br_table $stateZero $stateOne $stateTwo $completed (state))))
+  //         case0: idx *= 2; state = 1; br $loop
+  //         case1: idx -= 1; state = 2; br $loop)
+  //       ;; epilogue — inside loop but after dispatch block:
+  //       if (idx > 50) { result = -1; br $completed }
+  //       idx += 25; state = 0; br $loop))
+  //   result = result || idx
+  //
+  // params: startIdx(0), startState(1)  locals: result(2)
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'wrappingDispatchEpilogue',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.block('wdeCompleted', [
+        module.loop(
+          'wdeLoop',
+          module.block(null, [
+            module.block('wdeStateTwo', [
+              module.block('wdeStateOne', [
+                module.block('wdeStateZero', [
+                  module.switch(['wdeStateZero', 'wdeStateOne', 'wdeStateTwo'], 'wdeCompleted', p(1))
+                ]),
+                // case 0: idx *= 2, state = 1, continue loop
+                module.local.set(0, module.i32.mul(p(0), i32(2))),
+                module.local.set(1, i32(1)),
+                module.br('wdeLoop')
+              ]),
+              // case 1: idx -= 1, state = 2, continue loop
+              module.local.set(0, module.i32.sub(p(0), i32(1))),
+              module.local.set(1, i32(2)),
+              module.br('wdeLoop')
+            ]),
+            // epilogue: runs when state == 2 falls through
+            module.if(
+              module.i32.gt_s(p(0), i32(50)),
+              module.block(null, [module.local.set(2, i32(-1)), module.br('wdeCompleted')])
+            ),
+            module.local.set(0, module.i32.add(p(0), i32(25))),
+            module.local.set(1, i32(0)),
+            module.br('wdeLoop')
+          ])
+        )
+      ]),
+      module.if(module.i32.eqz(p(2)), module.local.set(2, p(0))),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseWrappingDispatchEpilogue(startIdx: i32, startState: i32): void
+  module.addFunction(
+    'exerciseWrappingDispatchEpilogue',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('wrappingDispatchEpilogue', [p(0), p(1)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
@@ -546,6 +675,10 @@
   module.addFunctionExport('exerciseIfElseKeptLabel', 'exerciseIfElseKeptLabel');
   module.addFunctionExport('switchRequiresLabel', 'switchRequiresLabel');
   module.addFunctionExport('exerciseSwitchRequiresLabel', 'exerciseSwitchRequiresLabel');
+  module.addFunctionExport('nonWrappingDispatch', 'nonWrappingDispatch');
+  module.addFunctionExport('exerciseNonWrappingDispatch', 'exerciseNonWrappingDispatch');
+  module.addFunctionExport('wrappingDispatchEpilogue', 'wrappingDispatchEpilogue');
+  module.addFunctionExport('exerciseWrappingDispatchEpilogue', 'exerciseWrappingDispatchEpilogue');
 
   common.finalizeAndOutput(module);
 
@@ -663,6 +796,34 @@
   );
 
   data.switch_requires_label_indices = [0, 1, 2, 3, 4, 5, 10, 100];
+
+  data.non_wrapping_dispatch_triples = [
+    [0, 7, 3],
+    [1, 7, 3],
+    [2, 7, 3],
+    [3, 7, 3],
+    [4, 7, 3],
+    [0, 0, 0],
+    [1, 0, 0],
+    [2, -5, 10],
+    [0, 100, 1],
+    [1, 100, 1]
+  ];
+
+  data.wrapping_dispatch_epilogue_pairs = [
+    [10, 0],
+    [10, 1],
+    [10, 2],
+    [30, 0],
+    [30, 2],
+    [1, 0],
+    [1, 2],
+    [0, 0],
+    [0, 2],
+    [100, 0],
+    [100, 2],
+    [3, 3]
+  ];
 
   common.emitSharedData(data);
 })();

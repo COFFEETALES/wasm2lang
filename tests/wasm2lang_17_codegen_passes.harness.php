@@ -52,6 +52,14 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ($data['switch_requires_label_indices'] as $v) {
         $exports['exerciseSwitchRequiresLabel']($v);
     }
+
+    foreach ($data['non_wrapping_dispatch_triples'] as $triple) {
+        $exports['exerciseNonWrappingDispatch']($triple[0], $triple[1], $triple[2]);
+    }
+
+    foreach ($data['wrapping_dispatch_epilogue_pairs'] as $pair) {
+        $exports['exerciseWrappingDispatchEpilogue']($pair[0], $pair[1]);
+    }
 };
 
 $dumpMemory = true;

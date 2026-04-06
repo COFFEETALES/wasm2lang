@@ -695,6 +695,11 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFlatSwitch_ = function (state, node
 
   lines[lines.length] = pad(ind) + '}\n';
 
+  // Remove the switch block entry before emitting the epilogue.  The epilogue
+  // runs outside the switch, so break depth calculations must not count the
+  // switch as an enclosing level.
+  state.labelStack.pop();
+
   // Emit epilogue (trailing children of the wrapper block) after the switch.
   if (hasEpilogue) {
     SDA.emitSubWalkedExpressions_(
@@ -708,9 +713,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFlatSwitch_ = function (state, node
       ind
     );
   }
-
-  // Remove the outer block entry we re-pushed.
-  state.labelStack.pop();
 
   return lines.join('');
 };

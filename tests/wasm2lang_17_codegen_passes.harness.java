@@ -49,6 +49,14 @@
         mod.exerciseSwitchRequiresLabel(v.intValue());
     }
 
+    for (java.util.List<Double> triple : w2lNested(_data, "non_wrapping_dispatch_triples")) {
+        mod.exerciseNonWrappingDispatch(triple.get(0).intValue(), triple.get(1).intValue(), triple.get(2).intValue());
+    }
+
+    for (java.util.List<Double> pair : w2lNested(_data, "wrapping_dispatch_epilogue_pairs")) {
+        mod.exerciseWrappingDispatchEpilogue(pair.get(0).intValue(), pair.get(1).intValue());
+    }
+
     w2lDumpCRC(memBuffer);
 }
 

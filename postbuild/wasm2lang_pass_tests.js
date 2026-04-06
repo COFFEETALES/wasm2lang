@@ -168,6 +168,16 @@ var switchDispatch = new PassFamily('switch-dispatch', 'switch_dispatch.wast', f
   assertDispatchKey(result, 'flatSwitchRequiresLabel', 'switchDispatch', 'sw$');
   assertMetadataNull(result, 'flatSwitchRequiresLabel', 'rootSwitch');
 
+  // Non-wrapping dispatch: outer block has trailing case actions but is not
+  // first child of parent — still detected as sw$.
+  assertDispatchKey(result, 'nonWrappingDispatch', 'switchDispatch', 'sw$');
+  assertMetadataNull(result, 'nonWrappingDispatch', 'rootSwitch');
+
+  // Wrapping dispatch with epilogue: first child of loop body with trailing
+  // siblings → detection pass wraps into sw$ block with epilogue.
+  assertDispatchKey(result, 'wrappingDispatchEpilogue', 'switchDispatch', 'sw$');
+  assertMetadataNull(result, 'wrappingDispatchEpilogue', 'rootSwitch');
+
   assertDispatchKey(result, 'rootSwitch', 'switchDispatch', 'sw$');
   assertDispatchKey(result, 'rootSwitch', 'rootSwitch', 'rs$');
 });

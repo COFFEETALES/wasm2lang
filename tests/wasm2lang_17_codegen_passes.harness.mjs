@@ -48,6 +48,14 @@ const runTest = function (buff, out, exports, data) {
   for (const v of data.switch_requires_label_indices) {
     exports.exerciseSwitchRequiresLabel(v);
   }
+
+  for (const triple of data.non_wrapping_dispatch_triples) {
+    exports.exerciseNonWrappingDispatch(triple[0], triple[1], triple[2]);
+  }
+
+  for (const pair of data.wrapping_dispatch_epilogue_pairs) {
+    exports.exerciseWrappingDispatchEpilogue(pair[0], pair[1]);
+  }
 };
 
 const dumpMemory = true;
