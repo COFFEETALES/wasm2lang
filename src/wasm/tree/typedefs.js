@@ -32,6 +32,18 @@ Wasm2Lang.Wasm.Tree.LoopPlan;
 Wasm2Lang.Wasm.Tree.BlockFusionPlan;
 
 /**
+ * Describes an if-else recovery detected by IfElseRecoveryPass.
+ * chainLength is the number of consecutive if-then-break patterns recovered.
+ * labelRemoved is true when the block label was stripped (no remaining refs).
+ *
+ * @typedef {{
+ *   chainLength: number,
+ *   labelRemoved: boolean
+ * }}
+ */
+Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan;
+
+/**
  * @typedef {{
  *   passFuncName: (string|void),
  *   passFuncPtr: (number|void),
@@ -44,7 +56,8 @@ Wasm2Lang.Wasm.Tree.BlockFusionPlan;
  *   loopPlans: (!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>|void),
  *   fusedBlocks: (!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>|void),
  *   switchDispatchNames: (!Object<string, boolean>|void),
- *   rootSwitchNames: (!Object<string, boolean>|void)
+ *   rootSwitchNames: (!Object<string, boolean>|void),
+ *   ifElseRecoveries: (!Object<string, !Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan>|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.PassMetadata;

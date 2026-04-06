@@ -153,6 +153,7 @@ var blockLoopFusion = new PassFamily('block-loop-fusion', 'block_loop_fusion.was
   assertFusionPlan(result, 'fusionA', 'a');
   assertFusionPlan(result, 'fusionB', 'b');
   assertMetadataNull(result, 'noFusion', 'blockLoopFusion');
+  assertMetadataNull(result, 'noFusionOuterExit', 'blockLoopFusion');
 });
 
 // ---------------------------------------------------------------------------
@@ -178,6 +179,43 @@ var loopSimplification = new PassFamily('loop-simplification', 'loop_simplificat
   assertLoopPlan(result, 'whileLoop', 'while');
   assertLoopPlan(result, 'doWhileDirectBrIf', 'dowhile');
   assertLoopPlan(result, 'ifGuardedWhile', 'while');
+  // Exit guard targets distant block → must NOT become while, stays as for.
+  assertLoopPlan(result, 'noWhileDistantExit', 'for');
+  // Terminal-exit: unconditional exit with internal continue paths → for.
+  assertLoopPlan(result, 'terminalExitLoop', ['for', 'while']);
+});
+
+// ---------------------------------------------------------------------------
+// Family: if-else-recovery
+// ---------------------------------------------------------------------------
+
+var ifElseRecovery = new PassFamily('if-else-recovery', 'if_else_recovery.wast', function (result) {
+  // Single if-then-break: chain=1, label removed.
+  assertHasKey(result, 'singleIfElse', '$singleIfElse must exist');
+  var meta1 = result['singleIfElse']['ifElseRecovery'];
+  assertNotNull(meta1, '$singleIfElse ifElseRecovery');
+  var key1 = Object.keys(meta1)[0];
+  assertEqual(meta1[key1]['chainLength'], 1, '$singleIfElse chainLength');
+  assertEqual(meta1[key1]['labelRemoved'], true, '$singleIfElse labelRemoved');
+
+  // Three chained if-then-break: chain=3, label removed.
+  assertHasKey(result, 'chainedIfElse', '$chainedIfElse must exist');
+  var meta2 = result['chainedIfElse']['ifElseRecovery'];
+  assertNotNull(meta2, '$chainedIfElse ifElseRecovery');
+  var key2 = Object.keys(meta2)[0];
+  assertEqual(meta2[key2]['chainLength'], 3, '$chainedIfElse chainLength');
+  assertEqual(meta2[key2]['labelRemoved'], true, '$chainedIfElse labelRemoved');
+
+  // First child is br_if → no recovery.
+  assertMetadataNull(result, 'noRecovery', 'ifElseRecovery');
+
+  // Intermediate br keeps label: chain=1, label kept.
+  assertHasKey(result, 'recoveryLabelKept', '$recoveryLabelKept must exist');
+  var meta4 = result['recoveryLabelKept']['ifElseRecovery'];
+  assertNotNull(meta4, '$recoveryLabelKept ifElseRecovery');
+  var key4 = Object.keys(meta4)[0];
+  assertEqual(meta4[key4]['chainLength'], 1, '$recoveryLabelKept chainLength');
+  assertEqual(meta4[key4]['labelRemoved'], false, '$recoveryLabelKept labelRemoved');
 });
 
 // ---------------------------------------------------------------------------
@@ -196,7 +234,7 @@ function loadBinaryen() {
 // Run all families
 // ---------------------------------------------------------------------------
 
-var families = [localInitFolding, blockLoopFusion, switchDispatch, loopSimplification];
+var families = [localInitFolding, blockLoopFusion, switchDispatch, loopSimplification, ifElseRecovery];
 
 loadBinaryen().then(function (binaryen) {
   var fixtureDir = path.resolve(__dirname, 'fixtures');

@@ -748,6 +748,14 @@ BinaryenModule.prototype.block = function (name, children, type) {};
 BinaryenModule.prototype.loop = function (name, body) {};
 
 /**
+ * @param {number} condition
+ * @param {number} ifTrue
+ * @param {number=} ifFalse
+ * @return {number}
+ */
+BinaryenModule.prototype.if = function (condition, ifTrue, ifFalse) {};
+
+/**
  * @param {string} name
  * @param {number=} condition
  * @param {number=} value

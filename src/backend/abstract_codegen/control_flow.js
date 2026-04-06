@@ -564,7 +564,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
   var /** @const {string} */ brActual = state.fusedBlockToLoop[brName] || brName;
   var /** @const {string} */ brKeyword = 'loop' === brKind ? 'continue' : 'break';
   var /** @type {string} */ brStmt;
-  if (A.isLabelElided(brActual) || A.isBreakLabelImplicit_(state.breakableStack, brKeyword, brActual)) {
+  // When a break was redirected through fusedBlockToLoop, the target loop may
+  // have a label-elided prefix (ly$, lf$, le$) because no direct br references
+  // it.  Skip the elision check for redirected breaks — the label is required
+  // when the loop is not the innermost breakable.
+  var /** @const {boolean} */ isFusedRedirect = brActual !== brName;
+  if ((!isFusedRedirect && A.isLabelElided(brActual)) || A.isBreakLabelImplicit_(state.breakableStack, brKeyword, brActual)) {
     brStmt = brKeyword + ';\n';
   } else {
     state.usedLabels[brActual] = true;

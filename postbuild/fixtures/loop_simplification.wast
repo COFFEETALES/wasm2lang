@@ -60,4 +60,39 @@
           (br $loop))))
     (local.get $i)
   )
+
+  ;; Not a while: loop's exit guard targets $done which is NOT the immediately
+  ;; enclosing block ($found wraps the loop).  Should remain as for-loop (lc$/lf$).
+  (func $noWhileDistantExit (result i32)
+    (local $i i32)
+    (local $result i32)
+    (block $done
+      (block $found
+        (loop $loop
+          (br_if $done (i32.ge_s (local.get $i) (i32.const 10)))
+          (if (i32.eq (local.get $i) (i32.const 5))
+            (then (br $found)))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br $loop)))
+      (local.set $result (local.get $i)))
+    (local.get $result)
+  )
+
+  ;; Terminal-exit loop: last child is unconditional br to outer, body has
+  ;; internal continue paths via inner if branches.  Should become for-loop.
+  ;; (nop prevents block-loop fusion — block has 2 children, not 1.)
+  (func $terminalExitLoop (param $limit i32) (result i32)
+    (local $i i32)
+    (local $sum i32)
+    (block $exit
+      (nop)
+      (loop $loop
+        (if (i32.lt_s (local.get $i) (local.get $limit))
+          (then
+            (local.set $sum (i32.add (local.get $sum) (local.get $i)))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $loop)))
+        (br $exit)))
+    (local.get $sum)
+  )
 )

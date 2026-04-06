@@ -70,6 +70,32 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
         children[0]
       );
     if (binaryen.LoopId === child.id) {
+      // Safety check: if the loop body's first br_if targets an outer block
+      // (not this block), fusion is unsafe — the while-loop simplification pass
+      // would later convert that br_if into a while condition, but while-exit
+      // falls through to code after the fused block that the original br would
+      // have skipped.
+      var /** @const {number} */ loopBodyPtr = /** @type {number} */ (child.body || 0);
+      if (loopBodyPtr) {
+        var /** @const {!BinaryenExpressionInfo} */ loopBody = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+            binaryen,
+            loopBodyPtr
+          );
+        var /** @const {!Array<number>|void} */ lbCh = /** @type {!Array<number>|void} */ (loopBody.children);
+        if (lbCh && lbCh.length > 0) {
+          var /** @const {!BinaryenExpressionInfo} */ firstStmt = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+              binaryen,
+              lbCh[0]
+            );
+          if (
+            binaryen.BreakId === firstStmt.id &&
+            0 !== /** @type {number} */ (firstStmt.condition || 0) &&
+            /** @type {?string} */ (firstStmt.name) !== blockName
+          ) {
+            return null;
+          }
+        }
+      }
       state.fusionBlocks[blockName] = true;
       var /** @const {*} */ fbRef = state.funcMetadata.fusedBlocks;
       if (fbRef) {

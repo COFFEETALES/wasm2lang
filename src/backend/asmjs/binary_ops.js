@@ -65,9 +65,7 @@ Wasm2Lang.Backend.AsmjsCodegen.renderBitwiseBinary_ = Wasm2Lang.Backend.Abstract
 Wasm2Lang.Backend.AsmjsCodegen.renderRotateBinary_ = function (self, info, L, R) {
   var /** @const {string} */ helperName = info.rotateLeft ? '$w2l_rotl' : '$w2l_rotr';
   self.markHelper_(helperName);
-  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(
-    self.n_(helperName) + '(' + L + ', ' + R + ')'
-  );
+  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(self.n_(helperName) + '(' + L + ', ' + R + ')');
 };
 
 /**

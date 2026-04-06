@@ -71,6 +71,8 @@
       {'sourcePath': 'src/wasm/tree/custom_passes/block_loop_fusion_apply.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/loop_simplification_normalize.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/loop_simplification_apply.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/if_else_recovery_normalize.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/if_else_recovery_apply.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/feature_profile_validation_pass.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/registry.js'},
       {'sourcePath': 'src/wasm/tree/node_schema.js'},

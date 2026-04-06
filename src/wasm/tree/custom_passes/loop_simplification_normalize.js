@@ -97,7 +97,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.invertCondition_ = funct
  * @private
  * @typedef {{
  *   simplifiedLoops: !Object<string, string>,
- *   funcMetadata: !Wasm2Lang.Wasm.Tree.PassMetadata
+ *   funcMetadata: !Wasm2Lang.Wasm.Tree.PassMetadata,
+ *   enclosingBlockStack: !Array<string>
  * }}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_;
@@ -252,6 +253,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {number} */ id = expr.id;
 
+  if (binaryen.BlockId === id) {
+    var /** @const {?string} */ enteredBlockName = /** @type {?string} */ (expr.name);
+    if (enteredBlockName) {
+      state.enclosingBlockStack[state.enclosingBlockStack.length] = enteredBlockName;
+    }
+  }
+
   if (binaryen.LoopId !== id) {
     return null;
   }
@@ -402,10 +410,18 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
             binaryen,
             children[0]
           );
+        // The exit target must be the immediately enclosing named block.
+        // If it targets a more distant ancestor, while-exit would fall
+        // through to code between the enclosing block and the target —
+        // code that the original br would have skipped.
+        var /** @const {?string} */ exitTarget = /** @type {?string} */ (firstInfo.name);
+        var /** @const {number} */ bsLen = state.enclosingBlockStack.length;
         if (
           binaryen.BreakId === firstInfo.id &&
           0 !== /** @type {number} */ (firstInfo.condition || 0) &&
-          /** @type {?string} */ (firstInfo.name) !== loopName
+          exitTarget !== loopName &&
+          bsLen > 0 &&
+          state.enclosingBlockStack[bsLen - 1] === exitTarget
         ) {
           // Smarter label check: only need label if body actually references
           // the loop name (e.g. continue $loop inside nested control flow).
@@ -462,6 +478,10 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
       Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, nodeCtx.expressionPointer)
     );
   var /** @const {number} */ id = expr.id;
+
+  if (binaryen.BlockId === id && /** @type {?string} */ (expr.name)) {
+    --state.enclosingBlockStack.length;
+  }
   var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
   var /** @const {string} */ REPLACE_NODE = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE;
 
@@ -568,7 +588,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.createVisitor 
   var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_} */ state =
     /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_} */ ({
       simplifiedLoops: /** @type {!Object<string, string>} */ (Object.create(null)),
-      funcMetadata: funcMetadata
+      funcMetadata: funcMetadata,
+      enclosingBlockStack: []
     });
   return Wasm2Lang.Wasm.Tree.CustomPasses.createEnterLeaveVisitor(this, this.enter_, this.leave_, state);
 };

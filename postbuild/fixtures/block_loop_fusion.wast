@@ -36,4 +36,24 @@
         (br $inner)))
     (local.get $i)
   )
+
+  ;; No fusion: Pattern A candidate but loop's first br_if targets an outer
+  ;; block ($done) rather than the wrapping block ($found).  Fusing would let
+  ;; the while-simplification pass convert the outer-targeting br_if into a
+  ;; while exit that falls through to code it should skip.
+  (func $noFusionOuterExit (result i32)
+    (local $i i32)
+    (local $result i32)
+    (local.set $result (i32.const -1))
+    (block $done
+      (block $found
+        (loop $loop
+          (br_if $done (i32.ge_s (local.get $i) (i32.const 10)))
+          (if (i32.eq (local.get $i) (i32.const 5))
+            (then (br $found)))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br $loop)))
+      (local.set $result (local.get $i)))
+    (local.get $result)
+  )
 )
