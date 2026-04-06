@@ -466,6 +466,62 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // switchRequiresLabel: Flat switch dispatch where case action code
+  // breaks to the outer dispatch block. The switch statement must have
+  // a label so `break $outerLabel` resolves correctly.
+  //
+  // (block $exit
+  //   (block $case2 (block $case1 (block $case0
+  //     (br_table $case0 $case1 $case2 $exit (local.get $idx)))))
+  //   case0: if (idx == 99) { result=77; break $exit; } result=10; break $exit
+  //   case1: result=20; break $exit
+  //   case2: result=30)
+  //
+  // params: idx(0)  locals: result(1)
+  // Returns: idx=0 → 10 (or 77 if idx==99, but that can't happen since
+  //   br_table maps 0→case0). idx=1 → 20. idx=2 → 30. default → 0.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'switchRequiresLabel',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.block('swLabelExit', [
+        module.block('swLabelCase2', [
+          module.block('swLabelCase1', [
+            module.block('swLabelCase0', [
+              module.switch(['swLabelCase0', 'swLabelCase1', 'swLabelCase2'], 'swLabelExit', p(0))
+            ]),
+            // case 0: conditional early exit via br to outer dispatch block
+            module.if(
+              module.i32.eq(p(0), i32(99)),
+              module.block(null, [module.local.set(1, i32(77)), module.br('swLabelExit')])
+            ),
+            module.local.set(1, i32(10)),
+            module.br('swLabelExit')
+          ]),
+          // case 1
+          module.local.set(1, i32(20)),
+          module.br('swLabelExit')
+        ]),
+        // case 2 (default fall-through)
+        module.local.set(1, i32(30))
+      ]),
+      module.return(p(1))
+    ])
+  );
+
+  // exerciseSwitchRequiresLabel(idx: i32): void
+  module.addFunction(
+    'exerciseSwitchRequiresLabel',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('switchRequiresLabel', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
@@ -488,6 +544,8 @@
   module.addFunctionExport('exerciseIfElseSimple', 'exerciseIfElseSimple');
   module.addFunctionExport('ifElseKeptLabel', 'ifElseKeptLabel');
   module.addFunctionExport('exerciseIfElseKeptLabel', 'exerciseIfElseKeptLabel');
+  module.addFunctionExport('switchRequiresLabel', 'switchRequiresLabel');
+  module.addFunctionExport('exerciseSwitchRequiresLabel', 'exerciseSwitchRequiresLabel');
 
   common.finalizeAndOutput(module);
 
@@ -603,6 +661,8 @@
       return [common.rand.smallI32(), common.rand.smallI32()];
     })
   );
+
+  data.switch_requires_label_indices = [0, 1, 2, 3, 4, 5, 10, 100];
 
   common.emitSharedData(data);
 })();

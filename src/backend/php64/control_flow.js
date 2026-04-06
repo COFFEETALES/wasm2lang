@@ -654,9 +654,23 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFlatSwitch_ = function (state, node
 
   // The leave wrapper already popped the outer block from labelStack.
   // Re-push it as a single entry so that breaks targeting the outer name
-  // resolve to depth 1 (= exit the switch).  No do-while wrapper needed
-  // because the flat switch consumes the entire outer block with no tail code.
-  state.labelStack[state.labelStack.length] = {lbl: info.outerName, lk: 'block'};
+  // resolve to depth 1 (= exit the switch).
+  //
+  // In the wrapping scenario (epilogue exists), action code breaks target
+  // the original chain outer name (e.g. "swLabelExit"), not the sw$-prefixed
+  // wrapper.  Push the original name so label resolution finds it.
+  var /** @const {boolean} */ hasEpilogue = info.epiloguePtrs.length > 0;
+  var /** @type {string} */ breakTargetName = info.outerName;
+  if (hasEpilogue) {
+    var /** @const {!Array<string>} */ cn = info.chainNames;
+    for (var /** @type {number} */ fi = 0, /** @const {number} */ cnLen = cn.length; fi < cnLen; ++fi) {
+      if (cn[fi] !== info.outerName) {
+        breakTargetName = cn[fi];
+        break;
+      }
+    }
+  }
+  state.labelStack[state.labelStack.length] = {lbl: breakTargetName, lk: 'block'};
 
   // Sub-walk the switch condition.
   var /** @const {string} */ condStr = A.subWalkExpressionString_(state, info.conditionPtr);
@@ -680,6 +694,20 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFlatSwitch_ = function (state, node
   }
 
   lines[lines.length] = pad(ind) + '}\n';
+
+  // Emit epilogue (trailing children of the wrapper block) after the switch.
+  if (hasEpilogue) {
+    SDA.emitSubWalkedExpressions_(
+      lines,
+      /** @type {!BinaryenModule} */ (state.wasmModule),
+      binaryen,
+      state.functionInfo,
+      vis,
+      info.epiloguePtrs,
+      info.epiloguePtrs.length,
+      ind
+    );
+  }
 
   // Remove the outer block entry we re-pushed.
   state.labelStack.pop();

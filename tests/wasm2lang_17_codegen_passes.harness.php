@@ -48,6 +48,10 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ($data['if_else_kept_pairs'] as $pair) {
         $exports['exerciseIfElseKeptLabel']($pair[0], $pair[1]);
     }
+
+    foreach ($data['switch_requires_label_indices'] as $v) {
+        $exports['exerciseSwitchRequiresLabel']($v);
+    }
 };
 
 $dumpMemory = true;

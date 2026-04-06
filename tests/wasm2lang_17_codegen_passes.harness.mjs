@@ -44,6 +44,10 @@ const runTest = function (buff, out, exports, data) {
   for (const pair of data.if_else_kept_pairs) {
     exports.exerciseIfElseKeptLabel(pair[0], pair[1]);
   }
+
+  for (const v of data.switch_requires_label_indices) {
+    exports.exerciseSwitchRequiresLabel(v);
+  }
 };
 
 const dumpMemory = true;

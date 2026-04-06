@@ -45,6 +45,10 @@
         mod.exerciseIfElseKeptLabel(pair.get(0).intValue(), pair.get(1).intValue());
     }
 
+    for (Double v : w2lFlat(_data, "switch_requires_label_indices")) {
+        mod.exerciseSwitchRequiresLabel(v.intValue());
+    }
+
     w2lDumpCRC(memBuffer);
 }
 

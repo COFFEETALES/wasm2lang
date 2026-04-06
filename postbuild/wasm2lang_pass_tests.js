@@ -164,6 +164,10 @@ var switchDispatch = new PassFamily('switch-dispatch', 'switch_dispatch.wast', f
   assertDispatchKey(result, 'flatSwitch', 'switchDispatch', 'sw$');
   assertMetadataNull(result, 'flatSwitch', 'rootSwitch');
 
+  // Action code breaks to the outer dispatch block — still detected as sw$.
+  assertDispatchKey(result, 'flatSwitchRequiresLabel', 'switchDispatch', 'sw$');
+  assertMetadataNull(result, 'flatSwitchRequiresLabel', 'rootSwitch');
+
   assertDispatchKey(result, 'rootSwitch', 'switchDispatch', 'sw$');
   assertDispatchKey(result, 'rootSwitch', 'rootSwitch', 'rs$');
 });
