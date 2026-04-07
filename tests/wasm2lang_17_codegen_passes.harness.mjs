@@ -56,6 +56,18 @@ const runTest = function (buff, out, exports, data) {
   for (const pair of data.wrapping_dispatch_epilogue_pairs) {
     exports.exerciseWrappingDispatchEpilogue(pair[0], pair[1]);
   }
+
+  for (const v of data.guard_elision_product_values) {
+    exports.exerciseGuardElisionProduct(v);
+  }
+
+  for (const pair of data.guard_elision_retained_pairs) {
+    exports.exerciseGuardElisionRetained(pair[0], pair[1]);
+  }
+
+  for (const v of data.redundant_loop_block_limits) {
+    exports.exerciseRedundantLoopBlock(v);
+  }
 };
 
 const dumpMemory = true;

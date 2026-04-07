@@ -41,60 +41,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass = function () {
 Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.State_;
 
 /**
- * Recursively checks whether any BreakId or SwitchId in the subtree
- * targets the given label name.
- *
- * @private
- * @param {!Binaryen} binaryen
- * @param {number} ptr
- * @param {string} targetName
- * @return {boolean}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.hasReference_ = function (binaryen, ptr, targetName) {
-  if (!ptr) {
-    return false;
-  }
-  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
-    );
-  var /** @const {number} */ id = info.id;
-  if (binaryen.BreakId === id) {
-    return /** @type {?string} */ (info.name) === targetName;
-  }
-  if (binaryen.SwitchId === id) {
-    var /** @const {!Array<string>} */ sn = /** @type {!Array<string>} */ (info.names || []);
-    for (var /** @type {number} */ si = 0, /** @const {number} */ snLen = sn.length; si < snLen; ++si) {
-      if (sn[si] === targetName) return true;
-    }
-    return /** @type {string} */ (info.defaultName || '') === targetName;
-  }
-  var /** @const {function(!Binaryen, number, string): boolean} */ check =
-      Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.hasReference_;
-  if (binaryen.BlockId === id) {
-    var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
-    if (ch) {
-      for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
-        if (check(binaryen, ch[ci], targetName)) return true;
-      }
-    }
-    return false;
-  }
-  if (binaryen.LoopId === id) {
-    return check(binaryen, /** @type {number} */ (info.body || 0), targetName);
-  }
-  if (binaryen.IfId === id) {
-    return (
-      check(binaryen, /** @type {number} */ (info.ifTrue || 0), targetName) ||
-      check(binaryen, /** @type {number} */ (info.ifFalse || 0), targetName)
-    );
-  }
-  if (binaryen.DropId === id || binaryen.ReturnId === id || binaryen.LocalSetId === id || binaryen.GlobalSetId === id) {
-    return check(binaryen, /** @type {number} */ (info.value || 0), targetName);
-  }
-  return false;
-};
-
-/**
  * @private
  * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.State_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
@@ -176,8 +122,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
   // Check for intermediate references to blockName that require keeping
   // the label.  Scan conditions, stripped then-arms, and else body.
   // -----------------------------------------------------------------------
-  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn =
-      Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.hasReference_;
+  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
   var /** @type {boolean} */ hasRef = false;
 
   for (var /** @type {number} */ ri = 0; ri < chainLength && !hasRef; ++ri) {

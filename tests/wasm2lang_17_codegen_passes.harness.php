@@ -60,6 +60,18 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ($data['wrapping_dispatch_epilogue_pairs'] as $pair) {
         $exports['exerciseWrappingDispatchEpilogue']($pair[0], $pair[1]);
     }
+
+    foreach ($data['guard_elision_product_values'] as $v) {
+        $exports['exerciseGuardElisionProduct']($v);
+    }
+
+    foreach ($data['guard_elision_retained_pairs'] as $pair) {
+        $exports['exerciseGuardElisionRetained']($pair[0], $pair[1]);
+    }
+
+    foreach ($data['redundant_loop_block_limits'] as $v) {
+        $exports['exerciseRedundantLoopBlock']($v);
+    }
 };
 
 $dumpMemory = true;

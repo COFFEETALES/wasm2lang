@@ -651,6 +651,127 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // guardElisionProduct: Block with leading br_if guard targeting itself.
+  //
+  // (block $done
+  //   (br_if $done (le_s x 0))
+  //   (local.set r (mul x 2)))
+  //
+  // BlockGuardElisionPass inverts the condition and wraps in if-not.
+  // No remaining refs → label removed entirely.
+  //
+  // params: x(0)  locals: r(1)
+  // Returns: x > 0 ? x*2 : 0
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'guardElisionProduct',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.block('guardProdDone', [
+        module.br('guardProdDone', module.i32.le_s(p(0), i32(0))),
+        module.local.set(1, module.i32.mul(p(0), i32(2)))
+      ]),
+      module.return(p(1))
+    ])
+  );
+
+  // exerciseGuardElisionProduct(x: i32): void
+  module.addFunction(
+    'exerciseGuardElisionProduct',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('guardElisionProduct', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // guardElisionRetained: Block with leading br_if guard AND an
+  // additional br_if in the body targeting the same block. The label
+  // must be kept because of the remaining reference.
+  //
+  // (block $done
+  //   (br_if $done (le_s x 0))
+  //   (local.set r x)
+  //   (br_if $done (gt_s y 10))
+  //   (local.set r (mul x y)))
+  //
+  // params: x(0), y(1)  locals: r(2)
+  // Returns: x <= 0 ? 0 : y > 10 ? x : x*y
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'guardElisionRetained',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.block('guardRetDone', [
+        module.br('guardRetDone', module.i32.le_s(p(0), i32(0))),
+        module.local.set(2, p(0)),
+        module.br('guardRetDone', module.i32.gt_s(p(1), i32(10))),
+        module.local.set(2, module.i32.mul(p(0), p(1)))
+      ]),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseGuardElisionRetained(x: i32, y: i32): void
+  module.addFunction(
+    'exerciseGuardElisionRetained',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('guardElisionRetained', [p(0), p(1)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // redundantLoopBlock: Block wrapping a while-loop where the block
+  // label becomes unreferenced after loop simplification consumes the
+  // exit guard as the while condition.
+  //
+  // (block $exit (loop $loop
+  //   (br_if $exit (ge_s i n))
+  //   body
+  //   (br $loop)))
+  //
+  // After fusion+simplification, $exit is unreferenced with one child.
+  // RedundantBlockRemovalPass unwraps the block.
+  //
+  // params: n(0)  locals: sum(1), i(2)
+  // Returns: sum of 0..n-1
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'redundantLoopBlock',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.block('redundantExit', [
+        module.loop(
+          'redundantLoop',
+          module.block(null, [
+            module.br('redundantExit', module.i32.ge_s(p(2), p(0))),
+            module.local.set(1, module.i32.add(p(1), p(2))),
+            module.local.set(2, module.i32.add(p(2), i32(1))),
+            module.br('redundantLoop')
+          ])
+        )
+      ]),
+      module.return(p(1))
+    ])
+  );
+
+  // exerciseRedundantLoopBlock(n: i32): void
+  module.addFunction(
+    'exerciseRedundantLoopBlock',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('redundantLoopBlock', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
@@ -679,6 +800,12 @@
   module.addFunctionExport('exerciseNonWrappingDispatch', 'exerciseNonWrappingDispatch');
   module.addFunctionExport('wrappingDispatchEpilogue', 'wrappingDispatchEpilogue');
   module.addFunctionExport('exerciseWrappingDispatchEpilogue', 'exerciseWrappingDispatchEpilogue');
+  module.addFunctionExport('guardElisionProduct', 'guardElisionProduct');
+  module.addFunctionExport('exerciseGuardElisionProduct', 'exerciseGuardElisionProduct');
+  module.addFunctionExport('guardElisionRetained', 'guardElisionRetained');
+  module.addFunctionExport('exerciseGuardElisionRetained', 'exerciseGuardElisionRetained');
+  module.addFunctionExport('redundantLoopBlock', 'redundantLoopBlock');
+  module.addFunctionExport('exerciseRedundantLoopBlock', 'exerciseRedundantLoopBlock');
 
   common.finalizeAndOutput(module);
 
@@ -824,6 +951,35 @@
     [100, 2],
     [3, 3]
   ];
+
+  data.guard_elision_product_values = [-10, -1, 0, 1, 2, 5, 10, 50, 100].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  data.guard_elision_retained_pairs = [
+    [0, 0],
+    [-1, 5],
+    [1, 5],
+    [1, 11],
+    [5, 10],
+    [5, 11],
+    [10, 0],
+    [10, 20],
+    [-5, 15],
+    [3, 3]
+  ].concat(
+    Array.from({length: 4}, function () {
+      return [common.rand.smallI32(), common.rand.smallI32()];
+    })
+  );
+
+  data.redundant_loop_block_limits = [0, 1, 2, 5, 10, 20, 50, 100].concat(
+    Array.from({length: 4}, function () {
+      return (Math.random() * 50) | 0;
+    })
+  );
 
   common.emitSharedData(data);
 })();

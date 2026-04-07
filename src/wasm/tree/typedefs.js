@@ -44,6 +44,16 @@ Wasm2Lang.Wasm.Tree.BlockFusionPlan;
 Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan;
 
 /**
+ * Describes a block-guard elision detected by BlockGuardElisionPass.
+ * labelRemoved is true when the block label was stripped (no remaining refs).
+ *
+ * @typedef {{
+ *   labelRemoved: boolean
+ * }}
+ */
+Wasm2Lang.Wasm.Tree.BlockGuardElisionPlan;
+
+/**
  * @typedef {{
  *   passFuncName: (string|void),
  *   passFuncPtr: (number|void),
@@ -57,7 +67,9 @@ Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan;
  *   fusedBlocks: (!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>|void),
  *   switchDispatchNames: (!Object<string, boolean>|void),
  *   rootSwitchNames: (!Object<string, boolean>|void),
- *   ifElseRecoveries: (!Object<string, !Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan>|void)
+ *   ifElseRecoveries: (!Object<string, !Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan>|void),
+ *   blockGuardElisions: (!Object<string, !Wasm2Lang.Wasm.Tree.BlockGuardElisionPlan>|void),
+ *   redundantBlockRemovals: (!Object<string, boolean>|void)
  * }}
  */
 Wasm2Lang.Wasm.Tree.PassMetadata;

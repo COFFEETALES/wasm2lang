@@ -57,6 +57,18 @@
         mod.exerciseWrappingDispatchEpilogue(pair.get(0).intValue(), pair.get(1).intValue());
     }
 
+    for (Double v : w2lFlat(_data, "guard_elision_product_values")) {
+        mod.exerciseGuardElisionProduct(v.intValue());
+    }
+
+    for (java.util.List<Double> pair : w2lNested(_data, "guard_elision_retained_pairs")) {
+        mod.exerciseGuardElisionRetained(pair.get(0).intValue(), pair.get(1).intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "redundant_loop_block_limits")) {
+        mod.exerciseRedundantLoopBlock(v.intValue());
+    }
+
     w2lDumpCRC(memBuffer);
 }
 

@@ -233,6 +233,65 @@ var ifElseRecovery = new PassFamily('if-else-recovery', 'if_else_recovery.wast',
 });
 
 // ---------------------------------------------------------------------------
+// Family: block-guard-elision
+// ---------------------------------------------------------------------------
+
+var blockGuardElision = new PassFamily('block-guard-elision', 'block_guard_elision.wast', function (result) {
+  // Simple guard: br_if targeting self, no remaining refs → label removed.
+  assertHasKey(result, 'guardSimple', '$guardSimple must exist');
+  var meta1 = result['guardSimple']['blockGuardElision'];
+  assertNotNull(meta1, '$guardSimple blockGuardElision');
+  var key1 = Object.keys(meta1)[0];
+  assertEqual(meta1[key1]['labelRemoved'], true, '$guardSimple labelRemoved');
+
+  // Multi-body guard with eqz condition → label removed.
+  assertHasKey(result, 'guardMultiBody', '$guardMultiBody must exist');
+  var meta2 = result['guardMultiBody']['blockGuardElision'];
+  assertNotNull(meta2, '$guardMultiBody blockGuardElision');
+  var key2 = Object.keys(meta2)[0];
+  assertEqual(meta2[key2]['labelRemoved'], true, '$guardMultiBody labelRemoved');
+
+  // Guard with remaining reference → label kept.
+  assertHasKey(result, 'guardKeptLabel', '$guardKeptLabel must exist');
+  var meta3 = result['guardKeptLabel']['blockGuardElision'];
+  assertNotNull(meta3, '$guardKeptLabel blockGuardElision');
+  var key3 = Object.keys(meta3)[0];
+  assertEqual(meta3[key3]['labelRemoved'], false, '$guardKeptLabel labelRemoved');
+
+  // First child is If → no guard elision.
+  assertMetadataNull(result, 'noGuard', 'blockGuardElision');
+
+  // Unconditional br → no guard elision.
+  assertMetadataNull(result, 'noGuardUnconditional', 'blockGuardElision');
+});
+
+// ---------------------------------------------------------------------------
+// Family: redundant-block-removal
+// ---------------------------------------------------------------------------
+
+var redundantBlockRemoval = new PassFamily('redundant-block-removal', 'redundant_block_removal.wast', function (result) {
+  // Single-child unreferenced → removed (value = true for single-child).
+  assertHasKey(result, 'singleChildRemoved', '$singleChildRemoved must exist');
+  var meta1 = result['singleChildRemoved']['redundantBlockRemoval'];
+  assertNotNull(meta1, '$singleChildRemoved redundantBlockRemoval');
+  assertHasKey(meta1, 'wrapper', '$singleChildRemoved must have wrapper key');
+  assertEqual(meta1['wrapper'], true, '$singleChildRemoved single-child unwrap');
+
+  // Multi-child unreferenced → label stripped (value = false for multi-child).
+  assertHasKey(result, 'multiChildLabelRemoved', '$multiChildLabelRemoved must exist');
+  var meta2 = result['multiChildLabelRemoved']['redundantBlockRemoval'];
+  assertNotNull(meta2, '$multiChildLabelRemoved redundantBlockRemoval');
+  assertHasKey(meta2, 'wrapper', '$multiChildLabelRemoved must have wrapper key');
+  assertEqual(meta2['wrapper'], false, '$multiChildLabelRemoved label strip');
+
+  // Referenced label → NOT removed.
+  assertMetadataNull(result, 'singleChildKept', 'redundantBlockRemoval');
+
+  // Unnamed block → not touched.
+  assertMetadataNull(result, 'unnamedBlock', 'redundantBlockRemoval');
+});
+
+// ---------------------------------------------------------------------------
 // Async binaryen loader (same pattern as build_common.js)
 // ---------------------------------------------------------------------------
 
@@ -248,7 +307,7 @@ function loadBinaryen() {
 // Run all families
 // ---------------------------------------------------------------------------
 
-var families = [localInitFolding, blockLoopFusion, switchDispatch, loopSimplification, ifElseRecovery];
+var families = [localInitFolding, blockLoopFusion, switchDispatch, loopSimplification, ifElseRecovery, blockGuardElision, redundantBlockRemoval];
 
 loadBinaryen().then(function (binaryen) {
   var fixtureDir = path.resolve(__dirname, 'fixtures');
