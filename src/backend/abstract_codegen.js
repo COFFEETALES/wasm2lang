@@ -142,6 +142,32 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
   this.passRunResultIndex_ = null;
 
   /**
+   * Active local-init overrides for the current function.  When non-null,
+   * the first local.set for each index present in the map is suppressed
+   * (its value is already folded into the var declaration).
+   * Reset per function in walkAndAppendBody_.
+   * @protected @type {?{map: !Object<string, number>, consumed: !Object<string, boolean>}}
+   */
+  this.localInitOverridesActive_ = null;
+
+  /**
+   * When true, control-flow simplifications (flat switch, loop
+   * simplification, block-loop fusion) are applied during code emission.
+   * Set via {@code enableSimplifications_} when --pre-normalized is active.
+   * @protected @type {boolean}
+   */
+  this.useSimplifications_ = false;
+
+  /**
+   * IR-detected block-loop fusions, keyed by {@code funcName + '\0' + blockName}.
+   * Populated during emitEnter_ when structural detection finds a fusion
+   * pattern that metadata lookup missed (e.g. after binary round-trip).
+   * Checked by getBlockFusionPlan_ as a fallback.
+   * @protected @type {?Object<string, string>}
+   */
+  this.irFusedBlocks_ = null;
+
+  /**
    * When true, coerceToType_ skips f64 coercion for CAT_F32 expressions
    * (the language auto-widens float to double).  Set by Java and PHP.
    * @protected @type {boolean}

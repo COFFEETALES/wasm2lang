@@ -34,7 +34,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass = function () {
  * Label prefix added to the outermost block of a br_table dispatch.
  * @const {string}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER = 'sw$';
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER = 'w2l_switch$';
 
 /**
  * @private
@@ -194,18 +194,18 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.enter_ = 
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = function (state, nodeCtx) {
   var /** @const {string} */ M = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER;
+  var /** @const {string} */ REPLACE_NODE = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE;
 
-  // Standard marker renaming for BreakId, SwitchId, and non-wrapping BlockId.
+  // Suppress ALL marker renaming — use switchOuterBlocks as its own exclusion
+  // set so no BreakId/SwitchId/BlockId referencing a dispatch outer is renamed.
+  // Instead, non-wrapping outers get a new wrapper block (consistent with the
+  // wrapping case which already uses a wrapper without renaming).
   var /** @const {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ renameResult =
-      Wasm2Lang.Wasm.Tree.CustomPasses.applyLeaveRenaming_(M, state.switchOuterBlocks, state.switchNeedsWrapping, nodeCtx);
+      Wasm2Lang.Wasm.Tree.CustomPasses.applyLeaveRenaming_(M, state.switchOuterBlocks, state.switchOuterBlocks, nodeCtx);
   if (renameResult) {
     return renameResult;
   }
 
-  // Parent wrapping: this block's first child is a dispatch chain outer
-  // that needs wrapping.  Wrap the chain + trailing siblings in a new sw$
-  // block, optionally excluding a trailing unconditional break so the loop
-  // simplification pass can still detect the LC (for(;;)) pattern.
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
   // prettier-ignore
   var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
@@ -213,36 +213,81 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
   var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
     Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,nodeCtx.expressionPointer)
   );
-  if (binaryen.BlockId === expr.id) {
-    var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (expr.children || []);
-    if (children.length > 1) {
-      var /** @const {number} */ fcPtr = children[0];
-      var /** @const {!BinaryenExpressionInfo} */ fcInfo = /** @type {!BinaryenExpressionInfo} */ (
-          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr)
+
+  if (binaryen.BlockId !== expr.id) {
+    return null;
+  }
+
+  var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
+
+  // --- Non-wrapping dispatch outer: wrap in a marker block ---
+  // The original block keeps its name; breaks inside action code continue to
+  // target it.  The wrapper provides the w2l_switch$ marker the backend uses
+  // for detection.  An explicit br to the wrapper name at the end of the
+  // inner block ensures the outermost case body terminates in the JS switch.
+  if (blockName && blockName in state.switchOuterBlocks && !(blockName in state.switchNeedsWrapping)) {
+    var /** @const {!Array<number>} */ innerChildren = /** @type {!Array<number>} */ ((expr.children || []).slice(0));
+    innerChildren[innerChildren.length] = module.break(M + blockName, 0, 0);
+    var /** @const {number} */ innerBlock = module.block(blockName, innerChildren, expr.type);
+    return {
+      decisionAction: REPLACE_NODE,
+      expressionPointer: module.block(M + blockName, [innerBlock], expr.type)
+    };
+  }
+
+  // --- Wrapping dispatch outer: add explicit terminal break ---
+  // Ensures the outermost case body terminates when emitted as a JS switch
+  // case.  The break targets the block's own name (exits to the epilogue
+  // inside the wrapper that the parent creates).
+  if (blockName && blockName in state.switchNeedsWrapping) {
+    var /** @const {!Array<number>} */ wrapChildren = /** @type {!Array<number>} */ ((expr.children || []).slice(0));
+    var /** @type {boolean} */ hasTerminal = false;
+    if (wrapChildren.length > 0) {
+      var /** @const {!BinaryenExpressionInfo} */ tailInfo = /** @type {!BinaryenExpressionInfo} */ (
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, wrapChildren[wrapChildren.length - 1])
         );
-      if (binaryen.BlockId === fcInfo.id) {
-        var /** @const {?string} */ fcName = /** @type {?string} */ (fcInfo.name);
-        if (fcName && fcName in state.switchNeedsWrapping) {
-          var /** @const {!Array<number>} */ allChildren = children.slice(0);
-          var /** @type {!Array<number>} */ wrapperChildren;
+      hasTerminal = binaryen.BreakId === tailInfo.id && 0 === /** @type {number} */ (tailInfo.condition || 0);
+    }
+    if (!hasTerminal) {
+      wrapChildren[wrapChildren.length] = module.break(blockName, 0, 0);
+      return {
+        decisionAction: REPLACE_NODE,
+        expressionPointer: module.block(blockName, wrapChildren, expr.type)
+      };
+    }
+  }
 
-          var /** @const {!BinaryenExpressionInfo} */ lastInfo = /** @type {!BinaryenExpressionInfo} */ (
-              Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, allChildren[allChildren.length - 1])
-            );
-          var /** @const {boolean} */ excludeLast =
-              binaryen.BreakId === lastInfo.id && 0 === /** @type {number} */ (lastInfo.condition || 0);
-          wrapperChildren = excludeLast ? allChildren.slice(0, allChildren.length - 1) : allChildren;
+  // --- Parent wrapping: first child is a dispatch outer needing a wrapper ---
+  // Wrap the chain + trailing siblings in a new w2l_switch$ block, optionally
+  // excluding a trailing unconditional break so the loop simplification pass
+  // can still detect the LC (for(;;)) pattern.
+  var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (expr.children || []);
+  if (children.length > 1) {
+    var /** @const {number} */ fcPtr = children[0];
+    var /** @const {!BinaryenExpressionInfo} */ fcInfo = /** @type {!BinaryenExpressionInfo} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr)
+      );
+    if (binaryen.BlockId === fcInfo.id) {
+      var /** @const {?string} */ fcName = /** @type {?string} */ (fcInfo.name);
+      if (fcName && fcName in state.switchNeedsWrapping) {
+        var /** @const {!Array<number>} */ allChildren = children.slice(0);
+        var /** @type {!Array<number>} */ wrapperChildren;
 
-          var /** @const {number} */ wrapperBlock = module.block(M + fcName, wrapperChildren, binaryen.none);
-          var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
-          var /** @const {!Array<number>} */ outerChildren = excludeLast
-              ? [wrapperBlock, allChildren[allChildren.length - 1]]
-              : [wrapperBlock];
-          return {
-            decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE,
-            expressionPointer: module.block(blockName || null, outerChildren, expr.type)
-          };
-        }
+        var /** @const {!BinaryenExpressionInfo} */ lastInfo = /** @type {!BinaryenExpressionInfo} */ (
+            Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, allChildren[allChildren.length - 1])
+          );
+        var /** @const {boolean} */ excludeLast =
+            binaryen.BreakId === lastInfo.id && 0 === /** @type {number} */ (lastInfo.condition || 0);
+        wrapperChildren = excludeLast ? allChildren.slice(0, allChildren.length - 1) : allChildren;
+
+        var /** @const {number} */ wrapperBlock = module.block(M + fcName, wrapperChildren, binaryen.none);
+        var /** @const {!Array<number>} */ outerChildren = excludeLast
+            ? [wrapperBlock, allChildren[allChildren.length - 1]]
+            : [wrapperBlock];
+        return {
+          decisionAction: REPLACE_NODE,
+          expressionPointer: module.block(blockName || null, outerChildren, expr.type)
+        };
       }
     }
   }
@@ -314,7 +359,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass = function () {
  * Label prefix added to the outermost block of a root-switch-loop pattern.
  * @const {string}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.MARKER = 'rs$';
+Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.MARKER = 'w2l_rootsw$';
 
 /**
  * @private

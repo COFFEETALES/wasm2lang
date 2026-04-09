@@ -78,6 +78,24 @@
     (local.get $result)
   )
 
+  ;; Multi-guard while: two consecutive br_if exit guards at the top of the
+  ;; loop body, both targeting the immediately enclosing block.  The pass
+  ;; must combine them into a single while condition (i32.and of inverted
+  ;; guards) and restructure the IR to while-if form.
+  ;; Loop $loop should become lw$ or ly$ with loopKind 'while'.
+  (func $multiGuardWhile (param $limit i32) (param $threshold i32) (result i32)
+    (local $i i32)
+    (local $sum i32)
+    (block $exit
+      (loop $loop
+        (br_if $exit (i32.ge_s (local.get $i) (local.get $limit)))
+        (br_if $exit (i32.eq (local.get $sum) (local.get $threshold)))
+        (local.set $sum (i32.add (local.get $sum) (local.get $i)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)))
+    (local.get $sum)
+  )
+
   ;; Terminal-exit loop: last child is unconditional br to outer, body has
   ;; internal continue paths via inner if branches.  Should become for-loop.
   ;; (nop prevents block-loop fusion — block has 2 children, not 1.)

@@ -24,7 +24,8 @@
  *   rootSwitchRsName: string,
  *   rootSwitchLoopName: string,
  *   breakableStack: !Array<string>,
- *   usedLabels: !Object<string, boolean>
+ *   usedLabels: !Object<string, boolean>,
+ *   pendingLoopKind: string
  * }}
  */
 Wasm2Lang.Backend.JavaCodegen.EmitState_;
@@ -272,15 +273,18 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
     case binaryen.LoopId: {
       var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
-      var /** @const {string} */ loopBody = cr(0);
-      var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
-      if (loopPlan) {
-        var /** @const {string} */ loopLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
-        result = this.emitSimplifiedLoop_(state, loopPlan, ind, loopLabel, loopBody);
+      var /** @type {?string} */ loopKind = null;
+      if ('' !== state.pendingLoopKind) {
+        loopKind = state.pendingLoopKind;
+        state.pendingLoopKind = '';
+      }
+      if (loopKind) {
+        result = this.emitSimplifiedLoopFromIR_(state, nodeCtx, loopKind);
       } else {
         // Raw loop fallback (unsimplified): named body blocks can complete
         // normally via `break $blockName`, so the trailing `break;` is
         // always reachable and required.
+        var /** @const {string} */ loopBody = cr(0);
         var /** @const {number} */ loopBodyPtr = /** @type {number} */ (expr.body);
         var /** @const {!BinaryenExpressionInfo} */ loopBodyInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
             binaryen,

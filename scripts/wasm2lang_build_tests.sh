@@ -58,7 +58,7 @@ if [ ${#0} -ne ${#prefix} ]; then
       if [ -f "../tests/${testbase}.build.normalize" ]; then
         variant_list="$(cat "../tests/${testbase}.build.normalize")"
       else
-        variant_list="codegen binaryen:none,wasm2lang:codegen${LF}none binaryen:none"
+        variant_list="codegen binaryen:none,wasm2lang:codegen${LF}prenorm binaryen:none,wasm2lang:codegen"
       fi
 
       while IFS=' ' read -r variant_suffix normalize_wasm; do
@@ -77,7 +77,6 @@ if [ ${#0} -ne ${#prefix} ]; then
             ;;
         esac
 
-        artifact_normalize_wasm="binaryen:none"
         artifact_dir="${testbase}_${variant_suffix}"
         artifact_base="${artifact_dir}/${artifact_dir}"
 
@@ -87,6 +86,13 @@ if [ ${#0} -ne ${#prefix} ]; then
           build_languages="$(cat "../tests/${testbase}.build.languages")"
         fi
 
+        # prenorm/nopre: WASM/WAST include wasm2lang:codegen normalization
+        # (embeds the w2l_codegen_meta custom section); other variants use raw.
+        case "$variant_suffix" in
+          prenorm|nopre) wasm_normalize="$normalize_wasm" ;;
+          *)             wasm_normalize="binaryen:none"   ;;
+        esac
+
         mkdir "$artifact_dir"
         for harness_file in "../tests/${testbase}.harness."*; do
           harness_name="$(basename "$harness_file")"
@@ -95,37 +101,54 @@ if [ ${#0} -ne ${#prefix} ]; then
         done
         #
         # Generate WASM
-        cat ./"${testbase}".orig.wast                 \
-        |                                             \
-        node                                          \
-          "../wasm2lang.js"                           \
-          --normalize-wasm "$artifact_normalize_wasm" \
-          --emit-web-assembly                         \
-          --input-file wast:-                         \
+        cat ./"${testbase}".orig.wast           \
+        |                                       \
+        node                                    \
+          "../wasm2lang.js"                     \
+          --normalize-wasm "$wasm_normalize"    \
+          --emit-web-assembly                   \
+          --input-file wast:-                   \
           1>"${artifact_base}".wasm
         #
         # Generate WAST
-        cat ./"${testbase}".orig.wast                 \
-        |                                             \
-        node                                          \
-          "../wasm2lang.js"                           \
-          --normalize-wasm "$artifact_normalize_wasm" \
-          --emit-web-assembly text                    \
-          --input-file wast:-                         \
+        cat ./"${testbase}".orig.wast           \
+        |                                       \
+        node                                    \
+          "../wasm2lang.js"                     \
+          --normalize-wasm "$wasm_normalize"    \
+          --emit-web-assembly text              \
+          --input-file wast:-                   \
           1>"${artifact_base}".wast
         #
-        # Generate ASMJS (uses .wast text input — binaryen's getExpressionInfo
-        # has issues with br_table expressions read from .wasm binary)
+        # Code generation: prenorm reads from the variant's .wasm binary
+        # with --pre-normalized; other variants read from .wast with
+        # in-process normalization.
+        case "$variant_suffix" in
+          prenorm)
+            codegen_normalize="binaryen:none"
+            codegen_input="--input-file ${artifact_base}.wasm --pre-normalized"
+            ;;
+          nopre)
+            codegen_normalize="binaryen:none"
+            codegen_input="--input-file ${artifact_base}.wasm"
+            ;;
+          *)
+            codegen_normalize="$normalize_wasm"
+            codegen_input="--input-file wast:${artifact_base}.wast"
+            ;;
+        esac
+        #
+        # Generate ASMJS
         case " $build_languages " in *" ASMJS "*)
         node                                        \
           "../wasm2lang.js"                         \
-          --normalize-wasm "$normalize_wasm"        \
+          --normalize-wasm "$codegen_normalize"     \
           "$@"                                      \
           --language-out ASMJS                      \
           --define "ASMJS_HEAP_SIZE=$((65536 * 8))" \
           --emit-metadata=memBuffer                 \
           --emit-code=module                        \
-          --input-file "wast:${artifact_base}.wast" \
+          $codegen_input                            \
           1>"${artifact_base}".asm.js
         ;; esac
         #
@@ -133,13 +156,13 @@ if [ ${#0} -ne ${#prefix} ]; then
         case " $build_languages " in *" PHP64 "*)
         node                                        \
           "../wasm2lang.js"                         \
-          --normalize-wasm "$normalize_wasm"        \
+          --normalize-wasm "$codegen_normalize"     \
           "$@"                                      \
           --language-out PHP64                      \
           --define "PHP64_HEAP_SIZE=$((65536 * 8))" \
           --emit-metadata=memBuffer                 \
           --emit-code=module                        \
-          --input-file "wast:${artifact_base}.wast" \
+          $codegen_input                            \
           1>"${artifact_base}".php
         ;; esac
         #
@@ -147,13 +170,13 @@ if [ ${#0} -ne ${#prefix} ]; then
         case " $build_languages " in *" JAVA "*)
         node                                        \
           "../wasm2lang.js"                         \
-          --normalize-wasm "$normalize_wasm"        \
+          --normalize-wasm "$codegen_normalize"     \
           "$@"                                      \
           --language-out JAVA                       \
           --define "JAVA_HEAP_SIZE=$((65536 * 8))"  \
           --emit-metadata=memBuffer                 \
           --emit-code=module                        \
-          --input-file "wast:${artifact_base}.wast" \
+          $codegen_input                            \
           1>"${artifact_base}".java
         ;; esac
       done <<EOF

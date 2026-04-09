@@ -10,7 +10,7 @@ import com.google.gson.reflect.TypeToken;
 java.util.Map<String, Object> w2lLoadSharedData(String testName) {
     if (testName == null || testName.isEmpty()) return java.util.Collections.emptyMap();
     String base = testName.contains("/") ? testName.substring(testName.lastIndexOf('/') + 1) : testName;
-    base = base.replaceAll("_(codegen|none)$", "");
+    base = base.replaceAll("_(codegen|none|prenorm|nopre)$", "");
     try {
         String c = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(base + ".shared.data.json")));
         return (java.util.Map<String, Object>) new Gson().fromJson(c, new TypeToken<java.util.Map<String, Object>>(){}.getType());
@@ -39,4 +39,13 @@ void w2lDumpCRC(java.nio.ByteBuffer buf) {
     buf.position(0);
     crc.update(arr);
     System.out.println("Memory CRC32: 0x" + String.format("%08x", crc.getValue()));
+}
+
+String w2lReadSource(String testName) {
+    try {
+        return new String(java.nio.file.Files.readAllBytes(
+            java.nio.file.Paths.get(testName + ".java")));
+    } catch (Exception e) {
+        return "";
+    }
 }

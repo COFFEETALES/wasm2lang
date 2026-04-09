@@ -141,32 +141,12 @@ Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, 
 // ---------------------------------------------------------------------------
 
 /**
- * Marker prefix that the switch-dispatch-detection pass prepends to the outer
- * block of a br_table dispatch.  After the label-prefixing pass this becomes
- * {@code 'sw$'}.
- *
- * @protected
- * @const {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.SW_DISPATCH_PREFIX_ = 'sw$';
-
-/**
- * Prefix for blocks fused with their sole-child/sole-parent loop by the
- * BlockLoopFusionPass.  Backend emitters that see this prefix suppress the
- * block wrapper and redirect breaks targeting the block to the associated loop.
- *
- * @protected
- * @const {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_ = 'lb$';
-
-/**
  * Prefix for label-elided for(;;) loops (no label needed in output).
  *
  * @protected
  * @const {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.LF_FORLOOP_PREFIX_ = 'lf$';
+Wasm2Lang.Backend.AbstractCodegen.LF_FORLOOP_PREFIX_ = 'w2l_ufor$';
 
 /**
  * Prefix for label-elided do-while loops (no label needed in output).
@@ -174,7 +154,7 @@ Wasm2Lang.Backend.AbstractCodegen.LF_FORLOOP_PREFIX_ = 'lf$';
  * @protected
  * @const {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.LE_DOWHILE_PREFIX_ = 'le$';
+Wasm2Lang.Backend.AbstractCodegen.LE_DOWHILE_PREFIX_ = 'w2l_udowhile$';
 
 /**
  * Prefix for label-elided while loops (no label needed in output).
@@ -182,18 +162,7 @@ Wasm2Lang.Backend.AbstractCodegen.LE_DOWHILE_PREFIX_ = 'le$';
  * @protected
  * @const {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.LY_WHILE_PREFIX_ = 'ly$';
-
-/**
- * Prefix for the outermost block of a root-switch-loop pattern detected by
- * the RootSwitchDetectionPass.  Backend emitters that see this prefix
- * collapse the outer block wrappers into a single loop+switch with exit
- * paths inlined into the switch cases.
- *
- * @protected
- * @const {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.RS_ROOT_SWITCH_PREFIX_ = 'rs$';
+Wasm2Lang.Backend.AbstractCodegen.LY_WHILE_PREFIX_ = 'w2l_uwhile$';
 
 /**
  * Returns true when {@code name} starts with {@code prefix}.
@@ -285,7 +254,9 @@ Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_;
  *   rootSwitchRsName: string,
  *   rootSwitchLoopName: string,
  *   breakableStack: !Array<string>,
- *   usedLabels: !Object<string, boolean>
+ *   usedLabels: !Object<string, boolean>,
+ *   lastExprIsTerminal: boolean,
+ *   pendingLoopKind: string
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_;
@@ -343,6 +314,137 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitRootSwitch_ = function (state, n
 };
 
 /**
+ * IR-based fallback detection for block-loop fusion pattern A: a named block
+ * whose sole child (or sole child + trailing unreachable) is a Loop.
+ * Used when metadata-based detection fails after binary round-trip.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} expr  The block expression.
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.detectBlockLoopFusionFromIR_ = function (binaryen, expr) {
+  var /** @const {!Array<number>|void} */ children = /** @type {!Array<number>|void} */ (expr.children);
+  if (!children || children.length < 1 || children.length > 2) return false;
+  var /** @const {!BinaryenExpressionInfo} */ firstInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+      binaryen,
+      children[0]
+    );
+  if (binaryen.LoopId !== firstInfo.id) return false;
+  if (2 === children.length) {
+    return binaryen.UnreachableId === Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[1]).id;
+  }
+  return true;
+};
+
+/**
+ * IR-based fallback detection for loop simplification patterns.
+ * Inspects the loop body structure to determine if it matches a while,
+ * dowhile, or for pattern.  Used when metadata-based loop plans are
+ * unavailable after binary round-trip.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} expr  The loop expression.
+ * @param {string} enclosingFusedBlock  Name of the enclosing fused block
+ *     (from IR-detected or metadata-detected block-loop fusion), or empty
+ *     string if none.
+ * @return {?string}  'while', 'dowhile', 'for', or null.
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (binaryen, expr, enclosingFusedBlock) {
+  var /** @const */ NS = Wasm2Lang.Wasm.Tree.NodeSchema;
+  var /** @const {number} */ bodyPtr = /** @type {number} */ (expr.body);
+  if (!bodyPtr) return null;
+  var /** @const {!BinaryenExpressionInfo} */ bodyInfo = NS.safeGetExpressionInfo(binaryen, bodyPtr);
+  var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
+
+  // Direct conditional br_if body: do-while with empty body.
+  if (binaryen.BreakId === bodyInfo.id) {
+    if (/** @type {?string} */ (bodyInfo.name) === loopName && 0 !== /** @type {number} */ (bodyInfo.condition || 0)) {
+      return 'dowhile';
+    }
+    return null;
+  }
+
+  // While-if variant: loop body is If with no else arm.
+  if (binaryen.IfId === bodyInfo.id) {
+    if (0 === /** @type {number} */ (bodyInfo.ifFalse || 0)) {
+      var /** @const {number} */ ifTruePtr = /** @type {number} */ (bodyInfo.ifTrue || 0);
+      if (ifTruePtr) {
+        var /** @const {!BinaryenExpressionInfo} */ ifTrueInfo = NS.safeGetExpressionInfo(binaryen, ifTruePtr);
+        if (binaryen.BlockId === ifTrueInfo.id) {
+          var /** @const {!Array<number>|void} */ thenCh = /** @type {!Array<number>|void} */ (ifTrueInfo.children);
+          if (thenCh && thenCh.length >= 1) {
+            var /** @const {!BinaryenExpressionInfo} */ thenLast = NS.safeGetExpressionInfo(
+                binaryen,
+                thenCh[thenCh.length - 1]
+              );
+            if (
+              binaryen.BreakId === thenLast.id &&
+              /** @type {?string} */ (thenLast.name) === loopName &&
+              0 === /** @type {number} */ (thenLast.condition || 0)
+            ) {
+              return 'while';
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // Body must be Block for remaining patterns.
+  if (binaryen.BlockId !== bodyInfo.id) return null;
+  var /** @const {!Array<number>|void} */ children = /** @type {!Array<number>|void} */ (bodyInfo.children);
+  if (!children || 0 === children.length) return null;
+  var /** @const {number} */ len = children.length;
+  var /** @const {!BinaryenExpressionInfo} */ lastInfo = NS.safeGetExpressionInfo(binaryen, children[len - 1]);
+
+  if (binaryen.BreakId === lastInfo.id) {
+    var /** @const {?string} */ lastName = /** @type {?string} */ (lastInfo.name);
+    var /** @const {number} */ lastCond = /** @type {number} */ (lastInfo.condition || 0);
+
+    // Do-while variant B: last child is conditional br_if targeting loop.
+    if (lastName === loopName && 0 !== lastCond && len > 1) {
+      return 'dowhile';
+    }
+
+    // Do-while variant A: second-to-last is conditional br_if to loop,
+    // last is unconditional br to exit.
+    if (lastName !== loopName && 0 === lastCond && len >= 2) {
+      var /** @const {!BinaryenExpressionInfo} */ prevInfo = NS.safeGetExpressionInfo(binaryen, children[len - 2]);
+      if (
+        binaryen.BreakId === prevInfo.id &&
+        /** @type {?string} */ (prevInfo.name) === loopName &&
+        0 !== /** @type {number} */ (prevInfo.condition || 0) &&
+        len > 2
+      ) {
+        return 'dowhile';
+      }
+    }
+
+    // Self-continue: last child is unconditional br targeting loop.
+    if (lastName === loopName && 0 === lastCond) {
+      // While-block refinement: first child is br_if targeting enclosing fused block.
+      if (len >= 2 && '' !== enclosingFusedBlock) {
+        var /** @const {!BinaryenExpressionInfo} */ firstInfo = NS.safeGetExpressionInfo(binaryen, children[0]);
+        if (
+          binaryen.BreakId === firstInfo.id &&
+          0 !== /** @type {number} */ (firstInfo.condition || 0) &&
+          /** @type {?string} */ (firstInfo.name) !== loopName &&
+          /** @type {?string} */ (firstInfo.name) === enclosingFusedBlock
+        ) {
+          return 'while';
+        }
+      }
+      return 'for';
+    }
+  }
+
+  return null;
+};
+
+/**
  * Default enter callback for labeled-break backends (asm.js, Java).
  * Records label kinds, handles block-loop fusion, and adjusts indent.
  * PHP overrides entirely (uses labelStack).
@@ -356,8 +458,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ hp = A.hasPrefix_;
 
   if (binaryen.BlockId === id) {
     var /** @const {?string} */ bName = /** @type {?string} */ (expr.name);
@@ -367,27 +467,26 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
       var /** @const {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ fusionPlan = this.getBlockFusionPlan_(fName, bName);
       if (fusionPlan) {
         if ('a' === fusionPlan.fusionVariant) {
-          state.pendingBlockFusion = bName;
+          // Variant 'a': block wraps a loop as its sole child.
+          // After binary round-trip, metadata positions may drift, pointing
+          // to a block that is NOT a simple block-loop wrapper.  Validate
+          // the structure before accepting the fusion plan.
+          if (this.detectBlockLoopFusionFromIR_(binaryen, expr)) {
+            state.pendingBlockFusion = bName;
+          } else {
+            ++state.indent;
+          }
         } else {
           state.fusedBlockToLoop[bName] = state.currentLoopName;
         }
-      } else if (this.isBlockRootSwitch_(fName, bName) || hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
+      } else if (this.useSimplifications_ && this.detectBlockLoopFusionFromIR_(binaryen, expr)) {
+        state.pendingBlockFusion = bName;
+        if (this.irFusedBlocks_) this.irFusedBlocks_[fName + '\0' + bName] = 'a';
+      } else if (this.isBlockRootSwitch_(fName, bName)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (this.isBlockSwitchDispatch_(fName, bName) || hp(bName, A.SW_DISPATCH_PREFIX_)) {
+      } else if (this.isBlockSwitchDispatch_(fName, bName)) {
         ++state.indent;
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (hp(bName, A.LB_FUSION_PREFIX_)) {
-        // Prefix fallback for when plans are not available.
-        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr.children);
-        if (
-          ch &&
-          1 === ch.length &&
-          binaryen.LoopId === Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[0]).id
-        ) {
-          state.pendingBlockFusion = bName;
-        } else {
-          state.fusedBlockToLoop[bName] = state.currentLoopName;
-        }
       } else {
         ++state.indent;
       }
@@ -398,9 +497,20 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
     state.currentLoopName = loopName;
     state.breakableStack[state.breakableStack.length] = loopName;
     ++state.indent;
+    var /** @const {string} */ enclosingFusedBlock = state.pendingBlockFusion;
     if ('' !== state.pendingBlockFusion) {
       state.fusedBlockToLoop[state.pendingBlockFusion] = loopName;
       state.pendingBlockFusion = '';
+    }
+    var /** @type {?string} */ loopKind = null;
+    var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ metaLoopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
+    if (metaLoopPlan) loopKind = metaLoopPlan.simplifiedLoopKind;
+    if (!loopKind && this.useSimplifications_) {
+      loopKind = this.detectLoopKindFromIR_(binaryen, expr, enclosingFusedBlock);
+    }
+    if (loopKind) {
+      state.pendingLoopKind = loopKind;
+      return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
     }
   } else if (binaryen.IfId === id) {
     ++state.indent;
@@ -423,14 +533,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.adjustLeaveIndent_ = function (state
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  if (binaryen.LoopId === id || binaryen.IfId === id) {
+  if (binaryen.IfId === id) {
     --state.indent;
+  } else if (binaryen.LoopId === id) {
+    if (!state.pendingLoopKind) {
+      --state.indent;
+    }
+    // Simplified loops manage indent in emitLeave_ (emitSimplifiedLoopFromIR_).
   } else if (binaryen.BlockId === id && expr.name) {
     var /** @const {string} */ bn = /** @type {string} */ (expr.name);
     var /** @const {string} */ fn = state.functionInfo.name;
-    var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-    var /** @const {boolean} */ isFused = !!this.getBlockFusionPlan_(fn, bn) || A.hasPrefix_(bn, A.LB_FUSION_PREFIX_);
-    var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn) || A.hasPrefix_(bn, A.RS_ROOT_SWITCH_PREFIX_);
+    var /** @const {boolean} */ isFused = !!state.fusedBlockToLoop[bn];
+    var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn);
     if (!isFused && !isRootSwitch) {
       --state.indent;
     }
@@ -567,9 +681,15 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
   // When a break was redirected through fusedBlockToLoop, the target loop may
   // have a label-elided prefix (ly$, lf$, le$) because no direct br references
   // it.  Skip the elision check for redirected breaks — the label is required
-  // when the loop is not the innermost breakable.
+  // when the loop is not the innermost breakable.  However, when the fused
+  // block itself is the innermost breakable, an unlabeled break exits the
+  // for/while/do-while construct that replaced the block+loop pair.
   var /** @const {boolean} */ isFusedRedirect = brActual !== brName;
-  if ((!isFusedRedirect && A.isLabelElided(brActual)) || A.isBreakLabelImplicit_(state.breakableStack, brKeyword, brActual)) {
+  if (
+    (!isFusedRedirect && A.isLabelElided(brActual)) ||
+    A.isBreakLabelImplicit_(state.breakableStack, brKeyword, brActual) ||
+    (isFusedRedirect && A.isBreakLabelImplicit_(state.breakableStack, brKeyword, brName))
+  ) {
     brStmt = brKeyword + ';\n';
   } else {
     state.usedLabels[brActual] = true;
@@ -648,16 +768,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSwitchStatement_ = function (
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state, nodeCtx, childResults) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ hp = A.hasPrefix_;
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
   if (blockName) {
     var /** @const {string} */ fnName = state.functionInfo.name;
-    if (this.isBlockRootSwitch_(fnName, blockName) || hp(blockName, A.RS_ROOT_SWITCH_PREFIX_)) {
+    if (this.isBlockRootSwitch_(fnName, blockName)) {
       return this.emitRootSwitch_(state, nodeCtx);
     }
-    if (this.isBlockSwitchDispatch_(fnName, blockName) || hp(blockName, A.SW_DISPATCH_PREFIX_)) {
+    if (this.isBlockSwitchDispatch_(fnName, blockName)) {
       return this.emitFlatSwitch_(state, nodeCtx);
     }
   }
@@ -681,9 +799,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
   var /** @const {number} */ ind = state.indent;
-  var /** @const {boolean} */ isFused =
-      !!blockName &&
-      (!!this.getBlockFusionPlan_(state.functionInfo.name, blockName) || A.hasPrefix_(blockName, A.LB_FUSION_PREFIX_));
+  // Only check fusedBlockToLoop — the runtime fusion record.  The metadata-
+  // based getBlockFusionPlan_ may return stale plans when DFS positions
+  // drift after binary round-trip; fusedBlockToLoop is set only when the
+  // block-loop fusion actually occurred in emitEnter_.
+  var /** @const {boolean} */ isFused = !!blockName && !!state.fusedBlockToLoop[blockName];
   var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
   var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, childResults.length, childInd);
   if (isFused) {
@@ -746,6 +866,387 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoop_ = function (stat
     );
   }
   return pad(ind) + label + 'while ' + this.formatCondition_(condResult.s, condResult.c) + ' {\n' + bodyCode + pad(ind) + '}\n';
+};
+
+/**
+ * Emits a simplified loop by inspecting the intact loop body IR directly.
+ * Used when SKIP_SUBTREE was returned in enter — the leave callback has no
+ * child results and must derive everything from the binaryen expression.
+ *
+ * The method inspects the body to determine which children are structural
+ * (exit guard, self-continue) vs. real body, sub-walks only the real body
+ * children and condition, and assembles the output.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {string} loopKind  'for', 'dowhile', or 'while'.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoopFromIR_ = function (state, nodeCtx, loopKind) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const {!BinaryenModule} */ wm = state.wasmModule;
+  var /** @const {!BinaryenFunctionInfo} */ fi = state.functionInfo;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
+    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
+
+  // state.indent is still at inner level (adjustLeaveIndent_ skipped decrement).
+  var /** @const {number} */ innerInd = state.indent;
+  var /** @const {number} */ outerInd = innerInd - 1;
+
+  var /** @const {number} */ bodyPtr = /** @type {number} */ (expr.body);
+  var /** @const {!BinaryenExpressionInfo} */ bodyInfo = /** @type {!BinaryenExpressionInfo} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyPtr)
+    );
+
+  // Register the body block label so inner breaks resolve correctly.
+  // Only labelKinds and fusedBlockToLoop are needed — the body block must NOT
+  // be pushed onto breakableStack because in the output the block is fused
+  // into the loop.  Pushing it would make the loop non-innermost, causing
+  // isBreakLabelImplicit_ to emit unnecessary labels on break/continue
+  // statements that target the fused pair.
+  if (binaryen.BlockId === bodyInfo.id && bodyInfo.name) {
+    var /** @const {string} */ bodyBlockName = /** @type {string} */ (bodyInfo.name);
+    state.labelKinds[bodyBlockName] = 'block';
+    state.fusedBlockToLoop[bodyBlockName] = loopName;
+  }
+
+  var /** @type {string} */ condStr = '';
+  var /** @type {number} */ condCat = A.CAT_VOID;
+  var /** @type {string} */ bodyCode = '';
+
+  if ('while' === loopKind) {
+    // Condition: for while-block variant, invert the exit guard condition.
+    // For while-if variant, use the If condition directly.
+    if (binaryen.IfId === bodyInfo.id) {
+      bodyCode = this.emitWhileLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd, 0);
+      // while-if variant: If condition IS the continuation condition.
+      var /** @const {{s: string, c: number}} */ wrc = A.subWalkExpressionWithCategory_(
+          state,
+          /** @type {number} */ (bodyInfo.condition || 0)
+        );
+      condStr = wrc.s;
+      condCat = wrc.c;
+    } else {
+      // while-block variant: count consecutive exit guards and combine.
+      var /** @const {!Array<number>} */ wch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
+      var /** @const {number} */ wchLen = wch.length;
+      var /** @const {!BinaryenExpressionInfo} */ guardInfo = /** @type {!BinaryenExpressionInfo} */ (
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, wch[0])
+        );
+      var /** @const {?string} */ guardTarget = /** @type {?string} */ (guardInfo.name);
+      var /** @type {number} */ irGuardCount = 1;
+      for (var /** @type {number} */ gci = 1; gci < wchLen - 1; ++gci) {
+        var /** @const {!BinaryenExpressionInfo} */ gcInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+            binaryen,
+            wch[gci]
+          );
+        if (
+          binaryen.BreakId !== gcInfo.id ||
+          /** @type {?string} */ (gcInfo.name) !== guardTarget ||
+          0 === /** @type {number} */ (gcInfo.condition || 0)
+        ) {
+          break;
+        }
+        ++irGuardCount;
+      }
+      bodyCode = this.emitWhileLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd, irGuardCount);
+      var /** @type {number} */ combinedPtr = Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(
+          binaryen,
+          wm,
+          /** @type {number} */ (guardInfo.condition || 0)
+        );
+      for (var /** @type {number} */ gdi = 1; gdi < irGuardCount; ++gdi) {
+        var /** @const {!BinaryenExpressionInfo} */ gdInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+            binaryen,
+            wch[gdi]
+          );
+        combinedPtr = wm.i32.and(
+          combinedPtr,
+          Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(binaryen, wm, /** @type {number} */ (gdInfo.condition || 0))
+        );
+      }
+      var /** @const {{s: string, c: number}} */ ic = A.subWalkExpressionWithCategory_(state, combinedPtr);
+      condStr = ic.s;
+      condCat = ic.c;
+    }
+  } else if ('dowhile' === loopKind) {
+    var /** @const {!Object} */ dwResult = this.emitDoWhileLoopBody_(
+        state,
+        binaryen,
+        wm,
+        fi,
+        vis,
+        bodyInfo,
+        loopName,
+        innerInd
+      );
+    bodyCode = /** @type {string} */ (dwResult['body']);
+    condStr = /** @type {string} */ (dwResult['condStr']);
+    condCat = /** @type {number} */ (dwResult['condCat']);
+  } else {
+    // for-loop: emit all body children except trailing self-continue (if present).
+    bodyCode = this.emitForLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd);
+  }
+
+  // Label: check if any break/continue references this loop by name.
+  // Computed AFTER body walk so usedLabels is populated.
+  var /** @type {string} */ label = '';
+  if (state.usedLabels[loopName]) {
+    label = this.labelN_(state.labelMap, loopName) + ': ';
+  }
+
+  // Assemble the loop construct.
+  var /** @type {string} */ result;
+  if ('for' === loopKind) {
+    result = pad(outerInd) + label + this.infiniteLoopKeyword_() + ' {\n' + bodyCode + pad(outerInd) + '}\n';
+  } else if ('dowhile' === loopKind) {
+    result =
+      pad(outerInd) +
+      label +
+      'do {\n' +
+      bodyCode +
+      pad(outerInd) +
+      '} while ' +
+      this.formatCondition_(condStr, condCat) +
+      ';\n';
+  } else {
+    result =
+      pad(outerInd) + label + 'while ' + this.formatCondition_(condStr, condCat) + ' {\n' + bodyCode + pad(outerInd) + '}\n';
+  }
+
+  // Clean up: decrement indent (adjustLeaveIndent_ skipped it).
+  --state.indent;
+  return result;
+};
+
+/**
+ * Sub-walks selected children of a while-loop body.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wm
+ * @param {!BinaryenFunctionInfo} fi
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} vis
+ * @param {!BinaryenExpressionInfo} bodyInfo
+ * @param {string} loopName
+ * @param {number} ind
+ * @param {number} guardCount  Number of leading exit guards to skip (0 for
+ *     while-if variant, >= 1 for while-block variant).
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitWhileLoopBody_ = function (
+  state,
+  binaryen,
+  wm,
+  fi,
+  vis,
+  bodyInfo,
+  loopName,
+  ind,
+  guardCount
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const */ sws = A.subWalkString_;
+  if (binaryen.IfId === bodyInfo.id) {
+    // while-if variant: body is the If's then-arm block, minus trailing br.
+    var /** @const {number} */ thenPtr = /** @type {number} */ (bodyInfo.ifTrue || 0);
+    var /** @const {!BinaryenExpressionInfo} */ thenInfo = /** @type {!BinaryenExpressionInfo} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, thenPtr)
+      );
+    var /** @const {!Array<number>} */ thenCh = /** @type {!Array<number>} */ ((thenInfo.children || []).slice(0));
+    var /** @const {number} */ thenLen = thenCh.length;
+    // Last child is unconditional br $loop — skip it.
+    var /** @const {number} */ endIdx = thenLen > 0 ? thenLen - 1 : 0;
+    var /** @const {!Array<string>} */ lines = [];
+    for (var /** @type {number} */ i = 0; i < endIdx; ++i) {
+      var /** @const {string} */ cs = sws(A.subWalkExpression_(wm, binaryen, fi, vis, thenCh[i]));
+      if ('' !== cs) {
+        lines[lines.length] = -1 === cs.indexOf('\n') ? pad(ind) + cs + ';\n' : cs;
+      }
+    }
+    return lines.join('');
+  }
+  // while-block variant: skip first guardCount children (exit guards) and
+  // last child (self-continue).
+  var /** @const {!Array<number>} */ ch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
+  var /** @const {number} */ len = ch.length;
+  var /** @const {number} */ bodyStart = guardCount > 0 ? guardCount : 1;
+  var /** @const {!Array<string>} */ lines2 = [];
+  for (var /** @type {number} */ j = bodyStart; j < len - 1; ++j) {
+    var /** @const {string} */ cs2 = sws(A.subWalkExpression_(wm, binaryen, fi, vis, ch[j]));
+    if ('' !== cs2) {
+      lines2[lines2.length] = -1 === cs2.indexOf('\n') ? pad(ind) + cs2 + ';\n' : cs2;
+    }
+  }
+  return lines2.join('');
+};
+
+/**
+ * Sub-walks selected children of a do-while loop body.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wm
+ * @param {!BinaryenFunctionInfo} fi
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} vis
+ * @param {!BinaryenExpressionInfo} bodyInfo
+ * @param {string} loopName
+ * @param {number} ind
+ * @return {!Object}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
+  state,
+  binaryen,
+  wm,
+  fi,
+  vis,
+  bodyInfo,
+  loopName,
+  ind
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const */ sws = A.subWalkString_;
+
+  // Bare br_if variant: body is a direct br_if, empty body.
+  if (binaryen.BreakId === bodyInfo.id) {
+    var /** @const {{s: string, c: number}} */ bareCond = A.subWalkExpressionWithCategory_(
+        state,
+        /** @type {number} */ (bodyInfo.condition || 0)
+      );
+    return {'body': '', 'condStr': bareCond.s, 'condCat': bareCond.c};
+  }
+
+  var /** @const {!Array<number>} */ ch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
+  var /** @const {number} */ len = ch.length;
+
+  // Determine variant: check if last child is conditional br_if targeting loop.
+  var /** @type {number} */ bodyEnd = len;
+  var /** @type {number} */ condChildIdx = -1;
+
+  if (len > 0) {
+    var /** @const {!BinaryenExpressionInfo} */ lastInfo = /** @type {!BinaryenExpressionInfo} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[len - 1])
+      );
+    if (
+      binaryen.BreakId === lastInfo.id &&
+      /** @type {?string} */ (lastInfo.name) === loopName &&
+      /** @type {number} */ (lastInfo.condition || 0) !== 0
+    ) {
+      // Variant B: last child is conditional br_if self-continue.
+      condChildIdx = len - 1;
+      bodyEnd = len - 1;
+    } else if (len > 1) {
+      // Variant A: second-to-last is conditional br_if, last is unconditional br.
+      var /** @const {!BinaryenExpressionInfo} */ penInfo = /** @type {!BinaryenExpressionInfo} */ (
+          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[len - 2])
+        );
+      if (
+        binaryen.BreakId === penInfo.id &&
+        /** @type {?string} */ (penInfo.name) === loopName &&
+        /** @type {number} */ (penInfo.condition || 0) !== 0
+      ) {
+        condChildIdx = len - 2;
+        bodyEnd = len - 2;
+      }
+    }
+  }
+
+  var /** @const {!Array<string>} */ lines = [];
+  for (var /** @type {number} */ i = 0; i < bodyEnd; ++i) {
+    var /** @const {string} */ cs = sws(A.subWalkExpression_(wm, binaryen, fi, vis, ch[i]));
+    if ('' !== cs) {
+      lines[lines.length] = -1 === cs.indexOf('\n') ? pad(ind) + cs + ';\n' : cs;
+    }
+  }
+
+  var /** @type {string} */ condStr = '';
+  var /** @type {number} */ condCat = A.CAT_VOID;
+  if (-1 !== condChildIdx) {
+    var /** @const {!BinaryenExpressionInfo} */ condBrInfo = /** @type {!BinaryenExpressionInfo} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[condChildIdx])
+      );
+    var /** @const {{s: string, c: number}} */ cr = A.subWalkExpressionWithCategory_(
+        state,
+        /** @type {number} */ (condBrInfo.condition || 0)
+      );
+    condStr = cr.s;
+    condCat = cr.c;
+  }
+
+  return {'body': lines.join(''), 'condStr': condStr, 'condCat': condCat};
+};
+
+/**
+ * Sub-walks the body of a for-loop, skipping the trailing self-continue.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wm
+ * @param {!BinaryenFunctionInfo} fi
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} vis
+ * @param {!BinaryenExpressionInfo} bodyInfo
+ * @param {string} loopName
+ * @param {number} ind
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitForLoopBody_ = function (
+  state,
+  binaryen,
+  wm,
+  fi,
+  vis,
+  bodyInfo,
+  loopName,
+  ind
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const */ sws = A.subWalkString_;
+  var /** @const {!Array<number>} */ ch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
+  var /** @const {number} */ len = ch.length;
+
+  // Check if last child is unconditional br targeting the loop — skip it.
+  var /** @type {number} */ emitEnd = len;
+  if (len > 0) {
+    var /** @const {!BinaryenExpressionInfo} */ lastInfo = /** @type {!BinaryenExpressionInfo} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[len - 1])
+      );
+    if (
+      binaryen.BreakId === lastInfo.id &&
+      /** @type {?string} */ (lastInfo.name) === loopName &&
+      /** @type {number} */ (lastInfo.condition || 0) === 0 &&
+      /** @type {number} */ (lastInfo.value || 0) === 0
+    ) {
+      emitEnd = len - 1;
+    }
+  }
+
+  var /** @const {!Array<string>} */ lines = [];
+  for (var /** @type {number} */ i = 0; i < emitEnd; ++i) {
+    var /** @const {string} */ cs = sws(A.subWalkExpression_(wm, binaryen, fi, vis, ch[i]));
+    if ('' !== cs) {
+      lines[lines.length] = -1 === cs.indexOf('\n') ? pad(ind) + cs + ';\n' : cs;
+    }
+  }
+
+  // For-loops that had no trailing br stripped need a trailing break to exit.
+  // Skip if the last emitted child is terminal (Java rejects unreachable statements).
+  if (emitEnd === len && !state.lastExprIsTerminal) {
+    lines[lines.length] = pad(ind) + 'break;\n';
+  }
+
+  return lines.join('');
 };
 
 /**
@@ -974,6 +1475,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
     return this.emitUnaryId_(binaryen, /** @type {number} */ (expr.op), unOp.expressionString, unOp.expressionCategory);
   }
   if (binaryen.LocalSetId === id) {
+    if (!expr.isTee && this.localInitOverridesActive_) {
+      var /** @const {string} */ liIdx = String(expr.index);
+      if (liIdx in this.localInitOverridesActive_.map && !(liIdx in this.localInitOverridesActive_.consumed)) {
+        this.localInitOverridesActive_.consumed[liIdx] = true;
+        return {emittedString: '', resultCat: A.CAT_VOID};
+      }
+    }
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ lsOp = getInfo(childResults, 0);
     return this.emitLocalSet_(
       binaryen,

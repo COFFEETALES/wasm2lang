@@ -33,6 +33,12 @@ Binaryen.prototype.setOptimizeLevel = function (level) {};
 Binaryen.prototype.setShrinkLevel = function (level) {};
 
 /**
+ * @param {boolean} on
+ * @return {void}
+ */
+Binaryen.prototype.setDebugInfo = function (on) {};
+
+/**
  * @return {number}
  */
 Binaryen.prototype.getOptimizeLevel = function () {};
@@ -414,6 +420,13 @@ BinaryenModule.prototype.setFeatures = function (features) {};
  * @return {number}
  */
 BinaryenModule.prototype.validate = function () {};
+
+/**
+ * @param {string} name
+ * @param {!Uint8Array} data
+ * @return {void}
+ */
+BinaryenModule.prototype.addCustomSection = function (name, data) {};
 
 /**
  * Binaryen expression info shape from getExpressionInfo().
@@ -825,6 +838,8 @@ BinaryenI32Api.prototype.le_u = function (l, r) {};
 BinaryenI32Api.prototype.gt_u = function (l, r) {};
 /** @param {number} l @param {number} r @return {number} */
 BinaryenI32Api.prototype.ge_u = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI32Api.prototype.and = function (l, r) {};
 /** @param {number} v @return {number} */
 BinaryenI32Api.prototype.eqz = function (v) {};
 
@@ -883,6 +898,13 @@ var BinaryenBlockApi = function () {};
  * @return {void}
  */
 BinaryenBlockApi.prototype.setChildAt = function (ptr, index, child) {};
+
+/**
+ * @param {number} ptr
+ * @param {string} name
+ * @return {void}
+ */
+BinaryenBlockApi.prototype.setName = function (ptr, name) {};
 
 /**
  * @type {!BinaryenBlockApi}

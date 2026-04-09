@@ -31,7 +31,8 @@ Wasm2Lang.Backend.Php64Codegen.LabelEntry_;
  *   usedCaptures: !Object<string, boolean>,
  *   rootSwitchExitMap: ?Object<string, !Array<number>>,
  *   rootSwitchRsName: string,
- *   rootSwitchLoopName: string
+ *   rootSwitchLoopName: string,
+ *   pendingLoopKind: string
  * }}
  */
 Wasm2Lang.Backend.Php64Codegen.EmitState_;
@@ -108,23 +109,148 @@ Wasm2Lang.Backend.Php64Codegen.prototype.adjustLeaveIndent_ = function (state, n
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
 
   if (binaryen.LoopId === id) {
-    --state.indent;
-    state.labelStack.pop();
+    if (!state.pendingLoopKind) {
+      --state.indent;
+      state.labelStack.pop();
+    }
+    // Simplified loops manage indent and labelStack in emitSimplifiedLoopFromIR_.
   } else if (binaryen.IfId === id) {
     --state.indent;
   } else if (binaryen.BlockId === id && expr.name) {
     var /** @const {string} */ bn = /** @type {string} */ (expr.name);
     var /** @const {string} */ fn = state.functionInfo.name;
-    var /** @const {boolean} */ isFused = !!this.getBlockFusionPlan_(fn, bn) || A.hasPrefix_(bn, A.LB_FUSION_PREFIX_);
-    var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn) || A.hasPrefix_(bn, A.RS_ROOT_SWITCH_PREFIX_);
+    var /** @const {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ lfp = this.getBlockFusionPlan_(fn, bn);
+    // For variant 'a', match the emitEnter_ structural validation: if the
+    // block's structure doesn't match a block-loop wrapper, it was NOT
+    // fused (metadata position drift), so we must undo indent + pop.
+    var /** @type {boolean} */ isFused =
+        !!lfp && (!('a' === lfp.fusionVariant) || this.detectBlockLoopFusionFromIR_(binaryen, expr));
+    var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn);
     if (!isFused && !isRootSwitch) {
       --state.indent;
       state.labelStack.pop();
     }
   }
+};
+
+/**
+ * PHP override: uses labelStack alias instead of fusedBlockToLoop/breakableStack.
+ *
+ * @suppress {checkTypes}
+ * @override
+ * @param {!Wasm2Lang.Backend.Php64Codegen.EmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {string} loopKind
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.emitSimplifiedLoopFromIR_ = function (state, nodeCtx, loopKind) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ pad = A.pad_;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const {!BinaryenModule} */ wm = state.wasmModule;
+  var /** @const {!BinaryenFunctionInfo} */ fi = state.functionInfo;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
+    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
+
+  var /** @const {number} */ innerInd = state.indent;
+  var /** @const {number} */ outerInd = innerInd - 1;
+
+  var /** @const {number} */ bodyPtr = /** @type {number} */ (expr.body);
+  var /** @const {!BinaryenExpressionInfo} */ bodyInfo = /** @type {!BinaryenExpressionInfo} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, bodyPtr)
+    );
+
+  // Register body block alias on the loop's label stack entry.
+  if (binaryen.BlockId === bodyInfo.id && bodyInfo.name) {
+    state.labelStack[state.labelStack.length - 1].alias = /** @type {string} */ (bodyInfo.name);
+  }
+
+  var /** @type {string} */ condStr = '';
+  var /** @type {number} */ condCat = A.CAT_VOID;
+  var /** @type {string} */ bodyCode = '';
+
+  if ('while' === loopKind) {
+    if (binaryen.IfId === bodyInfo.id) {
+      bodyCode = this.emitWhileLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd, 0);
+      var /** @const {{s: string, c: number}} */ wrc = A.subWalkExpressionWithCategory_(
+          state,
+          /** @type {number} */ (bodyInfo.condition || 0)
+        );
+      condStr = wrc.s;
+      condCat = wrc.c;
+    } else {
+      var /** @const */ NS = Wasm2Lang.Wasm.Tree.NodeSchema;
+      var /** @const {!Array<number>} */ wch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
+      var /** @const {number} */ wchLen = wch.length;
+      var /** @const {!BinaryenExpressionInfo} */ guardInfo = /** @type {!BinaryenExpressionInfo} */ (
+          NS.safeGetExpressionInfo(binaryen, wch[0])
+        );
+      var /** @const {?string} */ guardTarget = /** @type {?string} */ (guardInfo.name);
+      var /** @type {number} */ irGuardCount = 1;
+      for (var /** @type {number} */ gci = 1; gci < wchLen - 1; ++gci) {
+        var /** @const {!BinaryenExpressionInfo} */ gcInfo = NS.safeGetExpressionInfo(binaryen, wch[gci]);
+        if (
+          binaryen.BreakId !== gcInfo.id ||
+          /** @type {?string} */ (gcInfo.name) !== guardTarget ||
+          0 === /** @type {number} */ (gcInfo.condition || 0)
+        ) {
+          break;
+        }
+        ++irGuardCount;
+      }
+      bodyCode = this.emitWhileLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd, irGuardCount);
+      var /** @type {number} */ combinedPtr = Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(
+          binaryen,
+          wm,
+          /** @type {number} */ (guardInfo.condition || 0)
+        );
+      for (var /** @type {number} */ gdi = 1; gdi < irGuardCount; ++gdi) {
+        var /** @const {!BinaryenExpressionInfo} */ gdInfo = NS.safeGetExpressionInfo(binaryen, wch[gdi]);
+        combinedPtr = wm.i32.and(
+          combinedPtr,
+          Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(binaryen, wm, /** @type {number} */ (gdInfo.condition || 0))
+        );
+      }
+      var /** @const {{s: string, c: number}} */ ic = A.subWalkExpressionWithCategory_(state, combinedPtr);
+      condStr = ic.s;
+      condCat = ic.c;
+    }
+  } else if ('dowhile' === loopKind) {
+    var /** @const {!Object} */ dwResult = this.emitDoWhileLoopBody_(
+        state,
+        binaryen,
+        wm,
+        fi,
+        vis,
+        bodyInfo,
+        loopName,
+        innerInd
+      );
+    bodyCode = /** @type {string} */ (dwResult['body']);
+    condStr = /** @type {string} */ (dwResult['condStr']);
+    condCat = /** @type {number} */ (dwResult['condCat']);
+  } else {
+    bodyCode = this.emitForLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd);
+  }
+
+  var /** @type {string} */ result;
+  if ('for' === loopKind) {
+    result = pad(outerInd) + this.infiniteLoopKeyword_() + ' {\n' + bodyCode + pad(outerInd) + '}\n';
+  } else if ('dowhile' === loopKind) {
+    result = pad(outerInd) + 'do {\n' + bodyCode + pad(outerInd) + '} while ' + this.formatCondition_(condStr, condCat) + ';\n';
+  } else {
+    result = pad(outerInd) + 'while ' + this.formatCondition_(condStr, condCat) + ' {\n' + bodyCode + pad(outerInd) + '}\n';
+  }
+
+  // Clean up: decrement indent and pop labelStack (adjustLeaveIndent_ skipped).
+  --state.indent;
+  state.labelStack.pop();
+  return result;
 };
 
 /**
@@ -144,9 +270,13 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, no
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
   var /** @const {number} */ ind = state.indent;
-  var /** @const {boolean} */ isFused =
-      !!blockName &&
-      (!!this.getBlockFusionPlan_(state.functionInfo.name, blockName) || A.hasPrefix_(blockName, A.LB_FUSION_PREFIX_));
+  // Match the emitEnter_ structural validation: use labelStack alias presence
+  // instead of raw metadata, since metadata positions may drift.
+  var /** @type {boolean} */ isFused = false;
+  if (blockName) {
+    var /** @const {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ bfp = this.getBlockFusionPlan_(state.functionInfo.name, blockName);
+    isFused = !!bfp && (!('a' === bfp.fusionVariant) || this.detectBlockLoopFusionFromIR_(state.binaryen, expr));
+  }
   var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
   var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, childResults.length, childInd);
   if (isFused) return blockBody;
@@ -457,10 +587,13 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       );
       break;
     case binaryen.LoopId: {
-      var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
-      var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
-      if (loopPlan) {
-        result = this.emitSimplifiedLoop_(state, loopPlan, ind, '', cr(0));
+      var /** @type {?string} */ loopKind = null;
+      if ('' !== state.pendingLoopKind) {
+        loopKind = state.pendingLoopKind;
+        state.pendingLoopKind = '';
+      }
+      if (loopKind) {
+        result = this.emitSimplifiedLoopFromIR_(state, nodeCtx, loopKind);
       } else {
         result = pad(ind) + 'for (;;) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
       }
@@ -766,9 +899,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
   var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
 
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ hp = A.hasPrefix_;
-
   if (binaryen.BlockId === id) {
     var /** @const {?string} */ bName = /** @type {?string} */ (expr.name);
     if (bName) {
@@ -776,28 +906,26 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
       var /** @const {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ fusionPlan = this.getBlockFusionPlan_(fName, bName);
       if (fusionPlan) {
         if ('a' === fusionPlan.fusionVariant) {
-          state.pendingBlockFusion = bName;
+          // Validate structure before accepting — metadata positions may
+          // drift after binary round-trip.
+          if (this.detectBlockLoopFusionFromIR_(binaryen, expr)) {
+            state.pendingBlockFusion = bName;
+          } else {
+            state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
+            ++state.indent;
+          }
         } else {
           state.labelStack[state.labelStack.length - 1].alias = bName;
         }
-      } else if (this.isBlockRootSwitch_(fName, bName) || hp(bName, A.RS_ROOT_SWITCH_PREFIX_)) {
+      } else if (this.useSimplifications_ && this.detectBlockLoopFusionFromIR_(binaryen, expr)) {
+        state.pendingBlockFusion = bName;
+        if (this.irFusedBlocks_) this.irFusedBlocks_[fName + '\0' + bName] = 'a';
+      } else if (this.isBlockRootSwitch_(fName, bName)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (this.isBlockSwitchDispatch_(fName, bName) || hp(bName, A.SW_DISPATCH_PREFIX_)) {
+      } else if (this.isBlockSwitchDispatch_(fName, bName)) {
         state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
         ++state.indent;
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (hp(bName, A.LB_FUSION_PREFIX_)) {
-        // Prefix fallback for when plans are not available.
-        var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (expr.children);
-        if (
-          ch &&
-          1 === ch.length &&
-          binaryen.LoopId === Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[0]).id
-        ) {
-          state.pendingBlockFusion = bName;
-        } else {
-          state.labelStack[state.labelStack.length - 1].alias = bName;
-        }
       } else {
         state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
         ++state.indent;
@@ -805,6 +933,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
     }
   } else if (binaryen.LoopId === id) {
     var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
+    var /** @const {string} */ phpEnclosingFused = state.pendingBlockFusion;
     if ('' !== state.pendingBlockFusion) {
       state.labelStack[state.labelStack.length] = {lbl: loopName, lk: 'loop', alias: state.pendingBlockFusion};
       state.pendingBlockFusion = '';
@@ -812,6 +941,16 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
       state.labelStack[state.labelStack.length] = {lbl: loopName, lk: 'loop'};
     }
     ++state.indent;
+    var /** @type {?string} */ phpLoopKind = null;
+    var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ phpMetaLoop = this.getLoopPlan_(state.functionInfo.name, loopName);
+    if (phpMetaLoop) phpLoopKind = phpMetaLoop.simplifiedLoopKind;
+    if (!phpLoopKind && this.useSimplifications_) {
+      phpLoopKind = this.detectLoopKindFromIR_(binaryen, expr, phpEnclosingFused);
+    }
+    if (phpLoopKind) {
+      state.pendingLoopKind = phpLoopKind;
+      return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
+    }
   } else if (binaryen.IfId === id) {
     ++state.indent;
   }

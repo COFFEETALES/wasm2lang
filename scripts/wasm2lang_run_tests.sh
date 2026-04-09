@@ -11,7 +11,7 @@ if [ ${#0} -ne ${#prefix} ]; then
 
   fn() {
     local dirbase directory dirname filebase retcode tmpretcode
-    local codegen_dir codegen_filebase
+    local prenorm_dir prenorm_filebase
     local LF="$(printf '\012+')"
     LF="${LF%?}"
 
@@ -126,17 +126,17 @@ if [ ${#0} -ne ${#prefix} ]; then
           "${filebase}".jshell.out
         [ $? -eq 0 ] || tmpretcode=1
       fi
-      codegen_dir="${dirname%_none}_codegen"
-      codegen_filebase="${codegen_dir}/${codegen_dir}"
-      if [ -f "${filebase}".v8.wasm.out -a -f "${codegen_filebase}".v8.wasm.out ]; then
-        echo -e "\033[0;33mComparing none vs codegen V8 WASM output...\033[0m"
-        if [ -f "${codegen_filebase}".v8.wasm.out ]; then
+      prenorm_dir="${dirname%_codegen}_prenorm"
+      prenorm_filebase="${prenorm_dir}/${prenorm_dir}"
+      if [ -f "${filebase}".v8.wasm.out -a -f "${prenorm_filebase}".v8.wasm.out ]; then
+        echo -e "\033[0;33mComparing codegen vs prenorm V8 WASM output...\033[0m"
+        if [ -f "${prenorm_filebase}".v8.wasm.out ]; then
           diff -qs                    \
             "${filebase}".v8.wasm.out \
-            "${codegen_filebase}".v8.wasm.out
+            "${prenorm_filebase}".v8.wasm.out
           [ $? -eq 0 ] || tmpretcode=1
         else
-          echo "Missing comparison target: ${codegen_filebase}.v8.wasm.out"
+          echo "Missing comparison target: ${prenorm_filebase}.v8.wasm.out"
           tmpretcode=1
         fi
       fi

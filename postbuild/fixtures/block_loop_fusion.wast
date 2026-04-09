@@ -37,11 +37,11 @@
     (local.get $i)
   )
 
-  ;; No fusion: Pattern A candidate but loop's first br_if targets an outer
-  ;; block ($done) rather than the wrapping block ($found).  Fusing would let
-  ;; the while-simplification pass convert the outer-targeting br_if into a
-  ;; while exit that falls through to code it should skip.
-  (func $noFusionOuterExit (result i32)
+  ;; Pattern A with outer exit: loop's first br_if targets an outer block
+  ;; ($done) rather than the wrapping block ($found).  Fusion is safe because
+  ;; the loop-simplification pass keeps distant-exit loops as 'for' (not
+  ;; 'while'), preserving the explicit break-to-outer semantics.
+  (func $fusionOuterExit (result i32)
     (local $i i32)
     (local $result i32)
     (local.set $result (i32.const -1))

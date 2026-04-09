@@ -364,3 +364,58 @@ Wasm2Lang.Wasm.Tree.CustomPasses.hasReference = function (binaryen, ptr, targetN
   }
   return false;
 };
+
+// ---------------------------------------------------------------------------
+// Shared condition inversion
+// ---------------------------------------------------------------------------
+
+/**
+ * Inverts a condition expression at the binaryen IR level.
+ *
+ * - Comparisons are complemented (lt_s -> ge_s, eq -> ne, etc.)
+ * - eqz(x) unwraps to x (avoids double negation)
+ * - Anything else gets wrapped in i32.eqz
+ *
+ * Shared across multiple passes and backend emitters.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} module
+ * @param {number} condPtr
+ * @return {number}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition = function (binaryen, module, condPtr) {
+  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, condPtr)
+    );
+  var /** @const {!BinaryenI32Api} */ i32 = module.i32;
+  if (binaryen.BinaryId === info.id) {
+    var /** @const {number} */ op = /** @type {number} */ (info.op);
+    var /** @const {number} */ L = /** @type {number} */ (info.left);
+    var /** @const {number} */ R = /** @type {number} */ (info.right);
+    if (binaryen.EqInt32 === op) return i32.ne(L, R);
+    if (binaryen.NeInt32 === op) return i32.eq(L, R);
+    if (binaryen.LtSInt32 === op) return i32.ge_s(L, R);
+    if (binaryen.GeSInt32 === op) return i32.lt_s(L, R);
+    if (binaryen.GtSInt32 === op) return i32.le_s(L, R);
+    if (binaryen.LeSInt32 === op) return i32.gt_s(L, R);
+    if (binaryen.LtUInt32 === op) return i32.ge_u(L, R);
+    if (binaryen.GeUInt32 === op) return i32.lt_u(L, R);
+    if (binaryen.GtUInt32 === op) return i32.le_u(L, R);
+    if (binaryen.LeUInt32 === op) return i32.gt_u(L, R);
+    var /** @const {!BinaryenI64Api} */ i64 = module.i64;
+    if (binaryen.EqInt64 === op) return i64.ne(L, R);
+    if (binaryen.NeInt64 === op) return i64.eq(L, R);
+    if (binaryen.LtSInt64 === op) return i64.ge_s(L, R);
+    if (binaryen.GeSInt64 === op) return i64.lt_s(L, R);
+    if (binaryen.GtSInt64 === op) return i64.le_s(L, R);
+    if (binaryen.LeSInt64 === op) return i64.gt_s(L, R);
+    if (binaryen.LtUInt64 === op) return i64.ge_u(L, R);
+    if (binaryen.GeUInt64 === op) return i64.lt_u(L, R);
+    if (binaryen.GtUInt64 === op) return i64.le_u(L, R);
+    if (binaryen.LeUInt64 === op) return i64.gt_u(L, R);
+  }
+  if (binaryen.UnaryId === info.id && /** @type {number} */ (info.op) === binaryen.EqZInt32) {
+    return /** @type {number} */ (info.value);
+  }
+  return i32.eqz(condPtr);
+};

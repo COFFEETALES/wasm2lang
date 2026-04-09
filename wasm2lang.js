@@ -79,6 +79,7 @@
       {'sourcePath': 'src/wasm/tree/custom_passes/redundant_block_removal_apply.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/feature_profile_validation_pass.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/registry.js'},
+      {'sourcePath': 'src/wasm/tree/custom_passes/metadata_section.js'},
       {'sourcePath': 'src/wasm/tree/node_schema.js'},
       {'sourcePath': 'src/wasm/tree/pass_runner.js'},
       {'sourcePath': 'src/wasm/tree/traversal_kernel.js'},

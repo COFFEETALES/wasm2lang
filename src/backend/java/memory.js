@@ -8,6 +8,7 @@
 Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_ = function (baseExpr, offset) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (0 === offset) return baseExpr;
+  if ('0' === baseExpr) return String(offset);
   return P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_);
 };
 

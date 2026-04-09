@@ -3,16 +3,20 @@
 /**
  * Pass: local-init-folding  (phase: optimize)
  *
- * Folds leading local.set(const) assignments into the local's initial value
- * when the local hasn't been read or non-const-set on any preceding code path.
+ * Detects leading local.set(const) assignments that can be folded into the
+ * local's initial value in the var/let declaration.
  *
  * For each function, the pass scans the top-level children of the body block
  * in order.  A local.set with a const value is foldable if no local.get for
  * the same index appears in any earlier sibling (recursively scanned) and the
  * local has not been assigned a non-constant value by an earlier sibling.
- * Foldable local.set nodes are replaced with nop, and the init value is
- * recorded in funcMetadata.localInitOverrides so backends can emit the
- * non-zero initial value in the var/let declaration.
+ * Non-zero init values are recorded in funcMetadata.localInitOverrides so
+ * backends can emit the non-zero initial value in the var/let declaration.
+ *
+ * The pass does NOT modify the WASM IR — the original local.set nodes remain
+ * so the normalized binary is semantically identical to the original.  Code
+ * emitters handle the folding by emitting the override value in the
+ * declaration and treating the leading local.set as a redundant no-op.
  *
  * @constructor
  */
@@ -113,12 +117,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
   var /** @const {!Object<number, boolean>} */ setLocals =
     /** @type {!Object<number, boolean>} */ (Object.create(null));
   // prettier-ignore
-  var /** @const {!Object<string, boolean>} */ foldPtrs =
-    /** @type {!Object<string, boolean>} */ (Object.create(null));
-  // prettier-ignore
   var /** @const {!Object<string, number>} */ initOverrides =
     /** @type {!Object<string, number>} */ (Object.create(null));
   var /** @type {boolean} */ hasOverrides = false;
+  // Set of local indices whose foldable local.set(const 0) should be replaced
+  // with nop by the visitor.  Keyed by local index (number).
+  // prettier-ignore
+  var /** @const {!Object<number, boolean>} */ zeroFoldSet =
+    /** @type {!Object<number, boolean>} */ (Object.create(null));
+  var /** @type {boolean} */ hasZeroFolds = false;
   var scanFn = Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.scanForLocalGets_;
 
   for (var /** @type {number} */ ci = 0, /** @const {number} */ childCount = children.length; ci !== childCount; ++ci) {
@@ -137,20 +144,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
             /** @type {!BinaryenExpressionInfo} */ (Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,valuePtr));
           if (binaryen.ConstId === valueInfo.id) {
             var /** @const {number} */ constVal = /** @type {number} */ (valueInfo.value);
-            // Only elide the local.set from the IR when the value equals the
-            // WASM default (0).  Non-zero initializers are recorded as
-            // overrides for the backend but the local.set is preserved in the
-            // IR so that a serialize-deserialize round-trip (normalization in
-            // one process, codegen in another) still produces correct code
-            // even when the metadata is unavailable.
-            if (0 === constVal) {
-              foldPtrs[String(childPtr)] = true;
-              continue;
+            if (0 !== constVal) {
+              hasOverrides = true;
+              initOverrides[String(localIdx)] = constVal;
+            } else {
+              // Zero-value init: schedule for nop replacement by the visitor.
+              // Replacing with nop is semantically safe (0 is the default).
+              zeroFoldSet[localIdx] = true;
+              hasZeroFolds = true;
             }
-            hasOverrides = true;
-            initOverrides[String(localIdx)] = constVal;
-            // Mark the local as set so subsequent local.set for the same
-            // index are not folded (the non-zero IR set must be preserved).
             setLocals[localIdx] = true;
             continue;
           }
@@ -165,40 +167,68 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
   }
 
   if (hasOverrides) {
-    funcMetadata.localInitFoldPtrs = foldPtrs;
     funcMetadata.localInitOverrides = initOverrides;
+  }
+  if (hasZeroFolds) {
+    funcMetadata._localInitZeroFoldSet = zeroFoldSet;
   }
 };
 
 /**
  * @private
- * @param {!Wasm2Lang.Wasm.Tree.PassMetadata} funcMetadata
+ * @typedef {{
+ *   zeroFoldSet: !Object<number, boolean>
+ * }}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.VisitorState_;
+
+/**
+ * Visitor enter: replaces foldable local.set(const 0) with nop.
+ * Zero is the WASM default for locals, so removing the explicit set is
+ * semantically safe and puts the folding work in the normalization layer
+ * rather than relying on the backend to skip instructions.
+ *
+ * @private
+ * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.VisitorState_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.enter_ = function (funcMetadata, nodeCtx) {
-  var /** @const {*} */ foldPtrs = funcMetadata.localInitFoldPtrs;
-  if (!foldPtrs) {
+Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.enter_ = function (state, nodeCtx) {
+  var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  if (binaryen.LocalSetId !== expr.id || !!expr.isTee) {
     return null;
   }
-  if (/** @type {!Object<string, boolean>} */ (foldPtrs)[String(nodeCtx.expressionPointer)]) {
-    // prettier-ignore
-    var /** @const {!BinaryenModule} */ mod =
-      /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
-    // Use an empty unnamed block instead of nop — binaryen 125's JS wrapper
-    // does not support getExpressionInfo on NopId expressions.
-    return {
-      decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE,
-      expressionPointer: mod.block(null, [], nodeCtx.binaryen.none)
-    };
+  var /** @const {number} */ idx = /** @type {number} */ (expr.index || 0);
+  if (!state.zeroFoldSet[idx]) {
+    return null;
   }
-  return null;
+  // Consume: only replace the first occurrence for this index.
+  delete state.zeroFoldSet[idx];
+  return {
+    decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE,
+    expressionPointer: /** @type {!BinaryenModule} */ (nodeCtx.treeModule).nop()
+  };
 };
 
 /**
+ * Creates a visitor that replaces foldable local.set(const 0) with nop.
+ * When no zero-value folds were identified, returns an empty visitor.
+ *
  * @param {!Wasm2Lang.Wasm.Tree.PassMetadata} funcMetadata
  * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.createVisitor = function (funcMetadata) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.createEnterVisitor(this, this.enter_, funcMetadata);
+  var /** @const {!Object<number, boolean>|void} */ zeroSet = funcMetadata._localInitZeroFoldSet;
+  if (!zeroSet) {
+    return /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({});
+  }
+  // Clear transient field — not needed in metadata going forward.
+  funcMetadata._localInitZeroFoldSet = void 0;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.VisitorState_} */ state =
+    /** @type {!Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.VisitorState_} */ ({
+      zeroFoldSet: /** @type {!Object<number, boolean>} */ (zeroSet)
+    });
+  return Wasm2Lang.Wasm.Tree.CustomPasses.createEnterVisitor(this, this.enter_, state);
 };

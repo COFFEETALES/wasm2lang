@@ -26,6 +26,16 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.setPassRunResult_ = function (result
 };
 
 /**
+ * Enables control-flow simplifications (flat switch, loop simplification,
+ * block-loop fusion) during code emission.  Called from the processor when
+ * {@code --pre-normalized} is active.
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.enableSimplifications_ = function () {
+  this.useSimplifications_ = true;
+  this.irFusedBlocks_ = /** @type {!Object<string, string>} */ (Object.create(null));
+};
+
+/**
  * Returns the local-init overrides for a given function, or null if none.
  * Delegates to LocalInitFoldingApplication.
  *
@@ -47,6 +57,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getLocalInitOverrides_ = function (f
  * @return {?Wasm2Lang.Wasm.Tree.LoopPlan}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.getLoopPlan_ = function (funcName, loopName) {
+  if (!this.useSimplifications_) return null;
   return Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication.getLoopPlan(
     this.passRunResultIndex_,
     funcName,
@@ -64,11 +75,22 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getLoopPlan_ = function (funcName, l
  * @return {?Wasm2Lang.Wasm.Tree.BlockFusionPlan}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.getBlockFusionPlan_ = function (funcName, blockName) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionApplication.getBlockFusionPlan(
-    this.passRunResultIndex_,
-    funcName,
-    blockName
-  );
+  if (!this.useSimplifications_) return null;
+  var /** @type {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ plan =
+      Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionApplication.getBlockFusionPlan(
+        this.passRunResultIndex_,
+        funcName,
+        blockName
+      );
+  if (plan) return plan;
+  if (this.irFusedBlocks_) {
+    var /** @const {string} */ irKey = funcName + '\0' + blockName;
+    var /** @const {string|undefined} */ irVariant = this.irFusedBlocks_[irKey];
+    if (irVariant) {
+      return /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionVariant: irVariant});
+    }
+  }
+  return null;
 };
 
 /**
@@ -81,6 +103,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getBlockFusionPlan_ = function (func
  * @return {boolean}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.isBlockSwitchDispatch_ = function (funcName, blockName) {
+  if (!this.useSimplifications_) return false;
   return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockSwitchDispatch(
     this.passRunResultIndex_,
     funcName,
@@ -98,6 +121,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.isBlockSwitchDispatch_ = function (f
  * @return {boolean}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.isBlockRootSwitch_ = function (funcName, blockName) {
+  if (!this.useSimplifications_) return false;
   return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockRootSwitch(
     this.passRunResultIndex_,
     funcName,

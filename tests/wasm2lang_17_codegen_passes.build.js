@@ -772,6 +772,242 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // localInitFolding: Non-zero local.set(const) before any read are
+  // folded into the local declaration. The local.set is elided from
+  // the IR and the backend emits the initial value directly.
+  //
+  // params: n(0)  locals: a(1)=10, b(2)=20, i(3)=0(default)
+  // Loops n times, accumulating a*i + b into a running sum.
+  // Returns sum.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'localInitFolding',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32, binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(1, i32(10)),
+      module.local.set(2, i32(20)),
+      module.local.set(3, i32(0)),
+      module.block('lifDone', [
+        module.loop(
+          'lifLoop',
+          module.block(null, [
+            module.br('lifDone', module.i32.ge_s(p(3), p(0))),
+            module.local.set(4, module.i32.add(p(4), module.i32.add(module.i32.mul(p(1), p(3)), p(2)))),
+            module.local.set(3, module.i32.add(p(3), i32(1))),
+            module.br('lifLoop')
+          ])
+        )
+      ]),
+      module.return(p(4))
+    ])
+  );
+
+  // exerciseLocalInitFolding(n: i32): void
+  module.addFunction(
+    'exerciseLocalInitFolding',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('localInitFolding', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // localInitFoldingMixed: Non-foldable local.set BEFORE foldable ones.
+  //
+  // This exercises the edge case that caused the black-screen bug:
+  // the old counter-based approach counted N foldable sets then
+  // skipped the first N local.set instructions in DFS order — but
+  // the first local.set here is NON-foldable (uses a parameter),
+  // so it would be incorrectly skipped.
+  //
+  // With the map-based fix:
+  //   - local.set 1 (non-foldable: param+100) is emitted normally
+  //   - local.set 2 (const 0) is nop'd by normalization (zero fold)
+  //   - local.set 3 (const 42) is handled by initOverrides map
+  //
+  // params: n(0)
+  // locals: base(1), acc(2)=0(default), offset(3)=42, i(4)
+  // Loops n times, accumulating (base + offset + i) into sum.
+  // Returns sum.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'localInitFoldingMixed',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32, binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(1, module.i32.add(p(0), i32(100))),
+      module.local.set(2, i32(0)),
+      module.local.set(3, i32(42)),
+      module.block('lifmDone', [
+        module.loop(
+          'lifmLoop',
+          module.block(null, [
+            module.br('lifmDone', module.i32.ge_s(p(4), p(0))),
+            module.local.set(2, module.i32.add(p(2), module.i32.add(module.i32.add(p(1), p(3)), p(4)))),
+            module.local.set(4, module.i32.add(p(4), i32(1))),
+            module.br('lifmLoop')
+          ])
+        )
+      ]),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseLocalInitFoldingMixed(n: i32): void
+  module.addFunction(
+    'exerciseLocalInitFoldingMixed',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('localInitFoldingMixed', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // multiGuardWhile: Multi-condition while loop — multiple consecutive
+  // br_if exit guards at the top of the loop body.
+  //
+  // (block $done (loop $loop (block
+  //   (br_if $done (i32.ge_s i limit))
+  //   (br_if $done (i32.eq sum threshold))
+  //   body
+  //   (br $loop))))
+  //
+  // Two exit guards both targeting $done must be combined into a single
+  // while condition: while (i < limit && sum != threshold) { body }.
+  //
+  // params: limit(0), threshold(1)  locals: i(2), sum(3)
+  // Accumulates i into sum until i >= limit OR sum == threshold.
+  // Returns sum.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'multiGuardWhile',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.block('mgwDone', [
+        module.loop(
+          'mgwLoop',
+          module.block(null, [
+            module.br('mgwDone', module.i32.ge_s(p(2), p(0))),
+            module.br('mgwDone', module.i32.eq(p(3), p(1))),
+            module.local.set(3, module.i32.add(p(3), p(2))),
+            module.local.set(2, module.i32.add(p(2), i32(1))),
+            module.br('mgwLoop')
+          ])
+        )
+      ]),
+      module.return(p(3))
+    ])
+  );
+
+  // exerciseMultiGuardWhile(limit: i32, threshold: i32): void
+  module.addFunction(
+    'exerciseMultiGuardWhile',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('multiGuardWhile', [p(0), p(1)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // switchNoLabel: Flat switch dispatch where NO case action code
+  // contains breaks from within a nested loop. All breaks to chain
+  // blocks are equivalent to plain `break` in the enclosing switch, so
+  // the switch does not need a label.
+  //
+  // (block $exit
+  //   (block $c1 (block $c0
+  //     (br_table $c0 $c1 $exit (local.get $idx)))))
+  //   case0: result = x + 1
+  //   case1: if (x > 0) { result = x * 2 } else { result = -x }; break $exit
+  //   default: result = 0)
+  //
+  // params: idx(0), x(1)  locals: result(2)
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'switchNoLabel',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.block('snlExit', [
+        module.block('snlCase1', [
+          module.block('snlCase0', [module.switch(['snlCase0', 'snlCase1'], 'snlExit', p(0))]),
+          // case 0: simple assignment + break
+          module.local.set(2, module.i32.add(p(1), i32(1))),
+          module.br('snlExit')
+        ]),
+        // case 1: nested block (if/else) with break to outer
+        module.if(
+          module.i32.gt_s(p(1), i32(0)),
+          module.local.set(2, module.i32.mul(p(1), i32(2))),
+          module.local.set(2, module.i32.sub(i32(0), p(1)))
+        ),
+        module.br('snlExit')
+      ]),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseSwitchNoLabel(idx: i32, x: i32): void
+  module.addFunction(
+    'exerciseSwitchNoLabel',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('switchNoLabel', [p(0), p(1)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // fusedForNoLabel: Fused block+loop where the only break exits the
+  // loop itself. Since the break is to the fused block (which maps to
+  // the loop), and the loop is the innermost breakable, the label
+  // should be elided in the output.
+  //
+  // (block $outer (loop $loop (block
+  //   body
+  //   (br_if $outer exitCond)
+  //   body
+  //   (br $loop))))
+  //
+  // params: limit(0)  locals: i(1), acc(2)
+  // Accumulates i*i into acc, breaks when i >= limit.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'fusedForNoLabel',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.block('ffnlDone', [
+        module.loop(
+          'ffnlLoop',
+          module.block(null, [
+            module.local.set(2, module.i32.add(p(2), module.i32.mul(p(1), p(1)))),
+            module.br('ffnlDone', module.i32.ge_s(module.i32.add(p(1), i32(1)), p(0))),
+            module.local.set(1, module.i32.add(p(1), i32(1))),
+            module.br('ffnlLoop')
+          ])
+        )
+      ]),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseFusedForNoLabel(limit: i32): void
+  module.addFunction(
+    'exerciseFusedForNoLabel',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('fusedForNoLabel', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
@@ -806,6 +1042,16 @@
   module.addFunctionExport('exerciseGuardElisionRetained', 'exerciseGuardElisionRetained');
   module.addFunctionExport('redundantLoopBlock', 'redundantLoopBlock');
   module.addFunctionExport('exerciseRedundantLoopBlock', 'exerciseRedundantLoopBlock');
+  module.addFunctionExport('localInitFolding', 'localInitFolding');
+  module.addFunctionExport('exerciseLocalInitFolding', 'exerciseLocalInitFolding');
+  module.addFunctionExport('localInitFoldingMixed', 'localInitFoldingMixed');
+  module.addFunctionExport('exerciseLocalInitFoldingMixed', 'exerciseLocalInitFoldingMixed');
+  module.addFunctionExport('multiGuardWhile', 'multiGuardWhile');
+  module.addFunctionExport('exerciseMultiGuardWhile', 'exerciseMultiGuardWhile');
+  module.addFunctionExport('switchNoLabel', 'switchNoLabel');
+  module.addFunctionExport('exerciseSwitchNoLabel', 'exerciseSwitchNoLabel');
+  module.addFunctionExport('fusedForNoLabel', 'fusedForNoLabel');
+  module.addFunctionExport('exerciseFusedForNoLabel', 'exerciseFusedForNoLabel');
 
   common.finalizeAndOutput(module);
 
@@ -978,6 +1224,55 @@
   data.redundant_loop_block_limits = [0, 1, 2, 5, 10, 20, 50, 100].concat(
     Array.from({length: 4}, function () {
       return (Math.random() * 50) | 0;
+    })
+  );
+
+  data.local_init_folding_limits = [0, 1, 2, 3, 5, 10, 20, 50].concat(
+    Array.from({length: 4}, function () {
+      return (Math.random() * 100) | 0;
+    })
+  );
+
+  data.local_init_folding_mixed_limits = [0, 1, 2, 3, 5, 10, 20, 50].concat(
+    Array.from({length: 4}, function () {
+      return (Math.random() * 100) | 0;
+    })
+  );
+
+  data.multi_guard_while_pairs = [
+    [0, 100],
+    [1, 100],
+    [5, 100],
+    [10, 3],
+    [10, 10],
+    [10, 0],
+    [20, 50],
+    [100, 1000]
+  ].concat(
+    Array.from({length: 4}, function () {
+      var lim = ((Math.random() * 20) | 0) + 1;
+      return [lim, ((Math.random() * 50) | 0) + 1];
+    })
+  );
+
+  data.switch_no_label_pairs = [
+    [0, 5],
+    [1, 5],
+    [2, 5],
+    [0, -3],
+    [1, -3],
+    [1, 0],
+    [0, 0],
+    [3, 10]
+  ].concat(
+    Array.from({length: 4}, function () {
+      return [(Math.random() * 4) | 0, common.rand.smallI32()];
+    })
+  );
+
+  data.fused_for_no_label_limits = [0, 1, 2, 3, 5, 10, 20, 50].concat(
+    Array.from({length: 4}, function () {
+      return (Math.random() * 30) | 0;
     })
   );
 

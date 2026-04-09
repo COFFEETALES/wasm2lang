@@ -36,43 +36,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass = function () {
 Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.State_;
 
 /**
- * Inverts a condition expression for the if-not guard.
- *
- * - Comparisons are complemented (lt_s → ge_s, eq → ne, etc.)
- * - eqz(x) unwraps to x (avoids double negation)
- * - Anything else gets wrapped in i32.eqz
- *
+ * Delegates to the shared invertCondition utility.
  * @private
- * @param {!Binaryen} binaryen
- * @param {!BinaryenModule} module
- * @param {number} condPtr
- * @return {number}
+ * @const {function(!Binaryen, !BinaryenModule, number): number}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.invertCondition_ = function (binaryen, module, condPtr) {
-  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, condPtr)
-    );
-  var /** @const {!BinaryenI32Api} */ i32 = module.i32;
-  if (binaryen.BinaryId === info.id) {
-    var /** @const {number} */ op = /** @type {number} */ (info.op);
-    var /** @const {number} */ L = /** @type {number} */ (info.left);
-    var /** @const {number} */ R = /** @type {number} */ (info.right);
-    if (binaryen.EqInt32 === op) return i32.ne(L, R);
-    if (binaryen.NeInt32 === op) return i32.eq(L, R);
-    if (binaryen.LtSInt32 === op) return i32.ge_s(L, R);
-    if (binaryen.GeSInt32 === op) return i32.lt_s(L, R);
-    if (binaryen.GtSInt32 === op) return i32.le_s(L, R);
-    if (binaryen.LeSInt32 === op) return i32.gt_s(L, R);
-    if (binaryen.LtUInt32 === op) return i32.ge_u(L, R);
-    if (binaryen.GeUInt32 === op) return i32.lt_u(L, R);
-    if (binaryen.GtUInt32 === op) return i32.le_u(L, R);
-    if (binaryen.LeUInt32 === op) return i32.gt_u(L, R);
-  }
-  if (binaryen.UnaryId === info.id && /** @type {number} */ (info.op) === binaryen.EqZInt32) {
-    return /** @type {number} */ (info.value);
-  }
-  return i32.eqz(condPtr);
-};
+Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.invertCondition_ = Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition;
 
 /**
  * @private
@@ -97,7 +65,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
   }
 
   // Skip blocks already handled by other passes.
-  if (0 === blockName.indexOf('sw$') || 0 === blockName.indexOf('lb$') || 0 === blockName.indexOf('rs$')) {
+  if (
+    0 === blockName.indexOf('w2l_switch$') ||
+    0 === blockName.indexOf('w2l_fused$') ||
+    0 === blockName.indexOf('w2l_rootsw$')
+  ) {
     return null;
   }
 
@@ -106,39 +78,60 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
     return null;
   }
 
-  // -----------------------------------------------------------------------
-  // Check first child: must be a conditional br_if targeting this block.
-  // -----------------------------------------------------------------------
-  var /** @const {!BinaryenExpressionInfo} */ firstInfo = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[0])
-    );
-  if (binaryen.BreakId !== firstInfo.id) {
-    return null;
-  }
-  if (/** @type {?string} */ (firstInfo.name) !== blockName) {
-    return null;
-  }
-  var /** @const {number} */ condPtr = /** @type {number} */ (firstInfo.condition || 0);
-  if (!condPtr) {
-    return null; // Unconditional break — not a guard.
-  }
-  if (/** @type {number} */ (firstInfo.value || 0) !== 0) {
-    return null; // Valued break — not a simple guard.
-  }
-
-  // -----------------------------------------------------------------------
-  // Check for remaining references to blockName in body and condition.
-  // -----------------------------------------------------------------------
-  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn =
-      Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
-  var /** @type {boolean} */ hasRef = false;
   var /** @const {number} */ childCount = children.length;
+  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
 
+  // -----------------------------------------------------------------------
+  // Find the first direct-child br_if targeting this block.
+  // -----------------------------------------------------------------------
+  var /** @type {number} */ guardIdx = -1;
+  for (var /** @type {number} */ gi = 0; gi < childCount; ++gi) {
+    var /** @const {!BinaryenExpressionInfo} */ childInfo = /** @type {!BinaryenExpressionInfo} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[gi])
+      );
+    if (
+      binaryen.BreakId === childInfo.id &&
+      /** @type {?string} */ (childInfo.name) === blockName &&
+      /** @type {number} */ (childInfo.condition || 0) !== 0 &&
+      /** @type {number} */ (childInfo.value || 0) === 0
+    ) {
+      guardIdx = gi;
+      break;
+    }
+  }
+  if (-1 === guardIdx) {
+    return null;
+  }
+  // Need at least one post-guard child.
+  if (guardIdx >= childCount - 1) {
+    return null;
+  }
+
+  var /** @const {!BinaryenExpressionInfo} */ guardInfo = /** @type {!BinaryenExpressionInfo} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[guardIdx])
+    );
+  var /** @const {number} */ condPtr = /** @type {number} */ (guardInfo.condition || 0);
+
+  // -----------------------------------------------------------------------
+  // Pre-guard children must not reference blockName (they execute
+  // unconditionally; if they break to blockName the guard is not the
+  // sole exit path).
+  // -----------------------------------------------------------------------
+  for (var /** @type {number} */ pi = 0; pi < guardIdx; ++pi) {
+    if (hasRefFn(binaryen, children[pi], blockName)) {
+      return null;
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Check for remaining references to blockName in condition and body.
+  // -----------------------------------------------------------------------
+  var /** @type {boolean} */ hasRef = false;
   if (hasRefFn(binaryen, condPtr, blockName)) {
     hasRef = true;
   }
   if (!hasRef) {
-    for (var /** @type {number} */ ri = 1; ri < childCount; ++ri) {
+    for (var /** @type {number} */ ri = guardIdx + 1; ri < childCount; ++ri) {
       if (hasRefFn(binaryen, children[ri], blockName)) {
         hasRef = true;
         break;
@@ -147,7 +140,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
   }
 
   // -----------------------------------------------------------------------
-  // Build the if(inverted_condition) { remaining_body }.
+  // Build the if(inverted_condition) { post-guard body }.
   // -----------------------------------------------------------------------
   var /** @const {number} */ invertedCond = Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.invertCondition_(
       binaryen,
@@ -155,12 +148,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
       condPtr
     );
 
-  var /** @const {!Array<number>} */ remaining = /** @type {!Array<number>} */ ([].slice.call(children, 1));
+  var /** @const {!Array<number>} */ postGuard = /** @type {!Array<number>} */ ([].slice.call(children, guardIdx + 1));
   var /** @type {number} */ thenBody;
-  if (1 === remaining.length) {
-    thenBody = remaining[0];
+  if (1 === postGuard.length) {
+    thenBody = postGuard[0];
   } else {
-    thenBody = module.block(null, remaining, binaryen.none);
+    thenBody = module.block(null, postGuard, binaryen.none);
   }
 
   var /** @const {number} */ ifExpr = /** @type {number} */ (module.if(invertedCond, thenBody));
@@ -176,16 +169,23 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
       });
   }
 
-  if (hasRef) {
+  // -----------------------------------------------------------------------
+  // Assemble the replacement.
+  // -----------------------------------------------------------------------
+  if (0 === guardIdx && !hasRef) {
+    // No pre-guard children, no remaining refs: emit bare if.
     return {
       decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE,
-      expressionPointer: module.block(blockName, [ifExpr], binaryen.none)
+      expressionPointer: ifExpr
     };
   }
 
+  // Pre-guard children + if, wrapped in block (named if refs remain).
+  var /** @const {!Array<number>} */ preGuard = /** @type {!Array<number>} */ ([].slice.call(children, 0, guardIdx));
+  preGuard[preGuard.length] = ifExpr;
   return {
     decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE,
-    expressionPointer: ifExpr
+    expressionPointer: module.block(hasRef ? blockName : null, preGuard, binaryen.none)
   };
 };
 

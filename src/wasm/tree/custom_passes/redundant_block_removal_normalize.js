@@ -55,7 +55,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass.prototype.leave_ = fu
   }
 
   // Skip blocks with pass-specific prefixes — they carry semantic meaning.
-  if (0 === blockName.indexOf('sw$') || 0 === blockName.indexOf('rs$')) {
+  if (0 === blockName.indexOf('w2l_switch$') || 0 === blockName.indexOf('w2l_rootsw$')) {
     return null;
   }
 
@@ -67,8 +67,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass.prototype.leave_ = fu
   // -----------------------------------------------------------------------
   // Check whether blockName is referenced anywhere in the children.
   // -----------------------------------------------------------------------
-  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn =
-      Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
+  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
   var /** @const {number} */ childCount = children.length;
 
   for (var /** @type {number} */ i = 0; i < childCount; ++i) {

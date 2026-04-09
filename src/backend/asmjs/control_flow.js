@@ -26,7 +26,9 @@
  *   rootSwitchRsName: string,
  *   rootSwitchLoopName: string,
  *   breakableStack: !Array<string>,
- *   usedLabels: !Object<string, boolean>
+ *   usedLabels: !Object<string, boolean>,
+ *   lastExprIsTerminal: boolean,
+ *   pendingLoopKind: string
  * }}
  */
 Wasm2Lang.Backend.AsmjsCodegen.EmitState_;
@@ -282,10 +284,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     case binaryen.LoopId: {
       var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
-      var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ loopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
-      if (loopPlan) {
-        var /** @const {string} */ loopLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
-        result = this.emitSimplifiedLoop_(state, loopPlan, ind, loopLabel, cr(0));
+      var /** @type {?string} */ loopKind = null;
+      if ('' !== state.pendingLoopKind) {
+        loopKind = state.pendingLoopKind;
+        state.pendingLoopKind = '';
+      }
+      if (loopKind) {
+        result = this.emitSimplifiedLoopFromIR_(state, nodeCtx, loopKind);
       } else {
         var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
         result = pad(ind) + rawLabel + 'for (;;) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';

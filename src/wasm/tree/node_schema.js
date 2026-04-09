@@ -212,20 +212,83 @@ Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs = function (expressionId) {
   Wasm2Lang.Wasm.Tree.NodeSchema.ensureDefaultSchema_();
   var /** @const {*} */ specs = Wasm2Lang.Wasm.Tree.NodeSchema.expressionEdgeSpecs_[expressionId];
   if (void 0 === specs) {
-    throw new Error(
-      'Wasm2Lang NodeSchema: unsupported expression ID ' +
-        expressionId +
-        '. Register this type in NodeSchema.ensureDefaultSchema_ or file a bug.'
-    );
+    // Treat unregistered expression IDs as childless leaves so that
+    // tree traversal can skip over nodes introduced by LTO / binaryen
+    // optimizations that the JS bindings do not fully describe.
+    return [];
   }
   // prettier-ignore
   return /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpecList} */ (specs);
 };
 
 /**
+ * Lazily-built set of binaryen expression IDs that are safe to pass to
+ * {@code binaryen.getExpressionInfo()} — i.e. IDs whose property-accessor
+ * class is registered in binaryen's internal PA table.  IDs NOT in this set
+ * would cause getExpressionInfo to crash with "Cannot convert undefined or
+ * null to object".
+ *
+ * @private
+ * @type {?Object<number, boolean>}
+ */
+Wasm2Lang.Wasm.Tree.NodeSchema.safeExpressionIds_ = null;
+
+/**
+ * @private
+ * @param {!Binaryen} binaryen
+ * @return {!Object<number, boolean>}
+ */
+Wasm2Lang.Wasm.Tree.NodeSchema.ensureSafeExpressionIds_ = function (binaryen) {
+  var /** @type {?Object<number, boolean>} */ s = Wasm2Lang.Wasm.Tree.NodeSchema.safeExpressionIds_;
+  if (s) return s;
+  s = /** @type {!Object<number, boolean>} */ (Object.create(null));
+  // All expression IDs that have a property-accessor class in binaryen's PA
+  // table and can therefore be passed to getExpressionInfo safely.
+  s[binaryen.BlockId] = true;
+  s[binaryen.IfId] = true;
+  s[binaryen.LoopId] = true;
+  s[binaryen.BreakId] = true;
+  s[binaryen.SwitchId] = true;
+  s[binaryen.LocalSetId] = true;
+  s[binaryen.LocalGetId] = true;
+  s[binaryen.GlobalSetId] = true;
+  s[binaryen.GlobalGetId] = true;
+  s[binaryen.UnaryId] = true;
+  s[binaryen.BinaryId] = true;
+  s[binaryen.CallId] = true;
+  s[binaryen.CallIndirectId] = true;
+  s[binaryen.LoadId] = true;
+  s[binaryen.StoreId] = true;
+  s[binaryen.ReturnId] = true;
+  s[binaryen.DropId] = true;
+  s[binaryen.SelectId] = true;
+  s[binaryen.ConstId] = true;
+  s[binaryen.MemorySizeId] = true;
+  s[binaryen.MemoryGrowId] = true;
+  s[binaryen.MemoryFillId] = true;
+  s[binaryen.MemoryCopyId] = true;
+  s[binaryen.SIMDExtractId] = true;
+  s[binaryen.SIMDReplaceId] = true;
+  s[binaryen.SIMDShuffleId] = true;
+  s[binaryen.SIMDTernaryId] = true;
+  s[binaryen.SIMDShiftId] = true;
+  s[binaryen.SIMDLoadId] = true;
+  s[binaryen.SIMDLoadStoreLaneId] = true;
+  Wasm2Lang.Wasm.Tree.NodeSchema.safeExpressionIds_ = s;
+  return s;
+};
+
+/**
  * Safe wrapper around {@code binaryen.getExpressionInfo()} that handles
- * expression types missing from the binaryen 125 JS API's internal
- * expression-class registry (NopId, UnreachableId).
+ * expression types missing from the binaryen JS API's internal
+ * expression-class registry.  Falls back to a minimal {id, type} object
+ * for any expression ID not in the known-safe whitelist (e.g. NopId,
+ * UnreachableId, or expression types introduced by LTO / binaryen
+ * optimizations that the JS bindings do not cover).
+ *
+ * Uses a whitelist pre-check instead of try-catch because Closure Compiler
+ * ADVANCED mode eliminates catch blocks when the callee's extern type
+ * implies no throw.
  *
  * @param {!Binaryen} binaryen
  * @param {number} exprPtr
@@ -233,7 +296,7 @@ Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs = function (expressionId) {
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo = function (binaryen, exprPtr) {
   var /** @const {number} */ id = binaryen.getExpressionId(exprPtr);
-  if (binaryen.NopId === id || binaryen.UnreachableId === id) {
+  if (true !== Wasm2Lang.Wasm.Tree.NodeSchema.ensureSafeExpressionIds_(binaryen)[id]) {
     // prettier-ignore
     return /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (
       { id: id, type: binaryen.getExpressionType(exprPtr) }

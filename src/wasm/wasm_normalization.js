@@ -102,7 +102,16 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
   }
 
   if (hasCodegen) {
-    return Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_(wasmModule, options);
+    var /** @const {!Wasm2Lang.Wasm.Tree.PassRunResult} */ passRunResult =
+        Wasm2Lang.Wasm.WasmNormalization.applyWasm2LangNormalization_(wasmModule, options);
+    var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
+    Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializePassRunResult(wasmModule, passRunResult, binaryen);
+    // Enable debug info so the "name" custom section is emitted in the
+    // binary output.  The metadata section identifies functions by name,
+    // and the name section is required for those names to survive the
+    // binary round-trip.
+    binaryen.setDebugInfo(true);
+    return passRunResult;
   }
   return null;
 };

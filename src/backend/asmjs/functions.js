@@ -85,7 +85,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitFunction_ = function (
         rootSwitchRsName: '',
         rootSwitchLoopName: '',
         breakableStack: [],
-        usedLabels: /** @type {!Object<string, boolean>} */ (Object.create(null))
+        usedLabels: /** @type {!Object<string, boolean>} */ (Object.create(null)),
+        lastExprIsTerminal: false,
+        pendingLoopKind: ''
       },
       pad(2)
     );

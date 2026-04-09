@@ -104,7 +104,7 @@ function assertFusionPlan(result, funcName, expectedPattern) {
   assertHasKey(result, funcName, '$' + funcName + ' must exist');
   var meta = result[funcName]['blockLoopFusion'];
   assertNotNull(meta, '$' + funcName + ' blockLoopFusion');
-  var key = findKeyWithPrefix(meta, 'lb$', '$' + funcName + ' must have lb$ key');
+  var key = findKeyWithPrefix(meta, 'w2l_fused$', '$' + funcName + ' must have w2l_fused$ key');
   assertNotNull(meta[key], '$' + funcName + ' fusion plan');
   assertEqual(meta[key]['fusionPattern'], expectedPattern, '$' + funcName + ' fusionPattern');
 }
@@ -143,6 +143,12 @@ var localInitFolding = new PassFamily('local-init-folding', 'local_init_folding.
   assertEqual(result['multiFold']['localInitFolding']['1'], 20, '$multiFold local 1');
 
   assertMetadataNull(result, 'noFold', 'localInitFolding');
+
+  assertHasKey(result, 'mixedFold', '$mixedFold must exist');
+  assertNotNull(result['mixedFold']['localInitFolding'], '$mixedFold localInitFolding');
+  assertEqual(result['mixedFold']['localInitFolding']['1'], 7, '$mixedFold local 1');
+
+  assertMetadataNull(result, 'zeroOnlyFold', 'localInitFolding');
 });
 
 // ---------------------------------------------------------------------------
@@ -153,7 +159,7 @@ var blockLoopFusion = new PassFamily('block-loop-fusion', 'block_loop_fusion.was
   assertFusionPlan(result, 'fusionA', 'a');
   assertFusionPlan(result, 'fusionB', 'b');
   assertMetadataNull(result, 'noFusion', 'blockLoopFusion');
-  assertMetadataNull(result, 'noFusionOuterExit', 'blockLoopFusion');
+  assertFusionPlan(result, 'fusionOuterExit', 'a');
 });
 
 // ---------------------------------------------------------------------------
@@ -161,25 +167,25 @@ var blockLoopFusion = new PassFamily('block-loop-fusion', 'block_loop_fusion.was
 // ---------------------------------------------------------------------------
 
 var switchDispatch = new PassFamily('switch-dispatch', 'switch_dispatch.wast', function (result) {
-  assertDispatchKey(result, 'flatSwitch', 'switchDispatch', 'sw$');
+  assertDispatchKey(result, 'flatSwitch', 'switchDispatch', 'w2l_switch$');
   assertMetadataNull(result, 'flatSwitch', 'rootSwitch');
 
-  // Action code breaks to the outer dispatch block — still detected as sw$.
-  assertDispatchKey(result, 'flatSwitchRequiresLabel', 'switchDispatch', 'sw$');
+  // Action code breaks to the outer dispatch block — still detected as w2l_switch$.
+  assertDispatchKey(result, 'flatSwitchRequiresLabel', 'switchDispatch', 'w2l_switch$');
   assertMetadataNull(result, 'flatSwitchRequiresLabel', 'rootSwitch');
 
   // Non-wrapping dispatch: outer block has trailing case actions but is not
-  // first child of parent — still detected as sw$.
-  assertDispatchKey(result, 'nonWrappingDispatch', 'switchDispatch', 'sw$');
+  // first child of parent — still detected as w2l_switch$.
+  assertDispatchKey(result, 'nonWrappingDispatch', 'switchDispatch', 'w2l_switch$');
   assertMetadataNull(result, 'nonWrappingDispatch', 'rootSwitch');
 
   // Wrapping dispatch with epilogue: first child of loop body with trailing
-  // siblings → detection pass wraps into sw$ block with epilogue.
-  assertDispatchKey(result, 'wrappingDispatchEpilogue', 'switchDispatch', 'sw$');
+  // siblings → detection pass wraps into w2l_switch$ block with epilogue.
+  assertDispatchKey(result, 'wrappingDispatchEpilogue', 'switchDispatch', 'w2l_switch$');
   assertMetadataNull(result, 'wrappingDispatchEpilogue', 'rootSwitch');
 
-  assertDispatchKey(result, 'rootSwitch', 'switchDispatch', 'sw$');
-  assertDispatchKey(result, 'rootSwitch', 'rootSwitch', 'rs$');
+  assertDispatchKey(result, 'rootSwitch', 'switchDispatch', 'w2l_switch$');
+  assertDispatchKey(result, 'rootSwitch', 'rootSwitch', 'w2l_rootsw$');
 });
 
 // ---------------------------------------------------------------------------
@@ -193,6 +199,8 @@ var loopSimplification = new PassFamily('loop-simplification', 'loop_simplificat
   assertLoopPlan(result, 'whileLoop', 'while');
   assertLoopPlan(result, 'doWhileDirectBrIf', 'dowhile');
   assertLoopPlan(result, 'ifGuardedWhile', 'while');
+  // Multi-guard while: two consecutive br_if exit guards combined → 'while'.
+  assertLoopPlan(result, 'multiGuardWhile', 'while');
   // Exit guard targets distant block → must NOT become while, stays as for.
   assertLoopPlan(result, 'noWhileDistantExit', 'for');
   // Terminal-exit: unconditional exit with internal continue paths → for.

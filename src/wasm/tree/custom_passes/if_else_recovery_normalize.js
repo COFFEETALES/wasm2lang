@@ -63,7 +63,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
   }
 
   // Skip blocks already handled by other passes.
-  if (0 === blockName.indexOf('sw$') || 0 === blockName.indexOf('lb$') || 0 === blockName.indexOf('rs$')) {
+  if (
+    0 === blockName.indexOf('w2l_switch$') ||
+    0 === blockName.indexOf('w2l_fused$') ||
+    0 === blockName.indexOf('w2l_rootsw$')
+  ) {
     return null;
   }
 
@@ -73,16 +77,37 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
   }
 
   // -----------------------------------------------------------------------
+  // Find where the if-chain starts.  Allow unconditional statements
+  // before the chain as long as they don't reference blockName.
+  // -----------------------------------------------------------------------
+  var /** @const {number} */ childCount = children.length;
+  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
+  var /** @type {number} */ chainStart = 0;
+
+  for (var /** @type {number} */ si = 0; si < childCount; ++si) {
+    var /** @const {!BinaryenExpressionInfo} */ preInfo = /** @type {!BinaryenExpressionInfo} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[si])
+      );
+    if (binaryen.IfId === preInfo.id) {
+      chainStart = si;
+      break;
+    }
+    // Pre-chain child must not reference blockName.
+    if (hasRefFn(binaryen, children[si], blockName)) {
+      return null;
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Scan consecutive qualifying ifs: each is an If with no else arm whose
   // then-arm is a Block ending with unconditional valueless (br $blockName).
   // -----------------------------------------------------------------------
-  var /** @const {number} */ childCount = children.length;
   var /** @type {number} */ chainLength = 0;
   var /** @const {!Array<number>} */ conditions = [];
   var /** @const {!Array<!Array<number>>} */ strippedBodies = [];
   var /** @const {!Array<?string>} */ thenBlockNames = [];
 
-  for (var /** @type {number} */ i = 0; i < childCount; ++i) {
+  for (var /** @type {number} */ i = chainStart; i < childCount; ++i) {
     var /** @const {!BinaryenExpressionInfo} */ childInfo = /** @type {!BinaryenExpressionInfo} */ (
         Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[i])
       );
@@ -122,7 +147,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
   // Check for intermediate references to blockName that require keeping
   // the label.  Scan conditions, stripped then-arms, and else body.
   // -----------------------------------------------------------------------
-  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
   var /** @type {boolean} */ hasRef = false;
 
   for (var /** @type {number} */ ri = 0; ri < chainLength && !hasRef; ++ri) {
@@ -139,7 +163,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
     }
   }
   if (!hasRef) {
-    for (var /** @type {number} */ rk = chainLength; rk < childCount; ++rk) {
+    for (var /** @type {number} */ rk = chainStart + chainLength; rk < childCount; ++rk) {
       if (hasRefFn(binaryen, children[rk], blockName)) {
         hasRef = true;
         break;
@@ -150,7 +174,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
   // -----------------------------------------------------------------------
   // Build the if/else chain right-to-left.
   // -----------------------------------------------------------------------
-  var /** @const {!Array<number>} */ remaining = /** @type {!Array<number>} */ ([].slice.call(children, chainLength));
+  var /** @const {!Array<number>} */ remaining = /** @type {!Array<number>} */ (
+      [].slice.call(children, chainStart + chainLength)
+    );
   var /** @type {number} */ elseExpr = 0;
   if (remaining.length > 1) {
     elseExpr = module.block(null, remaining, binaryen.none);
@@ -179,9 +205,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
       });
   }
 
+  // -----------------------------------------------------------------------
+  // Assemble replacement: pre-chain children (if any) + if/else chain.
+  // -----------------------------------------------------------------------
+  var /** @const {!Array<number>} */ resultChildren =
+      0 === chainStart ? [elseExpr] : /** @type {!Array<number>} */ ([].slice.call(children, 0, chainStart).concat([elseExpr]));
+
   return {
     decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE,
-    expressionPointer: module.block(hasRef ? blockName : null, [elseExpr], binaryen.none)
+    expressionPointer: module.block(hasRef ? blockName : null, resultChildren, binaryen.none)
   };
 };
 

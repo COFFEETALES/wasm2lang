@@ -46,6 +46,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.walkAndAppendBody_ = function (
       }
     });
   emitState.visitor = visitor;
+  var /** @const {?Object<string, number>} */ liOverrides = this.getLocalInitOverrides_(funcInfo.name);
+  this.localInitOverridesActive_ = liOverrides ? {map: liOverrides, consumed: Object.create(null)} : null;
   var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
   // Store diagnostic data for emitDiagnosticSummary_.
   if (this.diagnosticNodeCounts_) {

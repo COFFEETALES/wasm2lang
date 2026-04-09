@@ -39,7 +39,7 @@ const wasm = !!obj['wasm'];
 
   let sharedData = null;
   try {
-    const testBase = testName.replace(/^.*\//, '').replace(/_(codegen|none)$/, '');
+    const testBase = testName.replace(/^.*\//, '').replace(/_(codegen|none|prenorm|nopre)$/, '');
     const dataPath = ['./', testBase, '.shared.data.json'].join('');
     if (isNode) {
       sharedData = JSON.parse(require('fs').readFileSync(dataPath, 'utf8'));
@@ -77,6 +77,10 @@ const wasm = !!obj['wasm'];
       while (null !== (line = readline())) {
         code += line + '\n';
       }
+    }
+
+    if (harness.validateCode) {
+      harness.validateCode(code, testName);
     }
 
     const [memBuffer, module] = eval([code, '[memBuffer, module]'].join('\n'));

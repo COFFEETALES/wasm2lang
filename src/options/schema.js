@@ -18,7 +18,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
   EMIT_CODE: 'emitCode',
   EMIT_WEBASSEMBLY: 'emitWebAssembly',
   MANGLER: 'mangler',
-  OUT_FILE: 'outFile'
+  OUT_FILE: 'outFile',
+  PRE_NORMALIZED: 'preNormalized'
 };
 
 /**
@@ -32,7 +33,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
  *   emitCode: (string|null),
  *   emitWebAssembly: (string|null),
  *   mangler: (string|null),
- *   outFile: (string|null)
+ *   outFile: (string|null),
+ *   preNormalized: boolean
  * }}
  */
 Wasm2Lang.Options.Schema.NormalizedOptions;
@@ -54,7 +56,8 @@ Wasm2Lang.Options.Schema.NormalizedOptions;
  *   emitMetadata: (boolean|string|undefined),
  *   emitCode: (boolean|string|undefined),
  *   emitWebAssembly: (boolean|string|undefined),
- *   mangler: (string|undefined)
+ *   mangler: (string|undefined),
+ *   preNormalized: (boolean|undefined)
  * }}
  */
 Wasm2Lang.Options.Schema.UserOptions;
@@ -110,7 +113,8 @@ Wasm2Lang.Options.Schema.defaultOptions = {
   emitCode: null,
   emitWebAssembly: null,
   mangler: null,
-  outFile: null
+  outFile: null,
+  preNormalized: false
 };
 
 /**
@@ -229,6 +233,14 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.OUT_FI
 };
 
 /**
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @param {!Array<string>} strs
+ */
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.PRE_NORMALIZED] = function (options, strs) {
+  options.preNormalized = true;
+};
+
+/**
  * @const {
  *  !Object<
  *    !Wasm2Lang.Options.Schema.OptionKey, {
@@ -290,5 +302,10 @@ Wasm2Lang.Options.Schema.optionSchema = {
   'outFile': {
     optionType: 'string|null',
     optionDesc: 'Writes output to the specified file instead of stdout.'
+  },
+  'preNormalized': {
+    optionType: 'boolean',
+    optionDesc:
+      'Indicates the input was already normalized by wasm2lang:codegen. Enables IR-based structural detection of simplified loops and control flow patterns whose label hints were lost during binary serialization.'
   }
 };

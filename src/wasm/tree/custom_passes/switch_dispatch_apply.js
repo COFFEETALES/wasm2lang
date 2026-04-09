@@ -156,6 +156,75 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasBreakTarget_ = fun
 };
 
 /**
+ * Like {@code hasBreakTarget_} but only returns true when the break occurs
+ * from within a LoopId subtree.  In the output code, loops and switches are
+ * breakable scopes — an unlabeled {@code break} exits the innermost one.
+ * Breaks to chain names from within plain blocks (not loops) are equivalent
+ * to unlabeled {@code break} in the enclosing switch and do NOT require the
+ * outer label.
+ *
+ * @private
+ * @param {!Binaryen} binaryen
+ * @param {number} ptr
+ * @param {!Array<string>} chainNames
+ * @param {boolean} insideLoop
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasChainBreakThroughLoop_ = function (
+  binaryen,
+  ptr,
+  chainNames,
+  insideLoop
+) {
+  if (!ptr) {
+    return false;
+  }
+  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
+    );
+  var /** @const {number} */ id = info.id;
+  if (binaryen.BreakId === id) {
+    if (insideLoop) {
+      var /** @const {?string} */ brName = /** @type {?string} */ (info.name);
+      for (var /** @type {number} */ ni = 0, /** @const {number} */ nLen = chainNames.length; ni < nLen; ++ni) {
+        if (chainNames[ni] === brName) return true;
+      }
+    }
+    return false;
+  }
+  if (binaryen.SwitchId === id) {
+    // SwitchId (br_table) becomes a JS switch statement — itself a breakable
+    // scope — so its branch targets always get explicit labels regardless.
+    // The outer flat-switch label is NOT needed for these.
+    return false;
+  }
+  var /** @const {function(!Binaryen, number, !Array<string>, boolean): boolean} */ check =
+      Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasChainBreakThroughLoop_;
+  if (binaryen.BlockId === id) {
+    var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
+    if (ch) {
+      for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
+        if (check(binaryen, ch[ci], chainNames, insideLoop)) return true;
+      }
+    }
+    return false;
+  }
+  if (binaryen.LoopId === id) {
+    return check(binaryen, /** @type {number} */ (info.body || 0), chainNames, true);
+  }
+  if (binaryen.IfId === id) {
+    return (
+      check(binaryen, /** @type {number} */ (info.ifTrue || 0), chainNames, insideLoop) ||
+      check(binaryen, /** @type {number} */ (info.ifFalse || 0), chainNames, insideLoop)
+    );
+  }
+  if (binaryen.DropId === id || binaryen.ReturnId === id || binaryen.LocalSetId === id || binaryen.GlobalSetId === id) {
+    return check(binaryen, /** @type {number} */ (info.value || 0), chainNames, insideLoop);
+  }
+  return false;
+};
+
+/**
  * Extracts the flat-switch structure from a br_table dispatch block that has
  * been annotated by the SwitchDispatchDetectionPass.
  *
@@ -204,23 +273,43 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
         var /** @const {number} */ conditionPtr = /** @type {number} */ (soleInfo.condition);
 
         // Epilogue: wrapper's trailing children that run after the switch.
-        // In the wrapping scenario, chain[0] is the sw$-prefixed wrapper
-        // created by the detection pass with the original chain outer as
-        // first child and epilogue code as trailing children.  Cases that
-        // resolve to pIdx===0 should break out of the switch to reach the
-        // epilogue, not absorb it as actions.
+        // In the wrapping scenario, chain[0] is a wrapper created by the
+        // detection pass with the original chain outer as first child and
+        // epilogue code as trailing children.  Cases that resolve to
+        // pIdx===0 should break out of the switch to reach the epilogue,
+        // not absorb it as actions.
         //
-        // When NO wrapping was done, chain[0] is the renamed original outer
-        // (sw$X where chain[1] is not X).  Its trailing children are the
-        // action code for the case targeting chain[1], not common epilogue.
+        // When NO wrapping was done, chain[0] has exactly one child (the
+        // original chain outer).  Detect wrapping structurally: a wrapped
+        // dispatch has trailing siblings in chain[0] (epilogue code),
+        // while a non-wrapped dispatch has chain[0] with a single child.
+        // This works after binary round-trip where the w2l_switch$ name
+        // prefix is replaced by a binaryen-generated name.
+        //
+        // Metadata position drift: binaryen may flatten unnamed blocks
+        // during binary round-trip, shifting DFS positions.  When the
+        // metadata position drifts, it may point to the dispatch-completed
+        // block instead of the wrapper.  In that case, wrapperTrail
+        // contains the last case body + a terminal br targeting the wrapper
+        // (outside the chain).  Detect this and suppress wrapping.
         var /** @const {!Array<number>} */ wrapperTrail = /** @type {!Array<number>} */ (chain[0][1]).slice(1);
-        var /** @const {string} */ swPrefix = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER;
-        var /** @const {boolean} */ isWrappedStructure =
-            chain.length > 2 &&
-            outerName.length > swPrefix.length &&
-            outerName.substring(0, swPrefix.length) === swPrefix &&
-            outerName.substring(swPrefix.length) === /** @type {string} */ (chain[1][0]);
-        var /** @type {!Array<number>} */ epilogue = isWrappedStructure && wrapperTrail.length > 0 ? wrapperTrail : [];
+        var /** @type {boolean} */ isWrappedStructure = chain.length > 2 && wrapperTrail.length > 0;
+        if (isWrappedStructure) {
+          var /** @const {!BinaryenExpressionInfo} */ trailLastInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+              binaryen,
+              wrapperTrail[wrapperTrail.length - 1]
+            );
+          if (binaryen.BreakId === trailLastInfo.id && 0 === /** @type {number} */ (trailLastInfo.condition || 0)) {
+            var /** @const {?string} */ brTarget = /** @type {?string} */ (trailLastInfo.name);
+            if (brTarget && !(brTarget in nameToIdx)) {
+              // Terminal br targets a block outside the dispatch chain —
+              // this is a non-wrapping dispatch whose metadata drifted to
+              // the dispatch-completed block.
+              isWrappedStructure = false;
+            }
+          }
+        }
+        var /** @type {!Array<number>} */ epilogue = isWrappedStructure ? wrapperTrail : [];
 
         // prettier-ignore
         var /** @const */ buildGroup =
@@ -289,16 +378,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
           defaultGroup = buildGroup(switchDefault);
         }
 
-        // Check if any action code references any chain block — if so, the
-        // switch statement needs a label.  In the wrapping scenario the
-        // detection pass creates an sw$-prefixed wrapper around the original
-        // chain outer block.  Breaks in action code still target the original
-        // (un-prefixed) name, so we must check all chain names, not just
-        // outerName.
-        var /** @const {function(!Binaryen, number, string): boolean} */ hasBreak =
-            Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasBreakTarget_;
+        // Check if any action code has a break to a chain name from within a
+        // nested loop.  In the output, loops (and switches) are breakable
+        // scopes: an unlabeled `break` exits the innermost one.  Breaks to
+        // chain names from plain blocks are equivalent to unlabeled `break` in
+        // the enclosing switch and do NOT require the outer label.  Only breaks
+        // that cross a loop boundary need the label so the runtime can exit
+        // both the loop and the switch.
+        var /** @const {function(!Binaryen, number, !Array<string>, boolean): boolean} */ hasLoopBreak =
+            Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasChainBreakThroughLoop_;
         var /** @const {!Array<string>} */ chainNames = Object.keys(nameToIdx);
-        var /** @const {number} */ chainNameCount = chainNames.length;
         var /** @type {boolean} */ needsLabel = false;
         for (
           var /** @type {number} */ nli = 0, /** @const {number} */ nlLen = caseGroups.length;
@@ -311,11 +400,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
             nlj < nlpLen && !needsLabel;
             ++nlj
           ) {
-            for (var /** @type {number} */ nlc = 0; nlc < chainNameCount; ++nlc) {
-              if (hasBreak(binaryen, nlPtrs[nlj], chainNames[nlc])) {
-                needsLabel = true;
-                break;
-              }
+            if (hasLoopBreak(binaryen, nlPtrs[nlj], chainNames, false)) {
+              needsLabel = true;
             }
           }
         }
@@ -326,11 +412,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
             nlk < dLen && !needsLabel;
             ++nlk
           ) {
-            for (var /** @type {number} */ nlc2 = 0; nlc2 < chainNameCount; ++nlc2) {
-              if (hasBreak(binaryen, defPtrs[nlk], chainNames[nlc2])) {
-                needsLabel = true;
-                break;
-              }
+            if (hasLoopBreak(binaryen, defPtrs[nlk], chainNames, false)) {
+              needsLabel = true;
             }
           }
         }
@@ -614,22 +697,26 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
 
     var /** @const {string} */ fcName = /** @type {string} */ (fcInfo.name || '');
 
-    // lb$ fused block containing a loop.
-    if (Wasm2Lang.Backend.AbstractCodegen.hasPrefix_(fcName, Wasm2Lang.Backend.AbstractCodegen.LB_FUSION_PREFIX_)) {
-      var /** @const {!Array<number>} */ fusedCh = /** @type {!Array<number>} */ (fcInfo.children || []);
-      if (1 === fusedCh.length) {
-        var /** @const {!BinaryenExpressionInfo} */ fusedChild = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
-            binaryen,
-            fusedCh[0]
-          );
-        if (binaryen.LoopId === fusedChild.id) {
-          // Add lb$ block to the chain so that br $lb$... targets inside
-          // the flat switch are intercepted by the root-switch exit map.
-          chain[chain.length] = {'n': fcName, 'c': fusedCh};
-          loopPtr = fusedCh[0];
-          loopName = /** @type {string} */ (fusedChild.name);
-          break;
-        }
+    // Fused block containing a loop: block with 1-2 children where
+    // first = Loop, second = Unreachable if present.
+    var /** @const {!Array<number>} */ fusedCh = /** @type {!Array<number>} */ (fcInfo.children || []);
+    var /** @const {boolean} */ isFusionCandidate = fusedCh.length >= 1 && fusedCh.length <= 2;
+    if (isFusionCandidate && fusedCh.length >= 1) {
+      var /** @const {!BinaryenExpressionInfo} */ fusedChild = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+          binaryen,
+          fusedCh[0]
+        );
+      if (
+        binaryen.LoopId === fusedChild.id &&
+        (1 === fusedCh.length ||
+          binaryen.UnreachableId === Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fusedCh[1]).id)
+      ) {
+        // Add fused block to the chain so that br targets inside the flat
+        // switch are intercepted by the root-switch exit map.
+        chain[chain.length] = {'n': fcName, 'c': fusedCh};
+        loopPtr = fusedCh[0];
+        loopName = /** @type {string} */ (fusedChild.name);
+        break;
       }
     }
 
@@ -785,7 +872,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
   var /** @const {number} */ cnLen = cn.length;
   var /** @const {boolean} */ hasEpilogue = info.epiloguePtrs.length > 0;
 
-  // When epilogue exists, emit:
+  // When epilogue exists AND a label is required, emit:
   //   outerLabel: {           ← wraps everything; epilogue breaks target this
   //     innerLabel: {         ← wraps switch; case-action breaks target this
   //       switch (cond) { }
@@ -796,11 +883,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
   // The inner labeled block makes case-action `break innerLabel;` exit the
   // switch and reach the epilogue.  Epilogue `break outerLabel;` exits all.
   //
+  // When epilogue exists but no label needed: label-free switch + epilogue.
+  //   Chain-name breaks are redirected to '*' (switch sentinel) so they
+  //   produce unlabeled `break;` which exits the switch and reaches epilogue.
+  //
   // When no epilogue but requiresLabel: label goes on the switch directly.
   //   Chain-name breaks are redirected to outerName via fusedBlockToLoop.
   //
-  // When neither: label-free switch.
-  if (hasEpilogue) {
+  // When neither: label-free switch; chain-name breaks redirect to '*'.
+  var /** @const {boolean} */ labeledEpilogue = hasEpilogue && info.requiresLabel;
+  var /** @type {string} */ innerChainName = '';
+  if (labeledEpilogue) {
     // The inner label corresponds to the original chain outer block (e.g.
     // "exit"). Chain-name breaks already target it by name — register the
     // block in labelKinds/breakableStack as a normal block so the BreakId
@@ -808,7 +901,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
     // Find the chain-outer name (chain[1] in the extracted chain, which is
     // the first name after outerName that other chain names relate to).
     // Use the first chain name that isn't outerName.
-    var /** @type {string} */ innerChainName = '';
     for (var /** @type {number} */ fi = 0; fi < cnLen; ++fi) {
       if (cn[fi] !== info.outerName) {
         innerChainName = cn[fi];
@@ -846,6 +938,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
         }
       }
     }
+  } else {
+    // No label needed (with or without epilogue).  Redirect inner chain
+    // names to the switch sentinel '*' so BreakId handler produces
+    // unlabeled `break;` which exits the enclosing switch.
+    // Skip outerName — it is the traversed block; redirecting it would
+    // confuse adjustLeaveIndent_ into treating it as fused.
+    for (var /** @type {number} */ ci3 = 0; ci3 < cnLen; ++ci3) {
+      if (cn[ci3] !== info.outerName && !(cn[ci3] in state.fusedBlockToLoop)) {
+        state.fusedBlockToLoop[cn[ci3]] = '*';
+      }
+    }
   }
 
   var /** @const {{s: string, c: number}} */ condResult = A.subWalkExpressionWithCategory_(state, info.conditionPtr);
@@ -858,7 +961,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
   var /** @const {!Array<string>} */ lines = [];
   var /** @type {number} */ switchInd = ind;
 
-  if (hasEpilogue) {
+  if (labeledEpilogue) {
     lines[lines.length] = pad(ind) + outerLabel + ': {\n';
     if ('' !== innerChainName) {
       state.usedLabels[innerChainName] = true;
@@ -874,10 +977,10 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
     S.emitFlatSwitchHeader(lines, ind, condStr, outerLabel, info);
   }
 
-  // For epilogue mode, case-group breaks must target the inner label (exit
-  // the inner block → reach epilogue), not the outer label (which would
-  // skip the epilogue entirely).
-  var /** @type {string} */ breakLabel = hasEpilogue && '' !== innerChainName ? innerLabel : outerLabel;
+  // For labeled epilogue mode, case-group breaks must target the inner label
+  // (exit the inner block → reach epilogue), not the outer label (which
+  // would skip the epilogue entirely).
+  var /** @type {string} */ breakLabel = labeledEpilogue && '' !== innerChainName ? innerLabel : outerLabel;
 
   var /** @const {!Array<!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup>} */ groups =
       info.caseGroups;
@@ -898,7 +1001,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
 
   lines[lines.length] = pad(switchInd) + '}\n';
 
-  if (hasEpilogue) {
+  if (labeledEpilogue) {
     if ('' !== innerChainName) {
       lines[lines.length] = pad(ind + 1) + '}\n';
       --state.breakableStack.length;
@@ -914,6 +1017,19 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
       ind + 1
     );
     lines[lines.length] = pad(ind) + '}\n';
+  } else if (hasEpilogue) {
+    // Unlabeled epilogue: no block wrappers — just emit epilogue after
+    // the switch close at the current indent level.
+    S.emitSubWalkedExpressions_(
+      lines,
+      /** @type {!BinaryenModule} */ (state.wasmModule),
+      binaryen,
+      state.functionInfo,
+      vis,
+      info.epiloguePtrs,
+      info.epiloguePtrs.length,
+      ind
+    );
   }
 
   return {emittedString: lines.join(''), hasDefault: !!defGroup};

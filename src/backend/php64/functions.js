@@ -146,7 +146,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
         pendingBlockFusion: '',
         rootSwitchExitMap: null,
         rootSwitchRsName: '',
-        rootSwitchLoopName: ''
+        rootSwitchLoopName: '',
+        lastExprIsTerminal: false,
+        pendingLoopKind: ''
       }),
       pad(2)
     );

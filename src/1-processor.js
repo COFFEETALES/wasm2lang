@@ -143,11 +143,44 @@ Wasm2Lang.Processor.transpile_ = function (options) {
   var /** @const {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(options.inputData);
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ codegen = Wasm2Lang.Backend.createBackend(options.languageOut);
 
+  // When --pre-normalized is set, reconstruct pass metadata from the
+  // w2l_codegen_meta custom section embedded during a prior
+  // wasm2lang:codegen normalization run.  This restores loop plans,
+  // fusion info, and analysis-only metadata (localInitOverrides) so the
+  // backend can recover simplification patterns whose label hints were
+  // lost during binary serialization.  Only done with --pre-normalized
+  // because rebuildPassRunResult mutates the module (restoring unnamed
+  // block labels) and enables structural detection — side effects that
+  // must not leak into plain codegen output.
+  if (options.preNormalized && options.inputData instanceof Uint8Array) {
+    var /** @const {!Binaryen} */ preNormBinaryen = Wasm2Lang.Processor.getBinaryen();
+    var /** @const {?Object} */ parsedMeta = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.deserializeFromBinary(
+        /** @type {!Uint8Array} */ (options.inputData)
+      );
+    if (parsedMeta) {
+      var /** @const {!Wasm2Lang.Wasm.Tree.PassRunResult} */ rebuiltResult =
+          Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult(wasmModule, parsedMeta, preNormBinaryen);
+      codegen.setPassRunResult_(rebuiltResult);
+    }
+    // Clean up redundant blocks introduced by binaryen during binary
+    // round-trip.  Binaryen may wrap if-then arms or restructure scopes,
+    // adding named blocks with no branch references.  Running
+    // RedundantBlockRemovalPass here ensures the pre-normalized IR
+    // matches the one-pass IR structure.
+    Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(
+      wasmModule,
+      [new Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass()],
+      preNormBinaryen
+    );
+    codegen.enableSimplifications_();
+  }
+
   // prettier-ignore
   var /** @const {?Wasm2Lang.Wasm.Tree.PassRunResult} */ passRunResult =
     Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles(wasmModule, options, !codegen.needsI64Lowering());
   if (passRunResult) {
     codegen.setPassRunResult_(passRunResult);
+    codegen.enableSimplifications_();
   }
 
   if (options.mangler) {
@@ -242,7 +275,8 @@ Wasm2Lang.Processor.normalizeUserOptions_ = function (userOptions) {
         emitCode: Wasm2Lang.Processor.normalizeEmitOption_(userOptions, 'emitCode', 'code'),
         emitWebAssembly: Wasm2Lang.Processor.normalizeEmitOption_(userOptions, 'emitWebAssembly', ''),
         mangler: userMangler || null,
-        outFile: null
+        outFile: null,
+        preNormalized: !!userOptions['preNormalized']
       });
 
   return o;

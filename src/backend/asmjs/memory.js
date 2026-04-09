@@ -118,6 +118,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
 Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_ = function (baseExpr, offset) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (0 === offset) return baseExpr;
+  if ('0' === baseExpr) return String(offset);
   return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_));
 };
 
