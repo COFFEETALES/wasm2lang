@@ -91,6 +91,26 @@
     (local.get $result)
   )
 
+  ;; Terminator-ended dispatch: intermediate blocks end with return
+  ;; (not unconditional break).  All case actions are terminal, so no
+  ;; synthetic fall-through breaks are needed — the detection pass must
+  ;; accept return/unreachable as valid chain terminators.
+  (func $terminatorDispatch (param $a i32) (param $b i32) (param $op i32) (result i32)
+    (block $default
+      (block $mod
+        (block $div
+          (block $mul
+            (block $sub
+              (block $add
+                (br_table $add $sub $mul $div $mod $default (local.get $op)))
+              (return (i32.add (local.get $a) (local.get $b))))
+            (return (i32.sub (local.get $a) (local.get $b))))
+          (return (i32.mul (local.get $a) (local.get $b))))
+        (return (i32.div_s (local.get $a) (local.get $b))))
+      (return (i32.rem_s (local.get $a) (local.get $b))))
+    (i32.const 0)
+  )
+
   ;; Root switch: outer blocks wrapping a loop whose body contains a
   ;; switch dispatch followed by unconditional break to an outer block.
   ;; Requires >=2 outer wrapper blocks with exit code (children.length >= 2)

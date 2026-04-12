@@ -125,6 +125,12 @@ $validateCode = function (string $code, string $testName): void {
             $check('wrappingDispatchEpilogue', count($_wf[0]) < count($_cs[0]), 'expected flat switch (fewer labeled blocks than cases)');
         } else { $check('wrappingDispatchEpilogue', false, 'function body not found'); }
 
+        $b = w2lBodyOf($code, 'terminatorDispatch');
+        if ($b !== null) {
+            preg_match_all('/while\s*\(\s*false\s*\)/', $b, $_wf); preg_match_all('/\bcase\s+\d+\s*:/', $b, $_cs);
+            $check('terminatorDispatch', count($_wf[0]) < count($_cs[0]), 'expected flat switch (fewer labeled blocks than cases)');
+        } else { $check('terminatorDispatch', false, 'function body not found'); }
+
         // -- redundant block removal --
         $b = w2lBodyOf($code, 'redundantLoopBlock');
         $check('redundantLoopBlock', $b !== null && w2lCountSimplifiedWhile($b) >= 1, 'expected while loop with condition');
@@ -242,6 +248,10 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
 
     foreach ($data['wrapping_dispatch_epilogue_pairs'] as $pair) {
         $exports['exerciseWrappingDispatchEpilogue']($pair[0], $pair[1]);
+    }
+
+    foreach ($data['terminator_dispatch_triples'] as $triple) {
+        $exports['exerciseTerminatorDispatch']($triple[0], $triple[1], $triple[2]);
     }
 
     foreach ($data['guard_elision_product_values'] as $v) {

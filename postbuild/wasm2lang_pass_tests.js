@@ -184,6 +184,11 @@ var switchDispatch = new PassFamily('switch-dispatch', 'switch_dispatch.wast', f
   assertDispatchKey(result, 'wrappingDispatchEpilogue', 'switchDispatch', 'w2l_switch$');
   assertMetadataNull(result, 'wrappingDispatchEpilogue', 'rootSwitch');
 
+  // Terminator-ended dispatch: intermediate blocks end with return
+  // rather than unconditional break — still detected as w2l_switch$.
+  assertDispatchKey(result, 'terminatorDispatch', 'switchDispatch', 'w2l_switch$');
+  assertMetadataNull(result, 'terminatorDispatch', 'rootSwitch');
+
   assertDispatchKey(result, 'rootSwitch', 'switchDispatch', 'w2l_switch$');
   assertDispatchKey(result, 'rootSwitch', 'rootSwitch', 'w2l_rootsw$');
 });
@@ -315,7 +320,15 @@ function loadBinaryen() {
 // Run all families
 // ---------------------------------------------------------------------------
 
-var families = [localInitFolding, blockLoopFusion, switchDispatch, loopSimplification, ifElseRecovery, blockGuardElision, redundantBlockRemoval];
+var families = [
+  localInitFolding,
+  blockLoopFusion,
+  switchDispatch,
+  loopSimplification,
+  ifElseRecovery,
+  blockGuardElision,
+  redundantBlockRemoval
+];
 
 loadBinaryen().then(function (binaryen) {
   var fixtureDir = path.resolve(__dirname, 'fixtures');

@@ -94,14 +94,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
     }
     blockNameSet[childName] = true;
 
-    // Non-outermost blocks must end with an unconditional break.
-    // The target can be anything (loop continue, outer exit, etc.).
+    // Non-outermost blocks must end with an unconditional terminator —
+    // an unconditional Break (to a loop continue, outer exit, etc.), a
+    // Return, or an Unreachable.  Terminator-ended blocks let control
+    // flow match the br_table dispatch pattern even when intermediate
+    // cases don't break to the next chain level.
     if (!isOutermost) {
       var /** @const {number} */ lastPtr = children[children.length - 1];
       var /** @const {!BinaryenExpressionInfo} */ lastExpr = /** @type {!BinaryenExpressionInfo} */ (
           Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, lastPtr)
         );
-      if (binaryen.BreakId !== lastExpr.id || 0 !== /** @type {number} */ (lastExpr.condition || 0)) {
+      if (!Wasm2Lang.Wasm.Tree.CustomPasses.isUnconditionalTerminator(binaryen, lastExpr)) {
         return null;
       }
     }
@@ -238,7 +241,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
   // --- Wrapping dispatch outer: add explicit terminal break ---
   // Ensures the outermost case body terminates when emitted as a JS switch
   // case.  The break targets the block's own name (exits to the epilogue
-  // inside the wrapper that the parent creates).
+  // inside the wrapper that the parent creates).  Return/Unreachable tails
+  // also count as terminators — no additional synthetic break is needed.
   if (blockName && blockName in state.switchNeedsWrapping) {
     var /** @const {!Array<number>} */ wrapChildren = /** @type {!Array<number>} */ ((expr.children || []).slice(0));
     var /** @type {boolean} */ hasTerminal = false;
@@ -246,7 +250,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
       var /** @const {!BinaryenExpressionInfo} */ tailInfo = /** @type {!BinaryenExpressionInfo} */ (
           Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, wrapChildren[wrapChildren.length - 1])
         );
-      hasTerminal = binaryen.BreakId === tailInfo.id && 0 === /** @type {number} */ (tailInfo.condition || 0);
+      hasTerminal = Wasm2Lang.Wasm.Tree.CustomPasses.isUnconditionalTerminator(binaryen, tailInfo);
     }
     if (!hasTerminal) {
       wrapChildren[wrapChildren.length] = module.break(blockName, 0, 0);
@@ -280,6 +284,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
             binaryen.BreakId === lastInfo.id && 0 === /** @type {number} */ (lastInfo.condition || 0);
         wrapperChildren = excludeLast ? allChildren.slice(0, allChildren.length - 1) : allChildren;
 
+        // Wrapper type must stay {@code none} so binary round-trip does not
+        // collapse the outer unnamed parent block into the wrapper.  When
+        // parent and wrapper carry identical non-{@code none} types, binaryen
+        // may flatten the parent — shifting every DFS position inside the
+        // function and invalidating the {@code w2l_codegen_meta} pointers.
+        // Trailing children here always terminate (return / unreachable /
+        // unconditional break), so their {@code unreachable} tail type already
+        // satisfies any enclosing block type regardless of the wrapper's own.
         var /** @const {number} */ wrapperBlock = module.block(M + fcName, wrapperChildren, binaryen.none);
         var /** @const {!Array<number>} */ outerChildren = excludeLast
             ? [wrapperBlock, allChildren[allChildren.length - 1]]

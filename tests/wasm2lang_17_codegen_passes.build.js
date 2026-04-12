@@ -651,6 +651,60 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // terminatorDispatch: Flat switch dispatch where intermediate blocks end
+  // with `return` rather than unconditional break.  All case actions are
+  // terminal, so no synthetic fall-through breaks are needed — the detection
+  // pass must accept return/unreachable as valid chain terminators.  The
+  // outer block is followed by a trailing value expression (i32.const 0)
+  // that acts as the implicit return for the default case.
+  //
+  // Structure (RPN-style evaluator):
+  //   (block $default
+  //     (block $mod (block $div (block $mul (block $sub (block $add
+  //       (br_table $add $sub $mul $div $mod $default (op))))
+  //       (return (a + b))) (return (a - b))) (return (a * b)))
+  //       (return (a / b))) (return (a % b)))
+  //   (i32.const 0)
+  //
+  // params: a(0), b(1), op(2)
+  // Returns: op=0 → a+b, 1 → a-b, 2 → a*b, 3 → a/b, 4 → a%b, else → 0.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'terminatorDispatch',
+    binaryen.createType([binaryen.i32, binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [],
+    module.block(null, [
+      module.block('tdDefault', [
+        module.block('tdMod', [
+          module.block('tdDiv', [
+            module.block('tdMul', [
+              module.block('tdSub', [
+                module.block('tdAdd', [module.switch(['tdAdd', 'tdSub', 'tdMul', 'tdDiv', 'tdMod'], 'tdDefault', p(2))]),
+                module.return(module.i32.add(p(0), p(1)))
+              ]),
+              module.return(module.i32.sub(p(0), p(1)))
+            ]),
+            module.return(module.i32.mul(p(0), p(1)))
+          ]),
+          module.return(module.i32.div_s(p(0), p(1)))
+        ]),
+        module.return(module.i32.rem_s(p(0), p(1)))
+      ]),
+      module.return(i32(0))
+    ])
+  );
+
+  // exerciseTerminatorDispatch(a: i32, b: i32, op: i32): void
+  module.addFunction(
+    'exerciseTerminatorDispatch',
+    binaryen.createType([binaryen.i32, binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('terminatorDispatch', [p(0), p(1), p(2)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // guardElisionProduct: Block with leading br_if guard targeting itself.
   //
   // (block $done
@@ -1036,6 +1090,8 @@
   module.addFunctionExport('exerciseNonWrappingDispatch', 'exerciseNonWrappingDispatch');
   module.addFunctionExport('wrappingDispatchEpilogue', 'wrappingDispatchEpilogue');
   module.addFunctionExport('exerciseWrappingDispatchEpilogue', 'exerciseWrappingDispatchEpilogue');
+  module.addFunctionExport('terminatorDispatch', 'terminatorDispatch');
+  module.addFunctionExport('exerciseTerminatorDispatch', 'exerciseTerminatorDispatch');
   module.addFunctionExport('guardElisionProduct', 'guardElisionProduct');
   module.addFunctionExport('exerciseGuardElisionProduct', 'exerciseGuardElisionProduct');
   module.addFunctionExport('guardElisionRetained', 'guardElisionRetained');
@@ -1197,6 +1253,32 @@
     [100, 2],
     [3, 3]
   ];
+
+  // op=3 (div_s) and op=4 (rem_s) require b != 0 to avoid trapping.
+  // All triples are chosen so that division/modulo by zero never occurs.
+  data.terminator_dispatch_triples = [
+    [5, 3, 0],
+    [5, 3, 1],
+    [5, 3, 2],
+    [10, 3, 3],
+    [10, 3, 4],
+    [5, 3, 5],
+    [5, 3, 10],
+    [-10, 5, 0],
+    [0, 1, 0],
+    [100, 7, 3],
+    [100, 7, 4],
+    [0, 1, 4],
+    [-5, 2, 3],
+    [-7, 3, 4]
+  ].concat(
+    Array.from({length: 4}, function () {
+      var a = common.rand.smallI32();
+      var b = ((Math.random() * 20) | 0) + 1; // b >= 1 to avoid div-by-zero
+      var op = (Math.random() * 7) | 0; // 0..6, covers default branch too
+      return [a, b, op];
+    })
+  );
 
   data.guard_elision_product_values = [-10, -1, 0, 1, 2, 5, 10, 50, 100].concat(
     Array.from({length: 4}, function () {

@@ -88,6 +88,10 @@ int w2lCountSimplifiedWhile(String body) {
                 if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
                     _f.add("wrappingDispatchEpilogue: expected flat switch (fewer labeled blocks than cases)");
 
+                b = w2lBodyOf(_code, "terminatorDispatch");
+                if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
+                    _f.add("terminatorDispatch: expected flat switch (fewer labeled blocks than cases)");
+
                 // -- redundant block removal --
                 b = w2lBodyOf(_code, "redundantLoopBlock");
                 if (b == null || w2lCountSimplifiedWhile(b) < 1)
@@ -215,6 +219,10 @@ int w2lCountSimplifiedWhile(String body) {
 
     for (java.util.List<Double> pair : w2lNested(_data, "wrapping_dispatch_epilogue_pairs")) {
         mod.exerciseWrappingDispatchEpilogue(pair.get(0).intValue(), pair.get(1).intValue());
+    }
+
+    for (java.util.List<Double> triple : w2lNested(_data, "terminator_dispatch_triples")) {
+        mod.exerciseTerminatorDispatch(triple.get(0).intValue(), triple.get(1).intValue(), triple.get(2).intValue());
     }
 
     for (Double v : w2lFlat(_data, "guard_elision_product_values")) {

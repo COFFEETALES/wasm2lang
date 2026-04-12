@@ -340,12 +340,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
               nb = false;
               ext = target;
             }
-            // If the last action is an unconditional break, the case is already
-            // terminated — no additional switch break is needed.
+            // If the last action is a terminator (unconditional break, return
+            // or unreachable), the case is already terminated — no additional
+            // switch break is needed.
             if (nb && aPtrs.length > 0) {
               var /** @const {!BinaryenExpressionInfo} */ lastAct =
                   Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, aPtrs[aPtrs.length - 1]);
-              if (binaryen.BreakId === lastAct.id && 0 === /** @type {number} */ (lastAct.condition || 0)) {
+              if (Wasm2Lang.Wasm.Tree.CustomPasses.isUnconditionalTerminator(binaryen, lastAct)) {
                 nb = false;
               }
             }

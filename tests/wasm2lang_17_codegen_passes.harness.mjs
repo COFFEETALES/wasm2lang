@@ -57,6 +57,10 @@ const runTest = function (buff, out, exports, data) {
     exports.exerciseWrappingDispatchEpilogue(pair[0], pair[1]);
   }
 
+  for (const triple of data.terminator_dispatch_triples) {
+    exports.exerciseTerminatorDispatch(triple[0], triple[1], triple[2]);
+  }
+
   for (const v of data.guard_elision_product_values) {
     exports.exerciseGuardElisionProduct(v);
   }
@@ -199,6 +203,13 @@ const validateCode = function (code, testName) {
     b = bodyOf('wrappingDispatchEpilogue');
     check(
       'wrappingDispatchEpilogue',
+      b && (b.match(/\w+\s*:\s*\{/g) || []).length < (b.match(/\bcase\s+\d+\s*:/g) || []).length,
+      'expected flat switch (fewer labeled blocks than cases)'
+    );
+
+    b = bodyOf('terminatorDispatch');
+    check(
+      'terminatorDispatch',
       b && (b.match(/\w+\s*:\s*\{/g) || []).length < (b.match(/\bcase\s+\d+\s*:/g) || []).length,
       'expected flat switch (fewer labeled blocks than cases)'
     );

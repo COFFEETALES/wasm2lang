@@ -387,6 +387,28 @@ Wasm2Lang.Wasm.Tree.CustomPasses.hasReference = function (binaryen, ptr, targetN
 };
 
 // ---------------------------------------------------------------------------
+// Shared terminator recognition
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the given expression is an unconditional terminator —
+ * an unconditional Break, a Return, or an Unreachable.  A block ending in
+ * such an expression cannot fall through to the next sibling, so no
+ * additional synthetic break is needed after it.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} info
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.isUnconditionalTerminator = function (binaryen, info) {
+  var /** @const {number} */ id = info.id;
+  if (binaryen.ReturnId === id || binaryen.UnreachableId === id) {
+    return true;
+  }
+  return binaryen.BreakId === id && 0 === /** @type {number} */ (info.condition || 0);
+};
+
+// ---------------------------------------------------------------------------
 // Shared condition inversion
 // ---------------------------------------------------------------------------
 
