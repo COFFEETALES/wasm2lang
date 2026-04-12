@@ -10,9 +10,10 @@
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionApplication = {};
 
-// ---------------------------------------------------------------------------
-// Accessors
-// ---------------------------------------------------------------------------
+/** @const {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} */
+var extractBlockGuardElisions_ = /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+  return fm.blockGuardElisions;
+};
 
 /**
  * Returns the BlockGuardElisionPlan for the given block, or null.
@@ -28,34 +29,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionApplication.getBlockGuardElisi
   blockName
 ) {
   return /** @type {?Wasm2Lang.Wasm.Tree.BlockGuardElisionPlan} */ (
-    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(
-      passRunResultIndex,
-      funcName,
-      /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-        return fm.blockGuardElisions;
-      },
-      blockName
-    )
+    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(passRunResultIndex, funcName, extractBlockGuardElisions_, blockName)
   );
 };
 
-// ---------------------------------------------------------------------------
-// Analysis descriptor
-// ---------------------------------------------------------------------------
-
-Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+Wasm2Lang.Wasm.Tree.CustomPasses.registerProjectedPlanAnalysis_(
   'blockGuardElision',
-  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-    return fm.blockGuardElisions;
-  },
-  /** @param {!Object} raw @return {!Object} */ function (raw) {
-    return Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap(
-      raw,
-      /** @param {*} plan @return {!Object} */ function (plan) {
-        return {
-          'labelRemoved': /** @type {!Wasm2Lang.Wasm.Tree.BlockGuardElisionPlan} */ (plan).labelRemoved
-        };
-      }
-    );
+  extractBlockGuardElisions_,
+  /** @param {*} plan @return {!Object} */ function (plan) {
+    return {'labelRemoved': /** @type {!Wasm2Lang.Wasm.Tree.BlockGuardElisionPlan} */ (plan).labelRemoved};
   }
 );

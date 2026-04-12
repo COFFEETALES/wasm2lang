@@ -240,6 +240,27 @@ Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor = function (ext
 };
 
 /**
+ * Shorthand: registers a field analysis descriptor whose serializer projects
+ * each plan in a per-name plan map using {@code projectFn}.  Bundles the
+ * {@code registerFieldAnalysisDescriptor + serializeProjectedPlanMap} pattern
+ * shared by multiple apply files.
+ *
+ * @param {string} externalKey
+ * @param {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} extractFn
+ * @param {function(*):!Object} projectFn
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.registerProjectedPlanAnalysis_ = function (externalKey, extractFn, projectFn) {
+  Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+    externalKey,
+    extractFn,
+    /** @param {!Object} raw @return {!Object} */ function (raw) {
+      return Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap(raw, projectFn);
+    }
+  );
+};
+
+/**
  * Returns one extracted PassMetadata value for a function, or null when absent.
  *
  * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex

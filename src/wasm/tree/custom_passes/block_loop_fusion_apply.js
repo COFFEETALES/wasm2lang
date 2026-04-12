@@ -10,9 +10,10 @@
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionApplication = {};
 
-// ---------------------------------------------------------------------------
-// Accessors
-// ---------------------------------------------------------------------------
+/** @const {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} */
+var extractFusedBlocks_ = /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+  return fm.fusedBlocks;
+};
 
 /**
  * Returns the BlockFusionPlan for the given block, or null.
@@ -28,32 +29,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionApplication.getBlockFusionPlan =
   blockName
 ) {
   return /** @type {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (
-    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(
-      passRunResultIndex,
-      funcName,
-      /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-        return fm.fusedBlocks;
-      },
-      blockName
-    )
+    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(passRunResultIndex, funcName, extractFusedBlocks_, blockName)
   );
 };
 
-// ---------------------------------------------------------------------------
-// Analysis descriptor
-// ---------------------------------------------------------------------------
-
-Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+Wasm2Lang.Wasm.Tree.CustomPasses.registerProjectedPlanAnalysis_(
   'blockLoopFusion',
-  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-    return fm.fusedBlocks;
-  },
-  /** @param {!Object} raw @return {!Object} */ function (raw) {
-    return Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap(
-      raw,
-      /** @param {*} plan @return {!Object} */ function (plan) {
-        return {'fusionPattern': /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (plan).fusionVariant};
-      }
-    );
+  extractFusedBlocks_,
+  /** @param {*} plan @return {!Object} */ function (plan) {
+    return {'fusionPattern': /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (plan).fusionVariant};
   }
 );

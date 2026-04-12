@@ -512,19 +512,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitSubWalkedExpressi
   count,
   indent
 ) {
-  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
-  var /** @const */ subWalk = Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_;
-  var /** @const */ subStr = Wasm2Lang.Backend.AbstractCodegen.subWalkString_;
-  for (var /** @type {number} */ i = 0; i < count; ++i) {
-    var /** @const {string} */ code = subStr(subWalk(wasmModule, binaryen, funcInfo, visitor, ptrs[i]));
-    if ('' !== code) {
-      if (-1 === code.indexOf('\n')) {
-        lines[lines.length] = pad(indent) + code + ';\n';
-      } else {
-        lines[lines.length] = code;
-      }
-    }
-  }
+  Wasm2Lang.Backend.AbstractCodegen.appendSubWalkedLines_(
+    lines,
+    wasmModule,
+    binaryen,
+    funcInfo,
+    visitor,
+    ptrs,
+    0,
+    count,
+    indent
+  );
 };
 
 /**
@@ -1001,8 +999,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
 
   lines[lines.length] = pad(switchInd) + '}\n';
 
-  if (labeledEpilogue) {
-    if ('' !== innerChainName) {
+  // Emit epilogue (shared between labeled and unlabeled paths).  When
+  // labeledEpilogue, wrap the epilogue at inner indent inside the outer
+  // block; otherwise append at the current indent with no wrapping.
+  if (hasEpilogue) {
+    if (labeledEpilogue && '' !== innerChainName) {
       lines[lines.length] = pad(ind + 1) + '}\n';
       --state.breakableStack.length;
     }
@@ -1014,22 +1015,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
       vis,
       info.epiloguePtrs,
       info.epiloguePtrs.length,
-      ind + 1
+      labeledEpilogue ? ind + 1 : ind
     );
-    lines[lines.length] = pad(ind) + '}\n';
-  } else if (hasEpilogue) {
-    // Unlabeled epilogue: no block wrappers — just emit epilogue after
-    // the switch close at the current indent level.
-    S.emitSubWalkedExpressions_(
-      lines,
-      /** @type {!BinaryenModule} */ (state.wasmModule),
-      binaryen,
-      state.functionInfo,
-      vis,
-      info.epiloguePtrs,
-      info.epiloguePtrs.length,
-      ind
-    );
+    if (labeledEpilogue) {
+      lines[lines.length] = pad(ind) + '}\n';
+    }
   }
 
   return {emittedString: lines.join(''), hasDefault: !!defGroup};

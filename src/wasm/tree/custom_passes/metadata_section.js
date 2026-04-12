@@ -233,6 +233,33 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializePassRunResult = functi
 };
 
 /**
+ * Appends compact entries to {@code entries} for each key in {@code src}
+ * that is present in {@code nameToPos}.  When {@code fillFn} is non-null it
+ * populates the type-specific extras on each entry from the source value.
+ *
+ * @private
+ * @param {!Array<!Object>} entries
+ * @param {!Object<string, number>} nameToPos
+ * @param {!Object} src
+ * @param {string} typeCode
+ * @param {?function(*, !Object):void} fillFn
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.appendMapEntries_ = function (entries, nameToPos, src, typeCode, fillFn) {
+  var /** @const {!Array<string>} */ keys = Object.keys(src);
+  for (var /** @type {number} */ i = 0, /** @const {number} */ n = keys.length; i < n; ++i) {
+    var /** @const {string} */ key = keys[i];
+    if (key in nameToPos) {
+      var /** @const {!Object} */ e = Object.create(null);
+      e['p'] = nameToPos[key];
+      e['t'] = typeCode;
+      if (fillFn) fillFn(src[key], e);
+      entries[entries.length] = e;
+    }
+  }
+};
+
+/**
  * Converts pass metadata maps into compact entries keyed by DFS position.
  *
  * @private
@@ -244,70 +271,35 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.convertMetadataToEntries_ = fun
   var /** @const {!Array<!Object>} */ entries = [];
   var /** @const */ MS = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection;
 
-  // Loop plans.
   if (fm.loopPlans) {
-    var /** @const {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ lp =
-        /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (fm.loopPlans);
-    var /** @const {!Array<string>} */ lpKeys = Object.keys(lp);
-    for (var /** @type {number} */ li = 0, /** @const {number} */ lLen = lpKeys.length; li < lLen; ++li) {
-      var /** @const {string} */ lpKey = lpKeys[li];
-      if (lpKey in nameToPos) {
-        var /** @const {!Wasm2Lang.Wasm.Tree.LoopPlan} */ plan = lp[lpKey];
-        var /** @const {!Object} */ lpEntry = Object.create(null);
-        lpEntry['p'] = nameToPos[lpKey];
-        lpEntry['t'] = MS.TYPE_LOOP_PLAN_;
-        lpEntry['k'] = plan.simplifiedLoopKind;
-        lpEntry['l'] = plan.needsLabel ? 1 : 0;
-        entries[entries.length] = lpEntry;
+    MS.appendMapEntries_(
+      entries,
+      nameToPos,
+      /** @type {!Object} */ (fm.loopPlans),
+      MS.TYPE_LOOP_PLAN_,
+      /** @param {*} v @param {!Object} e */ function (v, e) {
+        var /** @const {!Wasm2Lang.Wasm.Tree.LoopPlan} */ plan = /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ (v);
+        e['k'] = plan.simplifiedLoopKind;
+        e['l'] = plan.needsLabel ? 1 : 0;
       }
-    }
+    );
   }
-
-  // Fused blocks.
   if (fm.fusedBlocks) {
-    var /** @const {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ fb =
-        /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (fm.fusedBlocks);
-    var /** @const {!Array<string>} */ fbKeys = Object.keys(fb);
-    for (var /** @type {number} */ fbi = 0, /** @const {number} */ fbLen = fbKeys.length; fbi < fbLen; ++fbi) {
-      var /** @const {string} */ fbKey = fbKeys[fbi];
-      if (fbKey in nameToPos) {
-        var /** @const {!Object} */ fbEntry = Object.create(null);
-        fbEntry['p'] = nameToPos[fbKey];
-        fbEntry['t'] = MS.TYPE_FUSED_BLOCK_;
-        fbEntry['v'] = fb[fbKey].fusionVariant;
-        entries[entries.length] = fbEntry;
+    MS.appendMapEntries_(
+      entries,
+      nameToPos,
+      /** @type {!Object} */ (fm.fusedBlocks),
+      MS.TYPE_FUSED_BLOCK_,
+      /** @param {*} v @param {!Object} e */ function (v, e) {
+        e['v'] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (v).fusionVariant;
       }
-    }
+    );
   }
-
-  // Switch dispatch blocks.
   if (fm.switchDispatchNames) {
-    var /** @const {!Object<string, boolean>} */ sd = /** @type {!Object<string, boolean>} */ (fm.switchDispatchNames);
-    var /** @const {!Array<string>} */ sdKeys = Object.keys(sd);
-    for (var /** @type {number} */ sdi = 0, /** @const {number} */ sdLen = sdKeys.length; sdi < sdLen; ++sdi) {
-      var /** @const {string} */ sdKey = sdKeys[sdi];
-      if (sdKey in nameToPos) {
-        var /** @const {!Object} */ sdEntry = Object.create(null);
-        sdEntry['p'] = nameToPos[sdKey];
-        sdEntry['t'] = MS.TYPE_SWITCH_DISPATCH_;
-        entries[entries.length] = sdEntry;
-      }
-    }
+    MS.appendMapEntries_(entries, nameToPos, /** @type {!Object} */ (fm.switchDispatchNames), MS.TYPE_SWITCH_DISPATCH_, null);
   }
-
-  // Root switch blocks.
   if (fm.rootSwitchNames) {
-    var /** @const {!Object<string, boolean>} */ rs = /** @type {!Object<string, boolean>} */ (fm.rootSwitchNames);
-    var /** @const {!Array<string>} */ rsKeys = Object.keys(rs);
-    for (var /** @type {number} */ rsi = 0, /** @const {number} */ rsLen = rsKeys.length; rsi < rsLen; ++rsi) {
-      var /** @const {string} */ rsKey = rsKeys[rsi];
-      if (rsKey in nameToPos) {
-        var /** @const {!Object} */ rsEntry = Object.create(null);
-        rsEntry['p'] = nameToPos[rsKey];
-        rsEntry['t'] = MS.TYPE_ROOT_SWITCH_;
-        entries[entries.length] = rsEntry;
-      }
-    }
+    MS.appendMapEntries_(entries, nameToPos, /** @type {!Object} */ (fm.rootSwitchNames), MS.TYPE_ROOT_SWITCH_, null);
   }
 
   return entries;

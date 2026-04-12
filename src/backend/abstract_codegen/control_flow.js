@@ -884,14 +884,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoop_ = function (stat
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoopFromIR_ = function (state, nodeCtx, loopKind) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const {!BinaryenModule} */ wm = state.wasmModule;
-  var /** @const {!BinaryenFunctionInfo} */ fi = state.functionInfo;
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
-    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
 
@@ -916,6 +909,62 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoopFromIR_ = function
     state.fusedBlockToLoop[bodyBlockName] = loopName;
   }
 
+  var /** @const {!Object} */ bc = this.computeSimplifiedLoopBodyAndCondition_(state, loopKind, bodyInfo, loopName, innerInd);
+
+  // Label: check if any break/continue references this loop by name.
+  // Computed AFTER body walk so usedLabels is populated.
+  var /** @type {string} */ label = '';
+  if (state.usedLabels[loopName]) {
+    label = this.labelN_(state.labelMap, loopName) + ': ';
+  }
+
+  var /** @const {string} */ result = this.assembleSimplifiedLoop_(
+      loopKind,
+      outerInd,
+      label,
+      /** @type {string} */ (bc['bodyCode']),
+      /** @type {string} */ (bc['condStr']),
+      /** @type {number} */ (bc['condCat'])
+    );
+
+  // Clean up: decrement indent (adjustLeaveIndent_ skipped it).
+  --state.indent;
+  return result;
+};
+
+/**
+ * Shared body/condition computation for simplified-loop emission.
+ *
+ * Identical across asm.js/Java/PHP backends: runs the loop-kind dispatch to
+ * produce the inner body code and (for `while`/`dowhile`) the continuation
+ * condition.  Split out so the enclosing `emitSimplifiedLoopFromIR_` method
+ * can be specialized per backend for body-block registration and label
+ * handling without duplicating this ~70-line dispatch.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {string} loopKind  'for', 'dowhile', or 'while'.
+ * @param {!BinaryenExpressionInfo} bodyInfo
+ * @param {string} loopName
+ * @param {number} innerInd
+ * @return {!Object}  {bodyCode, condStr, condCat}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.computeSimplifiedLoopBodyAndCondition_ = function (
+  state,
+  loopKind,
+  bodyInfo,
+  loopName,
+  innerInd
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ NS = Wasm2Lang.Wasm.Tree.NodeSchema;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const {!BinaryenModule} */ wm = state.wasmModule;
+  var /** @const {!BinaryenFunctionInfo} */ fi = state.functionInfo;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
+    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+
   var /** @type {string} */ condStr = '';
   var /** @type {number} */ condCat = A.CAT_VOID;
   var /** @type {string} */ bodyCode = '';
@@ -937,15 +986,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoopFromIR_ = function
       var /** @const {!Array<number>} */ wch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
       var /** @const {number} */ wchLen = wch.length;
       var /** @const {!BinaryenExpressionInfo} */ guardInfo = /** @type {!BinaryenExpressionInfo} */ (
-          Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, wch[0])
+          NS.safeGetExpressionInfo(binaryen, wch[0])
         );
       var /** @const {?string} */ guardTarget = /** @type {?string} */ (guardInfo.name);
       var /** @type {number} */ irGuardCount = 1;
       for (var /** @type {number} */ gci = 1; gci < wchLen - 1; ++gci) {
-        var /** @const {!BinaryenExpressionInfo} */ gcInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
-            binaryen,
-            wch[gci]
-          );
+        var /** @const {!BinaryenExpressionInfo} */ gcInfo = NS.safeGetExpressionInfo(binaryen, wch[gci]);
         if (
           binaryen.BreakId !== gcInfo.id ||
           /** @type {?string} */ (gcInfo.name) !== guardTarget ||
@@ -962,10 +1008,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoopFromIR_ = function
           /** @type {number} */ (guardInfo.condition || 0)
         );
       for (var /** @type {number} */ gdi = 1; gdi < irGuardCount; ++gdi) {
-        var /** @const {!BinaryenExpressionInfo} */ gdInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
-            binaryen,
-            wch[gdi]
-          );
+        var /** @const {!BinaryenExpressionInfo} */ gdInfo = NS.safeGetExpressionInfo(binaryen, wch[gdi]);
         combinedPtr = wm.i32.and(
           combinedPtr,
           Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(binaryen, wm, /** @type {number} */ (gdInfo.condition || 0))
@@ -994,35 +1037,41 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoopFromIR_ = function
     bodyCode = this.emitForLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd);
   }
 
-  // Label: check if any break/continue references this loop by name.
-  // Computed AFTER body walk so usedLabels is populated.
-  var /** @type {string} */ label = '';
-  if (state.usedLabels[loopName]) {
-    label = this.labelN_(state.labelMap, loopName) + ': ';
-  }
+  return {'bodyCode': bodyCode, 'condStr': condStr, 'condCat': condCat};
+};
 
-  // Assemble the loop construct.
-  var /** @type {string} */ result;
+/**
+ * Assembles the final simplified-loop string from body + optional condition.
+ * `label` is the label prefix (e.g. `"name: "`) or `""` for backends that use
+ * numeric break/continue depths (PHP).
+ *
+ * @protected
+ * @param {string} loopKind  'for', 'dowhile', or 'while'.
+ * @param {number} outerInd
+ * @param {string} label
+ * @param {string} bodyCode
+ * @param {string} condStr
+ * @param {number} condCat
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.assembleSimplifiedLoop_ = function (
+  loopKind,
+  outerInd,
+  label,
+  bodyCode,
+  condStr,
+  condCat
+) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   if ('for' === loopKind) {
-    result = pad(outerInd) + label + this.infiniteLoopKeyword_() + ' {\n' + bodyCode + pad(outerInd) + '}\n';
-  } else if ('dowhile' === loopKind) {
-    result =
-      pad(outerInd) +
-      label +
-      'do {\n' +
-      bodyCode +
-      pad(outerInd) +
-      '} while ' +
-      this.formatCondition_(condStr, condCat) +
-      ';\n';
-  } else {
-    result =
-      pad(outerInd) + label + 'while ' + this.formatCondition_(condStr, condCat) + ' {\n' + bodyCode + pad(outerInd) + '}\n';
+    return pad(outerInd) + label + this.infiniteLoopKeyword_() + ' {\n' + bodyCode + pad(outerInd) + '}\n';
   }
-
-  // Clean up: decrement indent (adjustLeaveIndent_ skipped it).
-  --state.indent;
-  return result;
+  if ('dowhile' === loopKind) {
+    return (
+      pad(outerInd) + label + 'do {\n' + bodyCode + pad(outerInd) + '} while ' + this.formatCondition_(condStr, condCat) + ';\n'
+    );
+  }
+  return pad(outerInd) + label + 'while ' + this.formatCondition_(condStr, condCat) + ' {\n' + bodyCode + pad(outerInd) + '}\n';
 };
 
 /**
@@ -1053,8 +1102,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitWhileLoopBody_ = function (
   guardCount
 ) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
-  var /** @const */ sws = A.subWalkString_;
+  var /** @const {!Array<string>} */ lines = [];
   if (binaryen.IfId === bodyInfo.id) {
     // while-if variant: body is the If's then-arm block, minus trailing br.
     var /** @const {number} */ thenPtr = /** @type {number} */ (bodyInfo.ifTrue || 0);
@@ -1065,13 +1113,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitWhileLoopBody_ = function (
     var /** @const {number} */ thenLen = thenCh.length;
     // Last child is unconditional br $loop — skip it.
     var /** @const {number} */ endIdx = thenLen > 0 ? thenLen - 1 : 0;
-    var /** @const {!Array<string>} */ lines = [];
-    for (var /** @type {number} */ i = 0; i < endIdx; ++i) {
-      var /** @const {string} */ cs = sws(A.subWalkExpression_(wm, binaryen, fi, vis, thenCh[i]));
-      if ('' !== cs) {
-        lines[lines.length] = -1 === cs.indexOf('\n') ? pad(ind) + cs + ';\n' : cs;
-      }
-    }
+    A.appendSubWalkedLines_(lines, wm, binaryen, fi, vis, thenCh, 0, endIdx, ind);
     return lines.join('');
   }
   // while-block variant: skip first guardCount children (exit guards) and
@@ -1079,14 +1121,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitWhileLoopBody_ = function (
   var /** @const {!Array<number>} */ ch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
   var /** @const {number} */ len = ch.length;
   var /** @const {number} */ bodyStart = guardCount > 0 ? guardCount : 1;
-  var /** @const {!Array<string>} */ lines2 = [];
-  for (var /** @type {number} */ j = bodyStart; j < len - 1; ++j) {
-    var /** @const {string} */ cs2 = sws(A.subWalkExpression_(wm, binaryen, fi, vis, ch[j]));
-    if ('' !== cs2) {
-      lines2[lines2.length] = -1 === cs2.indexOf('\n') ? pad(ind) + cs2 + ';\n' : cs2;
-    }
-  }
-  return lines2.join('');
+  A.appendSubWalkedLines_(lines, wm, binaryen, fi, vis, ch, bodyStart, len - 1, ind);
+  return lines.join('');
 };
 
 /**
@@ -1114,8 +1150,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
   ind
 ) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
-  var /** @const */ sws = A.subWalkString_;
 
   // Bare br_if variant: body is a direct br_if, empty body.
   if (binaryen.BreakId === bodyInfo.id) {
@@ -1162,12 +1196,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
   }
 
   var /** @const {!Array<string>} */ lines = [];
-  for (var /** @type {number} */ i = 0; i < bodyEnd; ++i) {
-    var /** @const {string} */ cs = sws(A.subWalkExpression_(wm, binaryen, fi, vis, ch[i]));
-    if ('' !== cs) {
-      lines[lines.length] = -1 === cs.indexOf('\n') ? pad(ind) + cs + ';\n' : cs;
-    }
-  }
+  A.appendSubWalkedLines_(lines, wm, binaryen, fi, vis, ch, 0, bodyEnd, ind);
 
   var /** @type {string} */ condStr = '';
   var /** @type {number} */ condCat = A.CAT_VOID;
@@ -1211,8 +1240,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitForLoopBody_ = function (
   ind
 ) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
-  var /** @const */ sws = A.subWalkString_;
   var /** @const {!Array<number>} */ ch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
   var /** @const {number} */ len = ch.length;
 
@@ -1233,17 +1260,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitForLoopBody_ = function (
   }
 
   var /** @const {!Array<string>} */ lines = [];
-  for (var /** @type {number} */ i = 0; i < emitEnd; ++i) {
-    var /** @const {string} */ cs = sws(A.subWalkExpression_(wm, binaryen, fi, vis, ch[i]));
-    if ('' !== cs) {
-      lines[lines.length] = -1 === cs.indexOf('\n') ? pad(ind) + cs + ';\n' : cs;
-    }
-  }
+  A.appendSubWalkedLines_(lines, wm, binaryen, fi, vis, ch, 0, emitEnd, ind);
 
   // For-loops that had no trailing br stripped need a trailing break to exit.
   // Skip if the last emitted child is terminal (Java rejects unreachable statements).
   if (emitEnd === len && !state.lastExprIsTerminal) {
-    lines[lines.length] = pad(ind) + 'break;\n';
+    lines[lines.length] = A.pad_(ind) + 'break;\n';
   }
 
   return lines.join('');
@@ -1335,6 +1357,47 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_ = function (sta
  */
 Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionString_ = function (state, conditionPtr) {
   return Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_(state, conditionPtr).s;
+};
+
+/**
+ * Sub-walks a slice of child pointers and appends each rendered result to
+ * {@code lines}.  Empty strings are skipped, single-line results are
+ * wrapped as {@code pad(indent) + code + ';\n'}, and multi-line results
+ * are appended verbatim.  Shared by the loop-body emitters (while-if,
+ * while-block, do-while, for-loop) and by the switch dispatch action
+ * emitter.
+ *
+ * @protected
+ * @param {!Array<string>} lines
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} visitor
+ * @param {!Array<number>} ptrs
+ * @param {number} startIdx
+ * @param {number} endIdx
+ * @param {number} indent
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.appendSubWalkedLines_ = function (
+  lines,
+  wasmModule,
+  binaryen,
+  funcInfo,
+  visitor,
+  ptrs,
+  startIdx,
+  endIdx,
+  indent
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {string} */ padStr = A.pad_(indent);
+  for (var /** @type {number} */ i = startIdx; i < endIdx; ++i) {
+    var /** @const {string} */ code = A.subWalkString_(A.subWalkExpression_(wasmModule, binaryen, funcInfo, visitor, ptrs[i]));
+    if ('' !== code) {
+      lines[lines.length] = -1 === code.indexOf('\n') ? padStr + code + ';\n' : code;
+    }
+  }
 };
 
 /**

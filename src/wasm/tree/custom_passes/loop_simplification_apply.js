@@ -10,9 +10,10 @@
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication = {};
 
-// ---------------------------------------------------------------------------
-// Accessors
-// ---------------------------------------------------------------------------
+/** @const {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} */
+var extractLoopPlans_ = /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+  return fm.loopPlans;
+};
 
 /**
  * Returns the loop plan for a given function and loop name, or null if none.
@@ -27,32 +28,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication = {};
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationApplication.getLoopPlan = function (passRunResultIndex, funcName, loopName) {
   return /** @type {?Wasm2Lang.Wasm.Tree.LoopPlan} */ (
-    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(
-      passRunResultIndex,
-      funcName,
-      /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-        return fm.loopPlans;
-      },
-      loopName
-    )
+    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(passRunResultIndex, funcName, extractLoopPlans_, loopName)
   );
 };
 
-// ---------------------------------------------------------------------------
-// Analysis descriptor
-// ---------------------------------------------------------------------------
-
-Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+Wasm2Lang.Wasm.Tree.CustomPasses.registerProjectedPlanAnalysis_(
   'loopSimplification',
-  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-    return fm.loopPlans;
-  },
-  /** @param {!Object} raw @return {!Object} */ function (raw) {
-    return Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap(
-      raw,
-      /** @param {*} plan @return {!Object} */ function (plan) {
-        return {'loopKind': /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ (plan).simplifiedLoopKind};
-      }
-    );
+  extractLoopPlans_,
+  /** @param {*} plan @return {!Object} */ function (plan) {
+    return {'loopKind': /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ (plan).simplifiedLoopKind};
   }
 );

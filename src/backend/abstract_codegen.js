@@ -123,6 +123,36 @@ Wasm2Lang.Backend.buildRejectName = function (reserved, caseInsensitive) {
 };
 
 /**
+ * Defines and registers a mangler profile for a backend language in one call.
+ * Builds the reserved-word set, the rejectName predicate, and the default
+ * charsets (case-insensitive profiles use lowercase-only charsets without
+ * {@code $}).  Returns the reserved-word set so concrete backends can assign
+ * it to their {@code reservedWords_} field.
+ *
+ * @param {string} languageId
+ * @param {!Array<string>} words
+ * @param {boolean} caseInsensitive
+ * @return {!Object<string, boolean>}
+ */
+Wasm2Lang.Backend.defineLanguageManglerProfile = function (languageId, words, caseInsensitive) {
+  var /** @const {!Object<string, boolean>} */ reserved = Wasm2Lang.Backend.buildReservedSet(words);
+  var /** @const {string} */ single = caseInsensitive
+      ? 'abcdefghijklmnopqrstuvwxyz_'
+      : '$ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+  var /** @const {string} */ block = caseInsensitive
+      ? 'abcdefghijklmnopqrstuvwxyz_0123456789'
+      : '$ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz0123456789';
+  Wasm2Lang.Backend.registerManglerProfile(languageId, {
+    reservedWords: reserved,
+    rejectName: Wasm2Lang.Backend.buildRejectName(reserved, caseInsensitive),
+    singleCharset: single,
+    blockCharset: block,
+    caseInsensitive: caseInsensitive
+  });
+  return reserved;
+};
+
+/**
  * @constructor
  */
 Wasm2Lang.Backend.AbstractCodegen = function () {

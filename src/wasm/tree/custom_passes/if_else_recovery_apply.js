@@ -10,9 +10,10 @@
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryApplication = {};
 
-// ---------------------------------------------------------------------------
-// Accessors
-// ---------------------------------------------------------------------------
+/** @const {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} */
+var extractIfElseRecoveries_ = /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+  return fm.ifElseRecoveries;
+};
 
 /**
  * Returns the IfElseRecoveryPlan for the given block, or null.
@@ -28,35 +29,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryApplication.getIfElseRecoveryPlan
   blockName
 ) {
   return /** @type {?Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan} */ (
-    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(
-      passRunResultIndex,
-      funcName,
-      /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-        return fm.ifElseRecoveries;
-      },
-      blockName
-    )
+    Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(passRunResultIndex, funcName, extractIfElseRecoveries_, blockName)
   );
 };
 
-// ---------------------------------------------------------------------------
-// Analysis descriptor
-// ---------------------------------------------------------------------------
-
-Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
+Wasm2Lang.Wasm.Tree.CustomPasses.registerProjectedPlanAnalysis_(
   'ifElseRecovery',
-  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-    return fm.ifElseRecoveries;
-  },
-  /** @param {!Object} raw @return {!Object} */ function (raw) {
-    return Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap(
-      raw,
-      /** @param {*} plan @return {!Object} */ function (plan) {
-        return {
-          'chainLength': /** @type {!Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan} */ (plan).chainLength,
-          'labelRemoved': /** @type {!Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan} */ (plan).labelRemoved
-        };
-      }
-    );
+  extractIfElseRecoveries_,
+  /** @param {*} plan @return {!Object} */ function (plan) {
+    var /** @const {!Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan} */ p = /** @type {!Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan} */ (
+        plan
+      );
+    return {'chainLength': p.chainLength, 'labelRemoved': p.labelRemoved};
   }
 );

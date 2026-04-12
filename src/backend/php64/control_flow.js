@@ -146,14 +146,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.adjustLeaveIndent_ = function (state, n
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.emitSimplifiedLoopFromIR_ = function (state, nodeCtx, loopKind) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const {!BinaryenModule} */ wm = state.wasmModule;
-  var /** @const {!BinaryenFunctionInfo} */ fi = state.functionInfo;
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
-    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
 
@@ -170,82 +163,17 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitSimplifiedLoopFromIR_ = function (s
     state.labelStack[state.labelStack.length - 1].alias = /** @type {string} */ (bodyInfo.name);
   }
 
-  var /** @type {string} */ condStr = '';
-  var /** @type {number} */ condCat = A.CAT_VOID;
-  var /** @type {string} */ bodyCode = '';
+  var /** @const {!Object} */ bc = this.computeSimplifiedLoopBodyAndCondition_(state, loopKind, bodyInfo, loopName, innerInd);
 
-  if ('while' === loopKind) {
-    if (binaryen.IfId === bodyInfo.id) {
-      bodyCode = this.emitWhileLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd, 0);
-      var /** @const {{s: string, c: number}} */ wrc = A.subWalkExpressionWithCategory_(
-          state,
-          /** @type {number} */ (bodyInfo.condition || 0)
-        );
-      condStr = wrc.s;
-      condCat = wrc.c;
-    } else {
-      var /** @const */ NS = Wasm2Lang.Wasm.Tree.NodeSchema;
-      var /** @const {!Array<number>} */ wch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
-      var /** @const {number} */ wchLen = wch.length;
-      var /** @const {!BinaryenExpressionInfo} */ guardInfo = /** @type {!BinaryenExpressionInfo} */ (
-          NS.safeGetExpressionInfo(binaryen, wch[0])
-        );
-      var /** @const {?string} */ guardTarget = /** @type {?string} */ (guardInfo.name);
-      var /** @type {number} */ irGuardCount = 1;
-      for (var /** @type {number} */ gci = 1; gci < wchLen - 1; ++gci) {
-        var /** @const {!BinaryenExpressionInfo} */ gcInfo = NS.safeGetExpressionInfo(binaryen, wch[gci]);
-        if (
-          binaryen.BreakId !== gcInfo.id ||
-          /** @type {?string} */ (gcInfo.name) !== guardTarget ||
-          0 === /** @type {number} */ (gcInfo.condition || 0)
-        ) {
-          break;
-        }
-        ++irGuardCount;
-      }
-      bodyCode = this.emitWhileLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd, irGuardCount);
-      var /** @type {number} */ combinedPtr = Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(
-          binaryen,
-          wm,
-          /** @type {number} */ (guardInfo.condition || 0)
-        );
-      for (var /** @type {number} */ gdi = 1; gdi < irGuardCount; ++gdi) {
-        var /** @const {!BinaryenExpressionInfo} */ gdInfo = NS.safeGetExpressionInfo(binaryen, wch[gdi]);
-        combinedPtr = wm.i32.and(
-          combinedPtr,
-          Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(binaryen, wm, /** @type {number} */ (gdInfo.condition || 0))
-        );
-      }
-      var /** @const {{s: string, c: number}} */ ic = A.subWalkExpressionWithCategory_(state, combinedPtr);
-      condStr = ic.s;
-      condCat = ic.c;
-    }
-  } else if ('dowhile' === loopKind) {
-    var /** @const {!Object} */ dwResult = this.emitDoWhileLoopBody_(
-        state,
-        binaryen,
-        wm,
-        fi,
-        vis,
-        bodyInfo,
-        loopName,
-        innerInd
-      );
-    bodyCode = /** @type {string} */ (dwResult['body']);
-    condStr = /** @type {string} */ (dwResult['condStr']);
-    condCat = /** @type {number} */ (dwResult['condCat']);
-  } else {
-    bodyCode = this.emitForLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd);
-  }
-
-  var /** @type {string} */ result;
-  if ('for' === loopKind) {
-    result = pad(outerInd) + this.infiniteLoopKeyword_() + ' {\n' + bodyCode + pad(outerInd) + '}\n';
-  } else if ('dowhile' === loopKind) {
-    result = pad(outerInd) + 'do {\n' + bodyCode + pad(outerInd) + '} while ' + this.formatCondition_(condStr, condCat) + ';\n';
-  } else {
-    result = pad(outerInd) + 'while ' + this.formatCondition_(condStr, condCat) + ' {\n' + bodyCode + pad(outerInd) + '}\n';
-  }
+  // PHP uses numeric break/continue depths, so no label prefix is emitted.
+  var /** @const {string} */ result = this.assembleSimplifiedLoop_(
+      loopKind,
+      outerInd,
+      '',
+      /** @type {string} */ (bc['bodyCode']),
+      /** @type {string} */ (bc['condStr']),
+      /** @type {number} */ (bc['condCat'])
+    );
 
   // Clean up: decrement indent and pop labelStack (adjustLeaveIndent_ skipped).
   --state.indent;
