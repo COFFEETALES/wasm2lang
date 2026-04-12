@@ -27,4 +27,4 @@ const runTest = function (buff, out, exports, data) {
 
 const dumpMemory = true;
 
-export { dumpMemory, moduleImports, runTest };
+export {dumpMemory, moduleImports, runTest};

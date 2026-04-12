@@ -199,6 +199,15 @@ const validateCode = function (code, testName) {
       b && (b.match(/\w+\s*:\s*\{/g) || []).length < (b.match(/\bcase\s+\d+\s*:/g) || []).length,
       'expected flat switch (fewer labeled blocks than cases)'
     );
+    // Guards the barney_core drift case: binary round-trip can strip the
+    // dispatch wrapper label, and case-action `br $outer` must degrade to
+    // unlabeled `break;` exiting the switch.  If any labeled break survives
+    // here, there is no enclosing labeled scope to resolve it.
+    check(
+      'nonWrappingDispatch',
+      b && !/\bbreak\s+[A-Za-z_$][\w$]*\s*;/.test(b),
+      'expected no labeled break (would be orphan after round-trip drift)'
+    );
 
     b = bodyOf('wrappingDispatchEpilogue');
     check(

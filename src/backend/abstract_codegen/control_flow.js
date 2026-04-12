@@ -543,7 +543,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.adjustLeaveIndent_ = function (state
   } else if (binaryen.BlockId === id && expr.name) {
     var /** @const {string} */ bn = /** @type {string} */ (expr.name);
     var /** @const {string} */ fn = state.functionInfo.name;
-    var /** @const {boolean} */ isFused = !!state.fusedBlockToLoop[bn];
+    var /** @const {string|undefined} */ fusedTarget = state.fusedBlockToLoop[bn];
+    // '*' is the switch-sentinel redirect used by flat-switch emission; it
+    // suppresses labeled breaks but does not represent a block-loop fusion,
+    // so the enter/leave indent bump around the dispatch outer must still
+    // balance here.  Real block-loop fusion keeps its leave decrement inside
+    // the simplified-loop emitter instead.
+    var /** @const {boolean} */ isFused = !!fusedTarget && fusedTarget !== '*';
     var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn);
     if (!isFused && !isRootSwitch) {
       --state.indent;

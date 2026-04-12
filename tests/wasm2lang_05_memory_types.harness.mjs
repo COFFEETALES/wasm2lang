@@ -17,7 +17,14 @@ const runTest = function (buff, out, exports, data) {
     }
   };
   invokeScenarios(
-    [[42, 7], [0, 0], [-1, 1], [0x12345678, -100], [255, 256], [-128, 127]],
+    [
+      [42, 7],
+      [0, 0],
+      [-1, 1],
+      [0x12345678, -100],
+      [255, 256],
+      [-128, 127]
+    ],
     (a, b) => exports.exerciseLoadToFloat(a, b)
   );
 
@@ -39,4 +46,4 @@ const runTest = function (buff, out, exports, data) {
 
 const dumpMemory = true;
 
-export { dumpMemory, moduleImports, runTest };
+export {dumpMemory, moduleImports, runTest};

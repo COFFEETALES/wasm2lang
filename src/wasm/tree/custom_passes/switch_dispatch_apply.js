@@ -938,13 +938,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
       }
     }
   } else {
-    // No label needed (with or without epilogue).  Redirect inner chain
-    // names to the switch sentinel '*' so BreakId handler produces
-    // unlabeled `break;` which exits the enclosing switch.
-    // Skip outerName — it is the traversed block; redirecting it would
-    // confuse adjustLeaveIndent_ into treating it as fused.
+    // No label needed (with or without epilogue).  Redirect all chain names
+    // — including outerName — to the switch sentinel '*' so BreakId handler
+    // produces unlabeled `break;` which exits the enclosing switch.  This
+    // covers the non-wrapping drift case where binary round-trip strips the
+    // wrapper label and metadata points to the inner dispatch block; action
+    // code may carry `br $outerName` which must degrade to unlabeled break.
+    // {@code adjustLeaveIndent_} treats the '*' sentinel as "not fused" so
+    // the enter/leave indent bump around the flat switch stays balanced.
     for (var /** @type {number} */ ci3 = 0; ci3 < cnLen; ++ci3) {
-      if (cn[ci3] !== info.outerName && !(cn[ci3] in state.fusedBlockToLoop)) {
+      if (!(cn[ci3] in state.fusedBlockToLoop)) {
         state.fusedBlockToLoop[cn[ci3]] = '*';
       }
     }

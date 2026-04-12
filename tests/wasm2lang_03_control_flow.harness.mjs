@@ -33,13 +33,24 @@ const runTest = function (buff, out, exports, data) {
   };
 
   invokeScenarios(
-    [[1, 10], [3, 1], [7, 0], [2, 4]],
+    [
+      [1, 10],
+      [3, 1],
+      [7, 0],
+      [2, 4]
+    ],
     (startValue, iterationCount) => exports.exerciseDoWhileVariantA(startValue, iterationCount)
   );
 
   // Nested loop + switch dispatch
   invokeScenarios(
-    [[0, 0], [1, 0], [3, 0], [3, 2], [4, -1]],
+    [
+      [0, 0],
+      [1, 0],
+      [3, 0],
+      [3, 2],
+      [4, -1]
+    ],
     (outerLimit, initialDispatchState) => exports.exerciseNestedLoops(outerLimit, initialDispatchState)
   );
 
@@ -53,7 +64,16 @@ const runTest = function (buff, out, exports, data) {
 
   // Nested switches
   invokeScenarios(
-    [[0, 0], [0, 1], [0, -1], [0, 5], [1, 0], [2, 0], [-1, 0], [9, 0]],
+    [
+      [0, 0],
+      [0, 1],
+      [0, -1],
+      [0, 5],
+      [1, 0],
+      [2, 0],
+      [-1, 0],
+      [9, 0]
+    ],
     (outerIndex, innerIndex) => exports.exerciseNestedSwitch(outerIndex, innerIndex)
   );
 
@@ -62,17 +82,34 @@ const runTest = function (buff, out, exports, data) {
 
   // Multi-exit loop + switch
   invokeScenarios(
-    [[0, 0], [0, 50], [1, 1], [2, -5], [2, 5], [3, 7], [-1, 42], [9, 42]],
+    [
+      [0, 0],
+      [0, 50],
+      [1, 1],
+      [2, -5],
+      [2, 5],
+      [3, 7],
+      [-1, 42],
+      [9, 42]
+    ],
     (startState, startAccumulator) => exports.exerciseMultiExitSwitchLoop(startState, startAccumulator)
   );
 
   // Conditional escape loop + switch
   invokeScenarios(
-    [[10, 0], [30, 0], [1, 0], [0, 5], [-10, 2], [60, 2], [5, -1]],
+    [
+      [10, 0],
+      [30, 0],
+      [1, 0],
+      [0, 5],
+      [-10, 2],
+      [60, 2],
+      [5, -1]
+    ],
     (startAccumulator, startState) => exports.exerciseSwitchConditionalEscape(startAccumulator, startState)
   );
 };
 
 const dumpMemory = true;
 
-export { dumpMemory, moduleImports, runTest };
+export {dumpMemory, moduleImports, runTest};
