@@ -279,36 +279,29 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
         // pIdx===0 should break out of the switch to reach the epilogue,
         // not absorb it as actions.
         //
-        // When NO wrapping was done, chain[0] has exactly one child (the
-        // original chain outer).  Detect wrapping structurally: a wrapped
-        // dispatch has trailing siblings in chain[0] (epilogue code),
-        // while a non-wrapped dispatch has chain[0] with a single child.
-        // This works after binary round-trip where the w2l_switch$ name
-        // prefix is replaced by a binaryen-generated name.
-        //
-        // Metadata position drift: binaryen may flatten unnamed blocks
-        // during binary round-trip, shifting DFS positions.  When the
-        // metadata position drifts, it may point to the dispatch-completed
-        // block instead of the wrapper.  In that case, wrapperTrail
-        // contains the last case body + a terminal br targeting the wrapper
-        // (outside the chain).  Detect this and suppress wrapping.
-        var /** @const {!Array<number>} */ wrapperTrail = /** @type {!Array<number>} */ (chain[0][1]).slice(1);
-        var /** @type {boolean} */ isWrappedStructure = chain.length > 2 && wrapperTrail.length > 0;
-        if (isWrappedStructure) {
-          var /** @const {!BinaryenExpressionInfo} */ trailLastInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
-              binaryen,
-              wrapperTrail[wrapperTrail.length - 1]
-            );
-          if (binaryen.BreakId === trailLastInfo.id && 0 === /** @type {number} */ (trailLastInfo.condition || 0)) {
-            var /** @const {?string} */ brTarget = /** @type {?string} */ (trailLastInfo.name);
-            if (brTarget && !(brTarget in nameToIdx)) {
-              // Terminal br targets a block outside the dispatch chain —
-              // this is a non-wrapping dispatch whose metadata drifted to
-              // the dispatch-completed block.
-              isWrappedStructure = false;
-            }
+        // After binary round-trip the unnamed multi-child wrapper is
+        // flattened into its parent — chain[0] then becomes the original
+        // chain outer block, and its trailing children are case actions
+        // (NOT epilogue).  Distinguish the two cases by checking whether
+        // outerName is a br_table target: chain blocks always appear in
+        // the br_table targets, while detection-pass wrappers never do.
+        // When chain[0] is recognized as a chain block, the epilogue
+        // siblings live in the parent (loop body, etc.) and are emitted
+        // naturally by the parent's traversal.
+        var /** @type {boolean} */ outerIsChainBlock = false;
+        for (var /** @type {number} */ sni = 0, /** @const {number} */ snLen = switchNames.length; sni < snLen; ++sni) {
+          if (switchNames[sni] === outerName) {
+            outerIsChainBlock = true;
+            break;
           }
         }
+        if (!outerIsChainBlock && switchDefault === outerName) {
+          outerIsChainBlock = true;
+        }
+        var /** @const {!Array<number>} */ wrapperTrail = outerIsChainBlock
+            ? /** @type {!Array<number>} */ ([])
+            : /** @type {!Array<number>} */ (chain[0][1]).slice(1);
+        var /** @const {boolean} */ isWrappedStructure = chain.length > 2 && wrapperTrail.length > 0;
         var /** @type {!Array<number>} */ epilogue = isWrappedStructure ? wrapperTrail : [];
 
         // prettier-ignore
