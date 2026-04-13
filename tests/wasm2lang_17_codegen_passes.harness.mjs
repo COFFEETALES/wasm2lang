@@ -92,6 +92,10 @@ const runTest = function (buff, out, exports, data) {
   for (const v of data.fused_for_no_label_limits) {
     exports.exerciseFusedForNoLabel(v);
   }
+
+  for (const v of data.no_while_block_tail_limits) {
+    exports.exerciseNoWhileBlockTail(v);
+  }
 };
 
 /**
@@ -192,6 +196,19 @@ const validateCode = function (code, testName) {
       b && (b.match(/\w+\s*:\s*\{/g) || []).length < (b.match(/\bcase\s+\d+\s*:/g) || []).length,
       'expected flat switch (fewer labeled blocks than cases)'
     );
+    // Guards the prenorm round-trip drift: binaryen appends a synthetic
+    // trailing `unreachable` to a function body root whose effective type
+    // is unreachable but whose declared return type is non-unreachable.
+    // If buildNodeIndex_ fails to account for this sibling, the dispatch
+    // wrapper ends up at the wrong position and its metadata is lost.
+    // The resulting emit puts `return` inside the default case instead of
+    // after the switch — producing "missing return" in Java and miscompiles
+    // in the other backends.
+    check(
+      'switchRequiresLabel',
+      b && /\}\s*return\b/.test(b),
+      'expected return after the switch closes (prenorm synthetic-unreachable marker)'
+    );
 
     b = bodyOf('nonWrappingDispatch');
     check(
@@ -222,6 +239,13 @@ const validateCode = function (code, testName) {
       b && (b.match(/\w+\s*:\s*\{/g) || []).length < (b.match(/\bcase\s+\d+\s*:/g) || []).length,
       'expected flat switch (fewer labeled blocks than cases)'
     );
+    // Same prenorm round-trip marker as switchRequiresLabel — default-case
+    // return must be emitted after the switch, not inside it.
+    check(
+      'terminatorDispatch',
+      b && /\}\s*return\b/.test(b),
+      'expected return after the switch closes (prenorm synthetic-unreachable marker)'
+    );
 
     // -- redundant block removal --
     b = bodyOf('redundantLoopBlock');
@@ -236,6 +260,12 @@ const validateCode = function (code, testName) {
     if (b) {
       check('switchNoLabel', (b.match(/\bcase\s+\d+\s*:/g) || []).length >= 2, 'expected flat switch with cases');
       check('switchNoLabel', !(b.match(/\w+\s*:\s*switch\s*\(/g) || []).length, 'expected switch without label prefix');
+      // Same prenorm round-trip marker as switchRequiresLabel.
+      check(
+        'switchNoLabel',
+        /\}\s*return\b/.test(b),
+        'expected return after the switch closes (prenorm synthetic-unreachable marker)'
+      );
     } else {
       check('switchNoLabel', false, 'function body not found');
     }
@@ -247,6 +277,18 @@ const validateCode = function (code, testName) {
       check('fusedForNoLabel', !(b.match(/\w+\s*:\s*for\s*\(/g) || []).length, 'expected for loop without label prefix');
     } else {
       check('fusedForNoLabel', false, 'function body not found');
+    }
+
+    // -- no-while regression (non-fused block with tail code) --
+    // Rule-2: a loop sitting in a non-fused block must NOT be promoted to
+    // while.  If it were, while-exit would fall through to the tail code
+    // that the original br-to-outer would skip, breaking determinism.
+    b = bodyOf('noWhileBlockTail');
+    if (b) {
+      check('noWhileBlockTail', countSimplifiedWhile(b) === 0, 'expected no while-loop (block has tail code, not fused)');
+      check('noWhileBlockTail', /\bfor\s*\(/.test(b), 'expected for-loop emission');
+    } else {
+      check('noWhileBlockTail', false, 'function body not found');
     }
   }
 

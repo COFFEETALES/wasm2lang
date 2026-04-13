@@ -81,7 +81,7 @@
   ;; Multi-guard while: two consecutive br_if exit guards at the top of the
   ;; loop body, both targeting the immediately enclosing block.  The pass
   ;; must combine them into a single while condition (i32.and of inverted
-  ;; guards) and restructure the IR to while-if form.
+  ;; guards).
   ;; Loop $loop should become lw$ or ly$ with loopKind 'while'.
   (func $multiGuardWhile (param $limit i32) (param $threshold i32) (result i32)
     (local $i i32)
@@ -94,6 +94,26 @@
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $loop)))
     (local.get $sum)
+  )
+
+  ;; Regression for LoopSimplificationPass Rule-2 semantic preservation.
+  ;; The loop sits inside a block that also carries tail code; the loop's
+  ;; leading br_if targets the immediately enclosing block.  The enclosing
+  ;; block has more than one child (loop + tail_set), so BlockLoopFusionPass
+  ;; does NOT flag it with w2l_fused$.  LoopSimplificationPass MUST therefore
+  ;; NOT promote the loop to while: a while-form would fall through to the
+  ;; tail_set after a true-condition iteration, but the original br_if exits
+  ;; the block and skips the tail.  Loop must stay as for-loop (lc$/lf$).
+  (func $noWhileBlockTail (param $limit i32) (result i32)
+    (local $i i32)
+    (local $tail i32)
+    (block $exit
+      (loop $loop
+        (br_if $exit (i32.ge_s (local.get $i) (local.get $limit)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop))
+      (local.set $tail (i32.const 42)))
+    (i32.add (local.get $i) (local.get $tail))
   )
 
   ;; Terminal-exit loop: last child is unconditional br to outer, body has

@@ -1062,6 +1062,57 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // noWhileBlockTail: Regression for Rule-2 semantic preservation.
+  //
+  // (block $exit
+  //   (loop $loop
+  //     (br_if $exit (ge_s i limit))
+  //     (local.set i (add i 1))
+  //     (br $loop))
+  //   (local.set tail 42))   ;; tail code — block is NOT fused
+  // (i32.add i tail)
+  //
+  // BlockLoopFusionPass does NOT fuse $exit (two children: loop + tail).
+  // LoopSimplificationPass MUST keep the loop as for-loop: a while-form
+  // would fall through to the tail_set after exit, but the original
+  // br $exit skips it.  With bug: tail = 42, result = limit + 42; with
+  // fix: tail = 0, result = limit.  Determinism between WASM and asm.js
+  // catches the divergence.
+  //
+  // params: limit(0)  locals: i(1), tail(2)
+  // Returns: limit + 0 = limit (correct).  With bug: limit + 42.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'noWhileBlockTail',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.block('nwbtExit', [
+        module.loop(
+          'nwbtLoop',
+          module.block(null, [
+            module.br('nwbtExit', module.i32.ge_s(p(1), p(0))),
+            module.local.set(1, module.i32.add(p(1), i32(1))),
+            module.br('nwbtLoop')
+          ])
+        ),
+        module.local.set(2, i32(42))
+      ]),
+      module.return(module.i32.add(p(1), p(2)))
+    ])
+  );
+
+  // exerciseNoWhileBlockTail(limit: i32): void
+  module.addFunction(
+    'exerciseNoWhileBlockTail',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('noWhileBlockTail', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
@@ -1108,6 +1159,8 @@
   module.addFunctionExport('exerciseSwitchNoLabel', 'exerciseSwitchNoLabel');
   module.addFunctionExport('fusedForNoLabel', 'fusedForNoLabel');
   module.addFunctionExport('exerciseFusedForNoLabel', 'exerciseFusedForNoLabel');
+  module.addFunctionExport('noWhileBlockTail', 'noWhileBlockTail');
+  module.addFunctionExport('exerciseNoWhileBlockTail', 'exerciseNoWhileBlockTail');
 
   common.finalizeAndOutput(module);
 
@@ -1353,6 +1406,12 @@
   );
 
   data.fused_for_no_label_limits = [0, 1, 2, 3, 5, 10, 20, 50].concat(
+    Array.from({length: 4}, function () {
+      return (Math.random() * 30) | 0;
+    })
+  );
+
+  data.no_while_block_tail_limits = [0, 1, 2, 3, 5, 10, 20, 50].concat(
     Array.from({length: 4}, function () {
       return (Math.random() * 30) | 0;
     })

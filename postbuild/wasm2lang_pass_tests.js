@@ -208,6 +208,10 @@ var loopSimplification = new PassFamily('loop-simplification', 'loop_simplificat
   assertLoopPlan(result, 'multiGuardWhile', 'while');
   // Exit guard targets distant block → must NOT become while, stays as for.
   assertLoopPlan(result, 'noWhileDistantExit', 'for');
+  // Non-fused enclosing block (tail code after loop) → must stay as for:
+  // while-form would execute tail code that the original br_if skips.
+  // This catches the Rule-2 semantic preservation bug.
+  assertLoopPlan(result, 'noWhileBlockTail', 'for');
   // Terminal-exit: unconditional exit with internal continue paths → for.
   assertLoopPlan(result, 'terminalExitLoop', ['for', 'while']);
 });

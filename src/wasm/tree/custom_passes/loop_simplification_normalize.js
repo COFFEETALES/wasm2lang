@@ -370,18 +370,26 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
             binaryen,
             children[0]
           );
-        // The exit target must be the immediately enclosing named block.
-        // If it targets a more distant ancestor, while-exit would fall
-        // through to code between the enclosing block and the target —
-        // code that the original br would have skipped.
+        // The exit target must be (1) the immediately enclosing named block,
+        // and (2) a block flagged as fused by BlockLoopFusionPass (its name
+        // carries the w2l_fused$ marker).  The fused marker guarantees the
+        // enclosing block contains only the loop (optionally + unreachable),
+        // so while-exit's fall-through cannot execute code the original
+        // br $outer would have skipped.  Without the fused gate, a loop
+        // inside a block that also holds tail code would be emitted as a
+        // while, and iterations that exit via the guard would execute the
+        // tail code — observable behavior change, Rule 2 violation.
         var /** @const {?string} */ exitTarget = /** @type {?string} */ (firstInfo.name);
         var /** @const {number} */ bsLen = state.enclosingBlockStack.length;
+        var /** @const {string} */ FUSED_MARKER = Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER;
         if (
           binaryen.BreakId === firstInfo.id &&
           0 !== /** @type {number} */ (firstInfo.condition || 0) &&
           exitTarget !== loopName &&
           bsLen > 0 &&
-          state.enclosingBlockStack[bsLen - 1] === exitTarget
+          state.enclosingBlockStack[bsLen - 1] === exitTarget &&
+          exitTarget !== null &&
+          0 === /** @type {string} */ (exitTarget).indexOf(FUSED_MARKER)
         ) {
           // Count consecutive exit guards targeting the same block.
           var /** @type {number} */ guardCount = 1;
@@ -497,17 +505,21 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
     var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
     var /** @const {number} */ len = children.length;
     var /** @type {number} */ planCondPtr = 0;
-    // newBody defaults to the original body.  While-block variants
-    // restructure into while-if form so the pattern survives binary
-    // round-trip without relying on metadata position indexing.
-    var /** @type {number} */ newBody = bodyPtr;
+    // Body stays intact for every variant: only the label is renamed.
+    // Rule 2 forbids altering runtime semantics — the original br_if guard
+    // exits the enclosing block, which skips any code that follows the
+    // loop inside that block.  A pre-normalization rewrite into
+    // if(!cond){...} would fall through to that code after a cond=true
+    // iteration, changing observable behavior.  Backends reconstruct the
+    // while pattern from the IR (`emitSimplifiedLoopFromIR_`) + the stored
+    // LoopPlan; no structural IR change is needed in this pass.
+    var /** @const {number} */ newBody = bodyPtr;
 
     if ('lw' === kind || 'ly' === kind) {
       var /** @const {!BinaryenExpressionInfo} */ brIfInfo = /** @type {!BinaryenExpressionInfo} */ (
           Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[0])
         );
       planCondPtr = S.invertCondition_(binaryen, module, /** @type {number} */ (brIfInfo.condition || 0));
-      // Multi-guard: combine inverted conditions with i32.and.
       var /** @const {number} */ guardCount = state.guardCounts[loopName] || 1;
       if (guardCount > 1) {
         for (var /** @type {number} */ mgi = 1; mgi < guardCount; ++mgi) {
@@ -520,16 +532,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = funct
           );
         }
       }
-      // Restructure: strip leading guards from the body block and wrap
-      // the remaining children (body + self-continue) in an if-then so
-      // the while pattern is explicit in the IR structure.
-      var /** @const {!Array<number>} */ thenChildren = /** @type {!Array<number>} */ ([].slice.call(children, guardCount));
-      var /** @const {number} */ thenBlock = module.block(
-          /** @type {?string} */ (bodyInfo.name) || null,
-          thenChildren,
-          binaryen.none
-        );
-      newBody = /** @type {number} */ (module.if(planCondPtr, thenBlock));
     } else if ('lwi' === kind || 'lyi' === kind) {
       planCondPtr = /** @type {number} */ (bodyInfo.condition || 0);
     } else if ('ldb' === kind || 'leb' === kind) {

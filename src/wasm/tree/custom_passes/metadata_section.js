@@ -36,8 +36,29 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.SECTION_NAME = 'w2l_codegen_met
 
 /**
  * Walks a function body in DFS pre-order and assigns sequential position
- * indices to every Block and Loop node.  Returns maps from label name to
- * position and from position to label name.
+ * indices to every Block and Loop node that survives a WASM binary
+ * round-trip.  Returns maps from label name to position and from position
+ * to label name.
+ *
+ * <p>Binaryen's binary reader drops or flattens certain block shapes during
+ * round-trip.  To keep position numbering stable across the two-step
+ * workflow (normalize → emit binary → re-read with --pre-normalized), this
+ * walker emulates those rules so that serialize-time positions match the
+ * positions observed when the module is re-read from its binary form:
+ *
+ * <ul>
+ *   <li>Unnamed block with 0 children → dropped (not indexed).</li>
+ *   <li>Unnamed block with exactly 1 child → inlined (not indexed; its
+ *       child takes its place).</li>
+ *   <li>Unnamed multi-child block directly inside another block → flattened
+ *       into the parent (not indexed; its children are walked inline in the
+ *       parent's context).</li>
+ *   <li>Unnamed multi-child block inside a single-expression slot (loop
+ *       body, if branch, function body root) → preserved.</li>
+ *   <li>Named block → always preserved (the name may be stripped during
+ *       round-trip if nothing branches to it, but the block node remains).</li>
+ *   <li>Loop → always preserved.</li>
+ * </ul>
  *
  * @private
  * @param {!Binaryen} binaryen
@@ -54,9 +75,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNodeIndex_ = function (bin
 
   /**
    * @param {number} ptr
+   * @param {boolean} inBlockContext  True when ptr is a direct child of a
+   *     surviving block.  Unnamed multi-child blocks in this context get
+   *     flattened into their parent during binary round-trip.
    * @return {void}
    */
-  function walk(ptr) {
+  function walk(ptr, inBlockContext) {
     if (0 === ptr) return;
     var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ info = getInfo(binaryen, ptr);
     var /** @const {number} */ id = info.id;
@@ -65,9 +89,37 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNodeIndex_ = function (bin
       var /** @const {?string} */ bName = /** @type {?string} */ (info.name);
       var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (info.children);
       var /** @const {number} */ cLen = ch ? ch.length : 0;
-      // Skip empty unnamed blocks — binaryen drops these during binary
-      // round-trip, so they must not affect position numbering.
+      // Unnamed 0-child block: dropped during round-trip.
       if (!bName && 0 === cLen) return;
+      // Unnamed 2-child block whose last child is Unreachable: binaryen
+      // appends a synthetic trailing Unreachable to a function body root
+      // whose effective type (unreachable) differs from the declared
+      // return type.  At serialize time the body holds only the real
+      // child; the synthetic sibling appears only after binary round-trip.
+      // Treat the block as 1-child so positions match across both sides.
+      if (!bName && 2 === cLen) {
+        var /** @const {number} */ lastId2 = getInfo(binaryen, /** @type {!Array<number>} */ (ch)[1]).id;
+        if (binaryen.UnreachableId === lastId2) {
+          walk(/** @type {!Array<number>} */ (ch)[0], inBlockContext);
+          return;
+        }
+      }
+      // Unnamed 1-child block: inlined during round-trip.  Walk child in
+      // the same parent context so flattening propagates correctly.
+      if (!bName && 1 === cLen) {
+        walk(/** @type {!Array<number>} */ (ch)[0], inBlockContext);
+        return;
+      }
+      // Unnamed multi-child block inside another block: flattened into
+      // parent during round-trip.  Walk children inline in block context.
+      if (!bName && inBlockContext) {
+        for (var /** @type {number} */ fi = 0; fi < cLen; ++fi) {
+          walk(/** @type {!Array<number>} */ (ch)[fi], true);
+        }
+        return;
+      }
+      // Otherwise: block survives round-trip (named blocks always survive,
+      // as do unnamed multi-child blocks in single-expression slots).
       var /** @const {number} */ pos = counter++;
       posToPtr[pos] = ptr;
       if (bName) {
@@ -76,7 +128,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNodeIndex_ = function (bin
       }
       if (ch) {
         for (var /** @type {number} */ ci = 0; ci < cLen; ++ci) {
-          walk(ch[ci]);
+          walk(/** @type {!Array<number>} */ (ch)[ci], true);
         }
       }
       return;
@@ -88,49 +140,49 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNodeIndex_ = function (bin
       posToPtr[lPos] = ptr;
       nameToPos[lName] = lPos;
       posToName[lPos] = lName;
-      walk(/** @type {number} */ (info.body || 0));
+      walk(/** @type {number} */ (info.body || 0), false);
       return;
     }
 
     if (binaryen.IfId === id) {
-      walk(/** @type {number} */ (info.condition || 0));
-      walk(/** @type {number} */ (info.ifTrue || 0));
-      walk(/** @type {number} */ (info.ifFalse || 0));
+      walk(/** @type {number} */ (info.condition || 0), false);
+      walk(/** @type {number} */ (info.ifTrue || 0), false);
+      walk(/** @type {number} */ (info.ifFalse || 0), false);
       return;
     }
 
     if (binaryen.DropId === id || binaryen.ReturnId === id || binaryen.LocalSetId === id || binaryen.GlobalSetId === id) {
-      walk(/** @type {number} */ (info.value || 0));
+      walk(/** @type {number} */ (info.value || 0), false);
       return;
     }
 
     if (binaryen.SelectId === id) {
-      walk(/** @type {number} */ (info.ifTrue || 0));
-      walk(/** @type {number} */ (info.ifFalse || 0));
-      walk(/** @type {number} */ (info.condition || 0));
+      walk(/** @type {number} */ (info.ifTrue || 0), false);
+      walk(/** @type {number} */ (info.ifFalse || 0), false);
+      walk(/** @type {number} */ (info.condition || 0), false);
       return;
     }
 
     if (binaryen.BinaryId === id) {
-      walk(/** @type {number} */ (info.left || 0));
-      walk(/** @type {number} */ (info.right || 0));
+      walk(/** @type {number} */ (info.left || 0), false);
+      walk(/** @type {number} */ (info.right || 0), false);
       return;
     }
 
     if (binaryen.UnaryId === id) {
-      walk(/** @type {number} */ (info.value || 0));
+      walk(/** @type {number} */ (info.value || 0), false);
       return;
     }
 
     if (binaryen.BreakId === id) {
-      walk(/** @type {number} */ (info.condition || 0));
-      walk(/** @type {number} */ (info.value || 0));
+      walk(/** @type {number} */ (info.condition || 0), false);
+      walk(/** @type {number} */ (info.value || 0), false);
       return;
     }
 
     if (binaryen.SwitchId === id) {
-      walk(/** @type {number} */ (info.condition || 0));
-      walk(/** @type {number} */ (info.value || 0));
+      walk(/** @type {number} */ (info.condition || 0), false);
+      walk(/** @type {number} */ (info.value || 0), false);
       return;
     }
 
@@ -138,25 +190,25 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNodeIndex_ = function (bin
       var /** @const {!Array<number>|void} */ operands = /** @type {!Array<number>|void} */ (info.operands);
       if (operands) {
         for (var /** @type {number} */ oi = 0, /** @const {number} */ oLen = operands.length; oi < oLen; ++oi) {
-          walk(operands[oi]);
+          walk(operands[oi], false);
         }
       }
       if (binaryen.CallIndirectId === id) {
-        walk(/** @type {number} */ (info.target || 0));
+        walk(/** @type {number} */ (info.target || 0), false);
       }
       return;
     }
 
     if (binaryen.LoadId === id || binaryen.StoreId === id) {
-      walk(/** @type {number} */ (info.ptr || 0));
+      walk(/** @type {number} */ (info.ptr || 0), false);
       if (binaryen.StoreId === id) {
-        walk(/** @type {number} */ (info.value || 0));
+        walk(/** @type {number} */ (info.value || 0), false);
       }
       return;
     }
   }
 
-  walk(rootPtr);
+  walk(rootPtr, false);
   return {nameToPos: nameToPos, posToName: posToName, posToPtr: posToPtr};
 };
 
