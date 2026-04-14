@@ -587,6 +587,30 @@ Wasm2Lang.Backend.AbstractCodegen.assembleBlockChildren_ = function (childResult
 };
 
 /**
+ * Computes the count of block children to actually emit, eliding any that
+ * follow an `unreachable`-typed sibling.  Java rejects unreachable
+ * statements outright; asm.js/PHP merely waste bytes on dead code.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} blockExpr
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.reachableBlockChildCount_ = function (binaryen, blockExpr) {
+  var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (blockExpr.children || []);
+  for (var /** @type {number} */ i = 0; i < children.length; ++i) {
+    var /** @const {!BinaryenExpressionInfo} */ ci = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+        binaryen,
+        children[i]
+      );
+    if (binaryen.unreachable === ci.type) {
+      return i + 1;
+    }
+  }
+  return children.length;
+};
+
+/**
  * Wraps a single break/continue statement in a conditional if the break
  * expression has a condition pointer.  Shared across all three backends
  * for the common BreakId conditional-wrapping pattern.
@@ -811,7 +835,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
   // block-loop fusion actually occurred in emitEnter_.
   var /** @const {boolean} */ isFused = !!blockName && !!state.fusedBlockToLoop[blockName];
   var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
-  var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, childResults.length, childInd);
+  var /** @const {number} */ emitCount = A.reachableBlockChildCount_(state.binaryen, expr);
+  var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
   if (isFused) {
     return blockBody;
   }

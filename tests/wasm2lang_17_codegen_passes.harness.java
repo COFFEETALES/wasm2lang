@@ -257,6 +257,10 @@ int w2lCountSimplifiedWhile(String body) {
         mod.exerciseFusedForNoLabel(v.intValue());
     }
 
+    for (Double v : w2lFlat(_data, "no_while_block_tail_limits")) {
+        mod.exerciseNoWhileBlockTail(v.intValue());
+    }
+
     w2lDumpCRC(memBuffer);
 }
 

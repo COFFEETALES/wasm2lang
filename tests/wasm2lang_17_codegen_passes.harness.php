@@ -285,6 +285,10 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ($data['fused_for_no_label_limits'] as $v) {
         $exports['exerciseFusedForNoLabel']($v);
     }
+
+    foreach ($data['no_while_block_tail_limits'] as $v) {
+        $exports['exerciseNoWhileBlockTail']($v);
+    }
 };
 
 $dumpMemory = true;

@@ -206,7 +206,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, no
     isFused = !!bfp && (!('a' === bfp.fusionVariant) || this.detectBlockLoopFusionFromIR_(state.binaryen, expr));
   }
   var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
-  var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, childResults.length, childInd);
+  var /** @const {number} */ emitCount = A.reachableBlockChildCount_(state.binaryen, expr);
+  var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
   if (isFused) return blockBody;
   if (blockName) {
     var /** @const {!Binaryen} */ binaryen = state.binaryen;
