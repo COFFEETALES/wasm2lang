@@ -108,7 +108,7 @@ if [ ${#0} -ne ${#prefix} ]; then
           --normalize-wasm "$wasm_normalize"    \
           --emit-web-assembly                   \
           --input-file wast:-                   \
-          1>"${artifact_base}".wasm
+          --out-file="${artifact_base}".wasm
         #
         # Generate WAST
         cat ./"${testbase}".orig.wast           \
@@ -118,7 +118,7 @@ if [ ${#0} -ne ${#prefix} ]; then
           --normalize-wasm "$wasm_normalize"    \
           --emit-web-assembly text              \
           --input-file wast:-                   \
-          1>"${artifact_base}".wast
+          --out-file="${artifact_base}".wast
         #
         # Code generation: prenorm reads from the variant's .wasm binary
         # with --pre-normalized; other variants read from .wast with
@@ -148,8 +148,8 @@ if [ ${#0} -ne ${#prefix} ]; then
           --define "ASMJS_HEAP_SIZE=$((65536 * 8))" \
           --emit-metadata=memBuffer                 \
           --emit-code=module                        \
-          $codegen_input                            \
-          1>"${artifact_base}".asm.js
+          --out-file="${artifact_base}".asm.js      \
+          $codegen_input
         ;; esac
         #
         # Generate PHP64
@@ -162,8 +162,8 @@ if [ ${#0} -ne ${#prefix} ]; then
           --define "PHP64_HEAP_SIZE=$((65536 * 8))" \
           --emit-metadata=memBuffer                 \
           --emit-code=module                        \
-          $codegen_input                            \
-          1>"${artifact_base}".php
+          --out-file="${artifact_base}".php         \
+          $codegen_input
         ;; esac
         #
         # Generate JAVA
@@ -176,8 +176,8 @@ if [ ${#0} -ne ${#prefix} ]; then
           --define "JAVA_HEAP_SIZE=$((65536 * 8))"  \
           --emit-metadata=memBuffer                 \
           --emit-code=module                        \
-          $codegen_input                            \
-          1>"${artifact_base}".java
+          --out-file="${artifact_base}".java        \
+          $codegen_input
         ;; esac
       done <<EOF
 $variant_list

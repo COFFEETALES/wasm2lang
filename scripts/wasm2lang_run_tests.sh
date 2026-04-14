@@ -11,7 +11,7 @@ if [ ${#0} -ne ${#prefix} ]; then
 
   fn() {
     local dirbase directory dirname filebase retcode tmpretcode
-    local prenorm_dir prenorm_filebase
+    local sibling_base sibling_dir sibling_dirname sibling_filebase sibling_variant
     local LF="$(printf '\012+')"
     LF="${LF%?}"
 
@@ -126,21 +126,28 @@ if [ ${#0} -ne ${#prefix} ]; then
           "${filebase}".jshell.out
         [ $? -eq 0 ] || tmpretcode=1
       fi
-      prenorm_dir="${dirname%_codegen}_prenorm"
-      prenorm_filebase="${prenorm_dir}/${prenorm_dir}"
-      if [ -f "${filebase}".v8.wasm.out -a -f "${prenorm_filebase}".v8.wasm.out ]; then
-        echo -e "\033[0;33mComparing codegen vs prenorm V8 WASM output...\033[0m"
-        if [ -f "${prenorm_filebase}".v8.wasm.out ]; then
-          diff -qs                    \
-            "${filebase}".v8.wasm.out \
-            "${prenorm_filebase}".v8.wasm.out
-          [ $? -eq 0 ] || tmpretcode=1
-        else
-          echo "Missing comparison target: ${prenorm_filebase}.v8.wasm.out"
-          tmpretcode=1
-        fi
-      fi
-      [ $? -eq 0 ] || tmpretcode=1
+      # When this is the codegen baseline variant, compare its V8 WASM
+      # output against every sibling variant's output. All variants derive
+      # from the same original .wast, so their execution output must match.
+      case "$dirname" in
+        *_codegen)
+          sibling_base="${dirname%_codegen}"
+          for sibling_dir in "${sibling_base}"_*/; do
+            [ -d "$sibling_dir" ] || continue
+            sibling_dirname="$(basename "${sibling_dir%/}")"
+            [ "$sibling_dirname" = "$dirname" ] && continue
+            sibling_filebase="${sibling_dirname}/${sibling_dirname}"
+            [ -f "${filebase}".v8.wasm.out ] || continue
+            [ -f "${sibling_filebase}".v8.wasm.out ] || continue
+            sibling_variant="${sibling_dirname##${sibling_base}_}"
+            echo -e "\033[0;33mComparing codegen vs ${sibling_variant} V8 WASM output...\033[0m"
+            diff -qs                           \
+              "${filebase}".v8.wasm.out        \
+              "${sibling_filebase}".v8.wasm.out
+            [ $? -eq 0 ] || tmpretcode=1
+          done
+          ;;
+      esac
       if [ 1 -eq $tmpretcode ]; then
         echo -e "Test $dirname: \033[0;31mFAILED\033[0m"
       else
