@@ -213,29 +213,40 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderLabeledJump_ = function (label
 
 /**
  * Resolves a target label to its break/continue statement string, looking up
- * the label kind and block-to-loop fusion redirection.
+ * the label kind and block-to-loop fusion redirection, and marks the resolved
+ * label as used in {@code state.usedLabels}.
  *
- * Used by asm.js and Java backends for BreakId, SwitchId, and flat-switch
- * external-target handling where the same 4-line resolution pattern was
- * previously repeated.
+ * Used by asm.js and Java backends for SwitchId and flat-switch external-target
+ * handling where the same mark-and-resolve pattern was previously repeated.
  *
+ * @suppress {accessControls}
  * @protected
- * @param {!Object<string, string>} labelKinds   Map of label name → 'block'|'loop'.
- * @param {!Object<string, string>} fusedBlockToLoop  Fused block → loop name.
- * @param {!Object<string, number>} labelMap
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
  * @param {string} targetName
  * @return {string}  Statement string ending in {@code ';\n'}.
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.resolveBreakTarget_ = function (
-  labelKinds,
-  fusedBlockToLoop,
-  labelMap,
-  targetName
-) {
-  var /** @const {string} */ kind = labelKinds[targetName] || 'block';
-  var /** @const {string} */ actual = fusedBlockToLoop[targetName] || targetName;
+Wasm2Lang.Backend.AbstractCodegen.prototype.resolveBreakTarget_ = function (state, targetName) {
+  var /** @const {string} */ actual = state.fusedBlockToLoop[targetName] || targetName;
+  var /** @const {string} */ kind = state.labelKinds[targetName] || 'block';
   var /** @const {string} */ keyword = 'loop' === kind ? 'continue' : 'break';
-  return this.renderLabeledJump_(labelMap, keyword, actual);
+  return this.markAndRenderLabeledJump_(state, keyword, actual);
+};
+
+/**
+ * Marks an already-resolved label as used and renders the corresponding
+ * labeled jump statement.  Shared by callers that know the final target name
+ * and keyword directly (no fusion/kind lookup needed).
+ *
+ * @suppress {accessControls}
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {string} keyword  {@code 'break'} or {@code 'continue'}.
+ * @param {string} resolvedName
+ * @return {string}  Statement string ending in {@code ';\n'}.
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.markAndRenderLabeledJump_ = function (state, keyword, resolvedName) {
+  state.usedLabels[resolvedName] = true;
+  return this.renderLabeledJump_(state.labelMap, keyword, resolvedName);
 };
 
 /**

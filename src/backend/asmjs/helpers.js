@@ -20,6 +20,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getHelperDeps_ = function () {
 /**
  * Emits only the helpers that were referenced during function body emission.
  *
+ * @override
+ * @protected
  * @param {number} scratchByteOffset
  * @param {number} scratchWordIndex
  * @param {number} scratchQwordIndex

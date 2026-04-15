@@ -24,7 +24,7 @@
  *   isUnaryPosition_: function(string, number): boolean,
  *   isFullyParenthesized: function(string): boolean,
  *   topLevel: function(string): number,
- *   wrap: function(string, number, boolean): string,
+ *   wrap_: function(string, number, boolean): string,
  *   renderPrefix: function(string, string): string,
  *   renderInfix: function(string, string, string, number, boolean=): string,
  *   formatCondition: function(string): string,
@@ -265,7 +265,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    * @param {boolean} allowEqual
    * @return {string}
    */
-  wrap: function (expr, requiredPrecedence, allowEqual) {
+  wrap_: function (expr, requiredPrecedence, allowEqual) {
 
     var /** @const {number} */ actualPrecedence = P.topLevel(expr);
 
@@ -286,7 +286,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    */
   renderPrefix: function (op, expr) {
 
-    return op + P.wrap(expr, P.PREC_UNARY_, true);
+    return op + P.wrap_(expr, P.PREC_UNARY_, true);
   },
 
   /**
@@ -299,7 +299,7 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
    */
   renderInfix: function (L, op, R, precedence, opt_allowRightEqual) {
 
-    return P.wrap(L, precedence, true) + ' ' + op + ' ' + P.wrap(R, precedence, !!opt_allowRightEqual);
+    return P.wrap_(L, precedence, true) + ' ' + op + ' ' + P.wrap_(R, precedence, !!opt_allowRightEqual);
   },
 
   /**

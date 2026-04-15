@@ -95,6 +95,21 @@ Wasm2Lang.Backend.Php64Codegen.renderPhpJump_ = function (labelStack, targetName
   return ('loop' === resolved.resolvedLabelKind ? 'continue' : 'break') + (1 < totalDepth ? ' ' + totalDepth : '') + ';\n';
 };
 
+/**
+ * Returns the PHP variable name for the shared {@code $buffer} capture and
+ * marks it as used so the enclosing closure's {@code use (...)} clause
+ * pulls it in by reference.
+ *
+ * @private
+ * @param {!Wasm2Lang.Backend.Php64Codegen.EmitState_} state
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.usePhpBuffer_ = function (state) {
+  var /** @const {string} */ bufVar = this.phpVar_('buffer');
+  state.usedCaptures[bufVar] = true;
+  return bufVar;
+};
+
 // ---------------------------------------------------------------------------
 // Leave-callback indent and label-stack adjustment (overrides base class).
 // ---------------------------------------------------------------------------
@@ -163,16 +178,22 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitSimplifiedLoopFromIR_ = function (s
     state.labelStack[state.labelStack.length - 1].alias = /** @type {string} */ (bodyInfo.name);
   }
 
-  var /** @const {!Object} */ bc = this.computeSimplifiedLoopBodyAndCondition_(state, loopKind, bodyInfo, loopName, innerInd);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_} */ bc = this.computeSimplifiedLoopBodyAndCondition_(
+      state,
+      loopKind,
+      bodyInfo,
+      loopName,
+      innerInd
+    );
 
   // PHP uses numeric break/continue depths, so no label prefix is emitted.
   var /** @const {string} */ result = this.assembleSimplifiedLoop_(
       loopKind,
       outerInd,
       '',
-      /** @type {string} */ (bc['bodyCode']),
-      /** @type {string} */ (bc['condStr']),
-      /** @type {number} */ (bc['condCat'])
+      bc.w2lLoopBody,
+      bc.w2lLoopCondStr,
+      bc.w2lLoopCondCat
     );
 
   // Clean up: decrement indent and pop labelStack (adjustLeaveIndent_ skipped).
@@ -304,8 +325,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ loadBytes = /** @type {number} */ (expr.bytes);
       var /** @const {boolean} */ loadSigned = !!expr.isSigned;
       var /** @const {number} */ loadType = expr.type;
-      var /** @const {string} */ nBuf = this.phpVar_('buffer');
-      state.usedCaptures[nBuf] = true;
+      var /** @const {string} */ nBuf = this.usePhpBuffer_(state);
 
       if (Wasm2Lang.Backend.ValueType.isF64(binaryen, loadType)) {
         result = "unpack('e', " + nBuf + ', ' + loadPtr + ')[1]';
@@ -336,8 +356,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ storePtr = this.renderPtrWithOffset_(cr(0), /** @type {number} */ (expr.offset));
       var /** @const {number} */ storeBytes = /** @type {number} */ (expr.bytes);
       var /** @const {number} */ storeType = /** @type {number} */ (expr.valueType) || binaryen.i32;
-      var /** @const {string} */ sBuf = this.phpVar_('buffer');
-      state.usedCaptures[sBuf] = true;
+      var /** @const {string} */ sBuf = this.usePhpBuffer_(state);
 
       var /** @const {string} */ tP = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_P_);
       var /** @const {string} */ tS = inlineTemp(Wasm2Lang.Backend.Php64Codegen.TEMP_S_);
@@ -459,54 +478,39 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       result = this.renderCoercionByType_(
         binaryen,
         '(' +
-          selP.wrap(cr(0), selP.PREC_CONDITIONAL_, false) +
+          selP.wrap_(cr(0), selP.PREC_CONDITIONAL_, false) +
           ' ? ' +
           cr(1) +
           ' : ' +
-          selP.wrap(cr(2), selP.PREC_CONDITIONAL_, false) +
+          selP.wrap_(cr(2), selP.PREC_CONDITIONAL_, false) +
           ')',
         selectType
       );
       resultCat = A.catForCoercedType_(binaryen, selectType);
       break;
     }
-    case binaryen.MemorySizeId: {
-      var /** @const {string} */ sizeBuf = this.phpVar_('buffer');
-      state.usedCaptures[sizeBuf] = true;
-      result = '(int)(strlen(' + sizeBuf + ') / 65536)';
+    case binaryen.MemorySizeId:
+      result = '(int)(strlen(' + this.usePhpBuffer_(state) + ') / 65536)';
       resultCat = C.SIGNED;
       break;
-    }
+
     case binaryen.MemoryGrowId: {
-      var /** @const {string} */ growBuf = this.phpVar_('buffer');
-      state.usedCaptures[growBuf] = true;
       this.markHelper_('_w2l_memory_grow');
       result =
-        this.n_('_w2l_memory_grow') + '(' + growBuf + ', ' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ')';
+        this.n_('_w2l_memory_grow') +
+        '(' +
+        this.usePhpBuffer_(state) +
+        ', ' +
+        this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) +
+        ')';
       resultCat = C.SIGNED;
       break;
     }
 
     case binaryen.MemoryFillId:
-    case binaryen.MemoryCopyId: {
-      var /** @const {string} */ phpMemBuf = this.phpVar_('buffer');
-      state.usedCaptures[phpMemBuf] = true;
-      var /** @const {string} */ phpMemHelper = binaryen.MemoryFillId === id ? '_w2l_memory_fill' : '_w2l_memory_copy';
-      this.markHelper_(phpMemHelper);
-      result =
-        pad(ind) +
-        this.n_(phpMemHelper) +
-        '(' +
-        phpMemBuf +
-        ', ' +
-        this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) +
-        ', ' +
-        this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
-        ', ' +
-        this.coerceToType_(binaryen, cr(2), cc(2), binaryen.i32) +
-        ');\n';
+    case binaryen.MemoryCopyId:
+      result = this.renderMemoryBulkOp_(binaryen, id, ind, childResults, this.usePhpBuffer_(state));
       break;
-    }
 
     case binaryen.BlockId:
       result = this.emitBlockDispatch_(
@@ -535,7 +539,11 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
         var /** @const */ ifP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         result = this.renderCoercionByType_(
           binaryen,
-          ifP.wrap(cr(0), ifP.PREC_CONDITIONAL_, false) + ' ? ' + cr(1) + ' : ' + ifP.wrap(cr(2), ifP.PREC_CONDITIONAL_, false),
+          ifP.wrap_(cr(0), ifP.PREC_CONDITIONAL_, false) +
+            ' ? ' +
+            cr(1) +
+            ' : ' +
+            ifP.wrap_(cr(2), ifP.PREC_CONDITIONAL_, false),
           ifType
         );
         resultCat = A.catForCoercedType_(binaryen, ifType);

@@ -81,7 +81,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         artifact_base="${artifact_dir}/${artifact_dir}"
 
         # Per-test language restriction (default: all languages).
-        build_languages="ASMJS PHP64 JAVA"
+        build_languages="ASMJS JAVASCRIPT PHP64 JAVA"
         if [ -f "../tests/${testbase}.build.languages" ]; then
           build_languages="$(cat "../tests/${testbase}.build.languages")"
         fi
@@ -149,6 +149,20 @@ if [ ${#0} -ne ${#prefix} ]; then
           --emit-metadata=memBuffer                 \
           --emit-code=module                        \
           --out-file="${artifact_base}".asm.js      \
+          $codegen_input
+        ;; esac
+        #
+        # Generate JAVASCRIPT
+        case " $build_languages " in *" JAVASCRIPT "*)
+        node                                        \
+          "../wasm2lang.js"                         \
+          --normalize-wasm "$codegen_normalize"     \
+          "$@"                                      \
+          --language-out JAVASCRIPT                 \
+          --define "ASMJS_HEAP_SIZE=$((65536 * 8))" \
+          --emit-metadata=memBuffer                 \
+          --emit-code=module                        \
+          --out-file="${artifact_base}".js          \
           $codegen_input
         ;; esac
         #

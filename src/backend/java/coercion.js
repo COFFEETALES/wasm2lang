@@ -9,23 +9,13 @@
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.renderCoercionByType_ = function (binaryen, expr, wasmType) {
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
-    return expr;
-  }
-  if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) {
-    return '(long)' + P.wrap(expr, P.PREC_UNARY_, true);
-  }
-  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return '(float)' + P.wrap(expr, P.PREC_UNARY_, true);
-  }
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return '(double)' + P.wrap(expr, P.PREC_UNARY_, true);
-  }
-  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
-    return expr;
-  }
-  return expr;
+  var /** @type {?string} */ cast = null;
+  if (V.isI64(binaryen, wasmType)) cast = '(long)';
+  else if (V.isF32(binaryen, wasmType)) cast = '(float)';
+  else if (V.isF64(binaryen, wasmType)) cast = '(double)';
+  return null === cast ? expr : cast + P.wrap_(expr, P.PREC_UNARY_, true);
 };
 
 /**
@@ -48,10 +38,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderConst_ = function (binaryen, value
 
 /**
  * Renders a binaryen i64 constant as a Java {@code long} literal.
- * The value is either a BigInt (binaryen 129+) or a
- * {@code {low: number, high: number}} object.
  *
- * @suppress {checkTypes}
  * @override
  * @protected
  * @param {!Binaryen} binaryen
@@ -60,26 +47,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderConst_ = function (binaryen, value
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.renderI64Const_ = function (binaryen, value) {
   void binaryen;
-  var /** @type {number} */ low;
-  var /** @type {number} */ high;
-  if ('bigint' === typeof value) {
-    low = Number(BigInt(value) & BigInt(0xffffffff)) >>> 0;
-    high = Number((BigInt(value) >> BigInt(32)) & BigInt(0xffffffff)) | 0;
-  } else {
-    var /** @const {!Object} */ v = /** @type {!Object} */ (value);
-    low = v['low'] >>> 0;
-    high = v['high'] | 0;
-  }
-  // Simple zero case.
-  if (0 === low && 0 === high) return '0L';
-  // Small positive: high is 0, fits in JS number precision.
-  if (0 === high) return String(low) + 'L';
-  // Small negative: high is -1 and low has bit 31 set.
-  if (-1 === high && low >= 0x80000000) return String(low - 4294967296) + 'L';
-  // General case: emit as hex to avoid JS number precision issues.
-  var /** @const {string} */ hexHigh = (high >>> 0).toString(16);
-  var /** @const {string} */ hexLow = ('00000000' + low.toString(16)).slice(-8);
-  return '0x' + hexHigh + hexLow + 'L';
+  return Wasm2Lang.Backend.AbstractCodegen.formatI64WithSuffix_(value, 'L');
 };
 
 /**
@@ -125,6 +93,72 @@ Wasm2Lang.Backend.JavaCodegen.renderV128Const_ = function (value) {
 };
 
 /**
+ * Method name for each i32 {@code UNARY_*} category that dispatches to a
+ * static {@code Integer.XXX} call.  Keyed by the numeric UNARY_* constant.
+ *
+ * @const {!Object<number, string>}
+ * @private
+ */
+Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_METHODS_ = /** @return {!Object<number, string>} */ (function () {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const {!Object<number, string>} */ table = {};
+  table[C.UNARY_CLZ] = 'Integer.numberOfLeadingZeros';
+  table[C.UNARY_CTZ] = 'Integer.numberOfTrailingZeros';
+  table[C.UNARY_POPCNT] = 'Integer.bitCount';
+  return table;
+})();
+
+/**
+ * Target Java primitive type for each sign-extend {@code UNARY_*} category.
+ * The resulting cast narrows the operand to the named type before widening
+ * back to the containing integer.
+ *
+ * @const {!Object<number, string>}
+ * @private
+ */
+Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_CASTS_ = /** @return {!Object<number, string>} */ (function () {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const {!Object<number, string>} */ table = {};
+  table[C.UNARY_EXTEND8_S] = 'byte';
+  table[C.UNARY_EXTEND16_S] = 'short';
+  return table;
+})();
+
+/**
+ * Method name for each i64 {@code UNARY_*} category that dispatches to a
+ * static {@code Long.XXX} call.
+ *
+ * @const {!Object<number, string>}
+ * @private
+ */
+Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_METHODS_ = /** @return {!Object<number, string>} */ (function () {
+  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
+  var /** @const {!Object<number, string>} */ table = {};
+  table[I.UNARY_CLZ] = 'Long.numberOfLeadingZeros';
+  table[I.UNARY_CTZ] = 'Long.numberOfTrailingZeros';
+  table[I.UNARY_POPCNT] = 'Long.bitCount';
+  return table;
+})();
+
+/**
+ * Target Java primitive type for each i64 sign-extend {@code UNARY_*}
+ * category.  The narrowing cast is followed by an implicit widening back to
+ * {@code long}, which the emitter expresses with an explicit {@code (long)}
+ * prefix so the result category stays CAT_I64.
+ *
+ * @const {!Object<number, string>}
+ * @private
+ */
+Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_CASTS_ = /** @return {!Object<number, string>} */ (function () {
+  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
+  var /** @const {!Object<number, string>} */ table = {};
+  table[I.UNARY_EXTEND8_S] = 'byte';
+  table[I.UNARY_EXTEND16_S] = 'short';
+  table[I.UNARY_EXTEND32_S] = 'int';
+  return table;
+})();
+
+/**
  * @override
  * @protected
  * @param {!Binaryen} binaryen
@@ -133,6 +167,7 @@ Wasm2Lang.Backend.JavaCodegen.renderV128Const_ = function (value) {
  * @return {?{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitI32Unary_ = function (binaryen, unaryCategory, operandExpr) {
+  void binaryen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (C.UNARY_EQZ === unaryCategory) {
@@ -141,21 +176,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitI32Unary_ = function (binaryen, unar
       resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32
     };
   }
-  if (C.UNARY_CLZ === unaryCategory) {
-    return {emittedString: 'Integer.numberOfLeadingZeros(' + operandExpr + ')', resultCat: C.SIGNED};
-  }
-  if (C.UNARY_CTZ === unaryCategory) {
-    return {emittedString: 'Integer.numberOfTrailingZeros(' + operandExpr + ')', resultCat: C.SIGNED};
-  }
-  if (C.UNARY_POPCNT === unaryCategory) {
-    return {emittedString: 'Integer.bitCount(' + operandExpr + ')', resultCat: C.SIGNED};
-  }
-  if (C.UNARY_EXTEND8_S === unaryCategory) {
-    return {emittedString: '(byte)' + P.wrap(operandExpr, P.PREC_UNARY_, true), resultCat: C.SIGNED};
-  }
-  if (C.UNARY_EXTEND16_S === unaryCategory) {
-    return {emittedString: '(short)' + P.wrap(operandExpr, P.PREC_UNARY_, true), resultCat: C.SIGNED};
-  }
+  var /** @const {string|undefined} */ method = Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_METHODS_[unaryCategory];
+  if (method) return {emittedString: method + '(' + operandExpr + ')', resultCat: C.SIGNED};
+  var /** @const {string|undefined} */ cast = Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_CASTS_[unaryCategory];
+  if (cast) return {emittedString: '(' + cast + ')' + P.wrap_(operandExpr, P.PREC_UNARY_, true), resultCat: C.SIGNED};
   return null;
 };
 
@@ -178,23 +202,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitI64Unary_ = function (binaryen, unar
       resultCat: A.CAT_BOOL_I32
     };
   }
-  if (I.UNARY_CLZ === unaryCategory) {
-    return {emittedString: '(long)Long.numberOfLeadingZeros(' + operandExpr + ')', resultCat: A.CAT_I64};
-  }
-  if (I.UNARY_CTZ === unaryCategory) {
-    return {emittedString: '(long)Long.numberOfTrailingZeros(' + operandExpr + ')', resultCat: A.CAT_I64};
-  }
-  if (I.UNARY_POPCNT === unaryCategory) {
-    return {emittedString: '(long)Long.bitCount(' + operandExpr + ')', resultCat: A.CAT_I64};
-  }
-  if (I.UNARY_EXTEND8_S === unaryCategory) {
-    return {emittedString: '(long)(byte)' + P.wrap(operandExpr, P.PREC_UNARY_, true), resultCat: A.CAT_I64};
-  }
-  if (I.UNARY_EXTEND16_S === unaryCategory) {
-    return {emittedString: '(long)(short)' + P.wrap(operandExpr, P.PREC_UNARY_, true), resultCat: A.CAT_I64};
-  }
-  if (I.UNARY_EXTEND32_S === unaryCategory) {
-    return {emittedString: '(long)(int)' + P.wrap(operandExpr, P.PREC_UNARY_, true), resultCat: A.CAT_I64};
-  }
+  var /** @const {string|undefined} */ method = Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_METHODS_[unaryCategory];
+  if (method) return {emittedString: '(long)' + method + '(' + operandExpr + ')', resultCat: A.CAT_I64};
+  var /** @const {string|undefined} */ cast = Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_CASTS_[unaryCategory];
+  if (cast) return {emittedString: '(long)(' + cast + ')' + P.wrap_(operandExpr, P.PREC_UNARY_, true), resultCat: A.CAT_I64};
   return null;
 };

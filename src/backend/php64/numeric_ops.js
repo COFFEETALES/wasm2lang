@@ -12,41 +12,37 @@
 Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr, opt_valueCat) {
   var /** @const {string} */ name = info.opName;
   var /** @const {boolean} */ isF32 = Wasm2Lang.Backend.ValueType.isF32(binaryen, info.operandType);
-  var /** @const {string} */ nI = this.n_('_w2l_i');
   var /** @const {string} */ nF32 = this.n_('_w2l_f32');
+  var /** @const */ self = this;
+  // Operand coercion dispatcher shared by every op below.  When the caller
+  // provided a precise {@code opt_valueCat}, route through
+  // {@code coerceToType_} so already-compatible categories skip the wrap;
+  // otherwise fall back to type-based coercion (the safe-but-unconditional
+  // {@code renderCoercionByType_}).
+  /** @param {number} wasmType @return {string} */
+  var coerceOperand = function (wasmType) {
+    return null != opt_valueCat
+      ? self.coerceToType_(binaryen, valueExpr, /** @type {number} */ (opt_valueCat), wasmType)
+      : self.renderCoercionByType_(binaryen, valueExpr, wasmType);
+  };
 
   if ('abs' === name || 'ceil' === name || 'floor' === name || 'sqrt' === name) {
-    // prettier-ignore
-    var /** @const {string} */ coerced = null != opt_valueCat
-      ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, info.operandType)
-      : this.renderCoercionByType_(binaryen, valueExpr, info.operandType);
+    var /** @const {string} */ mathArg = coerceOperand(info.operandType);
     if (isF32) {
-      return nF32 + '(' + name + '(' + coerced + '))';
+      return nF32 + '(' + name + '(' + mathArg + '))';
     }
-    return name + '(' + coerced + ')';
+    return name + '(' + mathArg + ')';
   }
 
   if ('convert_s_i32_to_f32' === name) {
-    // prettier-ignore
-    var /** @const {string} */ csf32 = null != opt_valueCat
-      ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, binaryen.i32)
-      : nI + '(' + valueExpr + ')';
-    return nF32 + '(' + csf32 + ')';
+    return nF32 + '(' + coerceOperand(binaryen.i32) + ')';
   }
   if ('convert_s_i32_to_f64' === name) {
-    // prettier-ignore
-    var /** @const {string} */ csf64 = null != opt_valueCat
-      ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, binaryen.i32)
-      : nI + '(' + valueExpr + ')';
-    return '(float)' + csf64;
+    return '(float)' + coerceOperand(binaryen.i32);
   }
 
   if ('demote_f64_to_f32' === name) {
-    // prettier-ignore
-    var /** @const {string} */ demoted = null != opt_valueCat
-      ? this.coerceToType_(binaryen, valueExpr, opt_valueCat, info.operandType)
-      : this.renderCoercionByType_(binaryen, valueExpr, info.operandType);
-    return nF32 + '(' + demoted + ')';
+    return nF32 + '(' + coerceOperand(info.operandType) + ')';
   }
   if ('promote_f32_to_f64' === name) {
     // PHP float is f64 — the f32 operand is already a PHP float, promotion is a no-op.

@@ -40,12 +40,52 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderConst_ = function (binaryen, v
 };
 
 /**
+ * Decomposes an i64 value (BigInt or {@code {low, high}} pair) into unsigned
+ * low and signed high 32-bit halves.  Used by backends that emit i64 literals
+ * with language-specific suffixes.
+ *
+ * @suppress {checkTypes}
+ * @protected
+ * @param {*} value
+ * @return {{w2lI64Lo: number, w2lI64Hi: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.decomposeI64_ = function (value) {
+  if ('bigint' === typeof value) {
+    return {
+      w2lI64Lo: Number(BigInt(value) & BigInt(0xffffffff)) >>> 0,
+      w2lI64Hi: Number((BigInt(value) >> BigInt(32)) & BigInt(0xffffffff)) | 0
+    };
+  }
+  var /** @const {!Object} */ v = /** @type {!Object} */ (value);
+  return {w2lI64Lo: v['low'] >>> 0, w2lI64Hi: v['high'] | 0};
+};
+
+/**
+ * Renders an i64 literal with a language-specific suffix and small-value
+ * shortcuts (zero, small positive, small negative).  Falls back to a hex
+ * encoding of the unsigned 64-bit pattern for the general case.
+ *
+ * @protected
+ * @param {*} value
+ * @param {string} suffix  Language literal suffix ('L', 'n', etc.).
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.formatI64WithSuffix_ = function (value, suffix) {
+  var /** @const */ parts = Wasm2Lang.Backend.AbstractCodegen.decomposeI64_(value);
+  var /** @const {number} */ low = parts.w2lI64Lo;
+  var /** @const {number} */ high = parts.w2lI64Hi;
+  if (0 === low && 0 === high) return '0' + suffix;
+  if (0 === high) return String(low) + suffix;
+  if (-1 === high && low >= 0x80000000) return String(low - 4294967296) + suffix;
+  return '0x' + (high >>> 0).toString(16) + ('00000000' + low.toString(16)).slice(-8) + suffix;
+};
+
+/**
  * Backend hook for rendering an i64 constant value.  The value is either a
  * BigInt (binaryen 129+) or an object with {@code low} and {@code high}
  * 32-bit halves (older binaryen).  Only called for backends that handle i64
  * natively.
  *
- * @suppress {checkTypes}
  * @protected
  * @param {!Binaryen} binaryen
  * @param {*} value  The i64 value (BigInt or {low: number, high: number}).
@@ -53,17 +93,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderConst_ = function (binaryen, v
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderI64Const_ = function (binaryen, value) {
   void binaryen;
-  var /** @type {number} */ low;
-  var /** @type {number} */ high;
-  if ('bigint' === typeof value) {
-    low = Number(BigInt(value) & BigInt(0xffffffff)) >>> 0;
-    high = Number((BigInt(value) >> BigInt(32)) & BigInt(0xffffffff)) >>> 0;
-  } else {
-    var /** @const {!Object} */ v = /** @type {!Object} */ (value);
-    low = v['low'] >>> 0;
-    high = v['high'] >>> 0;
-  }
-  return '0x' + high.toString(16) + ('00000000' + low.toString(16)).slice(-8) + '/*i64*/';
+  var /** @const */ parts = Wasm2Lang.Backend.AbstractCodegen.decomposeI64_(value);
+  return '0x' + (parts.w2lI64Hi >>> 0).toString(16) + ('00000000' + parts.w2lI64Lo.toString(16)).slice(-8) + '/*i64*/';
 };
 
 /**

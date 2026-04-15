@@ -101,62 +101,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor('rootSwitch', e
 // ---------------------------------------------------------------------------
 
 /**
- * Recursively checks whether any BreakId or SwitchId in the subtree targets
- * the given label name.  Used to determine if flat-switch action code
- * references the outer dispatch block (which would require a labeled switch).
- *
- * @private
- * @param {!Binaryen} binaryen
- * @param {number} ptr
- * @param {string} targetName
- * @return {boolean}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasBreakTarget_ = function (binaryen, ptr, targetName) {
-  if (!ptr) {
-    return false;
-  }
-  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
-    );
-  var /** @const {number} */ id = info.id;
-  if (binaryen.BreakId === id) {
-    return /** @type {?string} */ (info.name) === targetName;
-  }
-  if (binaryen.SwitchId === id) {
-    var /** @const {!Array<string>} */ sn = /** @type {!Array<string>} */ (info.names || []);
-    for (var /** @type {number} */ si = 0, /** @const {number} */ snLen = sn.length; si < snLen; ++si) {
-      if (sn[si] === targetName) return true;
-    }
-    return /** @type {string} */ (info.defaultName || '') === targetName;
-  }
-  var /** @const {function(!Binaryen, number, string): boolean} */ check =
-      Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasBreakTarget_;
-  if (binaryen.BlockId === id) {
-    var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
-    if (ch) {
-      for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
-        if (check(binaryen, ch[ci], targetName)) return true;
-      }
-    }
-    return false;
-  }
-  if (binaryen.LoopId === id) {
-    return check(binaryen, /** @type {number} */ (info.body || 0), targetName);
-  }
-  if (binaryen.IfId === id) {
-    return (
-      check(binaryen, /** @type {number} */ (info.ifTrue || 0), targetName) ||
-      check(binaryen, /** @type {number} */ (info.ifFalse || 0), targetName)
-    );
-  }
-  if (binaryen.DropId === id || binaryen.ReturnId === id || binaryen.LocalSetId === id || binaryen.GlobalSetId === id) {
-    return check(binaryen, /** @type {number} */ (info.value || 0), targetName);
-  }
-  return false;
-};
-
-/**
- * Like {@code hasBreakTarget_} but only returns true when the break occurs
+ * Like {@code Wasm2Lang.Wasm.Tree.CustomPasses.hasReference} but only returns true when the break occurs
  * from within a LoopId subtree.  In the output code, loops and switches are
  * breakable scopes — an unlabeled {@code break} exits the innermost one.
  * Breaks to chain names from within plain blocks (not loops) are equivalent
@@ -382,31 +327,21 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
         var /** @const {function(!Binaryen, number, !Array<string>, boolean): boolean} */ hasLoopBreak =
             Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasChainBreakThroughLoop_;
         var /** @const {!Array<string>} */ chainNames = Object.keys(nameToIdx);
+        var /** @const {!Array<!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup>} */ scanGroups =
+            defaultGroup ? caseGroups.concat([defaultGroup]) : caseGroups;
         var /** @type {boolean} */ needsLabel = false;
         for (
-          var /** @type {number} */ nli = 0, /** @const {number} */ nlLen = caseGroups.length;
-          nli < nlLen && !needsLabel;
-          ++nli
+          var /** @type {number} */ sgi = 0, /** @const {number} */ sgLen = scanGroups.length;
+          sgi < sgLen && !needsLabel;
+          ++sgi
         ) {
-          var /** @const {!Array<number>} */ nlPtrs = caseGroups[nli].actionPtrs;
+          var /** @const {!Array<number>} */ sgPtrs = scanGroups[sgi].actionPtrs;
           for (
-            var /** @type {number} */ nlj = 0, /** @const {number} */ nlpLen = nlPtrs.length;
-            nlj < nlpLen && !needsLabel;
-            ++nlj
+            var /** @type {number} */ sgj = 0, /** @const {number} */ sgpLen = sgPtrs.length;
+            sgj < sgpLen && !needsLabel;
+            ++sgj
           ) {
-            if (hasLoopBreak(binaryen, nlPtrs[nlj], chainNames, false)) {
-              needsLabel = true;
-            }
-          }
-        }
-        if (!needsLabel && defaultGroup) {
-          var /** @const {!Array<number>} */ defPtrs = defaultGroup.actionPtrs;
-          for (
-            var /** @type {number} */ nlk = 0, /** @const {number} */ dLen = defPtrs.length;
-            nlk < dLen && !needsLabel;
-            ++nlk
-          ) {
-            if (hasLoopBreak(binaryen, defPtrs[nlk], chainNames, false)) {
+            if (hasLoopBreak(binaryen, sgPtrs[sgj], chainNames, false)) {
               needsLabel = true;
             }
           }
@@ -816,18 +751,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledGroupBody_
         );
       state.indent = savedInd2;
       if (!terminal) {
-        state.usedLabels[rsLoopName] = true;
-        lines[lines.length] = pad(indent) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
+        lines[lines.length] = pad(indent) + codegen.markAndRenderLabeledJump_(state, 'break', rsLoopName);
       }
     } else if (rsRsName && group.externalTarget === rsRsName) {
-      state.usedLabels[rsLoopName] = true;
-      lines[lines.length] = pad(indent) + codegen.renderLabeledJump_(state.labelMap, 'break', rsLoopName);
+      lines[lines.length] = pad(indent) + codegen.markAndRenderLabeledJump_(state, 'break', rsLoopName);
     } else {
-      var /** @const {string} */ extActual = state.fusedBlockToLoop[group.externalTarget] || group.externalTarget;
-      state.usedLabels[extActual] = true;
-      lines[lines.length] =
-        pad(indent) +
-        codegen.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, group.externalTarget);
+      lines[lines.length] = pad(indent) + codegen.resolveBreakTarget_(state, group.externalTarget);
     }
   } else if (group.needsBreak || strippedBreak) {
     S.emitFlatSwitchBreak(lines, indent, outerLabel, info);

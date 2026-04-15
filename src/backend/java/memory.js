@@ -26,9 +26,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.formatCondition_ = function (expr, opt_c
     return P.isFullyParenthesized(expr) ? expr : '(' + expr + ')';
   }
   if (Wasm2Lang.Backend.AbstractCodegen.CAT_I64 === opt_condCat) {
-    return '(' + P.wrap(expr, P.PREC_EQUALITY_, true) + ' != 0L)';
+    return '(' + P.wrap_(expr, P.PREC_EQUALITY_, true) + ' != 0L)';
   }
-  return '(' + P.wrap(expr, P.PREC_EQUALITY_, true) + ' != 0)';
+  return '(' + P.wrap_(expr, P.PREC_EQUALITY_, true) + ' != 0)';
 };
 
 /**

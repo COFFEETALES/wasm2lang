@@ -39,8 +39,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
       'INF',
       'NAN'
     );
-  var /** @const {!Object<string, string>} */ phpStdlibNames = stdlibBindings.names;
-  var /** @const {!Object<string, string>} */ phpStdlibGlobals = stdlibBindings.globals;
+  var /** @const {!Object<string, string>} */ phpStdlibNames = stdlibBindings.w2lStdlibNames;
+  var /** @const {!Object<string, string>} */ phpStdlibGlobals = stdlibBindings.w2lStdlibGlobals;
 
   // Emit function bodies first to discover which helpers and bindings are needed.
   this.castNames_ = moduleInfo.castNames;

@@ -1,374 +1,141 @@
 'use strict';
 
+// ---------------------------------------------------------------------------
+// asm.js-specific overrides for the shared module-shell emitter in
+// {@code jscommon/emit_code.js}.
+//
+// The asm.js validator requires:
+//   • {@code "use asm";} prologue
+//   • {@code stdlib.Int8Array} / {@code stdlib.Math.X} for typed-array views
+//     and Math functions (intrinsic detection)
+//   • Math constants, {@code Infinity}, and {@code NaN} routed through the
+//     foreign object with {@code +} double-coercion (engines reject
+//     {@code +stdlib.Math.E})
+//   • Parameter type annotations on every function table stub
+//   • Return-value coercion in exported global getters
+//   • Parameter type annotation in exported global setters
+//   • Module-level globals initialized with the raw integer/float literal
+//     (no BigInt / i64 path because asm.js has no i64)
+// ---------------------------------------------------------------------------
+
 /**
  * @override
- * @param {!BinaryenModule} wasmModule
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @protected
  * @return {string}
  */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.emitCode = function (wasmModule, options) {
-  this.initDiagnostics_();
+Wasm2Lang.Backend.AsmjsCodegen.prototype.getModuleFunctionBindingName_ = function () {
+  return 'asmjsModule';
+};
 
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {string} */ moduleName = /** @type {string} */ (options.emitCode);
-  var /** @const {number} */ heapSize = this.resolveHeapSize_(options, 'ASMJS_HEAP_SIZE', 65536);
-  var /** @const {number} */ scratchByteOffset = heapSize - 8;
-  var /** @const {number} */ scratchWordIndex = scratchByteOffset >>> 2;
-  var /** @const {number} */ scratchQwordIndex = scratchByteOffset >>> 3;
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_} */ moduleInfo =
-      this.collectModuleCodegenInfo_(wasmModule);
-  var /** @const {!Array<string>} */ outputParts = [];
-  var /** @const {string} */ pad1 = Wasm2Lang.Backend.AbstractCodegen.pad_(1);
+/**
+ * @override
+ * @protected
+ * @param {!Array<string>} parts
+ * @param {string} pad1
+ * @return {void}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.emitUseAsmDirective_ = function (parts, pad1) {
+  parts[parts.length] = pad1 + '"use asm";';
+};
 
-  // Module header.
-  var /** @const {string} */ asmjsModuleName = this.n_('asmjsModule');
-  var /** @const {string} */ stdlibName = this.n_('stdlib');
-  var /** @const {string} */ foreignName = this.n_('foreign');
-  var /** @const {string} */ bufferName_ = this.n_('buffer');
-  outputParts[outputParts.length] =
-    'var ' + moduleName + ' = function ' + asmjsModuleName + '(' + stdlibName + ', ' + foreignName + ', ' + bufferName_ + ') {';
-  outputParts[outputParts.length] = pad1 + '"use asm";';
+/**
+ * Asm.js heap bindings exclude {@code HEAP64} (no i64 in the type system).
+ *
+ * @override
+ * @protected
+ * @return {!Array<!Array<string>>}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.getHeapBindingTable_ = function () {
+  return Wasm2Lang.Backend.AsmjsCodegen.HEAP_BINDINGS_;
+};
 
-  // Heap views and stdlib imports are emitted conditionally after function
-  // body and helper emission — see usedBindings_ below.  Reserve an index
-  // so the declarations appear in the correct position.
-  var /** @const {number} */ bindingsInsertIndex = outputParts.length;
+/** @const {!Array<!Array<string>>} */
+Wasm2Lang.Backend.AsmjsCodegen.HEAP_BINDINGS_ = [
+  ['HEAP8', 'Int8Array'],
+  ['HEAPU8', 'Uint8Array'],
+  ['HEAP16', 'Int16Array'],
+  ['HEAPU16', 'Uint16Array'],
+  ['HEAP32', 'Int32Array'],
+  ['HEAPF32', 'Float32Array'],
+  ['HEAPF64', 'Float64Array']
+];
 
-  // Classify imports as stdlib or foreign.
-  var /** @const {!Object<string, string>} */ stdlibNames = /** @type {!Object<string, string>} */ (Object.create(null));
-  var /** @const {!Object<string, string>} */ stdlibGlobals = /** @type {!Object<string, string>} */ (Object.create(null));
-  var /** @const */ classify = Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport;
+/**
+ * @override
+ * @protected
+ * @param {string} typedArrayName
+ * @param {string} stdlibName
+ * @param {string} bufferName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHeapInitializer_ = function (typedArrayName, stdlibName, bufferName) {
+  return 'new ' + stdlibName + '.' + typedArrayName + '(' + bufferName + ')';
+};
 
-  // Classify imports: stdlib functions go through stdlib.Math; everything
-  // else is emitted conditionally after function body traversal (see below).
-  for (
-    var /** @type {number} */ i = 0, /** @const {number} */ importCount = moduleInfo.impFuncs.length;
-    i !== importCount;
-    ++i
-  ) {
-    var /** @const {string} */ impKind = classify(moduleInfo.impFuncs[i].importModule, moduleInfo.impFuncs[i].importBaseName);
-    if ('math_func' === impKind) {
-      stdlibNames[moduleInfo.impFuncs[i].wasmFuncName] = 'Math_' + moduleInfo.impFuncs[i].importBaseName;
-    }
-  }
+/**
+ * @override
+ * @protected
+ * @param {string} mathBindingName
+ * @param {string} stdlibName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderMathFunctionInitializer_ = function (mathBindingName, stdlibName) {
+  return stdlibName + '.Math.' + mathBindingName.substring(5);
+};
 
-  // Imported globals — stdlib constants and Infinity/NaN.
-  for (var /** @type {number} */ ig = 0, /** @const {number} */ igLen = moduleInfo.impGlobals.length; ig !== igLen; ++ig) {
-    var /** @const {string} */ igKind = classify(
-        moduleInfo.impGlobals[ig].importModule,
-        moduleInfo.impGlobals[ig].importBaseName
-      );
-    if ('math_const' === igKind) {
-      stdlibGlobals[moduleInfo.impGlobals[ig].globalName] = 'Math_' + moduleInfo.impGlobals[ig].importBaseName;
-    } else if ('global_value' === igKind) {
-      stdlibGlobals[moduleInfo.impGlobals[ig].globalName] = '$g_' + moduleInfo.impGlobals[ig].importBaseName;
-    }
-  }
+/**
+ * Math constants come through the foreign object — {@code +stdlib.Math.E}
+ * is rejected by V8 / SpiderMonkey asm.js validators.
+ *
+ * @override
+ * @protected
+ * @param {string} mathBindingName
+ * @param {string} foreignName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderMathConstantInitializer_ = function (mathBindingName, foreignName) {
+  return '+' + foreignName + '.' + mathBindingName.substring(5);
+};
 
-  // Module-level globals: emitted conditionally after function body
-  // traversal (see usedBindings_ below).
+/**
+ * @override
+ * @protected
+ * @param {string} foreignName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderInfinityInitializer_ = function (foreignName) {
+  return '+' + foreignName + '.Infinity';
+};
 
-  // Track heap page count for memory.size / memory.grow emission.
-  this.heapPageCount_ = heapSize / 65536;
+/**
+ * @override
+ * @protected
+ * @param {string} foreignName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderNaNInitializer_ = function (foreignName) {
+  return '+' + foreignName + '.NaN';
+};
 
-  // Function bodies (emitted first to discover which helpers and bindings are needed).
-  this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
-  this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
-  this.castNames_ = moduleInfo.castNames;
-  var /** @const {!Array<string>} */ functionParts = [];
-  for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
-    var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
-    functionParts[functionParts.length] = this.emitFunction_(
-      wasmModule,
-      binaryen,
-      funcInfo,
-      moduleInfo.importedNames,
-      moduleInfo.functionSignatures,
-      moduleInfo.globalTypes,
-      moduleInfo.functionTables,
-      stdlibNames,
-      stdlibGlobals
-    );
-  }
+/**
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.GlobalInfo_} globalInfo
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderModuleGlobalInitExpr_ = function (binaryen, globalInfo) {
+  return String(globalInfo.globalInitValue);
+};
 
-  // Numeric helper bundle (only helpers referenced by function bodies).
-  // emitHelpers_ also marks binding dependencies for each emitted helper.
-  var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(
-      scratchByteOffset,
-      scratchWordIndex,
-      scratchQwordIndex,
-      this.heapPageCount_
-    );
-  this.usedHelpers_ = null;
-  this.castNames_ = null;
-  this.heapPageCount_ = 0;
-
-  // Insert conditional heap views and stdlib imports at the reserved position.
-  var /** @const {!Object<string, boolean>} */ ub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
-  this.usedBindings_ = null;
-
-  // Force-mark exported globals as used so their bindings are emitted.
-  for (var /** @type {number} */ egm = 0, /** @const {number} */ egmLen = moduleInfo.expGlobals.length; egm !== egmLen; ++egm) {
-    ub['$g_' + this.safeName_(moduleInfo.expGlobals[egm].internalName)] = true;
-  }
-
-  // Mark stdlib function imports as used so their bindings are emitted.
-  var /** @const {!Array<string>} */ stdlibFuncKeys = Object.keys(stdlibNames);
-  for (var /** @type {number} */ sf = 0, /** @const {number} */ sfLen = stdlibFuncKeys.length; sf !== sfLen; ++sf) {
-    ub[stdlibNames[stdlibFuncKeys[sf]]] = true;
-  }
-
-  // Build set of stdlib global binding names for constant emission.
-  var /** @const {!Object<string, boolean>} */ usedStdlibGlobalSet = /** @type {!Object<string, boolean>} */ (
-      Object.create(null)
-    );
-  var /** @const {!Array<string>} */ sgKeys = Object.keys(stdlibGlobals);
-  for (var /** @type {number} */ sg = 0, /** @const {number} */ sgLen = sgKeys.length; sg !== sgLen; ++sg) {
-    usedStdlibGlobalSet[stdlibGlobals[sgKeys[sg]]] = true;
-  }
-
-  var /** @const {!Array<string>} */ bindingLines = [];
-  var /** @const {!Array<!Array<string>>} */ heapBindings = [
-      ['HEAP8', 'Int8Array'],
-      ['HEAPU8', 'Uint8Array'],
-      ['HEAP16', 'Int16Array'],
-      ['HEAPU16', 'Uint16Array'],
-      ['HEAP32', 'Int32Array'],
-      ['HEAPF32', 'Float32Array'],
-      ['HEAPF64', 'Float64Array']
-    ];
-  for (var /** @type {number} */ hbi = 0, /** @const {number} */ hbLen = heapBindings.length; hbi !== hbLen; ++hbi) {
-    if (ub[heapBindings[hbi][0]]) {
-      bindingLines[bindingLines.length] =
-        pad1 +
-        'var ' +
-        this.n_(heapBindings[hbi][0]) +
-        ' = new ' +
-        stdlibName +
-        '.' +
-        heapBindings[hbi][1] +
-        '(' +
-        bufferName_ +
-        ');';
-    }
-  }
-  var /** @const {!Array<string>} */ mathBindings = [
-      'Math_imul',
-      'Math_clz32',
-      'Math_fround',
-      'Math_abs',
-      'Math_acos',
-      'Math_asin',
-      'Math_atan',
-      'Math_atan2',
-      'Math_ceil',
-      'Math_cos',
-      'Math_exp',
-      'Math_floor',
-      'Math_log',
-      'Math_min',
-      'Math_max',
-      'Math_pow',
-      'Math_sin',
-      'Math_sqrt',
-      'Math_tan'
-    ];
-  for (var /** @type {number} */ mbi = 0, /** @const {number} */ mbLen = mathBindings.length; mbi !== mbLen; ++mbi) {
-    if (ub[mathBindings[mbi]]) {
-      bindingLines[bindingLines.length] =
-        pad1 + 'var ' + this.n_(mathBindings[mbi]) + ' = ' + stdlibName + '.Math.' + mathBindings[mbi].substring(5) + ';';
-    }
-  }
-  // Math constants and Infinity/NaN: imported via the foreign parameter
-  // because +stdlib.Math.E is not supported by V8/SpiderMonkey asm.js
-  // validators (the spec allows it but engines reject it).
-  var /** @const {!Array<string>} */ mathConstBindings = [
-      'Math_E',
-      'Math_LN10',
-      'Math_LN2',
-      'Math_LOG2E',
-      'Math_LOG10E',
-      'Math_PI',
-      'Math_SQRT1_2',
-      'Math_SQRT2'
-    ];
-  for (var /** @type {number} */ mci = 0, /** @const {number} */ mcLen = mathConstBindings.length; mci !== mcLen; ++mci) {
-    if (usedStdlibGlobalSet[mathConstBindings[mci]]) {
-      bindingLines[bindingLines.length] =
-        pad1 +
-        'var ' +
-        this.n_(mathConstBindings[mci]) +
-        ' = +' +
-        foreignName +
-        '.' +
-        mathConstBindings[mci].substring(5) +
-        ';';
-    }
-  }
-  if (usedStdlibGlobalSet['$g_Infinity']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('$g_Infinity') + ' = +' + foreignName + '.Infinity;';
-  }
-  if (usedStdlibGlobalSet['$g_NaN']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('$g_NaN') + ' = +' + foreignName + '.NaN;';
-  }
-  // Conditional import bindings (only those referenced by function bodies).
-  for (var /** @type {number} */ ci = 0; ci !== importCount; ++ci) {
-    if (moduleInfo.impFuncs[ci].wasmFuncName in stdlibNames) {
-      continue;
-    }
-    var /** @const {string} */ ciKey = '$if_' + moduleInfo.impFuncs[ci].importBaseName;
-    if (ub[ciKey]) {
-      bindingLines[bindingLines.length] =
-        pad1 + 'var ' + this.n_(ciKey) + ' = ' + foreignName + '.' + moduleInfo.impFuncs[ci].importBaseName + ';';
-    }
-  }
-  // Conditional trap import (emitted when non-saturating truncation helpers are used).
-  if (ub['$w2l_trap']) {
-    bindingLines[bindingLines.length] = pad1 + 'var ' + this.n_('$w2l_trap') + ' = ' + foreignName + '.__wasm2lang_trap;';
-  }
-  // Conditional module-level globals.
-  for (var /** @type {number} */ cgi = 0, /** @const {number} */ cgLen = moduleInfo.globals.length; cgi !== cgLen; ++cgi) {
-    var /** @const {string} */ cgKey = '$g_' + this.safeName_(moduleInfo.globals[cgi].globalName);
-    if (ub[cgKey]) {
-      bindingLines[bindingLines.length] =
-        pad1 + 'var ' + this.n_(cgKey) + ' = ' + moduleInfo.globals[cgi].globalInitValue + ';';
-    }
-  }
-  // Splice binding declarations into the reserved position.
-  for (var /** @type {number} */ bi = bindingLines.length - 1; bi >= 0; --bi) {
-    outputParts.splice(bindingsInsertIndex, 0, bindingLines[bi]);
-  }
-
-  for (var /** @type {number} */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
-    outputParts[outputParts.length] = helperLines[hi];
-  }
-
-  // Append function bodies.
-  for (var /** @type {number} */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
-    outputParts[outputParts.length] = functionParts[fi];
-  }
-
-  // Function table stubs (must come before table var declarations in asm.js).
-  var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
-  for (var /** @type {number} */ fti = 0, /** @const {number} */ ftLen = ftKeys.length; fti !== ftLen; ++fti) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc =
-        moduleInfo.functionTables[ftKeys[fti]];
-    if (ftDesc.stubNeeded) {
-      var /** @const {string} */ ftSigKey = ftDesc.signatureKey;
-      var /** @const {string} */ stubName = this.n_('$ftable_' + ftSigKey + '_stub');
-      var /** @const {!Array<string>} */ stubParams = [];
-      var /** @const {!Array<string>} */ stubAnnotations = [];
-      for (var /** @type {number} */ sp = 0, /** @const {number} */ spLen = ftDesc.signatureParams.length; sp !== spLen; ++sp) {
-        var /** @const {string} */ spName = this.localN_(sp);
-        stubParams[stubParams.length] = spName;
-        stubAnnotations[stubAnnotations.length] =
-          pad1 + pad1 + spName + ' = ' + this.renderCoercionByType_(binaryen, spName, ftDesc.signatureParams[sp]) + ';';
-      }
-      var /** @type {string} */ stubReturn = '';
-      if (binaryen.none !== ftDesc.signatureReturnType && 0 !== ftDesc.signatureReturnType) {
-        stubReturn = pad1 + pad1 + 'return ' + this.renderCoercionByType_(binaryen, '0', ftDesc.signatureReturnType) + ';\n';
-      }
-      outputParts[outputParts.length] =
-        pad1 +
-        'function ' +
-        stubName +
-        '(' +
-        stubParams.join(', ') +
-        ') {\n' +
-        stubAnnotations.join('\n') +
-        (stubAnnotations.length ? '\n' : '') +
-        stubReturn +
-        pad1 +
-        '}';
-    }
-  }
-
-  // Function table var declarations (after all function definitions).
-  for (var /** @type {number} */ ftv = 0; ftv !== ftLen; ++ftv) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc2 =
-        moduleInfo.functionTables[ftKeys[ftv]];
-    var /** @const {string} */ ftSigKey2 = ftDesc2.signatureKey;
-    var /** @const {string} */ ftTableName = this.n_('$ftable_' + ftSigKey2);
-    var /** @const {!Array<string>} */ tableEntryNames = [];
-    for (var /** @type {number} */ te = 0, /** @const {number} */ teLen = ftDesc2.tableEntries.length; te !== teLen; ++te) {
-      var /** @const {string|null} */ funcName = ftDesc2.tableEntries[te].boundName;
-      if (null === funcName) {
-        tableEntryNames[tableEntryNames.length] = this.n_('$ftable_' + ftSigKey2 + '_stub');
-      } else {
-        tableEntryNames[tableEntryNames.length] = this.n_(this.safeName_(funcName));
-      }
-    }
-    outputParts[outputParts.length] = pad1 + 'var ' + ftTableName + ' = [' + tableEntryNames.join(', ') + '];';
-  }
-
-  // Exported global accessor functions.
-  for (var /** @type {number} */ eg = 0, /** @const {number} */ egLen = moduleInfo.expGlobals.length; eg !== egLen; ++eg) {
-    var /** @const {string} */ egVarName = this.n_('$g_' + this.safeName_(moduleInfo.expGlobals[eg].internalName));
-    var /** @const {string} */ egGetterName = this.n_('$get_' + this.safeName_(moduleInfo.expGlobals[eg].exportName));
-    outputParts[outputParts.length] =
-      pad1 +
-      'function ' +
-      egGetterName +
-      '() {\n' +
-      pad1 +
-      pad1 +
-      'return ' +
-      this.renderCoercionByType_(binaryen, egVarName, moduleInfo.expGlobals[eg].globalType) +
-      ';\n' +
-      pad1 +
-      '}';
-    if (moduleInfo.expGlobals[eg].globalMutable) {
-      var /** @const {string} */ egSetterName = this.n_('$set_' + this.safeName_(moduleInfo.expGlobals[eg].exportName));
-      var /** @const {string} */ egParam = this.localN_(0);
-      outputParts[outputParts.length] =
-        pad1 +
-        'function ' +
-        egSetterName +
-        '(' +
-        egParam +
-        ') {\n' +
-        pad1 +
-        pad1 +
-        egParam +
-        ' = ' +
-        this.renderCoercionByType_(binaryen, egParam, moduleInfo.expGlobals[eg].globalType) +
-        ';\n' +
-        pad1 +
-        pad1 +
-        egVarName +
-        ' = ' +
-        egParam +
-        ';\n' +
-        pad1 +
-        '}';
-    }
-  }
-
-  // Return object.
-  var /** @const {!Array<string>} */ returnEntries = [];
-  for (
-    var /** @type {number} */ r = 0, /** @const {number} */ exportCount = moduleInfo.expFuncs.length;
-    r !== exportCount;
-    ++r
-  ) {
-    returnEntries[returnEntries.length] =
-      moduleInfo.expFuncs[r].exportName + ': ' + this.n_(this.safeName_(moduleInfo.expFuncs[r].internalName));
-  }
-  for (var /** @type {number} */ egr = 0; egr !== egLen; ++egr) {
-    returnEntries[returnEntries.length] =
-      moduleInfo.expGlobals[egr].exportName + ': ' + this.n_('$get_' + this.safeName_(moduleInfo.expGlobals[egr].exportName));
-    if (moduleInfo.expGlobals[egr].globalMutable) {
-      returnEntries[returnEntries.length] =
-        moduleInfo.expGlobals[egr].exportName +
-        '$set: ' +
-        this.n_('$set_' + this.safeName_(moduleInfo.expGlobals[egr].exportName));
-    }
-  }
-  outputParts[outputParts.length] = pad1 + 'return { ' + returnEntries.join(', ') + ' };';
-  outputParts[outputParts.length] = '};';
-
-  // Traversal summary from data collected during the codegen traversal above.
-  outputParts[outputParts.length] = this.emitDiagnosticSummary_(wasmModule, options);
-
-  return outputParts.join('\n');
+/**
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} varName
+ * @param {number} type
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderExportedGlobalGetterReturn_ = function (binaryen, varName, type) {
+  return this.renderCoercionByType_(binaryen, varName, type);
 };

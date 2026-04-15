@@ -31,10 +31,18 @@
     ];
 
     // Backend files: codegen.js (constructors) must load first for all
-    // backends, then the remaining per-backend extension files.
-    var backendIds = ['asmjs', 'java', 'php64'];
-    var backendFiles = [
-      'binary_ops.js',
+    // backends, then the remaining per-backend extension files.  javascript
+    // inherits control_flow / metadata / numeric_ops from asm.js.  The
+    // jscommon/ layer is an abstract base shared by asm.js and modern JS —
+    // it must load before both backend codegens.
+    moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/jscommon/codegen.js'};
+    moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/jscommon/binary_ops.js'};
+    moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/jscommon/coercion.js'};
+    moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/jscommon/emit_code.js'};
+    moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/jscommon/functions.js'};
+    moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/jscommon/mangler_profile.js'};
+
+    var sharedBackendFiles = [
       'coercion.js',
       'control_flow.js',
       'emit_code.js',
@@ -46,10 +54,27 @@
       'metadata.js',
       'numeric_ops.js'
     ];
+    var backendFilesById = {
+      'asmjs': sharedBackendFiles,
+      'java': ['binary_ops.js'].concat(sharedBackendFiles),
+      'php64': ['binary_ops.js'].concat(sharedBackendFiles),
+      'javascript': [
+        'binary_ops.js',
+        'coercion.js',
+        'emit_code.js',
+        'helpers.js',
+        'identifiers.js',
+        'mangler_profile.js',
+        'memory.js',
+        'numeric_ops.js'
+      ]
+    };
+    var backendIds = ['asmjs', 'java', 'javascript', 'php64'];
     for (var bi = 0; bi < backendIds.length; ++bi) {
       moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/' + backendIds[bi] + '/codegen.js'};
     }
     for (var bi2 = 0; bi2 < backendIds.length; ++bi2) {
+      var backendFiles = backendFilesById[backendIds[bi2]];
       for (var bf = 0; bf < backendFiles.length; ++bf) {
         moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/' + backendIds[bi2] + '/' + backendFiles[bf]};
       }

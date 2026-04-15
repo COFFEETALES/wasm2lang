@@ -68,6 +68,32 @@ if [ ${#0} -ne ${#prefix} ]; then
         tee "${filebase}".sm.asmjs.out
         dos2unix "${filebase}".sm.asmjs.out
       fi
+      if [ -f "${filebase}".js ]; then
+        echo -e "\033[0;33mRunning V8 JAVASCRIPT test...\033[0m"
+        cat "${filebase}".js                 \
+        |                                    \
+        node                                 \
+          --trace-warnings                   \
+          "./wasm2lang_wasm_asmjs_runner.js" \
+          --test-name "$filebase"            \
+          --javascript                       \
+          2>&1                               \
+        |                                    \
+        tee "${filebase}".v8.javascript.out
+      fi
+      if [ -f "${filebase}".js ] && [ -x "${SPIDERMONKEY_JS}" ]; then
+        echo -e "\033[0;33mRunning SpiderMonkey JAVASCRIPT test...\033[0m"
+        cat "${filebase}".js                 \
+        |                                    \
+        "${SPIDERMONKEY_JS}"                 \
+          --warnings                         \
+          "./wasm2lang_wasm_asmjs_runner.js" \
+          --test-name "$filebase"            \
+          --javascript                       \
+        |                                    \
+        tee "${filebase}".sm.javascript.out
+        dos2unix "${filebase}".sm.javascript.out
+      fi
       if [ -f "${filebase}".php ] && [ -x "${PHP_CLI}" ]; then
         echo -e "\033[0;33mRunning PHP test...\033[0m"
         cat "${filebase}".php          \
@@ -112,6 +138,21 @@ if [ ${#0} -ne ${#prefix} ]; then
         diff -qs                     \
           "${filebase}".v8.wasm.out  \
           "${filebase}".sm.asmjs.out
+        [ $? -eq 0 ] || tmpretcode=1
+      fi
+      if [ -f "${filebase}".v8.javascript.out ]; then
+        diff -qs                          \
+          "${filebase}".v8.wasm.out       \
+          "${filebase}".v8.javascript.out
+        [ $? -eq 0 ] || tmpretcode=1
+        if [ -s "${filebase}".v8.javascript.stderr ]; then
+          tmpretcode=1
+        fi
+      fi
+      if [ -f "${filebase}".sm.javascript.out ] && [ -x "${SPIDERMONKEY_JS}" ]; then
+        diff -qs                          \
+          "${filebase}".v8.wasm.out       \
+          "${filebase}".sm.javascript.out
         [ $? -eq 0 ] || tmpretcode=1
       fi
       if [ -f "${filebase}".php.out ] && [ -x "${PHP_CLI}" ]; then

@@ -63,8 +63,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
       'Double.POSITIVE_INFINITY',
       'Double.NaN'
     );
-  var /** @const {!Object<string, string>} */ javaStdlibNames = stdlibBindings.names;
-  var /** @const {!Object<string, string>} */ javaStdlibGlobals = stdlibBindings.globals;
+  var /** @const {!Object<string, string>} */ javaStdlibNames = stdlibBindings.w2lStdlibNames;
+  var /** @const {!Object<string, string>} */ javaStdlibGlobals = stdlibBindings.w2lStdlibGlobals;
 
   // Import fields and global fields are emitted conditionally after function
   // body traversal (see usedBindings_ below).  Reserve an insertion index.

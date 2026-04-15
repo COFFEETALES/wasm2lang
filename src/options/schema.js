@@ -65,7 +65,7 @@ Wasm2Lang.Options.Schema.UserOptions;
 /**
  * @const {!Array<string>}
  */
-Wasm2Lang.Options.Schema.languages = ['asmjs', 'php64', 'java'];
+Wasm2Lang.Options.Schema.languages = ['asmjs', 'php64', 'java', 'javascript'];
 
 /**
  * @typedef {{

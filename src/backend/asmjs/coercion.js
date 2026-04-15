@@ -1,67 +1,11 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Binary-op rendering (uses shared I32Coercion classification).
+// asm.js-specific coercion overrides.  The static helpers
+// ({@code renderSignedCoercion_} / {@code renderUnsignedCoercion_} /
+// {@code renderDoubleCoercion_}) and the {@code renderFloatCoercion_}
+// prototype method live in {@code jscommon/coercion.js}.
 // ---------------------------------------------------------------------------
-
-/**
- * @param {string} expr
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_ = function (expr) {
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {number} */ len = expr.length;
-  if (len >= 2 && '|' === expr.charAt(len - 2) && '0' === expr.charAt(len - 1)) {
-    return expr;
-  }
-  if (Wasm2Lang.Backend.I32Coercion.isConstant(expr)) {
-    return expr;
-  }
-  // Expressions whose top-level operator is &, ^, or | are already signed
-  // in asm.js and do not need an extra |0 coercion.
-  var /** @const {number} */ top = P.topLevel(expr);
-  if (top <= P.PREC_BIT_AND_ && top >= P.PREC_BIT_OR_) {
-    return expr;
-  }
-  return P.wrap(expr, P.PREC_BIT_OR_, true) + '|0';
-};
-
-/**
- * @param {string} expr
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.renderUnsignedCoercion_ = function (expr) {
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if (Wasm2Lang.Backend.I32Coercion.isConstant(expr) && '-' !== expr.charAt(0)) {
-    return expr;
-  }
-  return P.wrap(expr, P.PREC_SHIFT_, true) + '>>>0';
-};
-
-/**
- * @param {string} expr
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_ = function (expr) {
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ trimmed = expr.replace(/^\s+|\s+$/g, '');
-  if (/^-?\d+(?:\.\d+)?$/.test(expr)) {
-    return -1 === expr.indexOf('.') ? expr + '.0' : expr;
-  }
-  if (/^[+-]/.test(trimmed)) {
-    return '+(' + expr + ')';
-  }
-  return '+' + P.wrap(expr, P.PREC_UNARY_, false);
-};
-
-/**
- * @param {string} expr
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.renderFloatCoercion_ = function (expr) {
-  this.markBinding_('Math_fround');
-  return this.n_('Math_fround') + '(' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
-};
 
 /**
  * asm.js requires explicit type annotations at call/return boundaries.
@@ -100,7 +44,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceAtBoundary_ = function (binaryen,
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceSwitchCondition_ = function (condStr) {
-  return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(condStr);
+  return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(condStr);
 };
 
 /**
@@ -112,15 +56,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceSwitchCondition_ = function (cond
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCoercionByType_ = function (binaryen, expr, wasmType) {
-  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(expr);
-  }
-  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return this.renderFloatCoercion_(expr);
-  }
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_(expr);
-  }
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
+  var /** @const */ J = Wasm2Lang.Backend.JsCommonCodegen;
+  if (V.isI32(binaryen, wasmType)) return J.renderSignedCoercion_(expr);
+  if (V.isF32(binaryen, wasmType)) return this.renderFloatCoercion_(expr);
+  if (V.isF64(binaryen, wasmType)) return J.renderDoubleCoercion_(expr);
   return expr;
 };
 
@@ -133,15 +73,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCoercionByType_ = function (binar
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderConst_ = function (binaryen, value, wasmType) {
-  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
-    return String(value);
-  }
-  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return this.renderFloatCoercion_(Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_(value));
-  }
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_(value);
-  }
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
+  if (V.isI32(binaryen, wasmType)) return String(value);
+  var /** @const {string} */ literal = Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_(value);
+  if (V.isF32(binaryen, wasmType)) return this.renderFloatCoercion_(literal);
+  if (V.isF64(binaryen, wasmType)) return literal;
   return String(value);
 };
 
@@ -152,15 +88,42 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderConst_ = function (binaryen, valu
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLocalInit_ = function (binaryen, wasmType) {
-  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    this.markBinding_('Math_fround');
-    return this.n_('Math_fround') + '(0.0)';
-  }
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return '0.0';
-  }
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
+  if (V.isF32(binaryen, wasmType)) return this.renderMathFroundCall_('0.0');
+  if (V.isF64(binaryen, wasmType)) return '0.0';
   return '0';
 };
+
+/**
+ * Runtime-helper name for each i32 {@code UNARY_*} category that dispatches
+ * to a polyfill (CTZ/POPCNT have no single-instruction JS equivalent).
+ *
+ * @const {!Object<number, string>}
+ * @private
+ */
+Wasm2Lang.Backend.AsmjsCodegen.ASMJS_I32_UNARY_HELPERS_ = /** @return {!Object<number, string>} */ (function () {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const {!Object<number, string>} */ table = {};
+  table[C.UNARY_CTZ] = '$w2l_ctz';
+  table[C.UNARY_POPCNT] = '$w2l_popcnt';
+  return table;
+})();
+
+/**
+ * Shift amount used to express {@code extendN_s} as a paired left/right-
+ * shift (fills the high bits via sign-extending right shift).  Keyed by the
+ * numeric {@code UNARY_*} constant.
+ *
+ * @const {!Object<number, number>}
+ * @private
+ */
+Wasm2Lang.Backend.AsmjsCodegen.ASMJS_I32_UNARY_EXTEND_SHIFTS_ = /** @return {!Object<number, number>} */ (function () {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const {!Object<number, number>} */ table = {};
+  table[C.UNARY_EXTEND8_S] = 24;
+  table[C.UNARY_EXTEND16_S] = 16;
+  return table;
+})();
 
 /**
  * @override
@@ -172,36 +135,23 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLocalInit_ = function (binaryen, 
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.emitI32Unary_ = function (binaryen, unaryCategory, operandExpr) {
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (C.UNARY_EQZ === unaryCategory) {
-    return {
-      emittedString: Wasm2Lang.Backend.AbstractCodegen.Precedence_.renderPrefix('!', operandExpr),
-      resultCat: C.INT
-    };
+    return {emittedString: P.renderPrefix('!', operandExpr), resultCat: C.INT};
   }
   if (C.UNARY_CLZ === unaryCategory) {
     this.markBinding_('Math_clz32');
+    return {emittedString: this.n_('Math_clz32') + '(' + operandExpr + ')', resultCat: C.FIXNUM};
+  }
+  var /** @const {string|undefined} */ helperName = Wasm2Lang.Backend.AsmjsCodegen.ASMJS_I32_UNARY_HELPERS_[unaryCategory];
+  if (helperName) {
+    return {emittedString: this.renderHelperCall_(binaryen, helperName, [operandExpr], binaryen.i32), resultCat: C.SIGNED};
+  }
+  var /** @const {number|undefined} */ shift = Wasm2Lang.Backend.AsmjsCodegen.ASMJS_I32_UNARY_EXTEND_SHIFTS_[unaryCategory];
+  if (shift) {
+    var /** @const {string} */ shiftStr = String(shift);
     return {
-      emittedString: this.n_('Math_clz32') + '(' + operandExpr + ')',
-      resultCat: C.FIXNUM
-    };
-  }
-  if (C.UNARY_CTZ === unaryCategory) {
-    return {emittedString: this.renderHelperCall_(binaryen, '$w2l_ctz', [operandExpr], binaryen.i32), resultCat: C.SIGNED};
-  }
-  if (C.UNARY_POPCNT === unaryCategory) {
-    return {emittedString: this.renderHelperCall_(binaryen, '$w2l_popcnt', [operandExpr], binaryen.i32), resultCat: C.SIGNED};
-  }
-  if (C.UNARY_EXTEND8_S === unaryCategory) {
-    var /** @const */ P8 = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-    return {
-      emittedString: P8.renderInfix(P8.renderInfix(operandExpr, '<<', '24', P8.PREC_SHIFT_), '>>', '24', P8.PREC_SHIFT_),
-      resultCat: C.SIGNED
-    };
-  }
-  if (C.UNARY_EXTEND16_S === unaryCategory) {
-    var /** @const */ P16 = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-    return {
-      emittedString: P16.renderInfix(P16.renderInfix(operandExpr, '<<', '16', P16.PREC_SHIFT_), '>>', '16', P16.PREC_SHIFT_),
+      emittedString: P.renderInfix(P.renderInfix(operandExpr, '<<', shiftStr, P.PREC_SHIFT_), '>>', shiftStr, P.PREC_SHIFT_),
       resultCat: C.SIGNED
     };
   }
@@ -238,7 +188,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat) {
   if (Wasm2Lang.Backend.I32Coercion.INTISH === cat) {
-    return Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(operand);
+    return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(operand);
   }
   return operand;
 };

@@ -18,6 +18,34 @@ Wasm2Lang.Backend.JavaCodegen.CAST_UNARY_OPS_ = {
 };
 
 /**
+ * Math.<m> unary ops needing operand coercion + (float) cast on f32.
+ * Maps wasm op name → Java Math method name.
+ *
+ * @private
+ * @const {!Object<string, string>}
+ */
+Wasm2Lang.Backend.JavaCodegen.MATH_UNARY_OPS_ = {
+  'abs': 'abs',
+  'ceil': 'ceil',
+  'floor': 'floor',
+  'sqrt': 'sqrt',
+  'nearest': 'rint'
+};
+
+/**
+ * Math.<m> binary ops needing both-operand coercion + (float) cast on f32.
+ * Maps wasm op name → Java Math method name.
+ *
+ * @private
+ * @const {!Object<string, string>}
+ */
+Wasm2Lang.Backend.JavaCodegen.MATH_BINARY_OPS_ = {
+  'min': 'min',
+  'max': 'max',
+  'copysign': 'copySign'
+};
+
+/**
  * Helper-delegated unary ops: op name → true.
  * Each maps to {@code $w2l_} + name as the helper function.
  *
@@ -60,20 +88,13 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericUnaryOp_ = function (binary
     return this.coerceToType_(binaryen, P.renderPrefix('-', valueExpr), cat, info.retType);
   }
 
-  if ('abs' === name) {
+  var /** @const {string|void} */ unaryMathName = Wasm2Lang.Backend.JavaCodegen.MATH_UNARY_OPS_[name];
+  if (unaryMathName) {
     if (isF32) {
       inner = this.coerceToType_(binaryen, valueExpr, cat, info.operandType);
-      return '(float)Math.abs(' + inner + ')';
+      return '(float)Math.' + unaryMathName + '(' + inner + ')';
     }
-    return 'Math.abs(' + valueExpr + ')';
-  }
-  if ('ceil' === name || 'floor' === name || 'sqrt' === name || 'nearest' === name) {
-    var /** @const {string} */ mathName = 'nearest' === name ? 'rint' : name;
-    if (isF32) {
-      inner = this.coerceToType_(binaryen, valueExpr, cat, info.operandType);
-      return '(float)Math.' + mathName + '(' + inner + ')';
-    }
-    return 'Math.' + mathName + '(' + valueExpr + ')';
+    return 'Math.' + unaryMathName + '(' + valueExpr + ')';
   }
 
   // Simple casts: convert_s_i32_to_f32 → (float)(expr), etc.
@@ -119,17 +140,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericUnaryOp_ = function (binary
 Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R, opt_catL, opt_catR) {
   var /** @const {boolean} */ isF32 = Wasm2Lang.Backend.ValueType.isF32(binaryen, info.retType);
 
-  if ('min' === info.opName) {
-    if (isF32) return '(float)Math.min((double)(' + L + '), (double)(' + R + '))';
-    return 'Math.min(' + L + ', ' + R + ')';
-  }
-  if ('max' === info.opName) {
-    if (isF32) return '(float)Math.max((double)(' + L + '), (double)(' + R + '))';
-    return 'Math.max(' + L + ', ' + R + ')';
-  }
-  if ('copysign' === info.opName) {
-    if (isF32) return '(float)Math.copySign((double)(' + L + '), (double)(' + R + '))';
-    return 'Math.copySign(' + L + ', ' + R + ')';
+  var /** @const {string|void} */ binaryMathName = Wasm2Lang.Backend.JavaCodegen.MATH_BINARY_OPS_[info.opName];
+  if (binaryMathName) {
+    if (isF32) return '(float)Math.' + binaryMathName + '((double)(' + L + '), (double)(' + R + '))';
+    return 'Math.' + binaryMathName + '(' + L + ', ' + R + ')';
   }
 
   if (info.isComparison) {

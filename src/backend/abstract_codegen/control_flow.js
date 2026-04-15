@@ -224,6 +224,25 @@ Wasm2Lang.Backend.AbstractCodegen.isBreakLabelImplicit_ = function (breakableSta
   return breakableStack[len - 1] === resolvedName;
 };
 
+/**
+ * Tests whether {@code info} is a Break expression targeting {@code targetName}
+ * with (or without) a condition.  Used by loop-kind detection and loop-body
+ * sub-walkers to locate break-to-loop and break-to-exit children.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} info
+ * @param {?string} targetName
+ * @param {boolean} conditional  {@code true} → requires a non-zero condition;
+ *     {@code false} → requires an unconditional break.
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.isBreakTo_ = function (binaryen, info, targetName, conditional) {
+  if (binaryen.BreakId !== info.id) return false;
+  if (/** @type {?string} */ (info.name) !== targetName) return false;
+  return conditional === (0 !== /** @type {number} */ (info.condition || 0));
+};
+
 /** @protected @typedef {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */
 Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_;
 
@@ -379,11 +398,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (bi
                 binaryen,
                 thenCh[thenCh.length - 1]
               );
-            if (
-              binaryen.BreakId === thenLast.id &&
-              /** @type {?string} */ (thenLast.name) === loopName &&
-              0 === /** @type {number} */ (thenLast.condition || 0)
-            ) {
+            if (Wasm2Lang.Backend.AbstractCodegen.isBreakTo_(binaryen, thenLast, loopName, false)) {
               return 'while';
             }
           }
@@ -413,12 +428,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (bi
     // last is unconditional br to exit.
     if (lastName !== loopName && 0 === lastCond && len >= 2) {
       var /** @const {!BinaryenExpressionInfo} */ prevInfo = NS.safeGetExpressionInfo(binaryen, children[len - 2]);
-      if (
-        binaryen.BreakId === prevInfo.id &&
-        /** @type {?string} */ (prevInfo.name) === loopName &&
-        0 !== /** @type {number} */ (prevInfo.condition || 0) &&
-        len > 2
-      ) {
+      if (Wasm2Lang.Backend.AbstractCodegen.isBreakTo_(binaryen, prevInfo, loopName, true) && len > 2) {
         return 'dowhile';
       }
     }
@@ -675,9 +685,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
           indent
         );
       if (!rsIsTerminal) {
-        state.usedLabels[state.rootSwitchLoopName] = true;
         rsExitLines[rsExitLines.length] =
-          pad(indent) + this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
+          pad(indent) + this.markAndRenderLabeledJump_(state, 'break', state.rootSwitchLoopName);
       }
       var /** @type {string} */ rsResult;
       if (0 !== brCondPtr) {
@@ -695,8 +704,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
       return {emittedString: rsResult, isTerminal: true};
     }
     if (brName === state.rootSwitchRsName) {
-      state.usedLabels[state.rootSwitchLoopName] = true;
-      var /** @const {string} */ rsBreakStmt = this.renderLabeledJump_(state.labelMap, 'break', state.rootSwitchLoopName);
+      var /** @const {string} */ rsBreakStmt = this.markAndRenderLabeledJump_(state, 'break', state.rootSwitchLoopName);
       return {
         emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, rsBreakStmt, opt_condCat),
         isTerminal: 0 === brCondPtr
@@ -769,17 +777,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSwitchStatement_ = function (
       lines[lines.length] = pad(indent + 1) + 'case ' + si + ':\n';
       ++si;
     }
-    var /** @const {string} */ swActual = state.fusedBlockToLoop[target] || target;
-    state.usedLabels[swActual] = true;
-    lines[lines.length] =
-      pad(indent + 2) + this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, target);
+    lines[lines.length] = pad(indent + 2) + this.resolveBreakTarget_(state, target);
   }
   if ('' !== defaultName) {
-    var /** @const {string} */ defActual = state.fusedBlockToLoop[defaultName] || defaultName;
-    state.usedLabels[defActual] = true;
     lines[lines.length] = pad(indent + 1) + 'default:\n';
-    lines[lines.length] =
-      pad(indent + 2) + this.resolveBreakTarget_(state.labelKinds, state.fusedBlockToLoop, state.labelMap, defaultName);
+    lines[lines.length] = pad(indent + 2) + this.resolveBreakTarget_(state, defaultName);
   }
   lines[lines.length] = pad(indent) + '}\n';
   return {emittedString: lines.join(''), hasDefault: '' !== defaultName};
@@ -871,35 +873,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.infiniteLoopKeyword_ = function () {
 };
 
 /**
- * Emits a simplified loop (for/dowhile/while) from a LoopPlan.
- * All three backends share this structure; the only variation is the label
- * prefix (labeled-break backends use {@code labelN_ + ': '}, PHP omits it)
- * and the raw-loop fallback (handled by each backend after this returns null).
- *
- * @protected
- * @param {{wasmModule: !BinaryenModule, binaryen: !Binaryen, functionInfo: !BinaryenFunctionInfo, visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor}} state
- * @param {!Wasm2Lang.Wasm.Tree.LoopPlan} loopPlan
- * @param {number} ind   Current indentation level.
- * @param {string} label  Label prefix string (e.g. {@code 'L0: '}) or empty for unlabeled.
- * @param {string} bodyCode  The rendered body from the child result.
- * @return {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoop_ = function (state, loopPlan, ind, label, bodyCode) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
-  if ('for' === loopPlan.simplifiedLoopKind) {
-    return pad(ind) + label + this.infiniteLoopKeyword_() + ' {\n' + bodyCode + pad(ind) + '}\n';
-  }
-  var /** @const {{s: string, c: number}} */ condResult = A.subWalkExpressionWithCategory_(state, loopPlan.conditionPtr);
-  if ('dowhile' === loopPlan.simplifiedLoopKind) {
-    return (
-      pad(ind) + label + 'do {\n' + bodyCode + pad(ind) + '} while ' + this.formatCondition_(condResult.s, condResult.c) + ';\n'
-    );
-  }
-  return pad(ind) + label + 'while ' + this.formatCondition_(condResult.s, condResult.c) + ' {\n' + bodyCode + pad(ind) + '}\n';
-};
-
-/**
  * Emits a simplified loop by inspecting the intact loop body IR directly.
  * Used when SKIP_SUBTREE was returned in enter — the leave callback has no
  * child results and must derive everything from the binaryen expression.
@@ -940,7 +913,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoopFromIR_ = function
     state.fusedBlockToLoop[bodyBlockName] = loopName;
   }
 
-  var /** @const {!Object} */ bc = this.computeSimplifiedLoopBodyAndCondition_(state, loopKind, bodyInfo, loopName, innerInd);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_} */ bc = this.computeSimplifiedLoopBodyAndCondition_(
+      state,
+      loopKind,
+      bodyInfo,
+      loopName,
+      innerInd
+    );
 
   // Label: check if any break/continue references this loop by name.
   // Computed AFTER body walk so usedLabels is populated.
@@ -953,15 +932,30 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoopFromIR_ = function
       loopKind,
       outerInd,
       label,
-      /** @type {string} */ (bc['bodyCode']),
-      /** @type {string} */ (bc['condStr']),
-      /** @type {number} */ (bc['condCat'])
+      bc.w2lLoopBody,
+      bc.w2lLoopCondStr,
+      bc.w2lLoopCondCat
     );
 
   // Clean up: decrement indent (adjustLeaveIndent_ skipped it).
   --state.indent;
   return result;
 };
+
+/**
+ * Internal record for simplified-loop body + condition emission.  Uses verbose
+ * {@code w2l}-prefixed keys with unquoted dot access so Closure can mangle the
+ * property names (unlike the former {@code 'bodyCode'}/{@code 'condStr'}/
+ * {@code 'condCat'} quoted keys that collided with the {@code body} extern).
+ *
+ * @protected
+ * @typedef {{
+ *   w2lLoopBody: string,
+ *   w2lLoopCondStr: string,
+ *   w2lLoopCondCat: number
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_;
 
 /**
  * Shared body/condition computation for simplified-loop emission.
@@ -978,7 +972,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSimplifiedLoopFromIR_ = function
  * @param {!BinaryenExpressionInfo} bodyInfo
  * @param {string} loopName
  * @param {number} innerInd
- * @return {!Object}  {bodyCode, condStr, condCat}
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.computeSimplifiedLoopBodyAndCondition_ = function (
   state,
@@ -1050,7 +1044,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.computeSimplifiedLoopBodyAndConditio
       condCat = ic.c;
     }
   } else if ('dowhile' === loopKind) {
-    var /** @const {!Object} */ dwResult = this.emitDoWhileLoopBody_(
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_} */ dwResult = this.emitDoWhileLoopBody_(
         state,
         binaryen,
         wm,
@@ -1060,15 +1054,19 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.computeSimplifiedLoopBodyAndConditio
         loopName,
         innerInd
       );
-    bodyCode = /** @type {string} */ (dwResult['body']);
-    condStr = /** @type {string} */ (dwResult['condStr']);
-    condCat = /** @type {number} */ (dwResult['condCat']);
+    bodyCode = dwResult.w2lLoopBody;
+    condStr = dwResult.w2lLoopCondStr;
+    condCat = dwResult.w2lLoopCondCat;
   } else {
     // for-loop: emit all body children except trailing self-continue (if present).
     bodyCode = this.emitForLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd);
   }
 
-  return {'bodyCode': bodyCode, 'condStr': condStr, 'condCat': condCat};
+  return /** @type {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_} */ ({
+    w2lLoopBody: bodyCode,
+    w2lLoopCondStr: condStr,
+    w2lLoopCondCat: condCat
+  });
 };
 
 /**
@@ -1168,7 +1166,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitWhileLoopBody_ = function (
  * @param {!BinaryenExpressionInfo} bodyInfo
  * @param {string} loopName
  * @param {number} ind
- * @return {!Object}
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
   state,
@@ -1188,7 +1186,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
         state,
         /** @type {number} */ (bodyInfo.condition || 0)
       );
-    return {'body': '', 'condStr': bareCond.s, 'condCat': bareCond.c};
+    return /** @type {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_} */ ({
+      w2lLoopBody: '',
+      w2lLoopCondStr: bareCond.s,
+      w2lLoopCondCat: bareCond.c
+    });
   }
 
   var /** @const {!Array<number>} */ ch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
@@ -1202,11 +1204,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
     var /** @const {!BinaryenExpressionInfo} */ lastInfo = /** @type {!BinaryenExpressionInfo} */ (
         Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[len - 1])
       );
-    if (
-      binaryen.BreakId === lastInfo.id &&
-      /** @type {?string} */ (lastInfo.name) === loopName &&
-      /** @type {number} */ (lastInfo.condition || 0) !== 0
-    ) {
+    if (Wasm2Lang.Backend.AbstractCodegen.isBreakTo_(binaryen, lastInfo, loopName, true)) {
       // Variant B: last child is conditional br_if self-continue.
       condChildIdx = len - 1;
       bodyEnd = len - 1;
@@ -1215,11 +1213,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
       var /** @const {!BinaryenExpressionInfo} */ penInfo = /** @type {!BinaryenExpressionInfo} */ (
           Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[len - 2])
         );
-      if (
-        binaryen.BreakId === penInfo.id &&
-        /** @type {?string} */ (penInfo.name) === loopName &&
-        /** @type {number} */ (penInfo.condition || 0) !== 0
-      ) {
+      if (Wasm2Lang.Backend.AbstractCodegen.isBreakTo_(binaryen, penInfo, loopName, true)) {
         condChildIdx = len - 2;
         bodyEnd = len - 2;
       }
@@ -1243,7 +1237,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
     condCat = cr.c;
   }
 
-  return {'body': lines.join(''), 'condStr': condStr, 'condCat': condCat};
+  return /** @type {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_} */ ({
+    w2lLoopBody: lines.join(''),
+    w2lLoopCondStr: condStr,
+    w2lLoopCondCat: condCat
+  });
 };
 
 /**
@@ -1281,10 +1279,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitForLoopBody_ = function (
         Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[len - 1])
       );
     if (
-      binaryen.BreakId === lastInfo.id &&
-      /** @type {?string} */ (lastInfo.name) === loopName &&
-      /** @type {number} */ (lastInfo.condition || 0) === 0 &&
-      /** @type {number} */ (lastInfo.value || 0) === 0
+      Wasm2Lang.Backend.AbstractCodegen.isBreakTo_(binaryen, lastInfo, loopName, false) &&
+      0 === /** @type {number} */ (lastInfo.value || 0)
     ) {
       emitEnd = len - 1;
     }
@@ -1512,6 +1508,44 @@ Wasm2Lang.Backend.AbstractCodegen.buildLeaveResult_ = function (result, resultCa
     return {decisionValue: {'s': result, 'c': resultCat}};
   }
   return {decisionValue: result};
+};
+
+/**
+ * Renders a bulk-memory operation (memory.fill / memory.copy) as a statement.
+ * All three backends (asm.js, Java, PHP64) emit the same helper-call shape;
+ * the only variation is the optional buffer argument prefix (empty for asm.js,
+ * {@code 'this.buffer'} for Java, captured {@code $buffer} for PHP).  The
+ * helper is marked on the backend so a conditional definition is emitted later.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} id  Must be {@code binaryen.MemoryFillId} or {@code MemoryCopyId}.
+ * @param {number} indent
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {string} bufferArg  Buffer argument expression or empty string.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderMemoryBulkOp_ = function (binaryen, id, indent, childResults, bufferArg) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ getInfo = A.getChildResultInfo_;
+  var /** @const {string} */ helperName =
+      this.getRuntimeHelperPrefix_() + (binaryen.MemoryFillId === id ? 'memory_fill' : 'memory_copy');
+  this.markHelper_(helperName);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ a0 = getInfo(childResults, 0);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ a1 = getInfo(childResults, 1);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ a2 = getInfo(childResults, 2);
+  return (
+    A.pad_(indent) +
+    this.n_(helperName) +
+    '(' +
+    ('' !== bufferArg ? bufferArg + ', ' : '') +
+    this.coerceToType_(binaryen, a0.expressionString, a0.expressionCategory, binaryen.i32) +
+    ', ' +
+    this.coerceToType_(binaryen, a1.expressionString, a1.expressionCategory, binaryen.i32) +
+    ', ' +
+    this.coerceToType_(binaryen, a2.expressionString, a2.expressionCategory, binaryen.i32) +
+    ');\n'
+  );
 };
 
 /**

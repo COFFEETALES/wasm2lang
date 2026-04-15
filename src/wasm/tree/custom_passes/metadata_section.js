@@ -363,12 +363,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.convertMetadataToEntries_ = fun
 
 /**
  * Reads one unsigned LEB128 value from a Uint8Array at the given offset.
- * Returns the decoded value and the new offset.
+ * Returns the decoded value and the new offset.  Struct field names use
+ * {@code w2l}-prefixed identifiers to avoid collision with Binaryen externs
+ * like {@code .value} and {@code .offset}, which would otherwise prevent
+ * Closure from mangling these keys.
  *
  * @private
  * @param {!Uint8Array} data
  * @param {number} offset
- * @return {{value: number, offset: number}}
+ * @return {{w2lLebValue: number, w2lLebOffset: number}}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.readLEB128_ = function (data, offset) {
   var /** @type {number} */ result = 0;
@@ -379,7 +382,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.readLEB128_ = function (data, o
     result |= (byte & 0x7f) << shift;
     shift += 7;
   } while (0 !== (byte & 0x80));
-  return {value: result, offset: offset};
+  return {w2lLebValue: result, w2lLebOffset: offset};
 };
 
 /**
@@ -401,17 +404,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.deserializeFromBinary = functio
 
   while (offset < dataLen) {
     var /** @const {number} */ sectionId = binaryData[offset++];
-    var /** @const {{value: number, offset: number}} */ sizeResult = MS.readLEB128_(binaryData, offset);
-    var /** @const {number} */ sectionSize = sizeResult.value;
-    var /** @const {number} */ sectionEnd = sizeResult.offset + sectionSize;
-    offset = sizeResult.offset;
+    var /** @const {{w2lLebValue: number, w2lLebOffset: number}} */ sizeResult = MS.readLEB128_(binaryData, offset);
+    var /** @const {number} */ sectionSize = sizeResult.w2lLebValue;
+    var /** @const {number} */ sectionEnd = sizeResult.w2lLebOffset + sectionSize;
+    offset = sizeResult.w2lLebOffset;
 
     if (0 === sectionId) {
       // Custom section: read name.
-      var /** @const {{value: number, offset: number}} */ nameLen = MS.readLEB128_(binaryData, offset);
-      offset = nameLen.offset;
+      var /** @const {{w2lLebValue: number, w2lLebOffset: number}} */ nameLen = MS.readLEB128_(binaryData, offset);
+      offset = nameLen.w2lLebOffset;
       var /** @type {string} */ sectionName = '';
-      for (var /** @type {number} */ ni = 0; ni < nameLen.value; ++ni) {
+      for (var /** @type {number} */ ni = 0; ni < nameLen.w2lLebValue; ++ni) {
         sectionName += String.fromCharCode(binaryData[offset++]);
       }
 

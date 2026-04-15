@@ -13,6 +13,7 @@ if (!isNode && !isSpiderMonkey) {
 const obj = Object.create(null);
 obj['test-name'] = '';
 obj['asmjs'] = false;
+obj['javascript'] = false;
 obj['wasm'] = false;
 
 var /** string */ pendingOptionName = '';
@@ -31,6 +32,7 @@ var /** string */ pendingOptionName = '';
 });
 
 const asmjs = !!obj['asmjs'];
+const javascript = !!obj['javascript'];
 const testName = obj['test-name'];
 const wasm = !!obj['wasm'];
 
@@ -67,7 +69,7 @@ const wasm = !!obj['wasm'];
     harness.runTest(instanceMemoryBuffer, stdoutWrite, instance.exports, sharedData);
     instanceMemoryBuffer = instance.exports.memory.buffer;
   }
-  if (asmjs) {
+  if (asmjs || javascript) {
     let code = '';
     if (isNode) {
       const fs = require('fs');
@@ -79,13 +81,13 @@ const wasm = !!obj['wasm'];
       }
     }
 
-    if (harness.validateCode) {
+    if (asmjs && harness.validateCode) {
       harness.validateCode(code, testName);
     }
 
     const [memBuffer, module] = eval([code, '[memBuffer, module]'].join('\n'));
 
-    if (isSpiderMonkey) {
+    if (asmjs && isSpiderMonkey) {
       if ([isAsmJSCompilationAvailable(), isAsmJSModule(module)].includes(false)) {
         throw new Error('ASM.js module validation failed.');
       }

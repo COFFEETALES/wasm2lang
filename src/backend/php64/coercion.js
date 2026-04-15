@@ -62,7 +62,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderCoercionByType_ = function (binar
   }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     if (0 === expr.indexOf('(float)')) return expr;
-    return '(float)' + P.wrap(expr, P.PREC_UNARY_, true);
+    return '(float)' + P.wrap_(expr, P.PREC_UNARY_, true);
   }
   return expr;
 };
@@ -145,6 +145,25 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderPtrWithOffset_ = function (baseEx
 // formatCondition_: inherited from AbstractCodegen (delegates to Precedence_).
 
 /**
+ * PHP helper function name for each {@code I32Coercion.UNARY_*} category that
+ * dispatches directly to a runtime helper.  Keyed by the numeric UNARY_*
+ * constant so the emitter can skip an if-chain in favor of a single lookup.
+ *
+ * @const {!Object<number, string>}
+ * @private
+ */
+Wasm2Lang.Backend.Php64Codegen.PHP_I32_UNARY_HELPERS_ = /** @return {!Object<number, string>} */ (function () {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const {!Object<number, string>} */ table = {};
+  table[C.UNARY_CLZ] = '_w2l_clz';
+  table[C.UNARY_CTZ] = '_w2l_ctz';
+  table[C.UNARY_POPCNT] = '_w2l_popcnt';
+  table[C.UNARY_EXTEND8_S] = '_w2l_extend8_s';
+  table[C.UNARY_EXTEND16_S] = '_w2l_extend16_s';
+  return table;
+})();
+
+/**
  * @override
  * @protected
  * @param {!Binaryen} binaryen
@@ -161,25 +180,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitI32Unary_ = function (binaryen, una
       resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32
     };
   }
-  if (C.UNARY_CLZ === unaryCategory) {
-    this.markHelper_('_w2l_clz');
-    return {emittedString: this.n_('_w2l_clz') + '(' + operandExpr + ')', resultCat: C.SIGNED};
-  }
-  if (C.UNARY_CTZ === unaryCategory) {
-    this.markHelper_('_w2l_ctz');
-    return {emittedString: this.n_('_w2l_ctz') + '(' + operandExpr + ')', resultCat: C.SIGNED};
-  }
-  if (C.UNARY_POPCNT === unaryCategory) {
-    this.markHelper_('_w2l_popcnt');
-    return {emittedString: this.n_('_w2l_popcnt') + '(' + operandExpr + ')', resultCat: C.SIGNED};
-  }
-  if (C.UNARY_EXTEND8_S === unaryCategory) {
-    this.markHelper_('_w2l_extend8_s');
-    return {emittedString: this.n_('_w2l_extend8_s') + '(' + operandExpr + ')', resultCat: C.SIGNED};
-  }
-  if (C.UNARY_EXTEND16_S === unaryCategory) {
-    this.markHelper_('_w2l_extend16_s');
-    return {emittedString: this.n_('_w2l_extend16_s') + '(' + operandExpr + ')', resultCat: C.SIGNED};
+  var /** @const {string|undefined} */ helperName = Wasm2Lang.Backend.Php64Codegen.PHP_I32_UNARY_HELPERS_[unaryCategory];
+  if (helperName) {
+    return {emittedString: this.renderHelperCall_(binaryen, helperName, [operandExpr], binaryen.i32), resultCat: C.SIGNED};
   }
   return null;
 };

@@ -142,11 +142,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       if (void 0 !== castBaseName) {
         if (Wasm2Lang.Backend.ValueType.isI32(binaryen, callType)) {
           // float → i32/u32: (int)(long) wraps like JS ~~x|0. Plain (int) saturates at INT_MAX/MIN.
-          result = '(int)(long)' + A.Precedence_.wrap(cr(0), A.Precedence_.PREC_UNARY_, true);
+          result = '(int)(long)' + A.Precedence_.wrap_(cr(0), A.Precedence_.PREC_UNARY_, true);
           resultCat = C.SIGNED;
         } else if (Wasm2Lang.Backend.ValueType.isI64(binaryen, callType)) {
           // float → i64/u64: plain (long) cast.
-          result = '(long)' + A.Precedence_.wrap(cr(0), A.Precedence_.PREC_UNARY_, true);
+          result = '(long)' + A.Precedence_.wrap_(cr(0), A.Precedence_.PREC_UNARY_, true);
           resultCat = A.CAT_I64;
         } else if (-1 !== castBaseName.indexOf('u32_to_f')) {
           // u32 → float/double: unsigned interpretation via Integer.toUnsignedLong.
@@ -230,7 +230,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
       var /** @type {string} */ selCondStr;
       if (A.CAT_BOOL_I32 === cc(0)) {
-        selCondStr = Ps.wrap(cr(0), Ps.PREC_CONDITIONAL_, false);
+        selCondStr = Ps.wrap_(cr(0), Ps.PREC_CONDITIONAL_, false);
       } else {
         selCondStr = Ps.renderInfix(cr(0), '!=', '0', Ps.PREC_EQUALITY_);
       }
@@ -250,23 +250,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
 
     case binaryen.MemoryFillId:
-    case binaryen.MemoryCopyId: {
-      var /** @const {string} */ javaMemHelper = binaryen.MemoryFillId === id ? '$w2l_memory_fill' : '$w2l_memory_copy';
-      this.markHelper_(javaMemHelper);
-      result =
-        pad(ind) +
-        this.n_(javaMemHelper) +
-        '(this.' +
-        this.n_('buffer') +
-        ', ' +
-        this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) +
-        ', ' +
-        this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
-        ', ' +
-        this.coerceToType_(binaryen, cr(2), cc(2), binaryen.i32) +
-        ');\n';
+    case binaryen.MemoryCopyId:
+      result = this.renderMemoryBulkOp_(binaryen, id, ind, childResults, 'this.' + this.n_('buffer'));
       break;
-    }
 
     case binaryen.BlockId:
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
@@ -311,7 +297,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         var /** @const */ IfPs = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         var /** @type {string} */ ifCondStr;
         if (A.CAT_BOOL_I32 === cc(0)) {
-          ifCondStr = IfPs.wrap(cr(0), IfPs.PREC_CONDITIONAL_, false);
+          ifCondStr = IfPs.wrap_(cr(0), IfPs.PREC_CONDITIONAL_, false);
         } else {
           ifCondStr = IfPs.renderInfix(cr(0), '!=', '0', IfPs.PREC_EQUALITY_);
         }

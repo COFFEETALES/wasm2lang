@@ -38,35 +38,11 @@ Wasm2Lang.Backend.Php64Codegen.renderMultiplyBinary_ = function (self, info, L, 
  */
 Wasm2Lang.Backend.Php64Codegen.renderDivisionBinary_ = function (self, info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ nI = self.n_('_w2l_i');
-  if ('/' === info.opStr) {
-    if (info.unsigned) {
-      return (
-        nI +
-        '(intdiv(' +
-        Wasm2Lang.Backend.Php64Codegen.renderMask32_(L) +
-        ', ' +
-        Wasm2Lang.Backend.Php64Codegen.renderMask32_(R) +
-        '))'
-      );
-    }
-    return nI + '(intdiv(' + L + ', ' + R + '))';
-  }
-  // Remainder (%).
-  if (info.unsigned) {
-    return (
-      nI +
-      '(' +
-      P.renderInfix(
-        Wasm2Lang.Backend.Php64Codegen.renderMask32_(L),
-        '%',
-        Wasm2Lang.Backend.Php64Codegen.renderMask32_(R),
-        P.PREC_MULTIPLICATIVE_
-      ) +
-      ')'
-    );
-  }
-  return nI + '(' + P.renderInfix(L, '%', R, P.PREC_MULTIPLICATIVE_) + ')';
+  var /** @const {string} */ left = info.unsigned ? Wasm2Lang.Backend.Php64Codegen.renderMask32_(L) : L;
+  var /** @const {string} */ right = info.unsigned ? Wasm2Lang.Backend.Php64Codegen.renderMask32_(R) : R;
+  var /** @const {string} */ core =
+      '/' === info.opStr ? 'intdiv(' + left + ', ' + right + ')' : P.renderInfix(left, '%', right, P.PREC_MULTIPLICATIVE_);
+  return self.n_('_w2l_i') + '(' + core + ')';
 };
 
 /**
@@ -78,30 +54,22 @@ Wasm2Lang.Backend.Php64Codegen.renderDivisionBinary_ = function (self, info, L, 
  */
 Wasm2Lang.Backend.Php64Codegen.renderBitwiseBinary_ = function (self, info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ nI = self.n_('_w2l_i');
-  if ('>>>' === info.opStr) {
-    // Unsigned right shift (not native in PHP).
+  var /** @const {string} */ op = info.opStr;
+  // Shift ops need the shift amount masked to 0..31; the unsigned right shift
+  // additionally masks L so the sign bit is cleared before the arithmetic `>>`.
+  if ('>>>' === op || '<<' === op || '>>' === op) {
+    var /** @const {string} */ leftExpr = '>>>' === op ? Wasm2Lang.Backend.Php64Codegen.renderMask32_(L) : L;
+    var /** @const {string} */ physicalOp = '>>>' === op ? '>>' : op;
     return (
-      nI +
+      self.n_('_w2l_i') +
       '(' +
-      P.renderInfix(
-        Wasm2Lang.Backend.Php64Codegen.renderMask32_(L),
-        '>>',
-        Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R),
-        P.PREC_SHIFT_
-      ) +
+      P.renderInfix(leftExpr, physicalOp, Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R), P.PREC_SHIFT_) +
       ')'
     );
   }
-  if ('<<' === info.opStr) {
-    return nI + '(' + P.renderInfix(L, '<<', Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R), P.PREC_SHIFT_) + ')';
-  }
-  if ('>>' === info.opStr) {
-    return nI + '(' + P.renderInfix(L, '>>', Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R), P.PREC_SHIFT_) + ')';
-  }
   // &, |, ^
-  var /** @const */ bi = P.bitwiseInfo(info.opStr);
-  return P.renderInfix(L, info.opStr, R, bi.bitwisePrecedence, true);
+  var /** @const */ bi = P.bitwiseInfo(op);
+  return P.renderInfix(L, op, R, bi.bitwisePrecedence, true);
 };
 
 /**
@@ -159,8 +127,8 @@ Wasm2Lang.Backend.Php64Codegen.renderComparisonBinary_ = function (self, info, L
   var /** @type {string} */ rightExpr = R;
 
   if (info.unsigned) {
-    leftExpr = P.wrap(Wasm2Lang.Backend.Php64Codegen.renderMask32_(L), P.PREC_RELATIONAL_, false);
-    rightExpr = P.wrap(Wasm2Lang.Backend.Php64Codegen.renderMask32_(R), P.PREC_RELATIONAL_, false);
+    leftExpr = P.wrap_(Wasm2Lang.Backend.Php64Codegen.renderMask32_(L), P.PREC_RELATIONAL_, false);
+    rightExpr = P.wrap_(Wasm2Lang.Backend.Php64Codegen.renderMask32_(R), P.PREC_RELATIONAL_, false);
   }
   return P.renderInfix(leftExpr, info.opStr, rightExpr, P.PREC_RELATIONAL_);
 };

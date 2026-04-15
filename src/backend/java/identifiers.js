@@ -72,21 +72,13 @@ Wasm2Lang.Backend.JavaCodegen.javaTypeName_ = function (binaryen, wasmType) {
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.formatJavaFloat_ = function (value, isF32) {
+  var /** @const {string} */ typePrefix = isF32 ? 'Float.' : 'Double.';
   if (value !== value) {
-    return isF32 ? 'Float.NaN' : 'Double.NaN';
+    return typePrefix + 'NaN';
   }
   if (!isFinite(value)) {
-    if (0 < value) {
-      return isF32 ? 'Float.POSITIVE_INFINITY' : 'Double.POSITIVE_INFINITY';
-    }
-    return isF32 ? 'Float.NEGATIVE_INFINITY' : 'Double.NEGATIVE_INFINITY';
+    return typePrefix + (0 < value ? 'POSITIVE_INFINITY' : 'NEGATIVE_INFINITY');
   }
-  if (0 === value && 1 / value < 0) {
-    return isF32 ? '-0.0f' : '-0.0';
-  }
-  var /** @const {string} */ s =
-      Math.floor(value) === value && -1 === String(value).indexOf('e') && -1 === String(value).indexOf('E')
-        ? String(value) + '.0'
-        : String(value);
+  var /** @const {string} */ s = Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_(value);
   return isF32 ? s + 'f' : s;
 };

@@ -329,7 +329,7 @@ Wasm2Lang.Backend.AbstractCodegen.ASMJS_ONLY_MATH_FUNCS_ = {
  * @param {!Object<string, string>} constMap
  * @param {string} infinityExpr
  * @param {string} nanExpr
- * @return {{names: !Object<string, string>, globals: !Object<string, string>}}
+ * @return {{w2lStdlibNames: !Object<string, string>, w2lStdlibGlobals: !Object<string, string>}}
  */
 Wasm2Lang.Backend.AbstractCodegen.resolveStdlibBindings_ = function (
   impFuncs,
@@ -359,7 +359,7 @@ Wasm2Lang.Backend.AbstractCodegen.resolveStdlibBindings_ = function (
       globals[impGlobals[g].globalName] = 'Infinity' === gBase ? infinityExpr : nanExpr;
     }
   }
-  return {names: names, globals: globals};
+  return {w2lStdlibNames: names, w2lStdlibGlobals: globals};
 };
 
 /**
@@ -659,6 +659,20 @@ Wasm2Lang.Backend.AbstractCodegen.buildSignatureKey_ = function (binaryen, param
 };
 
 /**
+ * Transient grouping for {@code collectFunctionTables_}: entries accumulated
+ * under a single signature key before being promoted to a
+ * {@code FunctionTableDescriptor_}.
+ *
+ * @private
+ * @typedef {{
+ *   sigParamTypes: !Array<number>,
+ *   retType: number,
+ *   slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.SignatureGroup_;
+
+/**
  * Collects function table information from the module's element segments.
  *
  * @protected
@@ -700,11 +714,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
   }
 
   // Group entries by signature.
-  /** @type {!Object<string, {sigParamTypes: !Array<number>, retType: number, slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}>} */
-  var sigGroups =
-    /** @type {!Object<string, {sigParamTypes: !Array<number>, retType: number, slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}>} */ (
-      Object.create(null)
-    );
+  var /** @const {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.SignatureGroup_>} */ sigGroups =
+      /** @type {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.SignatureGroup_>} */ (Object.create(null));
 
   for (var /** @type {number} */ e = 0, /** @const {number} */ eLen = flatEntries.length; e !== eLen; ++e) {
     var /** @const {string|null} */ funcName = flatEntries[e];
@@ -719,8 +730,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
     if (!sigGroups[sigKey]) {
       sigGroups[sigKey] = {sigParamTypes: sig.sigParams, retType: sig.sigRetType, slots: []};
     }
-    var /** @const {{sigParamTypes: !Array<number>, retType: number, slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}} */ group =
-        sigGroups[sigKey];
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SignatureGroup_} */ group = sigGroups[sigKey];
     // Pad with nulls up to index e.
     while (group.slots.length < e) {
       group.slots[group.slots.length] = {boundName: null};
@@ -732,8 +742,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
   var /** @const {!Array<string>} */ sigKeys = Object.keys(sigGroups);
   for (var /** @type {number} */ s = 0, /** @const {number} */ sLen = sigKeys.length; s !== sLen; ++s) {
     var /** @const {string} */ sk = sigKeys[s];
-    var /** @const {{sigParamTypes: !Array<number>, retType: number, slots: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>}} */ sg =
-        sigGroups[sk];
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SignatureGroup_} */ sg = sigGroups[sk];
     // Trim trailing nulls.
     while (sg.slots.length > 0 && null === sg.slots[sg.slots.length - 1].boundName) {
       sg.slots.length--;

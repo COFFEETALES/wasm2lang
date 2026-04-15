@@ -108,7 +108,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       // be coerced to signed first.
       var /** @type {string} */ loadBase = cr(0);
       if (0 !== loadOffset && C.INTISH === cc(0)) {
-        loadBase = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(loadBase);
+        loadBase = Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(loadBase);
       }
       var /** @const {string} */ loadPtr = Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_(loadBase, loadOffset);
       var /** @const {number} */ loadBytes = /** @type {number} */ (expr.bytes);
@@ -124,7 +124,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ storeOffset = /** @type {number} */ (expr.offset);
       var /** @type {string} */ storeBase = cr(0);
       if (0 !== storeOffset && C.INTISH === cc(0)) {
-        storeBase = Wasm2Lang.Backend.AsmjsCodegen.renderSignedCoercion_(storeBase);
+        storeBase = Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(storeBase);
       }
       var /** @const {string} */ storePtr = Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_(storeBase, storeOffset);
       var /** @const {number} */ storeBytes = /** @type {number} */ (expr.bytes);
@@ -160,15 +160,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           // float/double → i32: promote float to double with +, then ~~ truncation.
           var /** @type {string} */ castTruncInput = cr(0);
           if (Wasm2Lang.Backend.ValueType.isF32(binaryen, castInputType)) {
-            castTruncInput = Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_(castTruncInput);
+            castTruncInput = Wasm2Lang.Backend.JsCommonCodegen.renderDoubleCoercion_(castTruncInput);
           }
-          result = '~~' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.wrap(castTruncInput, A.Precedence_.PREC_UNARY_, false);
+          result = '~~' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.wrap_(castTruncInput, A.Precedence_.PREC_UNARY_, false);
           resultCat = C.SIGNED;
         } else {
           // int → float/double: coerce to signed (i32) or unsigned (u32), then apply target coercion.
           var /** @const {boolean} */ castIsUnsigned = -1 !== castBaseName.indexOf('u');
           var /** @const {string} */ castInput = castIsUnsigned
-              ? Wasm2Lang.Backend.AsmjsCodegen.renderUnsignedCoercion_(cr(0))
+              ? Wasm2Lang.Backend.JsCommonCodegen.renderUnsignedCoercion_(cr(0))
               : this.coerceAtBoundary_(binaryen, cr(0), cc(0), castInputType);
           result = this.renderCoercionByType_(binaryen, castInput, callType);
           resultCat = A.catForCoercedType_(binaryen, callType);
@@ -200,7 +200,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           ] || {sigParams: [], sigRetType: 0};
         for (var /** @type {number} */ fai = 0; fai < callArgs.length; ++fai) {
           if (fai < ffiSig.sigParams.length && binaryen.f32 === ffiSig.sigParams[fai]) {
-            callArgs[fai] = Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_(callArgs[fai]);
+            callArgs[fai] = Wasm2Lang.Backend.JsCommonCodegen.renderDoubleCoercion_(callArgs[fai]);
           }
         }
       }
@@ -210,7 +210,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       } else if ('' !== importBase && binaryen.f32 === callType) {
         // asm.js FFI calls return int or double only — coerce to double
         // first, then apply fround.
-        result = this.renderCoercionByType_(binaryen, Wasm2Lang.Backend.AsmjsCodegen.renderDoubleCoercion_(callExpr), callType);
+        result = this.renderCoercionByType_(
+          binaryen,
+          Wasm2Lang.Backend.JsCommonCodegen.renderDoubleCoercion_(callExpr),
+          callType
+        );
         resultCat = A.catForCoercedType_(binaryen, callType);
       } else {
         result = this.renderCoercionByType_(binaryen, callExpr, callType);
@@ -263,21 +267,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
 
     case binaryen.MemoryFillId:
-    case binaryen.MemoryCopyId: {
-      var /** @const {string} */ memHelperName = binaryen.MemoryFillId === id ? '$w2l_memory_fill' : '$w2l_memory_copy';
-      this.markHelper_(memHelperName);
-      result =
-        pad(ind) +
-        this.n_(memHelperName) +
-        '(' +
-        this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) +
-        ', ' +
-        this.coerceToType_(binaryen, cr(1), cc(1), binaryen.i32) +
-        ', ' +
-        this.coerceToType_(binaryen, cr(2), cc(2), binaryen.i32) +
-        ');\n';
+    case binaryen.MemoryCopyId:
+      result = this.renderMemoryBulkOp_(binaryen, id, ind, childResults, '');
       break;
-    }
 
     case binaryen.BlockId:
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
