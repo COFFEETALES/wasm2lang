@@ -125,12 +125,12 @@ Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_ = function (value) {
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.buildLocalInitStrings_ = function (binaryen, funcName, varTypes, numParams) {
-  var /** @const {?Object<string, number>} */ initOverrides = this.getLocalInitOverrides_(funcName);
+  var /** @const {?Object<string, *>} */ initOverrides = this.getLocalInitOverrides_(funcName);
   var /** @const {!Array<string>} */ result = [];
   for (var /** @type {number} */ vi = 0, /** @const {number} */ numVars = varTypes.length; vi !== numVars; ++vi) {
     var /** @const {number} */ localType = varTypes[vi];
     var /** @const {number} */ localIdx = numParams + vi;
-    var /** @const {number|void} */ overrideValue = initOverrides ? initOverrides[String(localIdx)] : void 0;
+    var /** @const {*} */ overrideValue = initOverrides ? initOverrides[String(localIdx)] : void 0;
     // prettier-ignore
     result[result.length] = void 0 !== overrideValue
       ? (Wasm2Lang.Backend.ValueType.isI64(binaryen, localType)

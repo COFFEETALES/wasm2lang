@@ -217,6 +217,26 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNodeIndex_ = function (bin
 // ---------------------------------------------------------------------------
 
 /**
+ * Splits an i64 BigInt into unsigned low / signed high 32-bit halves.
+ * JSON.stringify cannot serialize BigInt, so i64 locals from
+ * {@code localInitOverrides} must be rewritten into a {@code {low, high}}
+ * pair before being embedded in the metadata custom section.  Backends
+ * reconstruct the value through {@code AbstractCodegen.decomposeI64_}, which
+ * accepts this shape alongside a raw BigInt.
+ *
+ * @private
+ * @suppress {checkTypes}
+ * @param {*} bv  The BigInt value.
+ * @return {!Object<string, number>}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.splitI64Bigint_ = function (bv) {
+  var /** @const {!Object<string, number>} */ split = Object.create(null);
+  split['low'] = Number(BigInt(bv) & BigInt(0xffffffff)) >>> 0;
+  split['high'] = Number((BigInt(bv) >> BigInt(32)) & BigInt(0xffffffff)) | 0;
+  return split;
+};
+
+/**
  * Serializes a PassRunResult into a WASM custom section on the module.
  * Called after all wasm2lang:codegen normalization passes have completed.
  *
@@ -246,14 +266,17 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializePassRunResult = functi
         nodeIndex.nameToPos
       );
 
-    var /** @type {?Object<string, number>} */ liOverrides = null;
+    var /** @type {?Object<string, *>} */ liOverrides = null;
     if (fm.localInitOverrides) {
-      var /** @const {!Object<string, number>} */ liSrc = /** @type {!Object<string, number>} */ (fm.localInitOverrides);
+      var /** @const {!Object<string, *>} */ liSrc = /** @type {!Object<string, *>} */ (fm.localInitOverrides);
       var /** @const {!Array<string>} */ liKeys = Object.keys(liSrc);
       if (0 !== liKeys.length) {
         liOverrides = Object.create(null);
         for (var /** @type {number} */ li = 0, /** @const {number} */ liLen = liKeys.length; li < liLen; ++li) {
-          /** @type {!Object<string, number>} */ (liOverrides)[liKeys[li]] = liSrc[liKeys[li]];
+          var /** @const {string} */ liKey = liKeys[li];
+          var /** @const {*} */ liVal = liSrc[liKey];
+          /** @type {!Object<string, *>} */ (liOverrides)[liKey] =
+            'bigint' === typeof liVal ? Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.splitI64Bigint_(liVal) : liVal;
         }
       }
     }

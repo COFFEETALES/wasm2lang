@@ -41,7 +41,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.enableSimplifications_ = function ()
  *
  * @protected
  * @param {string} funcName
- * @return {?Object<string, number>}
+ * @return {?Object<string, *>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.getLocalInitOverrides_ = function (funcName) {
   return Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingApplication.getLocalInitOverrides(this.passRunResultIndex_, funcName);

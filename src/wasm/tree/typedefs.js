@@ -61,7 +61,7 @@ Wasm2Lang.Wasm.Tree.BlockGuardElisionPlan;
  *   bodyReplaced: (boolean|void),
  *   dropConstEliminations: (number|void),
  *   localGetCounts: (!Object<string, number>|void),
- *   localInitOverrides: (!Object<string, number>|void),
+ *   localInitOverrides: (!Object<string, *>|void),
  *   _localInitZeroFoldSet: (!Object<number, boolean>|void),
  *   loopPlans: (!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>|void),
  *   fusedBlocks: (!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>|void),

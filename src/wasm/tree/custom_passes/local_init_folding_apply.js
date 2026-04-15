@@ -20,10 +20,10 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingApplication = {};
  *
  * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
  * @param {string} funcName
- * @return {?Object<string, number>}
+ * @return {?Object<string, *>}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingApplication.getLocalInitOverrides = function (passRunResultIndex, funcName) {
-  return /** @type {?Object<string, number>} */ (
+  return /** @type {?Object<string, *>} */ (
     Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadataValue(
       passRunResultIndex,
       funcName,

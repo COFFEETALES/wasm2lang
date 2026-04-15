@@ -117,8 +117,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
   var /** @const {!Object<number, boolean>} */ setLocals =
     /** @type {!Object<number, boolean>} */ (Object.create(null));
   // prettier-ignore
-  var /** @const {!Object<string, number>} */ initOverrides =
-    /** @type {!Object<string, number>} */ (Object.create(null));
+  var /** @const {!Object<string, *>} */ initOverrides =
+    /** @type {!Object<string, *>} */ (Object.create(null));
   var /** @type {boolean} */ hasOverrides = false;
   // Set of local indices whose foldable local.set(const 0) should be replaced
   // with nop by the visitor.  Keyed by local index (number).
@@ -143,8 +143,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
           var /** @const {!BinaryenExpressionInfo} */ valueInfo =
             /** @type {!BinaryenExpressionInfo} */ (Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,valuePtr));
           if (binaryen.ConstId === valueInfo.id) {
-            var /** @const {number} */ constVal = /** @type {number} */ (valueInfo.value);
-            if (0 !== constVal) {
+            var /** @const {*} */ constVal = valueInfo.value;
+            // i64 constants arrive as BigInt; strict !== across Number/BigInt
+            // would misclassify 0n as non-zero, so compare per type.
+            var /** @const {boolean} */ isZero =
+                'bigint' === typeof constVal ? BigInt(0) === /** @type {*} */ (constVal) : 0 === constVal;
+            if (!isZero) {
               hasOverrides = true;
               initOverrides[String(localIdx)] = constVal;
             } else {
