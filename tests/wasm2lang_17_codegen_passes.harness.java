@@ -251,6 +251,26 @@ int w2lCountSimplifiedWhile(String body) {
                 _f.add("localInitAllZero: function body not found");
             }
 
+            // -- root value block: function body is an unnamed value-typed
+            // block.  The last child must be emitted as `return <tail>`,
+            // not as a dangling expression followed by a `return 0`
+            // stabilizer.  Regression guard for tryEmitRootValueBlock_.
+            //
+            // Tail expression is `i32.add(p(0), p(1))` — the return must
+            // contain the `+` operator.  Bug signature: the tail is emitted
+            // as a dangling stmt and replaced by `return 0`.
+            b = w2lBodyOf(_code, "rootValueBlock");
+            if (b != null) {
+                if (!w2lHasMatch(b, "\\breturn\\b"))
+                    _f.add("rootValueBlock: expected a return statement");
+                if (w2lHasMatch(b, "(?m)^\\s*return\\s+0\\s*;"))
+                    _f.add("rootValueBlock: expected real tail value, not bare `return 0` stabilizer");
+                if (!w2lHasMatch(b, "return\\s+[^;]*\\+"))
+                    _f.add("rootValueBlock: expected return to contain the `+` tail operator");
+            } else {
+                _f.add("rootValueBlock: function body not found");
+            }
+
             if (!_f.isEmpty()) {
                 throw new RuntimeException("Code structure validation FAILED:\n  " + String.join("\n  ", _f));
             }
@@ -393,6 +413,10 @@ int w2lCountSimplifiedWhile(String body) {
 
     for (Double v : w2lFlat(_data, "local_init_all_zero_values")) {
         mod.exerciseLocalInitAllZero(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "root_value_block_values")) {
+        mod.exerciseRootValueBlock(v.intValue());
     }
 
     w2lDumpCRC(memBuffer);

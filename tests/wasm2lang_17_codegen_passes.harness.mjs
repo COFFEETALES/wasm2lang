@@ -136,6 +136,10 @@ const runTest = function (buff, out, exports, data) {
   for (const v of data.local_init_all_zero_values) {
     exports.exerciseLocalInitAllZero(v);
   }
+
+  for (const v of data.root_value_block_values) {
+    exports.exerciseRootValueBlock(v);
+  }
 };
 
 /**
@@ -370,11 +374,7 @@ const validateCode = function (code, testName) {
       check('rootSwitchStateMachine', /\bswitch\s*\(/.test(b), 'expected switch dispatch');
       // With rs$, the outer chain block should be elided — there should be
       // no labeled break to a synthetic outer block wrapper.
-      check(
-        'rootSwitchStateMachine',
-        (b.match(/\bcase\s+\d+\s*:/g) || []).length >= 3,
-        'expected >=3 cases in dispatch'
-      );
+      check('rootSwitchStateMachine', (b.match(/\bcase\s+\d+\s*:/g) || []).length >= 3, 'expected >=3 cases in dispatch');
     } else {
       check('rootSwitchStateMachine', false, 'function body not found');
     }
@@ -458,6 +458,23 @@ const validateCode = function (code, testName) {
     check('localInitAllZero', /\b7\b/.test(b), 'expected (x-7) term present');
   } else {
     check('localInitAllZero', false, 'function body not found');
+  }
+
+  // -- root value block: function body is an unnamed value-typed block.
+  // The last child must be emitted as `return <tail>`, not as a dangling
+  // expression followed by a `return 0` stabilizer.  Regression guard for
+  // the tryEmitRootValueBlock_ intercept in AbstractCodegen.
+  //
+  // Tail expression is `i32.add(p(0), p(1))` — the return must contain the
+  // `+` operator.  Bug signature: the tail is emitted as a dangling stmt
+  // and replaced by `return 0` (or `return 0|0`), which has no `+`.
+  b = bodyOf('rootValueBlock');
+  if (b) {
+    check('rootValueBlock', /return\b/.test(b), 'expected a return statement');
+    check('rootValueBlock', !/^\s*return\s+0\s*(\||;)/m.test(b), 'expected real tail value, not bare `return 0` stabilizer');
+    check('rootValueBlock', /return\s+[^;]*\+/.test(b), 'expected return to contain the `+` tail operator');
+  } else {
+    check('rootValueBlock', false, 'function body not found');
   }
 
   if (failures.length) {

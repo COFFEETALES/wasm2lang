@@ -1572,6 +1572,51 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // rootValueBlock: function whose root body is an unnamed value-typed
+  // block, last child is the value expression.
+  //
+  // (block (result i32)
+  //   (local.set $a (i32.add x 10))
+  //   (local.set $b (i32.mul $a 3))
+  //   (local.set x  (i32.sub $b x))
+  //   (i32.add x $a))
+  //
+  // Under binaryen:none (no flattening) the root body stays as a Block
+  // with a non-void type and no name.  AbstractCodegen must recognize
+  // this shape and emit `return <tail>` instead of leaving the tail as
+  // a dangling expression followed by the `return 0` stabilizer.
+  //
+  // params: x(0)  locals: a(1), b(2)
+  // Result: a = x+10; b = a*3; x = b-x; return x + a
+  //       = (b-x) + a = (3*(x+10) - x) + (x+10) = 3x + 30 + 10 = 3x + 40.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'rootValueBlock',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(
+      null,
+      [
+        module.local.set(1, module.i32.add(p(0), i32(10))),
+        module.local.set(2, module.i32.mul(p(1), i32(3))),
+        module.local.set(0, module.i32.sub(p(2), p(0))),
+        module.i32.add(p(0), p(1))
+      ],
+      binaryen.i32
+    )
+  );
+
+  // exerciseRootValueBlock(x: i32): void
+  module.addFunction(
+    'exerciseRootValueBlock',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('rootValueBlock', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
@@ -1640,6 +1685,8 @@
   module.addFunctionExport('exerciseLocalInitRepeatedSet', 'exerciseLocalInitRepeatedSet');
   module.addFunctionExport('localInitAllZero', 'localInitAllZero');
   module.addFunctionExport('exerciseLocalInitAllZero', 'exerciseLocalInitAllZero');
+  module.addFunctionExport('rootValueBlock', 'rootValueBlock');
+  module.addFunctionExport('exerciseRootValueBlock', 'exerciseRootValueBlock');
 
   common.finalizeAndOutput(module);
 
@@ -1960,6 +2007,12 @@
   );
 
   data.local_init_all_zero_values = [-10, -1, 0, 1, 2, 5, 10, 50].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  data.root_value_block_values = [-10, -1, 0, 1, 2, 5, 10, 42, 100, 1000].concat(
     Array.from({length: 4}, function () {
       return common.rand.smallI32();
     })

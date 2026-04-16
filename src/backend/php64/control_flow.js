@@ -512,13 +512,22 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       result = this.renderMemoryBulkOp_(binaryen, id, ind, childResults, this.usePhpBuffer_(state));
       break;
 
-    case binaryen.BlockId:
+    case binaryen.BlockId: {
+      var /** @const {?{s: string, c: number, prefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
+          /** @type {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} */ (state),
+          nodeCtx,
+          childResults
+        );
+      if (rootValueShape) {
+        return /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ ({decisionValue: rootValueShape});
+      }
       result = this.emitBlockDispatch_(
         /** @type {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} */ (state),
         nodeCtx,
         childResults
       );
       break;
+    }
     case binaryen.LoopId: {
       var /** @type {?string} */ loopKind = null;
       if ('' !== state.pendingLoopKind) {

@@ -255,9 +255,18 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       result = this.renderMemoryBulkOp_(binaryen, id, ind, childResults, '');
       break;
 
-    case binaryen.BlockId:
+    case binaryen.BlockId: {
+      var /** @const {?{s: string, c: number, prefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
+          state,
+          nodeCtx,
+          childResults
+        );
+      if (rootValueShape) {
+        return /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ ({decisionValue: rootValueShape});
+      }
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
       break;
+    }
     case binaryen.LoopId: {
       var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
       var /** @type {?string} */ loopKind = null;

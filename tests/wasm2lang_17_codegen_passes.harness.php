@@ -261,6 +261,23 @@ $validateCode = function (string $code, string $testName): void {
         $check('localInitAllZero', false, 'function body not found');
     }
 
+    // -- root value block: function body is an unnamed value-typed block.
+    // The last child must be emitted as `return <tail>`, not as a dangling
+    // expression followed by a `return 0` stabilizer.  Regression guard for
+    // the tryEmitRootValueBlock_ intercept in AbstractCodegen.
+    //
+    // Tail expression is `i32.add(p(0), p(1))` — the return must contain the
+    // `+` operator.  Bug signature: the tail is emitted as a dangling stmt
+    // and replaced by `return 0` (PHP wraps: `return z(0);`).
+    $b = w2lBodyOf($code, 'rootValueBlock');
+    if ($b !== null) {
+        $check('rootValueBlock', (bool) preg_match('/\breturn\b/', $b), 'expected a return statement');
+        $check('rootValueBlock', !preg_match('/^\s*return\s+(?:0|\w+\(0\))\s*;/m', $b), 'expected real tail value, not bare `return 0` stabilizer');
+        $check('rootValueBlock', (bool) preg_match('/return\s+[^;]*\+/', $b), 'expected return to contain the `+` tail operator');
+    } else {
+        $check('rootValueBlock', false, 'function body not found');
+    }
+
     if (count($failures) > 0) {
         throw new \RuntimeException("Code structure validation FAILED:\n  " . implode("\n  ", $failures));
     }
@@ -402,6 +419,10 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
 
     foreach ($data['local_init_all_zero_values'] as $v) {
         $exports['exerciseLocalInitAllZero']($v);
+    }
+
+    foreach ($data['root_value_block_values'] as $v) {
+        $exports['exerciseRootValueBlock']($v);
     }
 };
 

@@ -74,6 +74,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
     binaryen.none !== funcInfo.results &&
     0 !== funcInfo.results
   ) {
+    var /** @const {*} */ prefix = bodyResult['prefix'];
+    if ('string' === typeof prefix && '' !== prefix) {
+      Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, /** @type {string} */ (prefix));
+    }
     parts[parts.length] = padStr + 'return ' + this.renderImplicitReturn_(binaryen, bodyResult, funcInfo.results) + ';';
     return true;
   }
@@ -901,6 +905,58 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
     return pad(ind) + this.labelN_(state.labelMap, blockName) + ': {\n' + blockBody + pad(ind) + '}\n';
   }
   return blockBody;
+};
+
+/**
+ * Recognizes the "unnamed value-typed block at function body root" shape and
+ * repackages the children so that the last child becomes the function's
+ * implicit return expression.  Without this, the tail value gets stringified
+ * as a dangling expression statement and the function falls through to the
+ * zero-value stabilizer in {@code emitFunction_}.
+ *
+ * Only applies at the true root of the function body (no parent expression).
+ * Nested value-typed blocks would need a comma-expression / IIFE lowering
+ * that isn't universally expressible across backends — binaryen:min is
+ * expected to flatten them before codegen.
+ *
+ * Returns a {@code {s, c, prefix}} shape when applicable; {@code null}
+ * otherwise.  Callers fall back to the standard block dispatch on {@code null}.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {?{s: string, c: number, prefix: string}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, nodeCtx, childResults) {
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
+  if (blockName) return null;
+  if (null !== nodeCtx.parentExpression) return null;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const {number} */ blockType = /** @type {number} */ (expr.type);
+  if (binaryen.none === blockType || 0 === blockType || binaryen.unreachable === blockType) return null;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {number} */ emitCount = A.reachableBlockChildCount_(binaryen, expr);
+  if (emitCount < 1) return null;
+  var /** @const */ pad = A.pad_;
+  var /** @const {number} */ childInd = state.indent;
+  var /** @const {!Array<string>} */ prefixLines = [];
+  for (var /** @type {number} */ i = 0; i < emitCount - 1; ++i) {
+    var /** @const {string} */ childCode = A.getChildResultInfo_(childResults, i).expressionString;
+    if ('' === childCode) continue;
+    prefixLines[prefixLines.length] = -1 === childCode.indexOf('\n') ? pad(childInd) + childCode + ';\n' : childCode;
+  }
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ tailInfo = A.getChildResultInfo_(
+      childResults,
+      emitCount - 1
+    );
+  if (A.CAT_VOID === tailInfo.expressionCategory) return null;
+  return {
+    's': tailInfo.expressionString,
+    'c': tailInfo.expressionCategory,
+    'prefix': prefixLines.join('')
+  };
 };
 
 /**
