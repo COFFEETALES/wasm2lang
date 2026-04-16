@@ -88,22 +88,25 @@ directly from the traversal visitor callbacks, keeping memory overhead minimal.
 
 ## Features
 
-- **Three production backends** -- asm.js, PHP, Java; CRC32-validated byte-identical output across all runtimes.
+- **Four production backends** -- asm.js, JavaScript, PHP, Java; CRC32-validated byte-identical output across all runtimes.
+- **Native BigInt i64** -- the JavaScript backend handles i64 via BigInt with no i64-to-i32 lowering, so the emitted code stays close to source intent.
 - **SIMD128** -- Java backend emits `IntVector` v128 ops that HotSpot auto-vectorizes natively.
 - **Typed coercion elimination** -- expression categories eliminate redundant `|0`, `Math_fround`, and type casts.
 - **Cast-module imports** -- `"cast"` module functions lowered to native type casts instead of calls.
 - **Spec-compliant truncation trapping** -- NaN and out-of-range inputs trap instead of silently producing wrong results.
-- **Structural passes** -- loop simplification, block-loop fusion, switch dispatch detection, local init folding.
+- **Structural passes** -- loop simplification, block-loop fusion, switch dispatch detection, if-else recovery, block-guard elision, redundant-block removal, local init folding.
+- **Two-step pipelines** -- `--pre-normalized` lets you normalize once, serialize to `.wasm`, and emit code later; pass analysis is persisted through a `w2l_codegen_meta` custom section.
 - **Deterministic identifier mangling** -- Feistel-round permutation; same key = same output.
 - **Exported mutable globals** -- getter/setter accessors across all backends.
 
 ## Backends
 
-| Backend    | `--language-out` | Strength                                            | Status                                                                  |
-| ---------- | ---------------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
-| **asm.js** | `ASMJS`          | Closest semantic match to WASM; AOT-compiled by V8  | Active -- full function-body emission, validated by V8 and SpiderMonkey |
-| **PHP**    | `PHP64`          | Runs on shared hosting with no extensions           | Active -- full function-body emission, validated by PHP CLI             |
-| **Java**   | `JAVA`           | HotSpot/Graal optimize the output directly; SIMD128 | Active -- full function-body emission, validated by jshell              |
+| Backend        | `--language-out` | Strength                                                                 | Status                                                                    |
+| -------------- | ---------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| **asm.js**     | `ASMJS`          | Closest semantic match to WASM; AOT-compiled by V8                       | Active -- full function-body emission, validated by V8 and SpiderMonkey   |
+| **JavaScript** | `JAVASCRIPT`     | Modern JS with native BigInt i64 and typed arrays; runs on any JS engine | Active -- full function-body emission, validated by Node and SpiderMonkey |
+| **PHP**        | `PHP64`          | Runs on shared hosting with no extensions                                | Active -- full function-body emission, validated by PHP CLI               |
+| **Java**       | `JAVA`           | HotSpot/Graal optimize the output directly; SIMD128                      | Active -- full function-body emission, validated by jshell                |
 
 **Why asm.js?** WebAssembly was designed as the binary evolution of asm.js --
 they share the same linear memory model, integer coercion semantics, and
@@ -157,19 +160,20 @@ source files directly from `src/`.
 
 ### Options
 
-| Flag                         | Type     | Description                                                                                                                                                         |
-| ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--input-file <path>`        | `string` | Path to a WebAssembly file. Files ending in `.wat`/`.wast` (or prefixed with `wast:`) are read as text; all others as binary. Use `wast:-` to read text from stdin. |
-| `--input-data <string>`      | `string` | Inline WebAssembly text to compile (alternative to `--input-file`).                                                                                                 |
-| `--language-out <lang>`      | `enum`   | Output backend: `ASMJS` (default), `PHP64`, `JAVA`.                                                                                                                 |
-| `--normalize-wasm <bundles>` | `list`   | Comma-separated normalization bundles (see below). Default: `binaryen:min`.                                                                                         |
-| `--emit-code [name]`         | `string` | Emit generated source code. The name becomes the output variable/class name (default: `code`).                                                                      |
-| `--emit-metadata [name]`     | `string` | Emit static memory initialization. The name becomes the output variable name (default: `metadata`).                                                                 |
-| `--emit-web-assembly [text]` | `string` | Emit the (normalized) WebAssembly module. Defaults to binary format; pass `text` for WAT output.                                                                    |
-| `--define <K=V>`             | `string` | Set a compile-time define (repeatable). Used to configure backend constants.                                                                                        |
-| `--mangler <key>`            | `string` | Enable deterministic identifier mangling. Same key = same output; different keys = different names.                                                                 |
-| `--out-file <path>`          | `string` | Write output to a file instead of stdout.                                                                                                                           |
-| `--help`                     | --       | Print option descriptions to stderr and exit.                                                                                                                       |
+| Flag                         | Type     | Description                                                                                                                                                                                            |
+| ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--input-file <path>`        | `string` | Path to a WebAssembly file. Files ending in `.wat`/`.wast` (or prefixed with `wast:`) are read as text; all others as binary. Use `wast:-` to read text from stdin.                                    |
+| `--input-data <string>`      | `string` | Inline WebAssembly text to compile (alternative to `--input-file`).                                                                                                                                    |
+| `--language-out <lang>`      | `enum`   | Output backend: `ASMJS` (default), `JAVASCRIPT`, `PHP64`, `JAVA`.                                                                                                                                      |
+| `--normalize-wasm <bundles>` | `list`   | Comma-separated normalization bundles (see below). Default: `binaryen:min`.                                                                                                                            |
+| `--emit-code [name]`         | `string` | Emit generated source code. The name becomes the output variable/class name (default: `code`).                                                                                                         |
+| `--emit-metadata [name]`     | `string` | Emit static memory initialization. The name becomes the output variable name (default: `metadata`).                                                                                                    |
+| `--emit-web-assembly [text]` | `string` | Emit the (normalized) WebAssembly module. Defaults to binary format; pass `text` for WAT output.                                                                                                       |
+| `--define <K=V>`             | `string` | Set a compile-time define (repeatable). Used to configure backend constants.                                                                                                                           |
+| `--mangler <key>`            | `string` | Enable deterministic identifier mangling. Same key = same output; different keys = different names.                                                                                                    |
+| `--out-file <path>`          | `string` | Write output to a file instead of stdout.                                                                                                                                                              |
+| `--pre-normalized`           | `flag`   | Input was already processed by `--normalize-wasm ...,wasm2lang:codegen`. Enables IR-based loop and control-flow recovery for patterns whose `w2l_` label hints were stripped during binary round-trip. |
+| `--help`                     | --       | Print option descriptions to stderr and exit.                                                                                                                                                          |
 
 ### Normalization bundles
 
@@ -251,7 +255,7 @@ Java output is a class wrapping all exported functions as methods, with a
 ### Inline WebAssembly text
 
 ```bash
-wasm2lang                                                                            \
+wasm2lang                                                                           \
  --language-out java                                                                \
  --input-data '(module (func (export "f") (param i32) (result i32) (local.get 0)))' \
  --normalize-wasm binaryen:min                                                      \
@@ -346,6 +350,32 @@ wasm2lang                       \
 
 Binary `.wasm` files are detected automatically (no `wast:` prefix needed).
 
+### Two-step: normalize once, emit later
+
+For build pipelines where normalization and emission happen at different
+stages (or on different machines), split the work in two:
+
+```bash
+# Step 1 -- normalize once and serialize (pass analysis is embedded as a
+# w2l_codegen_meta custom section so it survives the binary round-trip):
+wasm2lang                                         \
+  --input-file module.wasm                        \
+  --normalize-wasm binaryen:min,wasm2lang:codegen \
+  --emit-web-assembly > normalized.wasm
+
+# Step 2 -- read the normalized .wasm and emit code:
+wasm2lang                        \
+  --input-file normalized.wasm   \
+  --normalize-wasm binaryen:none \
+  --pre-normalized               \
+  --language-out JAVA            \
+  --emit-code module
+```
+
+The second invocation skips re-running the codegen passes and uses
+IR-based structural detection to recover loop and control-flow patterns
+whose `w2l_` label prefixes were stripped during binary serialization.
+
 ## Building
 
 ```bash
@@ -366,12 +396,13 @@ mkdir test_artifacts && cd test_artifacts
 ./wasm2lang_run_tests.sh
 ```
 
-The test harness runs 14 tests covering MVP ops, control flow, arithmetic,
-memory types, algorithms, i64 ops, type casts, and SIMD:
+The test harness runs 17 tests covering MVP ops, control flow, arithmetic,
+memory types, algorithms, i64 ops, type casts, SIMD, globals, lookup tables,
+and codegen-pass edge cases:
 
 1. Generates `.wast` test fixtures from `tests/*.build.js` scripts.
 2. Builds each fixture in two variants -- `codegen` (with `wasm2lang:codegen` passes + mangling) and `none` (raw, no codegen passes).
-3. For each variant, transpiles to all enabled backends (asm.js, PHP, Java). Per-test `.build.languages` files can restrict which backends run.
+3. For each variant, transpiles to all enabled backends (asm.js, JavaScript, PHP, Java). Per-test `.build.languages` files can restrict which backends run.
 4. Runs the original `.wasm` through V8 as a reference.
 5. Runs each backend's output through its runtime (V8, SpiderMonkey, PHP CLI, jshell).
 6. Compares stdout output and a CRC32 memory snapshot across all backends.
