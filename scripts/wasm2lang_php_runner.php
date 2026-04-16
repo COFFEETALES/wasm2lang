@@ -106,7 +106,7 @@ $instanceMemoryBuffer = &$memBuffer;
 
 if (isset($runTest)) {
     $sharedData = null;
-    $testBase = preg_replace('/_(codegen|none|prenorm|nopre)$/', '', basename($testName));
+    $testBase = preg_replace('/_(baseline|codegen|none|prenorm|nopre)$/', '', basename($testName));
     $dataPath = __DIR__ . '/' . $testBase . '.shared.data.json';
     if (is_file($dataPath)) {
         $sharedData = json_decode(file_get_contents($dataPath), true);

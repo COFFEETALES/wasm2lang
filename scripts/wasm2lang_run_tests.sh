@@ -10,7 +10,7 @@ if [ ${#0} -ne ${#prefix} ]; then
   ACTUAL_CWD="$(pwd -P)"
 
   fn() {
-    local dirbase directory dirname filebase retcode tmpretcode
+    local directory dirname filebase retcode tmpretcode jshell_harness
     local sibling_base sibling_dir sibling_dirname sibling_filebase sibling_variant
     local LF="$(printf '\012+')"
     LF="${LF%?}"
@@ -22,6 +22,15 @@ if [ ${#0} -ne ${#prefix} ]; then
       return 1
     fi
 
+    # Fail the current test if file $1 (a runtime `.out`) differs from the
+    # canonical V8 WASM output.  Silently passes when $1 doesn't exist
+    # (e.g. the runtime was skipped).
+    compare_to_wasm_out() {
+      [ -f "$1" ] || return 0
+      diff -qs "${filebase}".v8.wasm.out "$1"
+      [ $? -eq 0 ] || tmpretcode=1
+    }
+
     echo "Running tests..."
 
     for directory in './wasm2lang_'*'/'; do
@@ -30,7 +39,7 @@ if [ ${#0} -ne ${#prefix} ]; then
       filebase="${dirname}"'/'"${dirname}"
       echo "----------------------------------------"
       echo -e "\033[1;34mRunning test: $dirname\033[0m"
-      #
+
       echo -e "\033[0;33mRunning V8 WASM test...\033[0m"
       cat "${filebase}".wasm               \
       |                                    \
@@ -40,7 +49,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         --wasm                             \
       |                                    \
       tee "${filebase}".v8.wasm.out
-      #
+
       if [ -f "${filebase}".asm.js ]; then
         echo -e "\033[0;33mRunning V8 ASMJS test...\033[0m"
         cat "${filebase}".asm.js             \
@@ -53,21 +62,22 @@ if [ ${#0} -ne ${#prefix} ]; then
           2>&1                               \
         |                                    \
         tee "${filebase}".v8.asmjs.out
+
+        if [ -x "${SPIDERMONKEY_JS}" ]; then
+          echo -e "\033[0;33mRunning SpiderMonkey ASMJS test...\033[0m"
+          cat "${filebase}".asm.js             \
+          |                                    \
+          "${SPIDERMONKEY_JS}"                 \
+            --warnings                         \
+            "./wasm2lang_wasm_asmjs_runner.js" \
+            --test-name "$filebase"            \
+            --asmjs                            \
+          |                                    \
+          tee "${filebase}".sm.asmjs.out
+          dos2unix "${filebase}".sm.asmjs.out
+        fi
       fi
-      #
-      if [ -f "${filebase}".asm.js ] && [ -x "${SPIDERMONKEY_JS}" ]; then
-        echo -e "\033[0;33mRunning SpiderMonkey ASMJS test...\033[0m"
-        cat "${filebase}".asm.js             \
-        |                                    \
-        "${SPIDERMONKEY_JS}"                 \
-          --warnings                         \
-          "./wasm2lang_wasm_asmjs_runner.js" \
-          --test-name "$filebase"            \
-          --asmjs                            \
-        |                                    \
-        tee "${filebase}".sm.asmjs.out
-        dos2unix "${filebase}".sm.asmjs.out
-      fi
+
       if [ -f "${filebase}".js ]; then
         echo -e "\033[0;33mRunning V8 JAVASCRIPT test...\033[0m"
         cat "${filebase}".js                 \
@@ -80,20 +90,22 @@ if [ ${#0} -ne ${#prefix} ]; then
           2>&1                               \
         |                                    \
         tee "${filebase}".v8.javascript.out
+
+        if [ -x "${SPIDERMONKEY_JS}" ]; then
+          echo -e "\033[0;33mRunning SpiderMonkey JAVASCRIPT test...\033[0m"
+          cat "${filebase}".js                 \
+          |                                    \
+          "${SPIDERMONKEY_JS}"                 \
+            --warnings                         \
+            "./wasm2lang_wasm_asmjs_runner.js" \
+            --test-name "$filebase"            \
+            --javascript                       \
+          |                                    \
+          tee "${filebase}".sm.javascript.out
+          dos2unix "${filebase}".sm.javascript.out
+        fi
       fi
-      if [ -f "${filebase}".js ] && [ -x "${SPIDERMONKEY_JS}" ]; then
-        echo -e "\033[0;33mRunning SpiderMonkey JAVASCRIPT test...\033[0m"
-        cat "${filebase}".js                 \
-        |                                    \
-        "${SPIDERMONKEY_JS}"                 \
-          --warnings                         \
-          "./wasm2lang_wasm_asmjs_runner.js" \
-          --test-name "$filebase"            \
-          --javascript                       \
-        |                                    \
-        tee "${filebase}".sm.javascript.out
-        dos2unix "${filebase}".sm.javascript.out
-      fi
+
       if [ -f "${filebase}".php ] && [ -x "${PHP_CLI}" ]; then
         echo -e "\033[0;33mRunning PHP test...\033[0m"
         cat "${filebase}".php          \
@@ -104,69 +116,37 @@ if [ ${#0} -ne ${#prefix} ]; then
         |                              \
         tee "${filebase}".php.out
       fi
+
       if [ -x "${JSHELL_CLI}" ]; then
         echo -e "\033[0;33mRunning Java test...\033[0m"
-        local jshell_harness=""
+        jshell_harness=""
         if [ -f "${filebase}".harness.java ]; then
           jshell_harness="${filebase}".harness.java
         fi
-        "$JSHELL_CLI"                                      \
-          -J-Dline.separator="$LF"                         \
-          -R-Dline.separator="$LF"                         \
-          -R-Dw2l.testname="$filebase"                     \
-          --class-path "$GSON_LIBRARY"                     \
-          --add-modules jdk.incubator.vector               \
-          -q                                               \
-          "./wasm2lang_java_runner.jsh"                    \
-          "${filebase}".java                               \
-          ${jshell_harness}                                \
-        |                               \
+        "$JSHELL_CLI"                        \
+          -J-Dline.separator="$LF"           \
+          -R-Dline.separator="$LF"           \
+          -R-Dw2l.testname="$filebase"       \
+          --class-path "$GSON_LIBRARY"       \
+          --add-modules jdk.incubator.vector \
+          -q                                 \
+          "./wasm2lang_java_runner.jsh"      \
+          "${filebase}".java                 \
+          ${jshell_harness}                  \
+        |                                    \
         tee "${filebase}".jshell.out
       fi
-      #
+
       echo ''
-      if [ -f "${filebase}".v8.asmjs.out ]; then
-        diff -qs                     \
-          "${filebase}".v8.wasm.out  \
-          "${filebase}".v8.asmjs.out
-        [ $? -eq 0 ] || tmpretcode=1
-        if [ -s "${filebase}".v8.asmjs.stderr ]; then
-          tmpretcode=1
-        fi
-      fi
-      if [ -f "${filebase}".sm.asmjs.out ] && [ -x "${SPIDERMONKEY_JS}" ]; then
-        diff -qs                     \
-          "${filebase}".v8.wasm.out  \
-          "${filebase}".sm.asmjs.out
-        [ $? -eq 0 ] || tmpretcode=1
-      fi
-      if [ -f "${filebase}".v8.javascript.out ]; then
-        diff -qs                          \
-          "${filebase}".v8.wasm.out       \
-          "${filebase}".v8.javascript.out
-        [ $? -eq 0 ] || tmpretcode=1
-        if [ -s "${filebase}".v8.javascript.stderr ]; then
-          tmpretcode=1
-        fi
-      fi
-      if [ -f "${filebase}".sm.javascript.out ] && [ -x "${SPIDERMONKEY_JS}" ]; then
-        diff -qs                          \
-          "${filebase}".v8.wasm.out       \
-          "${filebase}".sm.javascript.out
-        [ $? -eq 0 ] || tmpretcode=1
-      fi
-      if [ -f "${filebase}".php.out ] && [ -x "${PHP_CLI}" ]; then
-        diff -qs                    \
-          "${filebase}".v8.wasm.out \
-          "${filebase}".php.out
-        [ $? -eq 0 ] || tmpretcode=1
-      fi
-      if [ -x "${JSHELL_CLI}" ]; then
-        diff -qs                    \
-          "${filebase}".v8.wasm.out \
-          "${filebase}".jshell.out
-        [ $? -eq 0 ] || tmpretcode=1
-      fi
+      compare_to_wasm_out "${filebase}".v8.asmjs.out
+      [ -s "${filebase}".v8.asmjs.stderr ] && tmpretcode=1
+      compare_to_wasm_out "${filebase}".sm.asmjs.out
+      compare_to_wasm_out "${filebase}".v8.javascript.out
+      [ -s "${filebase}".v8.javascript.stderr ] && tmpretcode=1
+      compare_to_wasm_out "${filebase}".sm.javascript.out
+      compare_to_wasm_out "${filebase}".php.out
+      compare_to_wasm_out "${filebase}".jshell.out
+
       # When this is the codegen baseline variant, compare its V8 WASM
       # output against every sibling variant's output. All variants derive
       # from the same original .wast, so their execution output must match.
@@ -189,13 +169,13 @@ if [ ${#0} -ne ${#prefix} ]; then
           done
           ;;
       esac
+
       if [ 1 -eq $tmpretcode ]; then
         echo -e "Test $dirname: \033[0;31mFAILED\033[0m"
       else
         echo -e "Test $dirname: \033[0;32mPASSED\033[0m"
       fi
       retcode=$((retcode | tmpretcode))
-      #
     done
 
     echo "----------------------------------------"

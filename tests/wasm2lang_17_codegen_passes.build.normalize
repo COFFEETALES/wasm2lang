@@ -1,3 +1,0 @@
-codegen binaryen:none,wasm2lang:codegen
-prenorm binaryen:none,wasm2lang:codegen
-nopre binaryen:none,wasm2lang:codegen

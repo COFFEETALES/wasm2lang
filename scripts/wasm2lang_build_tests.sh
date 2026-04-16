@@ -10,10 +10,10 @@ if [ ${#0} -ne ${#prefix} ]; then
   ACTUAL_CWD="$(pwd -P)"
 
   fn() {
-    local file variant_suffix normalize_wasm artifact_normalize_wasm
-    local filename testbase artifact_dir artifact_base
-    local harness_file harness_name harness_variant_name build_languages
-    local variant_list
+    local file filename testbase variant_list variant_suffix
+    local artifact_dir artifact_base harness_file harness_name harness_variant_name
+    local build_languages mangler_key MANGLER_LEN
+    local wasm_normalize codegen_normalize codegen_input
     local codegen_dir codegen_name testbase_only prenorm_name ext f1 f2 tmpfile
     local constraint_failures
 
@@ -25,9 +25,38 @@ if [ ${#0} -ne ${#prefix} ]; then
       return 1
     fi
 
+    # Emit WASM in binary ($1='') or text ($1='text') form, with extension $2.
+    emit_wasm_form() {
+      cat ./"${testbase}".orig.wast         \
+      |                                     \
+      node                                  \
+        "../wasm2lang.js"                   \
+        --normalize-wasm "$wasm_normalize"  \
+        --emit-web-assembly $1              \
+        --input-file wast:-                 \
+        --out-file="${artifact_base}.$2"
+    }
+
+    # Emit code for one language, skipping if not in $build_languages.
+    #   $1 language-out id    (ASMJS|JAVASCRIPT|PHP64|JAVA)
+    #   $2 output extension   (asm.js|js|php|java)
+    #   $3 heap-size define   (ASMJS_HEAP_SIZE|PHP64_HEAP_SIZE|JAVA_HEAP_SIZE)
+    emit_language_code() {
+      case " $build_languages " in *" $1 "*) ;; *) return 0 ;; esac
+      node                                        \
+        "../wasm2lang.js"                         \
+        --normalize-wasm "$codegen_normalize"     \
+        --mangler "$mangler_key"                  \
+        --language-out "$1"                       \
+        --define "$3=$((65536 * 8))"              \
+        --emit-metadata=memBuffer                 \
+        --emit-code=module                        \
+        --out-file="${artifact_base}.$2"          \
+        $codegen_input
+    }
+
     echo -e "\033[1;34mBuilding tests...\033[0m"
     export NODE_PATH="${SH_SOURCE}/../node_modules"
-
     export WASM2LANG_OPTIMIZE_OUTPUT=on
 
     rm -rf                              \
@@ -49,43 +78,80 @@ if [ ${#0} -ne ${#prefix} ]; then
       testbase="${filename%.build.js}"
 
       if [ -n "${UNIQUE_MANGLER_KEY:-}" ]; then
-        set -- --mangler "$UNIQUE_MANGLER_KEY"
+        mangler_key="$UNIQUE_MANGLER_KEY"
       else
         MANGLER_LEN=$(( $(od -An -N1 -tu1 /dev/urandom | tr -d ' ') % 25 + 8 ))
-        set -- --mangler "$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c "$MANGLER_LEN")"
+        mangler_key="$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c "$MANGLER_LEN")"
       fi
 
-      #
-      # Generate original WAST + shared data (once per test, before variants)
-      node                                                                       \
-        "../tests/$filename"                                                     \
-        --emit-shared-data "./${testbase}.shared.data.json"                      \
+      # Generate original WAST + shared data (once per test, before variants).
+      node                                                  \
+        "../tests/$filename"                                \
+        --emit-shared-data "./${testbase}.shared.data.json" \
         1>./"${testbase}".orig.wast
 
-      # Read variant list from .build.normalize (one "suffix normalize_wasm" per
-      # line) or fall back to the default two-variant set.
+      # Per-test language restriction (default: all languages).
+      if [ -f "../tests/${testbase}.build.languages" ]; then
+        build_languages="$(cat "../tests/${testbase}.build.languages")"
+      else
+        build_languages="ASMJS JAVASCRIPT PHP64 JAVA"
+      fi
+
+      # Read variant list from .build.normalize (one suffix per line) or
+      # fall back to the default four-variant set.  Each variant fully
+      # defines its own normalization/input pipeline below; the variant
+      # suffix alone is enough to identify it.
+      #   baseline — raw WASM, no wasm2lang:codegen at all; sanity-checks that
+      #              the backend tolerates un-normalized IR and that runtime
+      #              memory dumps match the normalized variants.
+      #   codegen  — single-pass emission with wasm2lang:codegen applied in
+      #              the same process that emits the code.
+      #   prenorm  — two-pass: wasm2lang:codegen is applied to emit a
+      #              normalized .wasm, then a second invocation reads that
+      #              binary with --pre-normalized and emits the code.
+      #   nopre    — like prenorm but the second invocation omits
+      #              --pre-normalized, exercising the backend's IR-based
+      #              fallback for recovering the normalization patterns
+      #              after a binary round-trip.
       if [ -f "../tests/${testbase}.build.normalize" ]; then
         variant_list="$(cat "../tests/${testbase}.build.normalize")"
       else
-        variant_list="codegen binaryen:none,wasm2lang:codegen${LF}prenorm binaryen:none,wasm2lang:codegen"
+        variant_list="baseline${LF}codegen${LF}prenorm${LF}nopre"
       fi
 
-      while IFS=' ' read -r variant_suffix normalize_wasm; do
-
+      while IFS=' ' read -r variant_suffix _; do
+        [ -n "$variant_suffix" ] || continue
         artifact_dir="${testbase}_${variant_suffix}"
         artifact_base="${artifact_dir}/${artifact_dir}"
 
-        # Per-test language restriction (default: all languages).
-        build_languages="ASMJS JAVASCRIPT PHP64 JAVA"
-        if [ -f "../tests/${testbase}.build.languages" ]; then
-          build_languages="$(cat "../tests/${testbase}.build.languages")"
-        fi
-
-        # prenorm/nopre: WASM/WAST include wasm2lang:codegen normalization
-        # (embeds the w2l_codegen_meta custom section); other variants use raw.
+        # Variant-specific pipeline selection: each branch fully specifies
+        # how the .wasm/.wast is produced (wasm_normalize) and how the code
+        # emitter reads it back (codegen_normalize + codegen_input).
         case "$variant_suffix" in
-          prenorm|nopre) wasm_normalize="$normalize_wasm" ;;
-          *)             wasm_normalize="binaryen:none"   ;;
+          baseline)
+            wasm_normalize="binaryen:none"
+            codegen_normalize="binaryen:none"
+            codegen_input="--input-file wast:${artifact_base}.wast"
+            ;;
+          codegen)
+            wasm_normalize="binaryen:none"
+            codegen_normalize="binaryen:none,wasm2lang:codegen"
+            codegen_input="--input-file wast:${artifact_base}.wast"
+            ;;
+          prenorm)
+            wasm_normalize="binaryen:none,wasm2lang:codegen"
+            codegen_normalize="binaryen:none"
+            codegen_input="--input-file ${artifact_base}.wasm --pre-normalized"
+            ;;
+          nopre)
+            wasm_normalize="binaryen:none,wasm2lang:codegen"
+            codegen_normalize="binaryen:none"
+            codegen_input="--input-file ${artifact_base}.wasm"
+            ;;
+          *)
+            echo -e "\033[0;31mError:\033[0m unknown variant suffix '$variant_suffix'" >&2
+            return 1
+            ;;
         esac
 
         mkdir "$artifact_dir"
@@ -94,100 +160,14 @@ if [ ${#0} -ne ${#prefix} ]; then
           harness_variant_name="${artifact_dir}${harness_name#$testbase}"
           cp "$harness_file" "./${artifact_dir}/${harness_variant_name}"
         done
-        #
-        # Generate WASM
-        cat ./"${testbase}".orig.wast           \
-        |                                       \
-        node                                    \
-          "../wasm2lang.js"                     \
-          --normalize-wasm "$wasm_normalize"    \
-          --emit-web-assembly                   \
-          --input-file wast:-                   \
-          --out-file="${artifact_base}".wasm
-        #
-        # Generate WAST
-        cat ./"${testbase}".orig.wast           \
-        |                                       \
-        node                                    \
-          "../wasm2lang.js"                     \
-          --normalize-wasm "$wasm_normalize"    \
-          --emit-web-assembly text              \
-          --input-file wast:-                   \
-          --out-file="${artifact_base}".wast
-        #
-        # Code generation: prenorm reads from the variant's .wasm binary
-        # with --pre-normalized; other variants read from .wast with
-        # in-process normalization.
-        case "$variant_suffix" in
-          prenorm)
-            codegen_normalize="binaryen:none"
-            codegen_input="--input-file ${artifact_base}.wasm --pre-normalized"
-            ;;
-          nopre)
-            codegen_normalize="binaryen:none"
-            codegen_input="--input-file ${artifact_base}.wasm"
-            ;;
-          *)
-            codegen_normalize="$normalize_wasm"
-            codegen_input="--input-file wast:${artifact_base}.wast"
-            ;;
-        esac
-        #
-        # Generate ASMJS
-        case " $build_languages " in *" ASMJS "*)
-        node                                        \
-          "../wasm2lang.js"                         \
-          --normalize-wasm "$codegen_normalize"     \
-          "$@"                                      \
-          --language-out ASMJS                      \
-          --define "ASMJS_HEAP_SIZE=$((65536 * 8))" \
-          --emit-metadata=memBuffer                 \
-          --emit-code=module                        \
-          --out-file="${artifact_base}".asm.js      \
-          $codegen_input
-        ;; esac
-        #
-        # Generate JAVASCRIPT
-        case " $build_languages " in *" JAVASCRIPT "*)
-        node                                        \
-          "../wasm2lang.js"                         \
-          --normalize-wasm "$codegen_normalize"     \
-          "$@"                                      \
-          --language-out JAVASCRIPT                 \
-          --define "ASMJS_HEAP_SIZE=$((65536 * 8))" \
-          --emit-metadata=memBuffer                 \
-          --emit-code=module                        \
-          --out-file="${artifact_base}".js          \
-          $codegen_input
-        ;; esac
-        #
-        # Generate PHP64
-        case " $build_languages " in *" PHP64 "*)
-        node                                        \
-          "../wasm2lang.js"                         \
-          --normalize-wasm "$codegen_normalize"     \
-          "$@"                                      \
-          --language-out PHP64                      \
-          --define "PHP64_HEAP_SIZE=$((65536 * 8))" \
-          --emit-metadata=memBuffer                 \
-          --emit-code=module                        \
-          --out-file="${artifact_base}".php         \
-          $codegen_input
-        ;; esac
-        #
-        # Generate JAVA
-        case " $build_languages " in *" JAVA "*)
-        node                                        \
-          "../wasm2lang.js"                         \
-          --normalize-wasm "$codegen_normalize"     \
-          "$@"                                      \
-          --language-out JAVA                       \
-          --define "JAVA_HEAP_SIZE=$((65536 * 8))"  \
-          --emit-metadata=memBuffer                 \
-          --emit-code=module                        \
-          --out-file="${artifact_base}".java        \
-          $codegen_input
-        ;; esac
+
+        emit_wasm_form ''     wasm
+        emit_wasm_form 'text' wast
+
+        emit_language_code ASMJS      asm.js ASMJS_HEAP_SIZE
+        emit_language_code JAVASCRIPT js     ASMJS_HEAP_SIZE
+        emit_language_code PHP64      php    PHP64_HEAP_SIZE
+        emit_language_code JAVA       java   JAVA_HEAP_SIZE
       done <<EOF
 $variant_list
 EOF
@@ -211,15 +191,14 @@ EOF
       for ext in asm.js js php java; do
         f1="${codegen_dir}/${codegen_name}.${ext}"
         f2="./${prenorm_name}/${prenorm_name}.${ext}"
-        if [ -f "$f1" ] && [ -f "$f2" ]; then
-          tmpfile="$(mktemp)"
-          sed "s/${codegen_name}/${prenorm_name}/g" "$f1" > "$tmpfile"
-          if ! diff -q "$tmpfile" "$f2" >/dev/null 2>&1; then
-            echo -e "  \033[0;31mFAIL\033[0m: ${testbase_only}.${ext} (codegen vs prenorm)" >&2
-            constraint_failures=$((constraint_failures + 1))
-          fi
-          rm -f "$tmpfile"
+        [ -f "$f1" ] && [ -f "$f2" ] || continue
+        tmpfile="$(mktemp)"
+        sed "s/${codegen_name}/${prenorm_name}/g" "$f1" > "$tmpfile"
+        if ! diff -q "$tmpfile" "$f2" >/dev/null 2>&1; then
+          echo -e "  \033[0;31mFAIL\033[0m: ${testbase_only}.${ext} (codegen vs prenorm)" >&2
+          constraint_failures=$((constraint_failures + 1))
         fi
+        rm -f "$tmpfile"
       done
     done
     echo "----------------------------------------"
