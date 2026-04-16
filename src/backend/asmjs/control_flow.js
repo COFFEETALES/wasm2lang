@@ -200,17 +200,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ callExpr = callName + '(' + callArgs.join(', ') + ')';
       if (binaryen.none === callType || 0 === callType) {
         result = pad(ind) + callExpr + ';\n';
-      } else if ('' !== importBase && binaryen.f32 === callType) {
-        // asm.js FFI calls return int or double only — coerce to double
-        // first, then apply fround.
-        result = this.renderCoercionByType_(
-          binaryen,
-          Wasm2Lang.Backend.JsCommonCodegen.renderDoubleCoercion_(callExpr),
-          callType
-        );
-        resultCat = A.catForCoercedType_(binaryen, callType);
       } else {
-        result = this.renderCoercionByType_(binaryen, callExpr, callType);
+        result = this.coerceCallResult_(binaryen, callExpr, callType, '' !== importBase);
         resultCat = A.catForCoercedType_(binaryen, callType);
       }
       break;
@@ -230,7 +221,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       if (binaryen.none === ciRetType || 0 === ciRetType) {
         result = pad(ind) + ciCallExpr + ';\n';
       } else {
-        result = this.renderCoercionByType_(binaryen, ciCallExpr, ciRetType);
+        result = this.coerceCallResult_(binaryen, ciCallExpr, ciRetType, false);
         resultCat = A.catForCoercedType_(binaryen, ciRetType);
       }
       break;

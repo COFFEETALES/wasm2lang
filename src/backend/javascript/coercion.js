@@ -187,6 +187,46 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHelperCall_ = function (bina
 };
 
 /**
+ * JavaScript call-site results carry their declared wasm type without an
+ * outer coercion wrap:
+ *   - Internal functions: {@code ReturnId} ran {@code coerceAtBoundary_}
+ *     on the returned expression, so the value already satisfies the
+ *     declared return type ({@code |0} for i32, {@code Math.fround(...)}
+ *     for f32, {@code BigInt.asIntN(64, ...)} for i64, bare Number for
+ *     f64).  {@code call_indirect} targets are always user-defined, so
+ *     the same invariant holds.
+ *   - Stdlib calls ({@code Math.imul}, {@code Math.fround},
+ *     {@code Math.clz32}, {@code Math.sqrt}, ...): each returns a JS value
+ *     whose shape already matches the declared wasm type — {@code imul}
+ *     and {@code clz32} return signed i32, {@code fround} returns an
+ *     f32-precision Number, trig/root functions return f64 doubles.
+ *   - Host imports: the FFI contract requires the host to return a value
+ *     of the declared type; defensive re-coercion hides rather than
+ *     surfaces a bug in the host binding.
+ *
+ * Caller records {@code resultCat = catForCoercedType_(callType)} which
+ * already marks the bare expression as fully typed, so downstream
+ * {@code coerceToType_} skips further wrapping.  The sole asm.js-specific
+ * wrinkle the base class handles — promoting FFI f32 returns through
+ * {@code +expr} before {@code Math.fround} — does not apply in JavaScript
+ * because there is no distinct double type to bridge.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} callExpr
+ * @param {number} callType
+ * @param {boolean} isImport
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.coerceCallResult_ = function (binaryen, callExpr, callType, isImport) {
+  void binaryen;
+  void callType;
+  void isImport;
+  return callExpr;
+};
+
+/**
  * Renders a binaryen i64 constant as a BigInt literal.
  *
  * BigInt has no fixed width — hex literals are interpreted as their

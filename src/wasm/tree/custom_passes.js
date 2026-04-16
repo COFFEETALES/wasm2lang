@@ -476,6 +476,45 @@ Wasm2Lang.Wasm.Tree.CustomPasses.isUnconditionalTerminator = function (binaryen,
 // ---------------------------------------------------------------------------
 
 /**
+ * Lazily-built lookup from binaryen comparison op code to the api+method pair
+ * that produces the logical inverse.  Shared across both i32 and i64 widths.
+ *
+ * @private @type {?Object<number, !Array<string>>}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.cmpInversionTable_ = null;
+
+/**
+ * Builds the comparison-inversion lookup.  Each row lists a mutually-inverse
+ * pair as {@code [opA, opB, api, methodForA, methodForB]}: opA's inverse is
+ * {@code api[methodForA]}, opB's inverse is {@code api[methodForB]}.
+ *
+ * @private
+ * @param {!Binaryen} binaryen
+ * @return {!Object<number, !Array<string>>}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.buildCmpInversionTable_ = function (binaryen) {
+  var /** @const {!Array<!Array<string>>} */ rows = [
+      ['EqInt32', 'NeInt32', 'i32', 'ne', 'eq'],
+      ['LtSInt32', 'GeSInt32', 'i32', 'ge_s', 'lt_s'],
+      ['GtSInt32', 'LeSInt32', 'i32', 'le_s', 'gt_s'],
+      ['LtUInt32', 'GeUInt32', 'i32', 'ge_u', 'lt_u'],
+      ['GtUInt32', 'LeUInt32', 'i32', 'le_u', 'gt_u'],
+      ['EqInt64', 'NeInt64', 'i64', 'ne', 'eq'],
+      ['LtSInt64', 'GeSInt64', 'i64', 'ge_s', 'lt_s'],
+      ['GtSInt64', 'LeSInt64', 'i64', 'le_s', 'gt_s'],
+      ['LtUInt64', 'GeUInt64', 'i64', 'ge_u', 'lt_u'],
+      ['GtUInt64', 'LeUInt64', 'i64', 'le_u', 'gt_u']
+    ];
+  var /** @const {!Object<number, !Array<string>>} */ t = /** @type {!Object<number, !Array<string>>} */ (Object.create(null));
+  for (var /** @type {number} */ i = 0, /** @const {number} */ rLen = rows.length; i < rLen; ++i) {
+    var /** @const {!Array<string>} */ r = rows[i];
+    t[binaryen[r[0]]] = [r[2], r[3]];
+    t[binaryen[r[1]]] = [r[2], r[4]];
+  }
+  return t;
+};
+
+/**
  * Inverts a condition expression at the binaryen IR level.
  *
  * - Comparisons are complemented (lt_s -> ge_s, eq -> ne, etc.)
@@ -493,35 +532,21 @@ Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition = function (binaryen, module, c
   var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
       Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, condPtr)
     );
-  var /** @const {!BinaryenI32Api} */ i32 = module.i32;
   if (binaryen.BinaryId === info.id) {
-    var /** @const {number} */ op = /** @type {number} */ (info.op);
-    var /** @const {number} */ L = /** @type {number} */ (info.left);
-    var /** @const {number} */ R = /** @type {number} */ (info.right);
-    if (binaryen.EqInt32 === op) return i32.ne(L, R);
-    if (binaryen.NeInt32 === op) return i32.eq(L, R);
-    if (binaryen.LtSInt32 === op) return i32.ge_s(L, R);
-    if (binaryen.GeSInt32 === op) return i32.lt_s(L, R);
-    if (binaryen.GtSInt32 === op) return i32.le_s(L, R);
-    if (binaryen.LeSInt32 === op) return i32.gt_s(L, R);
-    if (binaryen.LtUInt32 === op) return i32.ge_u(L, R);
-    if (binaryen.GeUInt32 === op) return i32.lt_u(L, R);
-    if (binaryen.GtUInt32 === op) return i32.le_u(L, R);
-    if (binaryen.LeUInt32 === op) return i32.gt_u(L, R);
-    var /** @const {!BinaryenI64Api} */ i64 = module.i64;
-    if (binaryen.EqInt64 === op) return i64.ne(L, R);
-    if (binaryen.NeInt64 === op) return i64.eq(L, R);
-    if (binaryen.LtSInt64 === op) return i64.ge_s(L, R);
-    if (binaryen.GeSInt64 === op) return i64.lt_s(L, R);
-    if (binaryen.GtSInt64 === op) return i64.le_s(L, R);
-    if (binaryen.LeSInt64 === op) return i64.gt_s(L, R);
-    if (binaryen.LtUInt64 === op) return i64.ge_u(L, R);
-    if (binaryen.GeUInt64 === op) return i64.lt_u(L, R);
-    if (binaryen.GtUInt64 === op) return i64.le_u(L, R);
-    if (binaryen.LeUInt64 === op) return i64.gt_u(L, R);
+    var /** @const {!Object<number, !Array<string>>} */ table =
+        Wasm2Lang.Wasm.Tree.CustomPasses.cmpInversionTable_ ||
+        (Wasm2Lang.Wasm.Tree.CustomPasses.cmpInversionTable_ =
+          Wasm2Lang.Wasm.Tree.CustomPasses.buildCmpInversionTable_(binaryen));
+    var /** @const {!Array<string>|undefined} */ entry = table[/** @type {number} */ (info.op)];
+    if (entry) {
+      var /** @const {function(number, number): number} */ fn = /** @type {function(number, number): number} */ (
+          module[entry[0]][entry[1]]
+        );
+      return fn(/** @type {number} */ (info.left), /** @type {number} */ (info.right));
+    }
   }
   if (binaryen.UnaryId === info.id && /** @type {number} */ (info.op) === binaryen.EqZInt32) {
     return /** @type {number} */ (info.value);
   }
-  return i32.eqz(condPtr);
+  return module.i32.eqz(condPtr);
 };

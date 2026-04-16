@@ -65,6 +65,28 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCoercionByType_ = function (binar
 };
 
 /**
+ * Coerces a call (or call_indirect) result expression to its declared wasm
+ * type.  Asm.js requires an explicit annotation at every call site: i32 via
+ * {@code |0}, f32 via {@code Math.fround(+expr)} for FFI (double→float),
+ * f64 via {@code +expr}.  The JavaScript backend overrides this to skip the
+ * annotation entirely — callee {@code ReturnId} already coerces the value,
+ * and stdlib/imports return JS values already shaped to their declared type.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} callExpr
+ * @param {number} callType
+ * @param {boolean} isImport  True when the target is a non-stdlib host import.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceCallResult_ = function (binaryen, callExpr, callType, isImport) {
+  if (isImport && binaryen.f32 === callType) {
+    return this.renderCoercionByType_(binaryen, Wasm2Lang.Backend.JsCommonCodegen.renderDoubleCoercion_(callExpr), callType);
+  }
+  return this.renderCoercionByType_(binaryen, callExpr, callType);
+};
+
+/**
  * @override
  * @protected
  * @param {!Binaryen} binaryen
