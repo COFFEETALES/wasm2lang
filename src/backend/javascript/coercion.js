@@ -43,14 +43,15 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.coerceSwitchCondition_ = function 
 };
 
 /**
- * JavaScript comparisons yield {@code true}/{@code false}, not 0/1 — so the
- * asm.js override (return expression unchanged) is wrong here.  Use the
- * base-class ternary form so boolean results materialize as an integer when
- * consumed by switch dispatch or bitwise combinators.  Wrap the materialized
- * ternary in parens because the result may be embedded in a higher-precedence
- * context such as the condition of an outer ternary (Select), where
- * {@code expr ? 1 : 0 ? a : b} would otherwise re-associate as
- * {@code expr ? 1 : (0 ? a : b)}.
+ * Asm.js inherits a no-op {@code renderNumericComparisonResult_} because
+ * its comparison operators already produce {@code 0}/{@code 1} integers;
+ * JavaScript comparisons instead yield booleans.  For switch dispatch the
+ * boolean has to be materialized into an integer (switch case matching is
+ * strict {@code ===} and {@code true !== 1}), so override back to the
+ * base-class {@code (cond ? 1 : 0)} materializer.  Arithmetic/bitwise/
+ * boundary-coercion call sites route through {@code coerceBooleanOperand_}
+ * instead, which JS no-ops since JS auto-coerces booleans in those
+ * contexts via {@code ToNumber}/{@code ToInt32}.
  *
  * @override
  * @protected
@@ -58,15 +59,66 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.coerceSwitchCondition_ = function 
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
-  return '(' + conditionExpr + ' ? 1 : 0)';
+  return conditionExpr + ' ? 1 : 0';
+};
+
+/**
+ * Skip boolean materialization at arithmetic/bitwise/boundary call sites —
+ * JS auto-coerces booleans to {@code 0}/{@code 1} there.  Switch dispatch
+ * still goes through {@code renderNumericComparisonResult_} and keeps the
+ * ternary materialization.
+ *
+ * @override
+ * @protected
+ * @param {string} operandExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.coerceBooleanOperand_ = function (operandExpr) {
+  return operandExpr;
+};
+
+/**
+ * JavaScript Numbers are exact for integers up to 2<sup>53</sup>, so the
+ * intermediate {@code |0} that asm.js inserts on every {@code INTISH} operand
+ * is not required between most i32 binary ops — bitwise/shift/comparison-eq
+ * sites already invoke {@code ToInt32}/{@code ToUint32} on their operands,
+ * and {@code Math.imul} normalizes via {@code ToUint32}.  Two op categories
+ * still need explicit coercion:
+ *   - {@code OP_DIVISION} ({@code /} and {@code %}): operate on raw Numbers,
+ *     so an INTISH dividend like {@code (k - 1)} for {@code k = INT32_MIN}
+ *     diverges from wasm i32 wraparound.
+ *   - {@code OP_COMPARISON} (signed): comparing INTISH values that overflow
+ *     int32 (e.g., {@code (INT32_MAX + 1) < 0}) yields the opposite of the
+ *     wrapped int32 comparison.  Unsigned comparisons reinterpret via
+ *     {@code >>>0} which already wraps, so they need no extra coercion.
+ *
+ * Unary call sites (eqz/clz/ctz/popcnt) pass {@code opt_opInfo === null} and
+ * are no-op — those operations already invoke {@code ToInt32}/{@code ToUint32}
+ * on their operand.
+ *
+ * @override
+ * @protected
+ * @param {string} operand
+ * @param {number} cat
+ * @param {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo=} opt_opInfo
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat, opt_opInfo) {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  if (C.INTISH !== cat || !opt_opInfo) return operand;
+  if (C.OP_DIVISION === opt_opInfo.category || (C.OP_COMPARISON === opt_opInfo.category && !opt_opInfo.unsigned)) {
+    return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(operand);
+  }
+  return operand;
 };
 
 /**
  * Asm.js collapses comparison results to integer category because its type
  * system forces 0/1 integers at the op level.  JavaScript comparisons yield
- * boolean values, so the result category must stay {@code CAT_BOOL_I32} so
- * that consumers (switch discriminants, bitwise combinators, coercion to
- * integer types) know to materialize the boolean via {@code ? 1 : 0}.
+ * boolean values, so the result category stays {@code CAT_BOOL_I32}; consumers
+ * that genuinely need a 0/1 integer (switch dispatch) materialize the boolean
+ * themselves.  Division/modulo results are truncated to {@code SIGNED} by the
+ * override in {@code binary_ops.js}, so the cat reflects the {@code |0}.
  *
  * @override
  * @protected
@@ -76,6 +128,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderNumericComparisonResult_ = f
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.i32BinaryResultCat_ = function (info) {
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   if (C.OP_COMPARISON === info.category) return Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32;
+  if (C.OP_DIVISION === info.category) return C.SIGNED;
   return Wasm2Lang.Backend.AsmjsCodegen.prototype.i32BinaryResultCat_.call(this, info);
 };
 
@@ -106,6 +159,31 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderCoercionByType_ = function (
   // JavaScript numbers are doubles by default — no explicit +x coercion needed.
   if (V.isF64(binaryen, wasmType)) return expr;
   return Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCoercionByType_.call(this, binaryen, expr, wasmType);
+};
+
+/**
+ * Runtime helpers self-coerce their return value: i32 helpers end the body
+ * with {@code return ...|0;}, f32 helpers wrap with {@code Math.fround(...)},
+ * f64 helpers return {@code +(...)}, and i64 helpers return BigInts already
+ * inside the signed 64-bit range (either via {@code BigInt.asIntN(64, ...)}
+ * or because the helper produces a small BigInt like a bit count or a load
+ * read through {@code HEAP64}).  The outer {@code renderCoercionByType_}
+ * wrap that the asm.js-targeted base implementation applies is therefore
+ * redundant in modern JavaScript — strip it so call sites stay bare.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} helperName
+ * @param {!Array<string>} args
+ * @param {number} resultType
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHelperCall_ = function (binaryen, helperName, args, resultType) {
+  void binaryen;
+  void resultType;
+  this.markHelper_(helperName);
+  return this.n_(helperName) + '(' + args.join(', ') + ')';
 };
 
 /**
@@ -140,6 +218,78 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderLocalInit_ = function (binar
   if (V.isI64(binaryen, wasmType)) return '0n';
   if (V.isF32(binaryen, wasmType)) return this.renderMathFroundCall_('0');
   return '0';
+};
+
+/**
+ * Direct-cast imports involving i64/u64 cannot use the asm.js inline
+ * operators ({@code ~~}, {@code |0}, {@code >>>0}, {@code Math.fround},
+ * {@code +expr}) because BigInt rejects all of them.  Emit the BigInt↔Number
+ * bridge directly so the call stays inline and no foreign import is needed.
+ *
+ *   i64_to_f32 / u64_to_f32 → {@code Math.fround(Number(bigIntExpr))}
+ *   i64_to_f64 / u64_to_f64 → {@code Number(bigIntExpr)}
+ *   f32_to_i64 / f64_to_i64 → {@code BigInt(Math.trunc(floatExpr))}
+ *   f32_to_u64 / f64_to_u64 → {@code BigInt(Math.trunc(floatExpr))}
+ *
+ * Signed and unsigned BigInt→Number conversions emit the same code: BigInt
+ * has no width, so {@code Number(x)} yields the mathematical value of the
+ * stored signed BigInt.  This matches the host-import semantics used by the
+ * test harness ({@code u64_to_f32: x => Math.fround(Number(x))}) and the
+ * Java backend's {@code (float)(long)x} cast — both treat the i64 storage
+ * value as signed.  Reinterpreting via {@code BigInt.asUintN(64, ...)} would
+ * diverge from these reference implementations for negative i64 inputs.
+ *
+ * The caller wraps i64 results with {@code BigInt.asIntN(64, ...)} via
+ * {@code renderCoercionByType_}, so float→i64/u64 emission does not need to
+ * apply that wrap itself.
+ *
+ * Non-i64 casts (e.g. {@code i32_to_f32}) delegate to the asm.js renderer.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} castBaseName
+ * @param {number} castInputType
+ * @param {number} callType
+ * @param {string} inputExpr
+ * @param {number} inputCat
+ * @return {{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderCastImportInline_ = function (
+  binaryen,
+  castBaseName,
+  castInputType,
+  callType,
+  inputExpr,
+  inputCat
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ P = A.Precedence_;
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
+  var /** @const {boolean} */ inputIsI64 = V.isI64(binaryen, castInputType);
+  var /** @const {boolean} */ outputIsI64 = V.isI64(binaryen, callType);
+  if (inputIsI64) {
+    var /** @const {string} */ numberExpr = 'Number(' + P.stripOuter(inputExpr) + ')';
+    if (V.isF32(binaryen, callType)) {
+      return {emittedString: this.renderMathFroundCall_(numberExpr), resultCat: A.CAT_F32};
+    }
+    return {emittedString: numberExpr, resultCat: A.CAT_F64};
+  }
+  if (outputIsI64) {
+    return {
+      emittedString: 'BigInt(Math.trunc(' + P.stripOuter(inputExpr) + '))',
+      resultCat: A.CAT_I64
+    };
+  }
+  return Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCastImportInline_.call(
+    this,
+    binaryen,
+    castBaseName,
+    castInputType,
+    callType,
+    inputExpr,
+    inputCat
+  );
 };
 
 /**

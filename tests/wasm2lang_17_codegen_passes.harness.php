@@ -155,6 +155,54 @@ $validateCode = function (string $code, string $testName): void {
             preg_match_all('/while\s*\(\s*false\s*\)/', $b, $_wf);
             $check('fusedForNoLabel', count($_wf[0]) === 0, 'expected loop without labeled block wrapper');
         } else { $check('fusedForNoLabel', false, 'function body not found'); }
+
+        // -- if-guarded while (LWI): loop body is an If; promoted to while --
+        $b = w2lBodyOf($code, 'ifGuardedWhileInner');
+        $check('ifGuardedWhileInner', $b !== null && w2lCountSimplifiedWhile($b) >= 1, 'expected while loop (LWI)');
+
+        // -- terminal-exit loop (LCT/LFT): for-loop with unconditional exit --
+        $b = w2lBodyOf($code, 'terminalExitLoop');
+        if ($b !== null) {
+            $check('terminalExitLoop', (bool) preg_match('/\bfor\s*\(/', $b), 'expected for-loop (terminal-exit)');
+            $check('terminalExitLoop', w2lCountSimplifiedWhile($b) === 0, 'expected no while-loop (terminal-exit is for-loop)');
+        } else { $check('terminalExitLoop', false, 'function body not found'); }
+
+        // -- do-while + trailing exit (LDA/LEA) --
+        $b = w2lBodyOf($code, 'doWhileWithExitTail');
+        $check('doWhileWithExitTail', $b !== null && (bool) preg_match('/\bdo\s*\{/', $b), 'expected do-while loop (LDA/LEA)');
+
+        // -- bare do-while (LEB): condition carries side effects (local.tee) --
+        $b = w2lBodyOf($code, 'bareDoWhileLoop');
+        $check('bareDoWhileLoop', $b !== null && (bool) preg_match('/\bdo\s*\{/', $b), 'expected do-while loop (LEB)');
+
+        // -- switch-continue loop (LCS/LFS): for-loop with bottom switch --
+        $b = w2lBodyOf($code, 'switchContinueLoop');
+        if ($b !== null) {
+            $check('switchContinueLoop', (bool) preg_match('/\bfor\s*\(/', $b), 'expected for-loop (LCS/LFS)');
+            $check('switchContinueLoop', (bool) preg_match('/\bswitch\s*\(/', $b), 'expected switch dispatch at loop bottom');
+        } else { $check('switchContinueLoop', false, 'function body not found'); }
+
+        // -- root switch state machine (rs$): collapses outer chain + loop+switch --
+        $b = w2lBodyOf($code, 'rootSwitchStateMachine');
+        if ($b !== null) {
+            $check('rootSwitchStateMachine', (bool) preg_match('/\bswitch\s*\(/', $b), 'expected switch dispatch');
+            preg_match_all('/\bcase\s+\d+\s*:/', $b, $_cs);
+            $check('rootSwitchStateMachine', count($_cs[0]) >= 3, 'expected >=3 cases in dispatch');
+        } else { $check('rootSwitchStateMachine', false, 'function body not found'); }
+
+        // -- Pattern B fusion (loop with named body block) --
+        $b = w2lBodyOf($code, 'loopWithNamedBodyBlock');
+        if ($b !== null) {
+            $anyLoop = preg_match('/\bwhile\s*\(/', $b) || preg_match('/\bfor\s*\(/', $b) || preg_match('/\bdo\s*\{/', $b);
+            $check('loopWithNamedBodyBlock', (bool) $anyLoop, 'expected fused loop construct (while/for/do-while)');
+        } else { $check('loopWithNamedBodyBlock', false, 'function body not found'); }
+
+        // -- 3-arm if-else chain --
+        $b = w2lBodyOf($code, 'ifElseChainThree');
+        if ($b !== null) {
+            preg_match_all('/\}\s*else\b/', $b, $_el);
+            $check('ifElseChainThree', count($_el[0]) >= 2, 'expected >=2 else branches in recovered chain');
+        } else { $check('ifElseChainThree', false, 'function body not found'); }
     }
 
     // -- if-else recovery (IR restructuring, always active) --
@@ -185,6 +233,32 @@ $validateCode = function (string $code, string $testName): void {
         $check('localInitFoldingMixed', strpos($b, '100') !== false, 'expected non-foldable base computation (+ 100) present');
     } else {
         $check('localInitFoldingMixed', false, 'function body not found');
+    }
+
+    // -- local init repeated set: first foldable, second is a runtime store --
+    // initOverrides records 10 on the first local; the second store (20) is
+    // preserved as a regular assignment.  The function returns x*20+30.
+    $b = w2lBodyOf($code, 'localInitRepeatedSet');
+    if ($b !== null) {
+        $hasDeclLine = preg_match('/^[ \t]*(\$\w+\s*=\s*[^;]+;\s*){2,}/m', $b, $declMatch);
+        $check('localInitRepeatedSet', $hasDeclLine && strpos($declMatch[0], '10') !== false, 'expected init value 10 in declarations (first set folded)');
+        $check('localInitRepeatedSet', strpos($b, '20') !== false, 'expected runtime assignment of value 20 (second set NOT folded)');
+        $check('localInitRepeatedSet', $hasDeclLine && strpos($declMatch[0], '30') !== false, 'expected init value 30 in declarations (other local folded)');
+    } else {
+        $check('localInitRepeatedSet', false, 'function body not found');
+    }
+
+    // -- local init all-zero: leading zero sets become nops; subsequent runtime sets emit --
+    // hasOverrides is false (all folded values are zero) but hasZeroFolds is
+    // true, so the zeroFoldSet visitor replaces each leading local.set 0 with
+    // nop.  The body must still emit the non-zero runtime assignments.
+    $b = w2lBodyOf($code, 'localInitAllZero');
+    if ($b !== null) {
+        $check('localInitAllZero', (bool) preg_match('/\b5\b/', $b), 'expected (x+5) term present');
+        $check('localInitAllZero', (bool) preg_match('/\b3\b/', $b), 'expected (x*3) term present');
+        $check('localInitAllZero', (bool) preg_match('/\b7\b/', $b), 'expected (x-7) term present');
+    } else {
+        $check('localInitAllZero', false, 'function body not found');
     }
 
     if (count($failures) > 0) {
@@ -288,6 +362,46 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
 
     foreach ($data['no_while_block_tail_limits'] as $v) {
         $exports['exerciseNoWhileBlockTail']($v);
+    }
+
+    foreach ($data['if_guarded_while_inner_limits'] as $v) {
+        $exports['exerciseIfGuardedWhileInner']($v);
+    }
+
+    foreach ($data['terminal_exit_loop_caps'] as $v) {
+        $exports['exerciseTerminalExitLoop']($v);
+    }
+
+    foreach ($data['do_while_with_exit_tail_pairs'] as $pair) {
+        $exports['exerciseDoWhileWithExitTail']($pair[0], $pair[1]);
+    }
+
+    foreach ($data['bare_do_while_loop_limits'] as $v) {
+        $exports['exerciseBareDoWhileLoop']($v);
+    }
+
+    foreach ($data['switch_continue_loop_initial'] as $v) {
+        $exports['exerciseSwitchContinueLoop']($v);
+    }
+
+    foreach ($data['root_switch_state_machine_initial'] as $v) {
+        $exports['exerciseRootSwitchStateMachine']($v);
+    }
+
+    foreach ($data['loop_with_named_body_block_limits'] as $v) {
+        $exports['exerciseLoopWithNamedBodyBlock']($v);
+    }
+
+    foreach ($data['if_else_chain_three_values'] as $v) {
+        $exports['exerciseIfElseChainThree']($v);
+    }
+
+    foreach ($data['local_init_repeated_set_values'] as $v) {
+        $exports['exerciseLocalInitRepeatedSet']($v);
+    }
+
+    foreach ($data['local_init_all_zero_values'] as $v) {
+        $exports['exerciseLocalInitAllZero']($v);
     }
 };
 

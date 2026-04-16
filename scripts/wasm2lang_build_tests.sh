@@ -14,16 +14,18 @@ if [ ${#0} -ne ${#prefix} ]; then
     local filename testbase artifact_dir artifact_base
     local harness_file harness_name harness_variant_name build_languages
     local variant_list
+    local codegen_dir codegen_name testbase_only prenorm_name ext f1 f2 tmpfile
+    local constraint_failures
 
     local LF="$(printf '\012+')"
     LF="${LF%?}"
 
     if [ "$ACTUAL_CWD" != "$EXPECTED_CWD" ]; then
-      echo "Error: run from $EXPECTED_CWD (current: $ACTUAL_CWD)" >&2
+      echo -e "\033[0;31mError:\033[0m run from $EXPECTED_CWD (current: $ACTUAL_CWD)" >&2
       return 1
     fi
 
-    echo "Building tests..."
+    echo -e "\033[1;34mBuilding tests...\033[0m"
     export NODE_PATH="${SH_SOURCE}/../node_modules"
 
     export WASM2LANG_OPTIMIZE_OUTPUT=on
@@ -46,6 +48,13 @@ if [ ${#0} -ne ${#prefix} ]; then
       filename="$(basename "$file")"
       testbase="${filename%.build.js}"
 
+      if [ -n "${UNIQUE_MANGLER_KEY:-}" ]; then
+        set -- --mangler "$UNIQUE_MANGLER_KEY"
+      else
+        MANGLER_LEN=$(( $(od -An -N1 -tu1 /dev/urandom | tr -d ' ') % 25 + 8 ))
+        set -- --mangler "$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c "$MANGLER_LEN")"
+      fi
+
       #
       # Generate original WAST + shared data (once per test, before variants)
       node                                                                       \
@@ -62,20 +71,6 @@ if [ ${#0} -ne ${#prefix} ]; then
       fi
 
       while IFS=' ' read -r variant_suffix normalize_wasm; do
-        # Variants with wasm2lang:codegen get mangler args; others get none.
-        case "$normalize_wasm" in
-          *wasm2lang:codegen*)
-            if [ -n "${UNIQUE_MANGLER_KEY:-}" ]; then
-              set -- --mangler "$UNIQUE_MANGLER_KEY"
-            else
-              MANGLER_LEN=$(( $(od -An -N1 -tu1 /dev/urandom | tr -d ' ') % 25 + 8 ))
-              set -- --mangler "$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c "$MANGLER_LEN")"
-            fi
-            ;;
-          *)
-            set --
-            ;;
-        esac
 
         artifact_dir="${testbase}_${variant_suffix}"
         artifact_base="${artifact_dir}/${artifact_dir}"
@@ -198,7 +193,43 @@ $variant_list
 EOF
     done
 
-    echo "Build complete."
+    # Constraint: for every test with both _codegen and _prenorm variants, the
+    # emitted code in each language must be byte-identical once the variant
+    # directory name is substituted.  A divergence here means wasm2lang:codegen
+    # (applied in-memory) and the round-trip-through-binary prenorm pipeline
+    # no longer converge to the same IR — fail the build so the gap is fixed
+    # rather than silently absorbed.
+    echo "----------------------------------------"
+    echo -e "\033[0;33mVerifying codegen/prenorm output equivalence...\033[0m"
+    constraint_failures=0
+    for codegen_dir in ./*_codegen; do
+      [ -d "$codegen_dir" ] || continue
+      codegen_name="$(basename "$codegen_dir")"
+      testbase_only="${codegen_name%_codegen}"
+      prenorm_name="${testbase_only}_prenorm"
+      [ -d "./${prenorm_name}" ] || continue
+      for ext in asm.js js php java; do
+        f1="${codegen_dir}/${codegen_name}.${ext}"
+        f2="./${prenorm_name}/${prenorm_name}.${ext}"
+        if [ -f "$f1" ] && [ -f "$f2" ]; then
+          tmpfile="$(mktemp)"
+          sed "s/${codegen_name}/${prenorm_name}/g" "$f1" > "$tmpfile"
+          if ! diff -q "$tmpfile" "$f2" >/dev/null 2>&1; then
+            echo -e "  \033[0;31mFAIL\033[0m: ${testbase_only}.${ext} (codegen vs prenorm)" >&2
+            constraint_failures=$((constraint_failures + 1))
+          fi
+          rm -f "$tmpfile"
+        fi
+      done
+    done
+    echo "----------------------------------------"
+    if [ "$constraint_failures" -gt 0 ]; then
+      echo -e "Constraint check: \033[0;31mFAILED\033[0m (${constraint_failures} codegen/prenorm output mismatches)" >&2
+      return 1
+    fi
+    echo -e "Constraint check: \033[0;32mPASSED\033[0m (codegen/prenorm output equivalence)"
+
+    echo -e "\033[1;34mBuild complete.\033[0m"
     return 0
   }
   fn

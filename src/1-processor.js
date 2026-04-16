@@ -92,6 +92,47 @@ Wasm2Lang.Processor.normalizeEmitOption_ = function (userOptions, optionName, tr
 };
 
 /**
+ * Applies {@code fn} to {@code value}, preserving sync/async: if the value is a
+ * Promise, returns {@code value.then(fn)}; otherwise returns {@code fn(value)}
+ * directly.  Keeps the caller on the fast (non-await) path whenever possible.
+ *
+ * @private
+ * @param {*} value
+ * @param {!Function} fn
+ * @return {*}
+ */
+Wasm2Lang.Processor.thenOrApply_ = function (value, fn) {
+  var /** @const {function(*):*} */ applyFn = /** @type {function(*):*} */ (fn);
+  if (value instanceof Promise) {
+    return /** @type {!Promise<*>} */ (value).then(applyFn);
+  }
+  return applyFn(value);
+};
+
+/**
+ * Writes the CLI help blurb to stderr, enumerating every option in the schema.
+ *
+ * @private
+ * @return {void}
+ */
+Wasm2Lang.Processor.writeCliHelp_ = function () {
+  var /** @const */ log = Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.isNode()];
+  var /** @const {!Wasm2Lang.Utilities.Environment.LogLevel} */ NONE = Wasm2Lang.Utilities.Environment.LogLevel.NONE;
+  log(NONE, '\nWasm2Lang CLI Help:');
+
+  var /** @const {!Array<!Wasm2Lang.Options.Schema.OptionKey>} */ props = Object.keys(Wasm2Lang.Options.Schema.optionSchema);
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = props.length; i !== len; ++i) {
+    var /** @const {!Wasm2Lang.Options.Schema.OptionKey} */ key = props[i];
+    log(
+      NONE,
+      '\n--' + key.replace(/(?=[A-Z])/g, '-').toLowerCase() + ':\n',
+      Wasm2Lang.Options.Schema.optionSchema[key].optionDesc
+    );
+  }
+  log(NONE, '');
+};
+
+/**
  * Emits all requested output artifacts from a prepared module/codegen pair.
  *
  * @private
@@ -436,14 +477,9 @@ Wasm2Lang.Processor.transpile = function (binaryenModule, userOptions) {
   var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ options =
       Wasm2Lang.Processor.normalizeUserOptions_(userOptions);
 
-  var /** @const {*} */ transpileResult = Wasm2Lang.Processor.transpile_(options);
-  if (transpileResult instanceof Promise) {
-    return /** @type {!Promise<!Wasm2Lang.Processor.TranspileResult>} */ (transpileResult).then(
-      Wasm2Lang.Processor.materializeResult_
-    );
-  }
-
-  return Wasm2Lang.Processor.materializeResult_(/** @type {!Wasm2Lang.Processor.TranspileResult} */ (transpileResult));
+  return /** @type {!Wasm2Lang.Processor.MaterializedResult|!Promise<!Wasm2Lang.Processor.MaterializedResult>} */ (
+    Wasm2Lang.Processor.thenOrApply_(Wasm2Lang.Processor.transpile_(options), Wasm2Lang.Processor.materializeResult_)
+  );
 };
 
 /**
@@ -460,24 +496,8 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
   var params = Wasm2Lang.CLI.CommandLineParser.parseArgv();
 
   if ('object' === typeof params['--help']) {
-    var /** @const */ log = Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.isNode()];
-    var /** @const {!Wasm2Lang.Utilities.Environment.LogLevel} */ NONE = Wasm2Lang.Utilities.Environment.LogLevel.NONE;
-    log(NONE, '\nWasm2Lang CLI Help:');
-
-    /** @const {!Array<!Wasm2Lang.Options.Schema.OptionKey>} */
-    var props = Object.keys(Wasm2Lang.Options.Schema.optionSchema);
-
-    for (var /** @type {number} */ i = 0, /** @const {number} */ len = props.length; i !== len; ++i) {
-      var /** @const {!Wasm2Lang.Options.Schema.OptionKey} */ key = props[i];
-      var entry = Wasm2Lang.Options.Schema.optionSchema[key];
-      log(NONE, '\n--' + key.replace(/(?=[A-Z])/g, '-').toLowerCase() + ':\n', entry.optionDesc);
-    }
-
-    log(NONE, '');
-    // prettier-ignore
-    return /** @const {!Wasm2Lang.Processor.TranspileResult} */ (
-      Object.create(null)
-    );
+    Wasm2Lang.Processor.writeCliHelp_();
+    return /** @type {!Wasm2Lang.Processor.TranspileResult} */ (Object.create(null));
   }
 
   var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ options =
@@ -500,10 +520,7 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
     return results;
   }
 
-  var /** @const {*} */ transpileResult = Wasm2Lang.Processor.transpile_(options);
-  if (transpileResult instanceof Promise) {
-    return /** @type {!Promise<!Wasm2Lang.Processor.TranspileResult>} */ (transpileResult).then(drainAndReturn);
-  }
-
-  return drainAndReturn(/** @type {!Wasm2Lang.Processor.TranspileResult} */ (transpileResult));
+  return /** @type {!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>} */ (
+    Wasm2Lang.Processor.thenOrApply_(Wasm2Lang.Processor.transpile_(options), drainAndReturn)
+  );
 };

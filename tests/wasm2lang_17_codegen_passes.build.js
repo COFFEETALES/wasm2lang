@@ -1113,6 +1113,465 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // ifGuardedWhileInner: LWI pattern (if-guarded labeled while).
+  //
+  // (loop $L
+  //   (if (lt_s i n)
+  //     (then
+  //       (local.set i (add i 1))
+  //       (if (eqz (and i 1)) (br $L))    ;; inner continue → labeled
+  //       (local.set acc (add acc i))
+  //       (br $L))))
+  //
+  // LoopSimplificationPass detects this as LWI (labeled while) because the
+  // body pre-final children contain a targeting branch ($L) via the nested
+  // `if (even) (br $L)`.  Backends emit `while (i < n) { ...; continue L; }`.
+  //
+  // params: n(0)  locals: i(1), acc(2)
+  // Sums odd values of i in (0..n].
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'ifGuardedWhileInner',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.loop(
+        'igwiLoop',
+        module.if(
+          module.i32.lt_s(p(1), p(0)),
+          module.block(null, [
+            module.local.set(1, module.i32.add(p(1), i32(1))),
+            module.if(module.i32.eqz(module.i32.and(p(1), i32(1))), module.br('igwiLoop')),
+            module.local.set(2, module.i32.add(p(2), p(1))),
+            module.br('igwiLoop')
+          ])
+        )
+      ),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseIfGuardedWhileInner(n: i32): void
+  module.addFunction(
+    'exerciseIfGuardedWhileInner',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('ifGuardedWhileInner', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // terminalExitLoop: LCT/LFT pattern (terminal-exit for-loop).
+  //
+  // (block $exit (loop $L (block
+  //   (local.set steps (add steps 1))
+  //   (local.set acc (add acc steps))
+  //   (if (lt_s steps cap) (br $L))         ;; internal continue path
+  //   (br $exit))))                          ;; unconditional final exit
+  //
+  // Body's last child is unconditional br to outer ($exit), earlier children
+  // contain a br $L (internal continue).  LoopSimplificationPass marks this
+  // as LCT (labeled) or LFT (unlabeled) depending on inner breakable nesting.
+  //
+  // params: cap(0)  locals: steps(1), acc(2)
+  // Runs steps 1..cap, summing steps into acc.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'terminalExitLoop',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.block('telExit', [
+        module.loop(
+          'telLoop',
+          module.block(null, [
+            module.local.set(1, module.i32.add(p(1), i32(1))),
+            module.local.set(2, module.i32.add(p(2), p(1))),
+            module.if(module.i32.lt_s(p(1), p(0)), module.br('telLoop')),
+            module.br('telExit')
+          ])
+        )
+      ]),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseTerminalExitLoop(cap: i32): void
+  module.addFunction(
+    'exerciseTerminalExitLoop',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('terminalExitLoop', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // doWhileWithExitTail: LDA/LEA pattern (do-while with trailing exit br).
+  //
+  // (block $exit (loop $L (block
+  //   (local.set acc (add acc i))
+  //   (local.set i (add i 1))
+  //   (br_if $L (lt_s i limit))             ;; continue-if conditional
+  //   (br $exit))))                          ;; unconditional trailing exit
+  //
+  // Second-to-last is conditional br_if $L, last is unconditional br to outer,
+  // body length > 2 ⇒ LoopSimplificationPass marks this LDA/LEA.  Backends
+  // emit `do { ... } while (cond);` with no synthetic trailing exit.
+  //
+  // params: start(0), limit(1)  locals: i(2), acc(3)
+  // Accumulates start..(limit-1).  Loop always runs at least once.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'doWhileWithExitTail',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(2, p(0)),
+      module.block('dwetExit', [
+        module.loop(
+          'dwetLoop',
+          module.block(null, [
+            module.local.set(3, module.i32.add(p(3), p(2))),
+            module.local.set(2, module.i32.add(p(2), i32(1))),
+            module.br('dwetLoop', module.i32.lt_s(p(2), p(1))),
+            module.br('dwetExit')
+          ])
+        )
+      ]),
+      module.return(p(3))
+    ])
+  );
+
+  // exerciseDoWhileWithExitTail(start: i32, limit: i32): void
+  module.addFunction(
+    'exerciseDoWhileWithExitTail',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('doWhileWithExitTail', [p(0), p(1)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // bareDoWhileLoop: LEB pattern (bare do-while, no block wrapper).
+  //
+  // (loop $L (br_if $L (lt_s (local.tee i (add i 1)) limit)))
+  //
+  // Loop body IS the conditional br (no block wrapper).  Side effects live
+  // inside the condition via local.tee.  LoopSimplificationPass marks this
+  // as LEB (unlabeled do-while).  Backends emit `do { } while (side-effect
+  // cond);` — effectively an empty-body do-while.
+  //
+  // params: limit(0)  locals: i(1)
+  // Counts 1..limit.  After loop, i == limit.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'bareDoWhileLoop',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.loop(
+        'bdwlLoop',
+        module.br('bdwlLoop', module.i32.lt_s(module.local.tee(1, module.i32.add(p(1), i32(1)), binaryen.i32), p(0)))
+      ),
+      module.return(p(1))
+    ])
+  );
+
+  // exerciseBareDoWhileLoop(limit: i32): void
+  module.addFunction(
+    'exerciseBareDoWhileLoop',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('bareDoWhileLoop', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // switchContinueLoop: LCS/LFS pattern (for-loop ending with br_table
+  // where one target is the loop itself = self-continue via switch).
+  //
+  // (block $exit (loop $L (block
+  //   (local.set steps (add steps 1))
+  //   (local.set acc (add acc steps))
+  //   (br_table [$L $L $L] $exit (i32.rem_u steps 5)))))
+  //
+  // Body's last child is a SwitchId whose names array contains $L ⇒
+  // LoopSimplificationPass marks LCS (labeled) or LFS (unlabeled).
+  // Backends emit a for-loop whose bottom dispatch chooses continue/break.
+  //
+  // params: initAcc(0)  locals: steps(1), acc(2)
+  // Runs 3 iterations (steps 1..3), returns initAcc + 1+2+3 = initAcc+6.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'switchContinueLoop',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(2, p(0)),
+      module.block('sclExit', [
+        module.loop(
+          'sclLoop',
+          module.block(null, [
+            module.local.set(1, module.i32.add(p(1), i32(1))),
+            module.local.set(2, module.i32.add(p(2), p(1))),
+            module.switch(['sclLoop', 'sclLoop', 'sclLoop'], 'sclExit', module.i32.rem_u(p(1), i32(5)))
+          ])
+        )
+      ]),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseSwitchContinueLoop(initAcc: i32): void
+  module.addFunction(
+    'exerciseSwitchContinueLoop',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('switchContinueLoop', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // rootSwitchStateMachine: rs$ pattern (root-switch loop state machine).
+  //
+  // Outer block + fused block + loop whose body is [sw$ dispatch chain,
+  // unconditional br to chain].  RootSwitchDetectionPass marks the outer
+  // block with w2l_rootsw$.  Backend collapses the entire structure into
+  // a single loop+switch with inlined exit paths.
+  //
+  // (block $rsOuter
+  //   (block $rsFused (loop $rsLoop (block
+  //     (block $rsCase2 (block $rsCase1 (block $rsCase0
+  //       (br_table [$rsCase0 $rsCase1 $rsCase2] $rsOuter state))
+  //       ;; case 0: acc+=1, state=1, br $rsLoop))
+  //       ;; case 1: acc+=10, state=2, br $rsLoop)
+  //       ;; case 2: acc+=100, br $rsOuter)))
+  //     (local.set acc (add acc 1000)))  ;; unreached epilogue (>=2 children)
+  //   (return acc))
+  //
+  // params: initState(0)  locals: state(1), acc(2)
+  // Dispatches state transitions until state exits to $rsOuter.
+  // state=0 → 1 → 2 → exit (acc = 1 + 10 + 100 = 111)
+  // state=1 → 2 → exit (acc = 10 + 100 = 110)
+  // state=2 → exit (acc = 100)
+  // state>=3 or <0 → default → exit (acc = 0)
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'rootSwitchStateMachine',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(1, p(0)),
+      module.block('rsOuter', [
+        module.block('rsFused', [
+          module.loop(
+            'rsLoop',
+            module.block(null, [
+              module.block('rsCase2', [
+                module.block('rsCase1', [
+                  module.block('rsCase0', [module.switch(['rsCase0', 'rsCase1', 'rsCase2'], 'rsOuter', p(1))]),
+                  module.local.set(2, module.i32.add(p(2), i32(1))),
+                  module.local.set(1, i32(1)),
+                  module.br('rsLoop')
+                ]),
+                module.local.set(2, module.i32.add(p(2), i32(10))),
+                module.local.set(1, i32(2)),
+                module.br('rsLoop')
+              ]),
+              module.local.set(2, module.i32.add(p(2), i32(100))),
+              module.br('rsOuter')
+            ])
+          )
+        ]),
+        // unreached epilogue — present so $rsOuter has >=2 children (required
+        // by RootSwitchDetectionPass to recognize the chain).
+        module.local.set(2, module.i32.add(p(2), i32(1000)))
+      ]),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseRootSwitchStateMachine(initState: i32): void
+  module.addFunction(
+    'exerciseRootSwitchStateMachine',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('rootSwitchStateMachine', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // loopWithNamedBodyBlock: Pattern B fusion — loop whose body is a
+  // named block.
+  //
+  // (loop $L (block $B
+  //   (br_if $B (ge_s i limit))              ;; break out of block = loop exit
+  //   (local.set acc (add acc i))
+  //   (local.set i (add i 1))
+  //   (br $L)))                                ;; continue
+  //
+  // BlockLoopFusionPass detects Pattern B and renames $B → w2l_fused$B.
+  // Backend collapses the two nesting levels; `br $B` becomes the loop's
+  // break, `br $L` becomes continue.
+  //
+  // params: limit(0)  locals: i(1), acc(2)
+  // Returns sum of 0..limit-1.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'loopWithNamedBodyBlock',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.loop(
+        'lwnbLoop',
+        module.block('lwnbBody', [
+          module.br('lwnbBody', module.i32.ge_s(p(1), p(0))),
+          module.local.set(2, module.i32.add(p(2), p(1))),
+          module.local.set(1, module.i32.add(p(1), i32(1))),
+          module.br('lwnbLoop')
+        ])
+      ),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseLoopWithNamedBodyBlock(limit: i32): void
+  module.addFunction(
+    'exerciseLoopWithNamedBodyBlock',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('loopWithNamedBodyBlock', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ifElseChainThree: 3-arm if-else chain.
+  //
+  // (block $done
+  //   (if (lt_s x 0)   (then (local.set r -1)  (br $done)))
+  //   (if (lt_s x 10)  (then (local.set r 1)   (br $done)))
+  //   (if (lt_s x 100) (then (local.set r 10)  (br $done)))
+  //   (local.set r 100))
+  //
+  // IfElseRecoveryPass iteratively restructures if-then-break chains into
+  // nested if/else/else chains.  This fixture exercises ≥3 arms to catch
+  // bugs in the iterative restructuring loop.
+  //
+  // params: x(0)  locals: r(1)
+  // Returns: x<0→-1, x<10→1, x<100→10, else→100.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'ifElseChainThree',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.block('iecDone', [
+        module.if(module.i32.lt_s(p(0), i32(0)), module.block(null, [module.local.set(1, i32(-1)), module.br('iecDone')])),
+        module.if(module.i32.lt_s(p(0), i32(10)), module.block(null, [module.local.set(1, i32(1)), module.br('iecDone')])),
+        module.if(module.i32.lt_s(p(0), i32(100)), module.block(null, [module.local.set(1, i32(10)), module.br('iecDone')])),
+        module.local.set(1, i32(100))
+      ]),
+      module.return(p(1))
+    ])
+  );
+
+  // exerciseIfElseChainThree(x: i32): void
+  module.addFunction(
+    'exerciseIfElseChainThree',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('ifElseChainThree', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // localInitRepeatedSet: Same local.set twice with two different const
+  // values — only the first folds; the second stays as a regular set.
+  //
+  // (local.set 1 (i32.const 10))     ;; foldable → initOverrides[1]=10
+  // (local.set 1 (i32.const 20))     ;; NOT foldable (setLocals[1] is now
+  //                                     true) → stays as runtime assignment
+  // (local.set 2 (i32.const 30))     ;; foldable → initOverrides[2]=30
+  // (return (x * local[1] + local[2]))
+  //
+  // After execution: local[1]=20 (runtime overwrite), local[2]=30.
+  // Result: x*20 + 30.
+  //
+  // params: x(0)  locals: a(1), b(2)
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'localInitRepeatedSet',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(1, i32(10)),
+      module.local.set(1, i32(20)),
+      module.local.set(2, i32(30)),
+      module.return(module.i32.add(module.i32.mul(p(0), p(1)), p(2)))
+    ])
+  );
+
+  // exerciseLocalInitRepeatedSet(x: i32): void
+  module.addFunction(
+    'exerciseLocalInitRepeatedSet',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('localInitRepeatedSet', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // localInitAllZero: Leading local.set(const 0) for multiple locals,
+  // no non-zero folds.  Triggers the zeroFoldSet/nop-replacement path
+  // without any hasOverrides metadata.
+  //
+  // (local.set 1 (i32.const 0))      ;; zero fold → nop replacement
+  // (local.set 2 (i32.const 0))      ;; zero fold → nop replacement
+  // (local.set 3 (i32.const 0))      ;; zero fold → nop replacement
+  // (local.set 1 (x + 5))            ;; normal runtime set
+  // (local.set 2 (x * 3))
+  // (local.set 3 (x - 7))
+  // (return a + b + c)
+  //
+  // Result: (x+5) + (x*3) + (x-7) = 5x - 2.
+  //
+  // params: x(0)  locals: a(1), b(2), c(3)
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'localInitAllZero',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(1, i32(0)),
+      module.local.set(2, i32(0)),
+      module.local.set(3, i32(0)),
+      module.local.set(1, module.i32.add(p(0), i32(5))),
+      module.local.set(2, module.i32.mul(p(0), i32(3))),
+      module.local.set(3, module.i32.sub(p(0), i32(7))),
+      module.return(module.i32.add(module.i32.add(p(1), p(2)), p(3)))
+    ])
+  );
+
+  // exerciseLocalInitAllZero(x: i32): void
+  module.addFunction(
+    'exerciseLocalInitAllZero',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('localInitAllZero', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
@@ -1161,6 +1620,26 @@
   module.addFunctionExport('exerciseFusedForNoLabel', 'exerciseFusedForNoLabel');
   module.addFunctionExport('noWhileBlockTail', 'noWhileBlockTail');
   module.addFunctionExport('exerciseNoWhileBlockTail', 'exerciseNoWhileBlockTail');
+  module.addFunctionExport('ifGuardedWhileInner', 'ifGuardedWhileInner');
+  module.addFunctionExport('exerciseIfGuardedWhileInner', 'exerciseIfGuardedWhileInner');
+  module.addFunctionExport('terminalExitLoop', 'terminalExitLoop');
+  module.addFunctionExport('exerciseTerminalExitLoop', 'exerciseTerminalExitLoop');
+  module.addFunctionExport('doWhileWithExitTail', 'doWhileWithExitTail');
+  module.addFunctionExport('exerciseDoWhileWithExitTail', 'exerciseDoWhileWithExitTail');
+  module.addFunctionExport('bareDoWhileLoop', 'bareDoWhileLoop');
+  module.addFunctionExport('exerciseBareDoWhileLoop', 'exerciseBareDoWhileLoop');
+  module.addFunctionExport('switchContinueLoop', 'switchContinueLoop');
+  module.addFunctionExport('exerciseSwitchContinueLoop', 'exerciseSwitchContinueLoop');
+  module.addFunctionExport('rootSwitchStateMachine', 'rootSwitchStateMachine');
+  module.addFunctionExport('exerciseRootSwitchStateMachine', 'exerciseRootSwitchStateMachine');
+  module.addFunctionExport('loopWithNamedBodyBlock', 'loopWithNamedBodyBlock');
+  module.addFunctionExport('exerciseLoopWithNamedBodyBlock', 'exerciseLoopWithNamedBodyBlock');
+  module.addFunctionExport('ifElseChainThree', 'ifElseChainThree');
+  module.addFunctionExport('exerciseIfElseChainThree', 'exerciseIfElseChainThree');
+  module.addFunctionExport('localInitRepeatedSet', 'localInitRepeatedSet');
+  module.addFunctionExport('exerciseLocalInitRepeatedSet', 'exerciseLocalInitRepeatedSet');
+  module.addFunctionExport('localInitAllZero', 'localInitAllZero');
+  module.addFunctionExport('exerciseLocalInitAllZero', 'exerciseLocalInitAllZero');
 
   common.finalizeAndOutput(module);
 
@@ -1414,6 +1893,75 @@
   data.no_while_block_tail_limits = [0, 1, 2, 3, 5, 10, 20, 50].concat(
     Array.from({length: 4}, function () {
       return (Math.random() * 30) | 0;
+    })
+  );
+
+  data.if_guarded_while_inner_limits = [0, 1, 2, 5, 10, 20, 50].concat(
+    Array.from({length: 4}, function () {
+      return (Math.random() * 40) | 0;
+    })
+  );
+
+  data.terminal_exit_loop_caps = [1, 2, 3, 5, 10, 20, 50].concat(
+    Array.from({length: 4}, function () {
+      return ((Math.random() * 30) | 0) + 1;
+    })
+  );
+
+  data.do_while_with_exit_tail_pairs = [
+    [0, 1],
+    [0, 5],
+    [5, 5],
+    [5, 10],
+    [3, 8],
+    [10, 10],
+    [10, 20]
+  ].concat(
+    Array.from({length: 4}, function () {
+      var start = (Math.random() * 10) | 0;
+      return [start, start + ((Math.random() * 20) | 0) + 1];
+    })
+  );
+
+  data.bare_do_while_loop_limits = [1, 2, 3, 5, 10, 20, 50, 100].concat(
+    Array.from({length: 4}, function () {
+      return ((Math.random() * 50) | 0) + 1;
+    })
+  );
+
+  data.switch_continue_loop_initial = [0, 1, 7, 100, -10, 42, 1000].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  data.root_switch_state_machine_initial = [0, 1, 2, 3, 4, -1, 100].concat(
+    Array.from({length: 4}, function () {
+      return (Math.random() * 5) | 0;
+    })
+  );
+
+  data.loop_with_named_body_block_limits = [0, 1, 2, 5, 10, 20, 50].concat(
+    Array.from({length: 4}, function () {
+      return (Math.random() * 40) | 0;
+    })
+  );
+
+  data.if_else_chain_three_values = [-10, -1, 0, 1, 5, 9, 10, 50, 99, 100, 200, 1000].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  data.local_init_repeated_set_values = [-5, -1, 0, 1, 2, 5, 10, 100].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  data.local_init_all_zero_values = [-10, -1, 0, 1, 2, 5, 10, 50].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
     })
   );
 

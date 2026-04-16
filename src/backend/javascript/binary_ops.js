@@ -22,6 +22,73 @@ Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_ = function (expr) {
 };
 
 /**
+ * Signed i32 comparisons in JavaScript compare raw JS Numbers — operands
+ * coming from local/global gets and bitwise ops are already integer-valued,
+ * so no {@code |0} is needed.  Unsigned comparisons still reinterpret both
+ * sides via {@code >>>0} so negative signed values map to their uint32
+ * representation before comparison.
+ *
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.renderI32ComparisonBinary_ = function (self, info, L, R) {
+  void self;
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @const */ J = Wasm2Lang.Backend.JsCommonCodegen;
+  var /** @const {number} */ precedence = '==' === info.opStr || '!=' === info.opStr ? P.PREC_EQUALITY_ : P.PREC_RELATIONAL_;
+  var /** @const {string} */ left = info.unsigned ? J.renderUnsignedCoercion_(L) : L;
+  var /** @const {string} */ right = info.unsigned ? J.renderUnsignedCoercion_(R) : R;
+  return P.renderInfix(left, info.opStr, right, precedence);
+};
+
+/**
+ * The {@code $w2l_rotl}/{@code $w2l_rotr} helpers self-coerce their result
+ * via a trailing {@code |0} inside the helper body, so the outer
+ * {@code renderSignedCoercion_} wrap that the shared jscommon renderer
+ * applies is redundant in modern JavaScript.  Emit the bare call so the
+ * surrounding expression reads as plain JavaScript.
+ *
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.renderI32RotateBinary_ = function (self, info, L, R) {
+  var /** @const {string} */ helperName = info.rotateLeft ? '$w2l_rotl' : '$w2l_rotr';
+  self.markHelper_(helperName);
+  return self.n_(helperName) + '(' + L + ', ' + R + ')';
+};
+
+/**
+ * JavaScript division (and {@code %}) of integer operands produces a JS
+ * Number — for {@code /} the result is fractional ({@code 7 / 2 === 3.5}),
+ * which would propagate into subsequent additive ops and diverge from wasm
+ * i32 semantics.  Wrap the quotient in {@code |0} to truncate toward zero;
+ * modulo of integer operands is already integer-valued so it skips the wrap.
+ * Unsigned operations still reinterpret both operands via {@code >>>0} for
+ * uint32 semantics.
+ *
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.renderI32DivisionBinary_ = function (self, info, L, R) {
+  void self;
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @const */ J = Wasm2Lang.Backend.JsCommonCodegen;
+  var /** @const {string} */ left = info.unsigned ? J.renderUnsignedCoercion_(L) : L;
+  var /** @const {string} */ right = info.unsigned ? J.renderUnsignedCoercion_(R) : R;
+  var /** @const {string} */ quotient = P.renderInfix(left, info.opStr, right, P.PREC_MULTIPLICATIVE_);
+  return '/' === info.opStr ? J.renderSignedCoercion_(quotient) : quotient;
+};
+
+/**
  * Re-interprets an i64 operand as unsigned for division/comparison.
  * @private
  * @param {string} expr

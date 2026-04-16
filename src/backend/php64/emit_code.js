@@ -310,8 +310,5 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   outputParts[outputParts.length] = pad1 + 'return [' + returnEntries.join(', ') + '];';
   outputParts[outputParts.length] = '};';
 
-  // Traversal summary from data collected during the codegen traversal above.
-  outputParts[outputParts.length] = this.emitDiagnosticSummary_(wasmModule, options);
-
   return outputParts.join('\n');
 };

@@ -129,7 +129,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceToType_ = function (binaryen, 
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
     if (C.SIGNED === cat || C.FIXNUM === cat || C.UNSIGNED === cat || C.INT === cat) return expr;
-    if (A.CAT_BOOL_I32 === cat) return this.renderNumericComparisonResult_(expr);
+    if (A.CAT_BOOL_I32 === cat) return this.coerceBooleanOperand_(expr);
   } else if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) {
     if (A.CAT_I64 === cat) return expr;
   } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
@@ -216,6 +216,21 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallIndirectArgs_ = func
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
   return conditionExpr + ' ? 1 : 0';
+};
+
+/**
+ * Backend hook for a {@code CAT_BOOL_I32} operand about to feed an arithmetic
+ * or bitwise op — call sites where the consumer will itself coerce booleans
+ * to integers (asm.js/PHP/Java still need the ternary; modern JS does not).
+ * Defaults to {@code renderNumericComparisonResult_}; JS overrides to a
+ * no-op so the emitted binary/unary chain keeps the bare comparison.
+ *
+ * @protected
+ * @param {string} operandExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.coerceBooleanOperand_ = function (operandExpr) {
+  return this.renderNumericComparisonResult_(operandExpr);
 };
 
 /**
@@ -429,13 +444,20 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOp_ = function (info, L,
  * Asm.js overrides to coerce INTISH operands to SIGNED (asm.js binary ops
  * require INT, not INTISH).  Other backends no-op.
  *
+ * The optional {@code opInfo} carries the classified binary-op metadata when
+ * the operand feeds a binary op; it is {@code null} when called from a unary
+ * site.  JavaScript uses it to selectively coerce INTISH operands only when
+ * the consuming op (division, signed comparison) cares about wraparound.
+ *
  * @protected
  * @param {string} operand
  * @param {number} cat  Expression category of the operand.
+ * @param {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo=} opt_opInfo
  * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat, opt_opInfo) {
   void cat;
+  void opt_opInfo;
   return operand;
 };
 
@@ -556,7 +578,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, u
       return {emittedString: A.Precedence_.renderPrefix('!', operandExpr), resultCat: A.CAT_BOOL_I32};
     }
   }
-  if (A.CAT_BOOL_I32 === operandCat) operandExpr = this.renderNumericComparisonResult_(operandExpr);
+  if (A.CAT_BOOL_I32 === operandCat) operandExpr = this.coerceBooleanOperand_(operandExpr);
   if (-1 !== unCat) {
     var /** @const {?{emittedString: string, resultCat: number}} */ i32Result = this.emitI32Unary_(
         binaryen,
@@ -664,12 +686,12 @@ Wasm2Lang.Backend.AbstractCodegen.renderPlainMultiplyBinary_ = function (self, i
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, binaryOp, L, R, catL, catR) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  if (A.CAT_BOOL_I32 === catL) L = this.renderNumericComparisonResult_(L);
-  if (A.CAT_BOOL_I32 === catR) R = this.renderNumericComparisonResult_(R);
+  if (A.CAT_BOOL_I32 === catL) L = this.coerceBooleanOperand_(L);
+  if (A.CAT_BOOL_I32 === catR) R = this.coerceBooleanOperand_(R);
   var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ binInfo = C.classifyBinaryOp(binaryen, binaryOp);
   if (binInfo) {
-    L = this.prepareI32BinaryOperand_(L, catL);
-    R = this.prepareI32BinaryOperand_(R, catR);
+    L = this.prepareI32BinaryOperand_(L, catL, binInfo);
+    R = this.prepareI32BinaryOperand_(R, catR, binInfo);
     return {emittedString: this.renderBinaryOp_(binInfo, L, R), resultCat: this.i32BinaryResultCat_(binInfo)};
   }
   var /** @const {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} */ i64Info = Wasm2Lang.Backend.I64Coercion.classifyBinaryOp(

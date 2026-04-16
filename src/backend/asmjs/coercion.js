@@ -95,6 +95,61 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLocalInit_ = function (binaryen, 
 };
 
 /**
+ * Renders a direct-cast import (module = {@code "cast"}) as an inline
+ * expression.  Asm.js handles every cast by bridging between i32 and
+ * f32/f64 using the native {@code ~~}, {@code |0}, {@code >>>0},
+ * {@code Math.fround}, and {@code +} coercions.
+ *
+ * Subclasses that represent i64 with a host-language type incompatible
+ * with asm.js coercion operators (e.g., JavaScript's BigInt — rejects
+ * {@code Math.fround}, {@code |0}, {@code ~~}, {@code +expr}) override
+ * this to emit their own BigInt-aware inline code and delegate to the
+ * asm.js implementation for non-i64 casts.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} castBaseName
+ * @param {number} castInputType
+ * @param {number} callType
+ * @param {string} inputExpr
+ * @param {number} inputCat
+ * @return {{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCastImportInline_ = function (
+  binaryen,
+  castBaseName,
+  castInputType,
+  callType,
+  inputExpr,
+  inputCat
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const */ J = Wasm2Lang.Backend.JsCommonCodegen;
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
+  if (V.isI32(binaryen, callType)) {
+    // float/double → i32: promote float to double with +, then ~~ truncation.
+    var /** @type {string} */ castTruncInput = inputExpr;
+    if (V.isF32(binaryen, castInputType)) {
+      castTruncInput = J.renderDoubleCoercion_(castTruncInput);
+    }
+    return {
+      emittedString: '~~' + A.Precedence_.wrap_(castTruncInput, A.Precedence_.PREC_UNARY_, false),
+      resultCat: C.SIGNED
+    };
+  }
+  // int → float/double: coerce to signed (i32) or unsigned (u32), then apply target coercion.
+  var /** @const {boolean} */ castIsUnsigned = -1 !== castBaseName.indexOf('u');
+  var /** @const {string} */ castInput = castIsUnsigned
+      ? J.renderUnsignedCoercion_(inputExpr)
+      : this.coerceAtBoundary_(binaryen, inputExpr, inputCat, castInputType);
+  return {
+    emittedString: this.renderCoercionByType_(binaryen, castInput, callType),
+    resultCat: A.catForCoercedType_(binaryen, callType)
+  };
+};
+
+/**
  * Runtime-helper name for each i32 {@code UNARY_*} category that dispatches
  * to a polyfill (CTZ/POPCNT have no single-instruction JS equivalent).
  *
@@ -184,9 +239,11 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
  * @protected
  * @param {string} operand
  * @param {number} cat
+ * @param {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo=} opt_opInfo
  * @return {string}
  */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat) {
+Wasm2Lang.Backend.AsmjsCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat, opt_opInfo) {
+  void opt_opInfo;
   if (Wasm2Lang.Backend.I32Coercion.INTISH === cat) {
     return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(operand);
   }

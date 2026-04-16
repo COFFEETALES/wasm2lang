@@ -330,6 +330,69 @@ Wasm2Lang.Wasm.Tree.CustomPasses.serializeProjectedPlanMap = function (raw, proj
   return out;
 };
 
+/**
+ * Registers an analysis descriptor for a per-block plan-map field and
+ * returns a named-entry accessor {@code fn(index, funcName, name) -> plan|null}.
+ * When {@code opt_projectFn} is supplied, the descriptor serializes each plan
+ * via that projector; otherwise the raw plan map is kept as-is.
+ *
+ * @param {string} externalKey
+ * @param {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} extractFn
+ * @param {(function(*):!Object)=} opt_projectFn
+ * @return {function(?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>, string, string):*}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.declareNamedPlanAccessor_ = function (externalKey, extractFn, opt_projectFn) {
+  if (opt_projectFn) {
+    Wasm2Lang.Wasm.Tree.CustomPasses.registerProjectedPlanAnalysis_(externalKey, extractFn, opt_projectFn);
+  } else {
+    Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(externalKey, extractFn);
+  }
+  return /** @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} idx @param {string} fn @param {string} name @return {*} */ function (
+    idx,
+    fn,
+    name
+  ) {
+    return Wasm2Lang.Wasm.Tree.CustomPasses.getNamedMetadataEntry(idx, fn, extractFn, name);
+  };
+};
+
+/**
+ * Registers an analysis descriptor for a per-block boolean-flag map field and
+ * returns a named-entry accessor {@code fn(index, funcName, name) -> boolean}.
+ *
+ * @param {string} externalKey
+ * @param {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} extractFn
+ * @return {function(?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>, string, string):boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.declareNamedFlagAccessor_ = function (externalKey, extractFn) {
+  Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(externalKey, extractFn);
+  return /** @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} idx @param {string} fn @param {string} name @return {boolean} */ function (
+    idx,
+    fn,
+    name
+  ) {
+    return Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag(idx, fn, extractFn, name);
+  };
+};
+
+/**
+ * Registers an analysis descriptor for a whole-function metadata field and
+ * returns an accessor {@code fn(index, funcName) -> value|null}.
+ *
+ * @param {string} externalKey
+ * @param {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} extractFn
+ * @return {function(?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>, string):*}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.declareFunctionFieldAccessor_ = function (externalKey, extractFn) {
+  Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(externalKey, extractFn);
+  return /** @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} idx @param {string} fn @return {*} */ function (
+    idx,
+    fn
+  ) {
+    return Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadataValue(idx, fn, extractFn);
+  };
+};
+
 // ---------------------------------------------------------------------------
 // Shared subtree reference checker
 // ---------------------------------------------------------------------------

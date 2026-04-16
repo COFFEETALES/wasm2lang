@@ -314,6 +314,21 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitFlatSwitch_ = function (state, n
 };
 
 /**
+ * Returns true when this backend must validate pre-normalized flat-switch
+ * descriptors before replacing a block with custom switch emission.
+ *
+ * The asm.js release pipeline is sensitive to stale switch-dispatch metadata
+ * rebuilt from binary-only normalized input. Other backends keep their
+ * historical behavior unless they opt in explicitly.
+ *
+ * @protected
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.shouldValidateSwitchDispatchStructure_ = function () {
+  return false;
+};
+
+/**
  * Default root-switch emitter for labeled-break backends.
  *
  * @protected
@@ -334,8 +349,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitRootSwitch_ = function (state, n
 
 /**
  * IR-based fallback detection for block-loop fusion pattern A: a named block
- * whose sole child (or sole child + trailing unreachable) is a Loop.
+ * whose first reachable child is a Loop and no code after it is reachable.
  * Used when metadata-based detection fails after binary round-trip.
+ *
+ * Uses {@code reachableBlockChildCount_} so both the .wast codegen path (where
+ * dead siblings may still be present as typed-unreachable statements) and the
+ * binary round-trip path (where binaryen has elided them to an explicit
+ * unreachable instruction) agree on fusability.
  *
  * @protected
  * @param {!Binaryen} binaryen
@@ -344,16 +364,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitRootSwitch_ = function (state, n
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.detectBlockLoopFusionFromIR_ = function (binaryen, expr) {
   var /** @const {!Array<number>|void} */ children = /** @type {!Array<number>|void} */ (expr.children);
-  if (!children || children.length < 1 || children.length > 2) return false;
+  if (!children || children.length < 1) return false;
+  var /** @const {number} */ reachableCount = Wasm2Lang.Backend.AbstractCodegen.reachableBlockChildCount_(binaryen, expr);
+  if (1 !== reachableCount) return false;
   var /** @const {!BinaryenExpressionInfo} */ firstInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
       binaryen,
       children[0]
     );
-  if (binaryen.LoopId !== firstInfo.id) return false;
-  if (2 === children.length) {
-    return binaryen.UnreachableId === Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[1]).id;
-  }
-  return true;
+  return binaryen.LoopId === firstInfo.id;
 };
 
 /**
@@ -495,8 +513,22 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
       } else if (this.isBlockRootSwitch_(fName, bName)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else if (this.isBlockSwitchDispatch_(fName, bName)) {
+        if (!this.shouldValidateSwitchDispatchStructure_()) {
+          ++state.indent;
+          return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
+        }
+        var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ dispatchInfo =
+            Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure(binaryen, nodeCtx.expressionPointer);
+        if (Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure(dispatchInfo)) {
+          ++state.indent;
+          return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
+        }
+        // Metadata rebuilt from a pre-normalized binary can point at a block
+        // whose dispatch wrapper was flattened or otherwise drifted.  Falling
+        // back to normal block emission preserves semantics; forcing the
+        // flat-switch path here would emit `switch (|0) {}` from the empty
+        // fallback descriptor returned by extractStructure().
         ++state.indent;
-        return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else {
         ++state.indent;
       }
@@ -808,7 +840,17 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state
       return this.emitRootSwitch_(state, nodeCtx);
     }
     if (this.isBlockSwitchDispatch_(fnName, blockName)) {
-      return this.emitFlatSwitch_(state, nodeCtx);
+      if (!this.shouldValidateSwitchDispatchStructure_()) {
+        return this.emitFlatSwitch_(state, nodeCtx);
+      }
+      var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ dispatchInfo =
+          Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure(
+            state.binaryen,
+            nodeCtx.expressionPointer
+          );
+      if (Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure(dispatchInfo)) {
+        return this.emitFlatSwitch_(state, nodeCtx);
+      }
     }
   }
   return this.emitLabeledBlock_(state, nodeCtx, childResults);

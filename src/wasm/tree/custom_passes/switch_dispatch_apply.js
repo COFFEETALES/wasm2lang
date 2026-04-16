@@ -55,46 +55,34 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.RootSwitchInfo;
 // Accessors + analysis descriptors
 // ---------------------------------------------------------------------------
 
-/** @const {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} */
-var extractSwDispatch_ = /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-  return fm.switchDispatchNames;
-};
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockSwitchDispatch =
+  Wasm2Lang.Wasm.Tree.CustomPasses.declareNamedFlagAccessor_(
+    'switchDispatch',
+    /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+      return fm.switchDispatchNames;
+    }
+  );
 
-/** @const {function(!Wasm2Lang.Wasm.Tree.PassMetadata):*} */
-var extractRootSwitch_ = /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-  return fm.rootSwitchNames;
-};
-
-/**
- * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
- * @param {string} funcName
- * @param {string} blockName
- * @return {boolean}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockSwitchDispatch = function (
-  passRunResultIndex,
-  funcName,
-  blockName
-) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag(passRunResultIndex, funcName, extractSwDispatch_, blockName);
-};
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockRootSwitch =
+  Wasm2Lang.Wasm.Tree.CustomPasses.declareNamedFlagAccessor_(
+    'rootSwitch',
+    /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
+      return fm.rootSwitchNames;
+    }
+  );
 
 /**
- * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
- * @param {string} funcName
- * @param {string} blockName
+ * Returns true when {@code extractStructure()} recovered a usable flat-switch
+ * descriptor. Metadata rebuilt from pre-normalized binaries can drift onto an
+ * ordinary block after binary round-trip; callers must validate the recovered
+ * shape before replacing the subtree with flat-switch emission.
+ *
+ * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} info
  * @return {boolean}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockRootSwitch = function (
-  passRunResultIndex,
-  funcName,
-  blockName
-) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.hasNamedMetadataFlag(passRunResultIndex, funcName, extractRootSwitch_, blockName);
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure = function (info) {
+  return 0 !== info.conditionPtr && (0 !== info.caseGroups.length || null !== info.defaultGroup);
 };
-
-Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor('switchDispatch', extractSwDispatch_);
-Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor('rootSwitch', extractRootSwitch_);
 
 // ---------------------------------------------------------------------------
 // Extraction
@@ -928,11 +916,21 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
   // Emit epilogue (shared between labeled and unlabeled paths).  When
   // labeledEpilogue, wrap the epilogue at inner indent inside the outer
   // block; otherwise append at the current indent with no wrapping.
+  //
+  // The caller ({@code emitFlatSwitch_}) pushed the '*' switch sentinel
+  // onto breakableStack before this function ran.  That sentinel is
+  // correct for case-action emission (unlabeled `break;` exits switch),
+  // but the epilogue is conceptually AFTER the switch closes — breaks
+  // there target the enclosing loop/block, not the switch.  Pop '*'
+  // around the epilogue emission so label-elision resolves against the
+  // real outer stack, and push it back so the caller's balanced pop is
+  // still correct.
   if (hasEpilogue) {
     if (labeledEpilogue && '' !== innerChainName) {
       lines[lines.length] = pad(ind + 1) + '}\n';
       --state.breakableStack.length;
     }
+    --state.breakableStack.length;
     S.emitSubWalkedExpressions_(
       lines,
       /** @type {!BinaryenModule} */ (state.wasmModule),
@@ -943,6 +941,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
       info.epiloguePtrs.length,
       labeledEpilogue ? ind + 1 : ind
     );
+    state.breakableStack[state.breakableStack.length] = '*';
     if (labeledEpilogue) {
       lines[lines.length] = pad(ind) + '}\n';
     }

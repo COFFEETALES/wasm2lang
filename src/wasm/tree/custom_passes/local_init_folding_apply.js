@@ -3,44 +3,21 @@
 /**
  * Application logic for the local-init-folding pass.
  *
- * This module owns the accessor for localInitOverrides metadata produced by
- * LocalInitFoldingPass — backends call through the thin wrapper on
- * AbstractCodegen.prototype.getLocalInitOverrides_.
+ * Owns the {@code getLocalInitOverrides} accessor and the postbuild analysis
+ * descriptor for localInitOverrides metadata produced by LocalInitFoldingPass.
+ * Backends call through the thin wrapper on
+ * {@code AbstractCodegen.prototype.getLocalInitOverrides_}.
  *
  * @const
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingApplication = {};
 
-// ---------------------------------------------------------------------------
-// Accessors
-// ---------------------------------------------------------------------------
-
-/**
- * Returns the local-init overrides for a given function, or null if none.
- *
- * @param {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} passRunResultIndex
- * @param {string} funcName
- * @return {?Object<string, *>}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingApplication.getLocalInitOverrides = function (passRunResultIndex, funcName) {
-  return /** @type {?Object<string, *>} */ (
-    Wasm2Lang.Wasm.Tree.CustomPasses.getFunctionMetadataValue(
-      passRunResultIndex,
-      funcName,
+Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingApplication.getLocalInitOverrides =
+  /** @type {function(?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>, string):?Object<string, *>} */ (
+    Wasm2Lang.Wasm.Tree.CustomPasses.declareFunctionFieldAccessor_(
+      'localInitFolding',
       /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
         return fm.localInitOverrides;
       }
     )
   );
-};
-
-// ---------------------------------------------------------------------------
-// Analysis descriptor
-// ---------------------------------------------------------------------------
-
-Wasm2Lang.Wasm.Tree.CustomPasses.registerFieldAnalysisDescriptor(
-  'localInitFolding',
-  /** @param {!Wasm2Lang.Wasm.Tree.PassMetadata} fm @return {*} */ function (fm) {
-    return fm.localInitOverrides;
-  }
-);

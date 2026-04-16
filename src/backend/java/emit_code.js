@@ -269,8 +269,5 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     outputParts.splice(0, 0, 'import jdk.incubator.vector.*;');
   }
 
-  // Traversal summary from data collected during the codegen traversal above.
-  outputParts[outputParts.length] = this.emitDiagnosticSummary_(wasmModule, options);
-
   return outputParts.join('\n');
 };

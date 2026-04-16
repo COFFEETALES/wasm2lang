@@ -83,7 +83,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
   var byteCopy = function (count, toMemory) {
     var /** @type {string} */ s = '';
     for (var bi = 0; bi < count; ++bi) {
-      var /** @const {string} */ ptrExpr = nHEAPU8 + '[' + (0 === bi ? l0 + ' >> 0' : l0 + ' + ' + String(bi) + ' >> 0') + ']';
+      var /** @const {string} */ ptrExpr = nHEAPU8 + '[' + self.renderHelperByteIndex_(l0, bi) + ']';
       var /** @const {string} */ scrExpr = nHEAPU8 + '[' + String(scratchByteOffset + bi) + ']';
       s += '\n' + pad2 + (toMemory ? ptrExpr + ' = ' + scrExpr : scrExpr + ' = ' + ptrExpr) + ';';
     }

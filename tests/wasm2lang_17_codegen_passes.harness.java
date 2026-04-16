@@ -123,6 +123,74 @@ int w2lCountSimplifiedWhile(String body) {
                 } else {
                     _f.add("fusedForNoLabel: function body not found");
                 }
+
+                // -- if-guarded while (LWI): loop body is If promoted to while --
+                b = w2lBodyOf(_code, "ifGuardedWhileInner");
+                if (b == null || w2lCountSimplifiedWhile(b) < 1)
+                    _f.add("ifGuardedWhileInner: expected while loop (LWI)");
+
+                // -- terminal-exit loop (LCT/LFT): for-loop with unconditional exit --
+                b = w2lBodyOf(_code, "terminalExitLoop");
+                if (b != null) {
+                    if (!w2lHasMatch(b, "\\bfor\\s*\\("))
+                        _f.add("terminalExitLoop: expected for-loop");
+                    if (w2lCountSimplifiedWhile(b) != 0)
+                        _f.add("terminalExitLoop: expected no while-loop (is for-loop)");
+                } else {
+                    _f.add("terminalExitLoop: function body not found");
+                }
+
+                // -- do-while + trailing exit (LDA/LEA) --
+                b = w2lBodyOf(_code, "doWhileWithExitTail");
+                if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
+                    _f.add("doWhileWithExitTail: expected do-while loop");
+
+                // -- bare do-while (LEB) --
+                b = w2lBodyOf(_code, "bareDoWhileLoop");
+                if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
+                    _f.add("bareDoWhileLoop: expected do-while loop (LEB)");
+
+                // -- switch-continue loop (LCS/LFS) --
+                b = w2lBodyOf(_code, "switchContinueLoop");
+                if (b != null) {
+                    if (!w2lHasMatch(b, "\\bfor\\s*\\("))
+                        _f.add("switchContinueLoop: expected for-loop");
+                    if (!w2lHasMatch(b, "\\bswitch\\s*\\("))
+                        _f.add("switchContinueLoop: expected switch dispatch");
+                } else {
+                    _f.add("switchContinueLoop: function body not found");
+                }
+
+                // -- root switch state machine (rs$) --
+                b = w2lBodyOf(_code, "rootSwitchStateMachine");
+                if (b != null) {
+                    if (!w2lHasMatch(b, "\\bswitch\\s*\\("))
+                        _f.add("rootSwitchStateMachine: expected switch dispatch");
+                    if (w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:") < 3)
+                        _f.add("rootSwitchStateMachine: expected >=3 cases");
+                } else {
+                    _f.add("rootSwitchStateMachine: function body not found");
+                }
+
+                // -- Pattern B fusion (loop with named body block) --
+                b = w2lBodyOf(_code, "loopWithNamedBodyBlock");
+                if (b != null) {
+                    boolean anyLoop = w2lHasMatch(b, "\\bwhile\\s*\\(") ||
+                        w2lHasMatch(b, "\\bfor\\s*\\(") || w2lHasMatch(b, "\\bdo\\s*\\{");
+                    if (!anyLoop)
+                        _f.add("loopWithNamedBodyBlock: expected fused loop construct");
+                } else {
+                    _f.add("loopWithNamedBodyBlock: function body not found");
+                }
+
+                // -- 3-arm if-else chain --
+                b = w2lBodyOf(_code, "ifElseChainThree");
+                if (b != null) {
+                    if (w2lCountMatches(b, "\\}\\s*else\\b") < 2)
+                        _f.add("ifElseChainThree: expected >=2 else branches");
+                } else {
+                    _f.add("ifElseChainThree: function body not found");
+                }
             }
 
             // -- if-else recovery (IR restructuring, always active) --
@@ -155,6 +223,32 @@ int w2lCountSimplifiedWhile(String body) {
                     _f.add("localInitFoldingMixed: expected non-foldable base computation (+ 100) present");
             } else {
                 _f.add("localInitFoldingMixed: function body not found");
+            }
+
+            // -- local init repeated set (first set folded, second runtime-assigned) --
+            b = w2lBodyOf(_code, "localInitRepeatedSet");
+            if (b != null) {
+                if (!w2lHasMatch(b, "int\\s+[\\w$]+\\s*=\\s*10\\s*;"))
+                    _f.add("localInitRepeatedSet: expected int declaration with value 10 (first set folded)");
+                if (!w2lHasMatch(b, "\\b20\\b"))
+                    _f.add("localInitRepeatedSet: expected runtime assignment of value 20 (second set NOT folded)");
+                if (!w2lHasMatch(b, "int\\s+[\\w$]+\\s*=\\s*30\\s*;"))
+                    _f.add("localInitRepeatedSet: expected int declaration with value 30 (other local folded)");
+            } else {
+                _f.add("localInitRepeatedSet: function body not found");
+            }
+
+            // -- local init all-zero (zero folds become nops; runtime stores remain) --
+            b = w2lBodyOf(_code, "localInitAllZero");
+            if (b != null) {
+                if (!w2lHasMatch(b, "\\b5\\b"))
+                    _f.add("localInitAllZero: expected (x+5) term present");
+                if (!w2lHasMatch(b, "\\b3\\b"))
+                    _f.add("localInitAllZero: expected (x*3) term present");
+                if (!w2lHasMatch(b, "\\b7\\b"))
+                    _f.add("localInitAllZero: expected (x-7) term present");
+            } else {
+                _f.add("localInitAllZero: function body not found");
             }
 
             if (!_f.isEmpty()) {
@@ -259,6 +353,46 @@ int w2lCountSimplifiedWhile(String body) {
 
     for (Double v : w2lFlat(_data, "no_while_block_tail_limits")) {
         mod.exerciseNoWhileBlockTail(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "if_guarded_while_inner_limits")) {
+        mod.exerciseIfGuardedWhileInner(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "terminal_exit_loop_caps")) {
+        mod.exerciseTerminalExitLoop(v.intValue());
+    }
+
+    for (java.util.List<Double> pair : w2lNested(_data, "do_while_with_exit_tail_pairs")) {
+        mod.exerciseDoWhileWithExitTail(pair.get(0).intValue(), pair.get(1).intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "bare_do_while_loop_limits")) {
+        mod.exerciseBareDoWhileLoop(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "switch_continue_loop_initial")) {
+        mod.exerciseSwitchContinueLoop(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "root_switch_state_machine_initial")) {
+        mod.exerciseRootSwitchStateMachine(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "loop_with_named_body_block_limits")) {
+        mod.exerciseLoopWithNamedBodyBlock(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "if_else_chain_three_values")) {
+        mod.exerciseIfElseChainThree(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "local_init_repeated_set_values")) {
+        mod.exerciseLocalInitRepeatedSet(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "local_init_all_zero_values")) {
+        mod.exerciseLocalInitAllZero(v.intValue());
     }
 
     w2lDumpCRC(memBuffer);

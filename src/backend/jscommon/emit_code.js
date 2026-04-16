@@ -279,7 +279,6 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   }
   outputParts[outputParts.length] = pad1 + 'return { ' + returnEntries.join(', ') + ' };';
   outputParts[outputParts.length] = '};';
-  outputParts[outputParts.length] = this.emitDiagnosticSummary_(wasmModule, options);
 
   return outputParts.join('\n');
 };

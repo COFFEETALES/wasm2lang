@@ -19,7 +19,71 @@
 // stores it means {@code $w2l_store_i32_a1}/{@code $w2l_store_i32_a2} (i32)
 // or {@code $w2l_store_i64} (i64), all of which byte-copy through HEAPU8 so
 // the original bit pattern reaches memory unchanged.
+//
+// Unlike asm.js, JavaScript has no validator requiring {@code |0} on pointer
+// sums or {@code >> 0} on byte-view indices — typed-array indexing coerces
+// via {@code ToIndex}, and multi-byte views use {@code >> 1/2/3} which
+// itself runs {@code ToInt32} on the operand.  The overrides in this file
+// drop both annotations so memory expressions read as plain JavaScript.
 // ---------------------------------------------------------------------------
+
+/**
+ * Runtime-helper byte-view indices: JavaScript needs no {@code >> 0}
+ * coercion since typed-array indexing runs {@code ToIndex} itself.  This
+ * strips the asm.js coercion from {@code HEAPU8[...]} accesses emitted
+ * inside shared helpers like {@code $w2l_store_f64}/{@code $w2l_load_f64}.
+ *
+ * @override
+ * @protected
+ * @param {string} ptrExpr
+ * @param {number} byteOffset
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHelperByteIndex_ = function (ptrExpr, byteOffset) {
+  if (0 === byteOffset) return ptrExpr;
+  return ptrExpr + ' + ' + String(byteOffset);
+};
+
+/**
+ * JavaScript typed-array indexing auto-coerces the index — no {@code |0}
+ * is needed on the sum.  Keep the zero-offset fast path.
+ *
+ * @override
+ * @protected
+ * @param {string} baseExpr
+ * @param {number} offset
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderPtrWithOffset_ = function (baseExpr, offset) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  if (0 === offset) return baseExpr;
+  if ('0' === baseExpr) return String(offset);
+  return P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_);
+};
+
+/**
+ * Byte-width views ({@code HEAP8}/{@code HEAPU8}) need no {@code >> 0} in
+ * plain JavaScript — the typed-array {@code ToIndex} conversion already
+ * truncates the index.  Multi-byte views still need {@code >> 1/2/3} because
+ * typed arrays index by element, not by byte offset.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} ptrExpr
+ * @param {number} wasmType
+ * @param {number} bytes
+ * @param {boolean} isSigned
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHeapAccess_ = function (binaryen, ptrExpr, wasmType, bytes, isSigned) {
+  if (1 !== bytes || !Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
+    return Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHeapAccess_.call(this, binaryen, ptrExpr, wasmType, bytes, isSigned);
+  }
+  var /** @const {string} */ viewName = isSigned ? 'HEAP8' : 'HEAPU8';
+  this.markBinding_(viewName);
+  return this.n_(viewName) + '[' + ptrExpr + ']';
+};
 
 /**
  * @override
@@ -64,7 +128,21 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderLoad_ = function (binaryen, 
     }
     return 'BigInt(' + narrow + ')';
   }
-  return Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLoad_.call(this, binaryen, ptrExpr, wasmType, bytes, isSigned, align);
+  // Non-i64 loads: typed-array reads already produce properly-typed Numbers in
+  // JavaScript (HEAP8/HEAPU8/HEAP16/HEAPU16/HEAP32 return int32-ranged values;
+  // HEAPF32/HEAPF64 return the corresponding float).  Skip the asm.js outer
+  // {@code |0}/{@code Math.fround} wrap.  Unaligned paths still go through
+  // helpers that self-coerce their return value.
+  if (align < bytes && bytes > 1) {
+    var /** @type {string} */ loadHelper;
+    if (V.isFloat(binaryen, wasmType)) {
+      loadHelper = '$w2l_load_' + V.typeName(binaryen, wasmType);
+      return this.renderHelperCall_(binaryen, loadHelper, [ptrExpr], wasmType);
+    }
+    loadHelper = '$w2l_load_i' + (bytes << 3) + '_a' + align;
+    return this.renderHelperCall_(binaryen, loadHelper, [ptrExpr], wasmType);
+  }
+  return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, isSigned);
 };
 
 /**

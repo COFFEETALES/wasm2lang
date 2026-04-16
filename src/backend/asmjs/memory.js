@@ -113,14 +113,33 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the pointer expression with an optional static byte offset applied.
- * When offset is zero the original expression is returned unchanged.
+ * Renders the index expression used inside a byte-view typed-array access
+ * (e.g., {@code HEAPU8[...]}) emitted from a runtime helper body.  The asm.js
+ * default appends {@code >> 0} so the validator sees a signed i32 index; the
+ * JavaScript backend overrides this to drop the coercion, since typed-array
+ * indexing already runs {@code ToIndex} on the operand.
  *
+ * @protected
+ * @param {string} ptrExpr  Base pointer expression (already an i32 in asm.js).
+ * @param {number} byteOffset  Constant byte offset (>= 0).
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHelperByteIndex_ = function (ptrExpr, byteOffset) {
+  if (0 === byteOffset) return ptrExpr + ' >> 0';
+  return ptrExpr + ' + ' + String(byteOffset) + ' >> 0';
+};
+
+/**
+ * Returns the pointer expression with an optional static byte offset applied.
+ * When offset is zero the original expression is returned unchanged.  Asm.js
+ * wraps the sum with {@code |0} so the validator sees a signed i32.
+ *
+ * @protected
  * @param {string} baseExpr
  * @param {number} offset
  * @return {string}
  */
-Wasm2Lang.Backend.AsmjsCodegen.renderPtrWithOffset_ = function (baseExpr, offset) {
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderPtrWithOffset_ = function (baseExpr, offset) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (0 === offset) return baseExpr;
   if ('0' === baseExpr) return String(offset);

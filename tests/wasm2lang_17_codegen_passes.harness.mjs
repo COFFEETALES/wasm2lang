@@ -96,6 +96,46 @@ const runTest = function (buff, out, exports, data) {
   for (const v of data.no_while_block_tail_limits) {
     exports.exerciseNoWhileBlockTail(v);
   }
+
+  for (const v of data.if_guarded_while_inner_limits) {
+    exports.exerciseIfGuardedWhileInner(v);
+  }
+
+  for (const v of data.terminal_exit_loop_caps) {
+    exports.exerciseTerminalExitLoop(v);
+  }
+
+  for (const pair of data.do_while_with_exit_tail_pairs) {
+    exports.exerciseDoWhileWithExitTail(pair[0], pair[1]);
+  }
+
+  for (const v of data.bare_do_while_loop_limits) {
+    exports.exerciseBareDoWhileLoop(v);
+  }
+
+  for (const v of data.switch_continue_loop_initial) {
+    exports.exerciseSwitchContinueLoop(v);
+  }
+
+  for (const v of data.root_switch_state_machine_initial) {
+    exports.exerciseRootSwitchStateMachine(v);
+  }
+
+  for (const v of data.loop_with_named_body_block_limits) {
+    exports.exerciseLoopWithNamedBodyBlock(v);
+  }
+
+  for (const v of data.if_else_chain_three_values) {
+    exports.exerciseIfElseChainThree(v);
+  }
+
+  for (const v of data.local_init_repeated_set_values) {
+    exports.exerciseLocalInitRepeatedSet(v);
+  }
+
+  for (const v of data.local_init_all_zero_values) {
+    exports.exerciseLocalInitAllZero(v);
+  }
 };
 
 /**
@@ -154,6 +194,7 @@ const validateCode = function (code, testName) {
     if (!cond) failures.push(name + ': ' + msg);
   };
 
+  check('global', !/switch\s*\(\|0\)/.test(code), 'generated code contains an empty switch condition (`switch (|0)`)');
   // Count while( that are NOT } while( (i.e. simplified while, not do-while tail).
   const countSimplifiedWhile = function (body) {
     const total = (body.match(/while\s*\(/g) || []).length;
@@ -290,6 +331,77 @@ const validateCode = function (code, testName) {
     } else {
       check('noWhileBlockTail', false, 'function body not found');
     }
+
+    // -- if-guarded while (LWI): loop body is an If; promoted to while --
+    b = bodyOf('ifGuardedWhileInner');
+    check('ifGuardedWhileInner', b && countSimplifiedWhile(b) >= 1, 'expected while loop (LWI)');
+
+    // -- terminal-exit loop (LCT/LFT): for-loop with unconditional exit --
+    b = bodyOf('terminalExitLoop');
+    if (b) {
+      check('terminalExitLoop', /\bfor\s*\(/.test(b), 'expected for-loop (terminal-exit)');
+      check('terminalExitLoop', countSimplifiedWhile(b) === 0, 'expected no while-loop (terminal-exit is for-loop)');
+    } else {
+      check('terminalExitLoop', false, 'function body not found');
+    }
+
+    // -- do-while + trailing exit (LDA/LEA) --
+    b = bodyOf('doWhileWithExitTail');
+    check('doWhileWithExitTail', b && /\bdo\s*\{/.test(b), 'expected do-while loop (LDA/LEA)');
+
+    // -- bare do-while (LEB): condition carries side effects (local.tee) --
+    b = bodyOf('bareDoWhileLoop');
+    check('bareDoWhileLoop', b && /\bdo\s*\{/.test(b), 'expected do-while loop (LEB)');
+
+    // -- switch-continue loop (LCS/LFS): for-loop with bottom switch --
+    b = bodyOf('switchContinueLoop');
+    if (b) {
+      check('switchContinueLoop', /\bfor\s*\(/.test(b), 'expected for-loop (LCS/LFS)');
+      check('switchContinueLoop', /\bswitch\s*\(/.test(b), 'expected switch dispatch at loop bottom');
+    } else {
+      check('switchContinueLoop', false, 'function body not found');
+    }
+
+    // -- root switch state machine (rs$): collapses outer chain + loop+switch --
+    // Guards that rs$ processing doesn't leave orphan blocks or mis-route
+    // the case-action break paths after outer chain collapse.
+    b = bodyOf('rootSwitchStateMachine');
+    if (b) {
+      check('rootSwitchStateMachine', /\bswitch\s*\(/.test(b), 'expected switch dispatch');
+      // With rs$, the outer chain block should be elided — there should be
+      // no labeled break to a synthetic outer block wrapper.
+      check(
+        'rootSwitchStateMachine',
+        (b.match(/\bcase\s+\d+\s*:/g) || []).length >= 3,
+        'expected >=3 cases in dispatch'
+      );
+    } else {
+      check('rootSwitchStateMachine', false, 'function body not found');
+    }
+
+    // -- Pattern B fusion (loop with named body block) --
+    // Loop should emit as a single loop construct; the inner block label
+    // must not escape as a separate labeled wrapper.
+    b = bodyOf('loopWithNamedBodyBlock');
+    if (b) {
+      check(
+        'loopWithNamedBodyBlock',
+        /\bwhile\s*\(/.test(b) || /\bfor\s*\(/.test(b) || /\bdo\s*\{/.test(b),
+        'expected fused loop construct (while/for/do-while)'
+      );
+    } else {
+      check('loopWithNamedBodyBlock', false, 'function body not found');
+    }
+
+    // -- 3-arm if-else chain --
+    b = bodyOf('ifElseChainThree');
+    if (b) {
+      // Count `else` structures (should be >=2 after if-else recovery).
+      const elseCount = (b.match(/\}\s*else\b/g) || []).length;
+      check('ifElseChainThree', elseCount >= 2, 'expected >=2 else branches in recovered chain');
+    } else {
+      check('ifElseChainThree', false, 'function body not found');
+    }
   }
 
   // -- if-else recovery (IR restructuring, always active) --
@@ -319,6 +431,33 @@ const validateCode = function (code, testName) {
     check('localInitFoldingMixed', /100/.test(b), 'expected non-foldable base computation (+ 100) present');
   } else {
     check('localInitFoldingMixed', false, 'function body not found');
+  }
+
+  // -- local init repeated set: first foldable, second is a runtime store --
+  // initOverrides records 10 on the first local; the second store (20) is
+  // preserved as a regular assignment.  The function returns x*20+30 so
+  // the value 20 must appear somewhere in the body.
+  b = bodyOf('localInitRepeatedSet');
+  if (b) {
+    const varLine = (b.match(/\bvar\b[^;]*;/) || [''])[0];
+    check('localInitRepeatedSet', /\b10\b/.test(varLine), 'expected var init with value 10 (first set folded)');
+    check('localInitRepeatedSet', /\b20\b/.test(b), 'expected runtime assignment of value 20 (second set NOT folded)');
+    check('localInitRepeatedSet', /\b30\b/.test(varLine), 'expected var init with value 30');
+  } else {
+    check('localInitRepeatedSet', false, 'function body not found');
+  }
+
+  // -- local init all-zero: no override values; leading sets become nops --
+  // hasOverrides is false (all folded values are zero) but hasZeroFolds is
+  // true, so the zeroFoldSet visitor replaces each leading local.set 0 with
+  // nop.  The body must still emit the subsequent non-zero assignments.
+  b = bodyOf('localInitAllZero');
+  if (b) {
+    check('localInitAllZero', /\b5\b/.test(b), 'expected (x+5) term present');
+    check('localInitAllZero', /\b3\b/.test(b), 'expected (x*3) term present');
+    check('localInitAllZero', /\b7\b/.test(b), 'expected (x-7) term present');
+  } else {
+    check('localInitAllZero', false, 'function body not found');
   }
 
   if (failures.length) {
