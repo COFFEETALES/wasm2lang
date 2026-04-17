@@ -41,7 +41,7 @@ const wasm = !!obj['wasm'];
 
   let sharedData = null;
   try {
-    const testBase = testName.replace(/^.*\//, '').replace(/_(baseline|codegen|none|prenorm|nopre)$/, '');
+    const testBase = testName.replace(/^.*\//, '').replace(/_(baseline|codegen|none|prenorm|nopre|nomangle)$/, '');
     const dataPath = ['./', testBase, '.shared.data.json'].join('');
     if (isNode) {
       sharedData = JSON.parse(require('fs').readFileSync(dataPath, 'utf8'));

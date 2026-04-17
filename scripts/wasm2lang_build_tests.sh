@@ -12,7 +12,7 @@ if [ ${#0} -ne ${#prefix} ]; then
   fn() {
     local file filename testbase variant_list variant_suffix
     local artifact_dir artifact_base harness_file harness_name harness_variant_name
-    local build_languages mangler_key MANGLER_LEN
+    local build_languages mangler_key mangler_flag MANGLER_LEN
     local wasm_normalize codegen_normalize codegen_input
     local codegen_dir codegen_name testbase_only prenorm_name ext f1 f2 tmpfile
     local constraint_failures
@@ -46,7 +46,7 @@ if [ ${#0} -ne ${#prefix} ]; then
       node                                        \
         "../wasm2lang.js"                         \
         --normalize-wasm "$codegen_normalize"     \
-        --mangler "$mangler_key"                  \
+        $mangler_flag                             \
         --language-out "$1"                       \
         --define "$3=$((65536 * 8))"              \
         --emit-metadata=memBuffer                 \
@@ -116,7 +116,7 @@ if [ ${#0} -ne ${#prefix} ]; then
       if [ -f "../tests/${testbase}.build.normalize" ]; then
         variant_list="$(cat "../tests/${testbase}.build.normalize")"
       else
-        variant_list="baseline${LF}codegen${LF}prenorm${LF}nopre"
+        variant_list="baseline${LF}codegen${LF}prenorm${LF}nopre${LF}nomangle"
       fi
 
       while IFS=' ' read -r variant_suffix _; do
@@ -126,7 +126,13 @@ if [ ${#0} -ne ${#prefix} ]; then
 
         # Variant-specific pipeline selection: each branch fully specifies
         # how the .wasm/.wast is produced (wasm_normalize) and how the code
-        # emitter reads it back (codegen_normalize + codegen_input).
+        # emitter reads it back (codegen_normalize + codegen_input), and
+        # whether the code emitter runs with (mangler_flag set) or without
+        # (mangler_flag empty) the identifier mangler.  The nomangle variant
+        # is the only one that exercises labelN_'s non-mangler path, which
+        # must sanitize raw binaryen label names into valid target-language
+        # identifiers (e.g. 'folding-inner0' -> '$folding_inner0').
+        mangler_flag="--mangler $mangler_key"
         case "$variant_suffix" in
           baseline)
             wasm_normalize="binaryen:none"
@@ -147,6 +153,12 @@ if [ ${#0} -ne ${#prefix} ]; then
             wasm_normalize="binaryen:none,wasm2lang:codegen"
             codegen_normalize="binaryen:none"
             codegen_input="--input-file ${artifact_base}.wasm"
+            ;;
+          nomangle)
+            wasm_normalize="binaryen:none"
+            codegen_normalize="binaryen:none,wasm2lang:codegen"
+            codegen_input="--input-file wast:${artifact_base}.wast"
+            mangler_flag=""
             ;;
           *)
             echo -e "\033[0;31mError:\033[0m unknown variant suffix '$variant_suffix'" >&2

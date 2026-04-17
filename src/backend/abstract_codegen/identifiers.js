@@ -185,7 +185,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.localN_ = function (index) {
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.labelN_ = function (labelMap, binaryenName) {
   if (!this.mangler_) {
-    return '$' + binaryenName;
+    return '$' + Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(binaryenName);
   }
   var /** @type {number|void} */ seq = labelMap[binaryenName];
   if ('number' !== typeof seq) {

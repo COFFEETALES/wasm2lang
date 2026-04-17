@@ -94,17 +94,17 @@
       [binaryen.i32],
       module.block(null, [
         module.local.set(2, module.i32.const(0)),
-        module.block('countedLoopCompleted', [
+        module.block('counted-loop-completed', [
           module.loop(
-            'countedLoopIteration',
+            'counted-loop-iteration',
             module.block(null, [
               module.break(
-                'countedLoopCompleted',
+                'counted-loop-completed',
                 module.i32.ge_s(module.local.get(0, binaryen.i32), module.local.get(1, binaryen.i32))
               ),
               module.local.set(2, module.i32.add(module.local.get(2, binaryen.i32), module.local.get(0, binaryen.i32))),
               module.local.set(0, module.i32.add(module.local.get(0, binaryen.i32), module.i32.const(1))),
-              module.break('countedLoopIteration')
+              module.break('counted-loop-iteration')
             ])
           )
         ]),
@@ -127,7 +127,7 @@
       module.block(null, [
         module.local.set(1, module.i32.const(1)),
         module.loop(
-          'doWhileCountdownLoop',
+          'do-while.countdown.loop',
           module.block(null, [
             module.if(
               module.i32.gt_s(module.local.get(0, binaryen.i32), module.i32.const(0)),
@@ -135,7 +135,7 @@
               module.local.set(1, module.i32.add(module.local.get(1, binaryen.i32), module.i32.const(111)))
             ),
             module.local.set(0, module.i32.sub(module.local.get(0, binaryen.i32), module.i32.const(1))),
-            module.break('doWhileCountdownLoop', module.i32.gt_s(module.local.get(0, binaryen.i32), module.i32.const(0)))
+            module.break('do-while.countdown.loop', module.i32.gt_s(module.local.get(0, binaryen.i32), module.i32.const(0)))
           ])
         ),
         storeI32(module.local.get(1, binaryen.i32)),
@@ -154,14 +154,14 @@
       binaryen.none,
       [],
       module.block(null, [
-        module.block('doWhileVariantCompleted', [
+        module.block('do-while-variant.completed', [
           module.loop(
-            'doWhileVariantLoop',
+            'do-while.variant.loop',
             module.block(null, [
               module.local.set(0, module.i32.mul(module.local.get(0, binaryen.i32), module.i32.const(2))),
               module.local.set(1, module.i32.sub(module.local.get(1, binaryen.i32), module.i32.const(1))),
-              module.break('doWhileVariantLoop', module.i32.gt_s(module.local.get(1, binaryen.i32), module.i32.const(0))),
-              module.break('doWhileVariantCompleted')
+              module.break('do-while.variant.loop', module.i32.gt_s(module.local.get(1, binaryen.i32), module.i32.const(0))),
+              module.break('do-while-variant.completed')
             ])
           )
         ]),
