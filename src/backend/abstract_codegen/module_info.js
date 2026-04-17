@@ -140,22 +140,30 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectI32InitOps_ = function (i32, 
 };
 
 /**
- * Resolves the initial heap size in bytes from {@code options.definitions}.
- * Returns {@code defaultSize} when the key is absent or the parsed value is
- * non-finite or non-positive.
- *
- * Intended for use by language backends that accept a per-backend heap-size
- * define (e.g. ASMJS_HEAP_SIZE, PHP64_HEAP_SIZE).
+ * Resolves the initial heap size in bytes.  The natural default is the wasm
+ * module's declared {@code memory.initial * 65536}; a per-backend
+ * {@code *_HEAP_SIZE} define (e.g. {@code ASMJS_HEAP_SIZE},
+ * {@code PHP64_HEAP_SIZE}) overrides it when fine-tuning is needed — for
+ * example, to pad out extra room for runtime allocations beyond the static
+ * segments.  Falls back to {@code 65536} (one page) when the module declares
+ * no memory.
  *
  * @protected
+ * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @param {string} definitionKey  Name of the --define entry to look up.
- * @param {number} defaultSize    Fallback heap size in bytes.
+ * @param {string} definitionKey  Name of the --define entry to consult.
  * @return {number}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.resolveHeapSize_ = function (options, definitionKey, defaultSize) {
-  var /** @const {!Object<string, string>} */ definitions = options.definitions;
+Wasm2Lang.Backend.AbstractCodegen.prototype.resolveHeapSize_ = function (wasmModule, options, definitionKey) {
+  var /** @type {number} */ defaultSize = 65536;
+  if (wasmModule.hasMemory()) {
+    var /** @const {!BinaryenMemoryInfo} */ memInfo = wasmModule.getMemoryInfo();
+    if (0 < memInfo.initial) {
+      defaultSize = memInfo.initial * 65536;
+    }
+  }
 
+  var /** @const {!Object<string, string>} */ definitions = options.definitions;
   if (!Object.prototype.hasOwnProperty.call(definitions, definitionKey)) {
     return defaultSize;
   }
@@ -745,24 +753,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SignatureGroup_} */ sg = sigGroups[sk];
     // Trim trailing nulls.
     while (sg.slots.length > 0 && null === sg.slots[sg.slots.length - 1].boundName) {
-      sg.slots.length--;
+      --sg.slots.length;
     }
     // Pad to next power of 2.
     var /** @type {number} */ size = 1;
-    while (size < sg.slots.length) {
-      size *= 2;
-    }
+    while (size < sg.slots.length) size *= 2;
+    while (sg.slots.length < size) sg.slots[sg.slots.length] = {boundName: null};
+    // Any null slot means a call-indirect through it needs a trap stub.
     var /** @type {boolean} */ hasNulls = false;
-    while (sg.slots.length < size) {
-      sg.slots[sg.slots.length] = {boundName: null};
-      hasNulls = true;
-    }
-    if (!hasNulls) {
-      for (var /** @type {number} */ ni = 0, /** @const {number} */ niLen = sg.slots.length; ni !== niLen; ++ni) {
-        if (null === sg.slots[ni].boundName) {
-          hasNulls = true;
-          break;
-        }
+    for (var /** @type {number} */ ni = 0; ni !== size; ++ni) {
+      if (null === sg.slots[ni].boundName) {
+        hasNulls = true;
+        break;
       }
     }
     tables[sk] = {

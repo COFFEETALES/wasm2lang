@@ -66,6 +66,7 @@
         'identifiers.js',
         'mangler_profile.js',
         'memory.js',
+        'metadata.js',
         'numeric_ops.js'
       ]
     };

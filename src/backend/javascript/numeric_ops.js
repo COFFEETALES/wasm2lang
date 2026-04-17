@@ -23,20 +23,18 @@
  * @const {!Object<string, boolean>}
  * @private
  */
-Wasm2Lang.Backend.JavaScriptCodegen.JS_HELPER_UNARY_OPS_ = /** @return {!Object<string, boolean>} */ (function () {
-  var /** @const {!Object<string, boolean>} */ table = {};
-  table['trunc_s_f32_to_i64'] = true;
-  table['trunc_u_f32_to_i64'] = true;
-  table['trunc_s_f64_to_i64'] = true;
-  table['trunc_u_f64_to_i64'] = true;
-  table['trunc_sat_s_f32_to_i64'] = true;
-  table['trunc_sat_u_f32_to_i64'] = true;
-  table['trunc_sat_s_f64_to_i64'] = true;
-  table['trunc_sat_u_f64_to_i64'] = true;
-  table['reinterpret_i64_to_f64'] = true;
-  table['reinterpret_f64_to_i64'] = true;
-  return table;
-})();
+Wasm2Lang.Backend.JavaScriptCodegen.JS_HELPER_UNARY_OPS_ = {
+  'trunc_s_f32_to_i64': true,
+  'trunc_u_f32_to_i64': true,
+  'trunc_s_f64_to_i64': true,
+  'trunc_u_f64_to_i64': true,
+  'trunc_sat_s_f32_to_i64': true,
+  'trunc_sat_u_f32_to_i64': true,
+  'trunc_sat_s_f64_to_i64': true,
+  'trunc_sat_u_f64_to_i64': true,
+  'reinterpret_i64_to_f64': true,
+  'reinterpret_f64_to_i64': true
+};
 
 /**
  * @override

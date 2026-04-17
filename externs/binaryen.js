@@ -383,6 +383,16 @@ BinaryenModule.prototype.getNumMemorySegments = function () {};
 BinaryenModule.prototype.getMemorySegmentInfo = function (segmentPointer) {};
 
 /**
+ * @return {!BinaryenMemoryInfo}
+ */
+BinaryenModule.prototype.getMemoryInfo = function () {};
+
+/**
+ * @return {boolean}
+ */
+BinaryenModule.prototype.hasMemory = function () {};
+
+/**
  * @param {number} index
  * @return {number}
  */
@@ -652,6 +662,18 @@ var BinaryenExportInfo;
  * }}
  */
 var BinaryenMemorySegmentInfo;
+
+/**
+ * @typedef {{
+ *   module: string,
+ *   base: string,
+ *   initial: number,
+ *   shared: boolean,
+ *   is64: boolean,
+ *   max: number
+ * }}
+ */
+var BinaryenMemoryInfo;
 
 /**
  * @return {number}

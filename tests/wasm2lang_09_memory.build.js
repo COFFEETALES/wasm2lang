@@ -51,11 +51,15 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
-  // exerciseMemoryGrow(): void  —  from old test 11
+  // exerciseMemoryGrow(): void
   //  1. Store memory.size (should be 8)
   //  2. Store memory.grow(0) (returns current size, no-op)
   //  3. Store memory.size (should still be 8)
-  //  4. Store marker 0xDEADBEEF
+  //  4. Store memory.grow(0) a second time (idempotent, exercises dispatch
+  //     twice so the JS backend's resizable-ArrayBuffer read path is
+  //     evaluated after the first call)
+  //  5. Store memory.size (unchanged, still 8)
+  //  6. Store marker 0xDEADBEEF
   // ═══════════════════════════════════════════════════════════════════
   module.addFunction(
     'exerciseMemoryGrow',
@@ -63,6 +67,8 @@
     binaryen.none,
     [],
     module.block(null, [
+      storeI32(module.memory.size()),
+      storeI32(module.memory.grow(i32(0))),
       storeI32(module.memory.size()),
       storeI32(module.memory.grow(i32(0))),
       storeI32(module.memory.size()),

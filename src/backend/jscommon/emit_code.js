@@ -34,7 +34,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
 
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {string} */ moduleName = /** @type {string} */ (options.emitCode);
-  var /** @const {number} */ heapSize = this.resolveHeapSize_(options, 'ASMJS_HEAP_SIZE', 65536);
+  var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, 'ASMJS_HEAP_SIZE');
   var /** @const {number} */ scratchByteOffset = heapSize - 8;
   var /** @const {number} */ scratchWordIndex = scratchByteOffset >>> 2;
   var /** @const {number} */ scratchQwordIndex = scratchByteOffset >>> 3;

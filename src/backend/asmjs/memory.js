@@ -161,31 +161,19 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderPtrWithOffset_ = function (baseEx
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHeapAccess_ = function (binaryen, ptrExpr, wasmType, bytes, isSigned) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @type {string} */ shiftAmount = '0';
-
-  if (8 === bytes) {
-    shiftAmount = '3';
-  } else if (4 === bytes) {
-    shiftAmount = '2';
-  } else if (2 === bytes) {
-    shiftAmount = '1';
-  }
-
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
+  // Shift is log2(bytes) for bytes in {1,2,4,8}; 0 is the safe default.
+  var /** @const {string} */ shiftAmount = 8 === bytes ? '3' : 4 === bytes ? '2' : 2 === bytes ? '1' : '0';
   var /** @const {string} */ shiftedPtr = P.renderInfix(ptrExpr, '>>', shiftAmount, P.PREC_SHIFT_);
 
   /** @type {string} */
   var viewName;
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    viewName = 'HEAPF64';
-  } else if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    viewName = 'HEAPF32';
-  } else if (4 === bytes) {
-    viewName = 'HEAP32';
-  } else if (2 === bytes) {
-    viewName = isSigned ? 'HEAP16' : 'HEAPU16';
-  } else if (1 === bytes) {
-    viewName = isSigned ? 'HEAP8' : 'HEAPU8';
-  } else {
+  if (V.isF64(binaryen, wasmType)) viewName = 'HEAPF64';
+  else if (V.isF32(binaryen, wasmType)) viewName = 'HEAPF32';
+  else if (4 === bytes) viewName = 'HEAP32';
+  else if (2 === bytes) viewName = isSigned ? 'HEAP16' : 'HEAPU16';
+  else if (1 === bytes) viewName = isSigned ? 'HEAP8' : 'HEAPU8';
+  else {
     this.markBinding_('HEAP8');
     return this.n_('HEAP8') + '[0]';
   }

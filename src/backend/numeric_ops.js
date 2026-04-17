@@ -38,25 +38,6 @@ Wasm2Lang.Backend.NumericOps.unaryOpMap_ = null;
 
 /**
  * @private
- * @param {number} resultType
- * @param {string} name
- * @param {number} operandType
- * @param {string} operator
- * @param {boolean} isComparison
- * @return {!Wasm2Lang.Backend.NumericOps.BinaryOpInfo}
- */
-Wasm2Lang.Backend.NumericOps.createBinaryOpInfo_ = function (resultType, name, operandType, operator, isComparison) {
-  return {
-    opName: name,
-    retType: resultType,
-    operandType: operandType,
-    opStr: operator,
-    isComparison: isComparison
-  };
-};
-
-/**
- * @private
  * @param {!Object<number, !Wasm2Lang.Backend.NumericOps.BinaryOpInfo>} map
  * @param {number} resultType
  * @param {number} operandType
@@ -67,26 +48,14 @@ Wasm2Lang.Backend.NumericOps.createBinaryOpInfo_ = function (resultType, name, o
 Wasm2Lang.Backend.NumericOps.registerBinaryOps_ = function (map, resultType, operandType, isComparison, entries) {
   for (var /** @type {number} */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
     var /** @const {!Array<*>} */ entry = entries[i];
-    var /** @const {number} */ op = /** @type {number} */ (entry[0]);
-    var /** @const {string} */ name = /** @type {string} */ (entry[1]);
-    var /** @const {string} */ operator = /** @type {string} */ (entry[2]);
-    map[op] = Wasm2Lang.Backend.NumericOps.createBinaryOpInfo_(resultType, name, operandType, operator, isComparison);
+    map[/** @type {number} */ (entry[0])] = {
+      opName: /** @type {string} */ (entry[1]),
+      retType: resultType,
+      operandType: operandType,
+      opStr: /** @type {string} */ (entry[2]),
+      isComparison: isComparison
+    };
   }
-};
-
-/**
- * @private
- * @param {string} name
- * @param {number} operandType
- * @param {number} resultType
- * @return {!Wasm2Lang.Backend.NumericOps.UnaryOpInfo}
- */
-Wasm2Lang.Backend.NumericOps.createUnaryOpInfo_ = function (name, operandType, resultType) {
-  return {
-    opName: name,
-    operandType: operandType,
-    retType: resultType
-  };
 };
 
 /**
@@ -100,9 +69,11 @@ Wasm2Lang.Backend.NumericOps.createUnaryOpInfo_ = function (name, operandType, r
 Wasm2Lang.Backend.NumericOps.registerUnaryOps_ = function (map, operandType, resultType, entries) {
   for (var /** @type {number} */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
     var /** @const {!Array<*>} */ entry = entries[i];
-    var /** @const {number} */ op = /** @type {number} */ (entry[0]);
-    var /** @const {string} */ name = /** @type {string} */ (entry[1]);
-    map[op] = Wasm2Lang.Backend.NumericOps.createUnaryOpInfo_(name, operandType, resultType);
+    map[/** @type {number} */ (entry[0])] = {
+      opName: /** @type {string} */ (entry[1]),
+      operandType: operandType,
+      retType: resultType
+    };
   }
 };
 

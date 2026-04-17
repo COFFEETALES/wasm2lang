@@ -119,7 +119,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitStaticI64InitLines_ = function (i32,
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitMetadata = function (wasmModule, options) {
   var /** @const {string} */ bufferName = /** @type {string} */ (options.emitMetadata);
-  var /** @const {number} */ heapSize = this.resolveHeapSize_(options, 'JAVA_HEAP_SIZE', 65536);
+  var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, 'JAVA_HEAP_SIZE');
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.StaticMemoryInfo_} */ staticMemory = this.collectStaticMemory_(wasmModule);
   var /** @const {number} */ startWordIndex = staticMemory.startWordIndex;
   var /** @const {!Int32Array} */ i32 = staticMemory.words;
