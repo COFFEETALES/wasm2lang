@@ -250,12 +250,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceBooleanOperand_ = function (op
 
 /**
  * Attempts to negate a comparison expression string by flipping the
- * top-level operator (e.g. {@code <} → {@code >=}).  Only operators at
- * parenthesis depth 0 are considered, so wrapped sub-expressions are
- * never accidentally rewritten.
- *
- * Returns the negated string on success, or {@code null} if no top-level
- * comparison operator is found (caller should fall back to {@code !}).
+ * top-level operator (e.g. {@code <} → {@code >=}).  Only safe when the
+ * expression contains exactly one comparison at depth 0 and no other
+ * logical/ternary operators there — otherwise flipping a single operator
+ * skips the De Morgan swap (e.g. {@code a == 1 | a == 2} → incorrectly
+ * {@code a != 1 | a == 2} instead of {@code a != 1 & a != 2}).  Returns
+ * {@code null} when unsafe; caller falls back to {@code !}.
  *
  * @private
  * @param {string} expr
@@ -274,6 +274,8 @@ Wasm2Lang.Backend.AbstractCodegen.negateComparison_ = function (expr) {
       [' > ', ' <= ']
     ];
   var /** @type {number} */ depth = 0;
+  var /** @type {number} */ foundIdx = -1;
+  var /** @type {number} */ foundOp = -1;
   for (var /** @type {number} */ i = 0, /** @const {number} */ len = expr.length; i < len; ++i) {
     var /** @const {string} */ ch = expr.charAt(i);
     if ('(' === ch) {
@@ -285,14 +287,27 @@ Wasm2Lang.Backend.AbstractCodegen.negateComparison_ = function (expr) {
       continue;
     }
     if (0 !== depth) continue;
+    // Depth-0 logical / ternary operators disqualify the expression.
+    // Flipping a single inner comparison without a De Morgan swap of the
+    // connective produces semantically wrong output.
+    if ('|' === ch || '&' === ch || '^' === ch || '?' === ch || ':' === ch) return null;
     for (var /** @type {number} */ j = 0; j < 8; ++j) {
       var /** @const {string} */ opStr = ops[j][0];
       if (i + opStr.length <= len && opStr === expr.substr(i, opStr.length)) {
-        return expr.substr(0, i) + ops[j][1] + expr.substr(i + opStr.length);
+        if (-1 !== foundIdx) {
+          // Two depth-0 comparisons (e.g. chained {@code a == 1 == b})
+          // are not safely negated by a single flip.
+          return null;
+        }
+        foundIdx = i;
+        foundOp = j;
+        break;
       }
     }
   }
-  return null;
+  if (-1 === foundIdx) return null;
+  var /** @const {string} */ hitStr = ops[foundOp][0];
+  return expr.substr(0, foundIdx) + ops[foundOp][1] + expr.substr(foundIdx + hitStr.length);
 };
 
 /**

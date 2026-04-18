@@ -38,6 +38,24 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceAtBoundary_ = function (binaryen,
 };
 
 /**
+ * Asm.js returns INT (not SIGNED) for i32 value-type reads so that consumer
+ * sites add the {@code |0} coercion required by the asm.js validator.  Non-i32
+ * types follow the default (catForCoercedType_) mapping.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} wasmType
+ * @return {number}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.catForValueTypeRead_ = function (binaryen, wasmType) {
+  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
+    return Wasm2Lang.Backend.I32Coercion.INT;
+  }
+  return Wasm2Lang.Backend.AbstractCodegen.catForCoercedType_(binaryen, wasmType);
+};
+
+/**
  * @override
  * @protected
  * @param {string} condStr

@@ -41,7 +41,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitStaticI32InitLines_ = function (i32
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.emitMetadata = function (wasmModule, options) {
   var /** @const {string} */ bufferName = /** @type {string} */ (options.emitMetadata);
-  var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, 'JS_HEAP_SIZE');
+  var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, this.getHeapSizeDefinitionKey_());
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.StaticMemoryInfo_} */ staticMemory = this.collectStaticMemory_(wasmModule);
   var /** @const {number} */ startWordIndex = staticMemory.startWordIndex;
   var /** @const {!Int32Array} */ i32 = staticMemory.words;

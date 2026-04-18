@@ -345,6 +345,51 @@ var constConditionFolding = new PassFamily('const-condition-folding', 'const_con
 });
 
 // ---------------------------------------------------------------------------
+// Emission families
+//
+// Unlike pass families (which verify metadata from getPassAnalysis), emission
+// families run the full transpile pipeline and assert on the emitted backend
+// source string.  Use these to catch backend-emitter bugs that normalization
+// metadata would not surface.
+// ---------------------------------------------------------------------------
+
+function EmissionFamily(name, fixturePath, languageOut, assertions) {
+  this.name = name;
+  this.fixturePath = fixturePath;
+  this.languageOut = languageOut;
+  this.assertions = assertions;
+}
+
+// Regression: `i32.eqz(i32.or(cmp, cmp))` compound negation.  Binaryen:max
+// folds two consecutive br_if exit guards into this shape; if the backend's
+// negation peephole flips only a single inner comparison operator, the
+// emitted condition miscompiles (this was the root cause of the quic.js
+// AES-GCM decryption failure).  Safe forms: `!(a==X | a==Y)` wrapper OR
+// De Morgan's (`a !== X & a !== Y`).
+var eqzOrCompoundNegation = new EmissionFamily(
+  'eqz-or-compound-negation',
+  'eqz_or_compound_negation.wast',
+  'javascript',
+  function (code) {
+    // The broken form: an inequality joined by `|`/`&` with a matching
+    // equality (or vice versa) — this is exactly the partial flip the
+    // buggy negateComparison_ produced.
+    var mixedInequality1 = /!==?\s*-?\d+\s*[|&]\s*[^|&]*?===?\s*-?\d+/;
+    var mixedInequality2 = /===?\s*-?\d+\s*[|&]\s*[^|&]*?!==?\s*-?\d+/;
+    assert(
+      !mixedInequality1.test(code) && !mixedInequality2.test(code),
+      'emission contains partial-flip compound condition (a != X | a == Y) — would miscompile'
+    );
+    var fullNotWrap = /!\s*\(\s*[^()]*===?\s*-?\d+[^()]*[|&][^()]*===?\s*-?\d+/;
+    var deMorgan = /!==?\s*-?\d+\s*&\s*[^|&]*?!==?\s*-?\d+/;
+    assert(
+      fullNotWrap.test(code) || deMorgan.test(code),
+      'emission lacks a full negation form: expected `!(a==X | a==Y)` or `(a!=X) & (a!=Y)`'
+    );
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Async binaryen loader (same pattern as build_common.js)
 // ---------------------------------------------------------------------------
 
@@ -371,6 +416,8 @@ var families = [
   constConditionFolding
 ];
 
+var emissionFamilies = [eqzOrCompoundNegation];
+
 loadBinaryen().then(function (binaryen) {
   var fixtureDir = path.resolve(__dirname, 'fixtures');
   var failures = 0;
@@ -391,11 +438,46 @@ loadBinaryen().then(function (binaryen) {
     }
   }
 
-  console.log('');
-  console.log(passes + '/' + families.length + ' pass families passed.');
-  if (failures > 0) {
-    console.log('\x1b[0;31m' + failures + ' FAILED\x1b[0m');
+  var emissionPromises = [];
+  for (var j = 0; j < emissionFamilies.length; j++) {
+    (function (ef) {
+      var wastSrc = fs.readFileSync(path.resolve(fixtureDir, ef.fixturePath), 'utf8');
+      var p;
+      try {
+        var emit = wasm2lang['transpile'](binaryen, {
+          'inputData': wastSrc,
+          'normalizeWasm': ['binaryen:max', 'wasm2lang:codegen'],
+          'languageOut': ef.languageOut,
+          'emitCode': 'module'
+        });
+        p = emit && typeof emit.then === 'function' ? emit : Promise.resolve(emit);
+      } catch (e) {
+        p = Promise.reject(e);
+      }
+      emissionPromises.push(
+        p
+          .then(function (result) {
+            var codeStr = result && result['code'];
+            if (!codeStr) throw new Error('transpile did not return emitted code');
+            ef.assertions(codeStr);
+            console.log('\x1b[0;32mPASS\x1b[0m: ' + ef.name);
+            ++passes;
+          })
+          .catch(function (e) {
+            console.error('\x1b[0;31mFAIL\x1b[0m: ' + ef.name + ': ' + e.message);
+            ++failures;
+          })
+      );
+    })(emissionFamilies[j]);
   }
 
-  process.exit(failures > 0 ? 1 : 0);
+  Promise.all(emissionPromises).then(function () {
+    var total = families.length + emissionFamilies.length;
+    console.log('');
+    console.log(passes + '/' + total + ' families passed.');
+    if (failures > 0) {
+      console.log('\x1b[0;31m' + failures + ' FAILED\x1b[0m');
+    }
+    process.exit(failures > 0 ? 1 : 0);
+  });
 });

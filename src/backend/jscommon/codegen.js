@@ -45,3 +45,36 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.constructor = Wasm2Lang.Backend.JsCo
  */
 Wasm2Lang.Backend.JsCommonCodegen.prototype.heapPageCount_ = 0;
 
+/**
+ * Emits a trap call for wasm {@code unreachable}.  The module-shell emitter
+ * in {@code jscommon/emit_code.js} declares the {@code $w2l_trap} binding
+ * only after scanning the emitted function bodies for the mangled call —
+ * marking here would register the dependency even when the surrounding
+ * block trimmer (reachableBlockChildCount_) drops the call as dead code,
+ * which happens for the unreachable placeholders binaryen inserts after
+ * unconditional control flow during binary serialization.
+ *
+ * @override
+ * @protected
+ * @param {number} indent
+ * @return {string}
+ */
+Wasm2Lang.Backend.JsCommonCodegen.prototype.renderUnreachableStatement_ = function (indent) {
+  return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + this.n_('$w2l_trap') + '();\n';
+};
+
+/**
+ * Returns the {@code --define} key consulted by {@code resolveHeapSize_} for
+ * this backend.  The module-shell emitter in {@code jscommon/emit_code.js}
+ * and the per-backend metadata emitter must agree on the key, otherwise the
+ * internal scratch offsets disagree with the actual {@code ArrayBuffer}
+ * length (silent OOB reads that return {@code undefined}).  The default is
+ * the modern-JS key {@code JS_HEAP_SIZE}; {@code AsmjsCodegen} overrides to
+ * {@code ASMJS_HEAP_SIZE}.
+ *
+ * @protected
+ * @return {string}
+ */
+Wasm2Lang.Backend.JsCommonCodegen.prototype.getHeapSizeDefinitionKey_ = function () {
+  return 'JS_HEAP_SIZE';
+};

@@ -30,6 +30,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getModuleFunctionBindingName_ = functio
 /**
  * @override
  * @protected
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.getHeapSizeDefinitionKey_ = function () {
+  return 'ASMJS_HEAP_SIZE';
+};
+
+/**
+ * @override
+ * @protected
  * @param {!Array<string>} parts
  * @param {string} pad1
  * @return {void}

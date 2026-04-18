@@ -19,7 +19,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
   EMIT_WEBASSEMBLY: 'emitWebAssembly',
   MANGLER: 'mangler',
   OUT_FILE: 'outFile',
-  PRE_NORMALIZED: 'preNormalized'
+  PRE_NORMALIZED: 'preNormalized',
+  DISABLE_PASS: 'disablePass'
 };
 
 /**
@@ -34,7 +35,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
  *   emitWebAssembly: (string|null),
  *   mangler: (string|null),
  *   outFile: (string|null),
- *   preNormalized: boolean
+ *   preNormalized: boolean,
+ *   disabledPasses: !Array<string>
  * }}
  */
 Wasm2Lang.Options.Schema.NormalizedOptions;
@@ -114,7 +116,8 @@ Wasm2Lang.Options.Schema.defaultOptions = {
   emitWebAssembly: null,
   mangler: null,
   outFile: null,
-  preNormalized: false
+  preNormalized: false,
+  disabledPasses: []
 };
 
 /**
@@ -241,6 +244,24 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.PRE_NO
 };
 
 /**
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @param {!Array<string>} strs
+ */
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.DISABLE_PASS] = function (options, strs) {
+  var /** @const {!Array<string>} */ collected = [];
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = strs.length; i !== len; ++i) {
+    var /** @const {!Array<string>} */ parts = strs[i].split(',');
+    for (var /** @type {number} */ j = 0, /** @const {number} */ partLen = parts.length; j !== partLen; ++j) {
+      var /** @const {string} */ trimmed = parts[j].trim();
+      if ('' !== trimmed) {
+        collected[collected.length] = trimmed;
+      }
+    }
+  }
+  options.disabledPasses = collected;
+};
+
+/**
  * @const {
  *  !Object<
  *    !Wasm2Lang.Options.Schema.OptionKey, {
@@ -307,5 +328,10 @@ Wasm2Lang.Options.Schema.optionSchema = {
     optionType: 'boolean',
     optionDesc:
       'Indicates the input was already normalized by wasm2lang:codegen. Enables IR-based structural detection of simplified loops and control flow patterns whose label hints were lost during binary serialization.'
+  },
+  'disablePass': {
+    optionType: 'string|null',
+    optionDesc:
+      'Disables one or more wasm2lang:codegen normalization passes by name (comma-separated, repeatable). Pass names match the registry entries, e.g. IfElseRecovery, BlockGuardElision, LoopSimplification.'
   }
 };

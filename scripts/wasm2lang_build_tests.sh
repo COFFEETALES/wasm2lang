@@ -40,7 +40,7 @@ if [ ${#0} -ne ${#prefix} ]; then
     # Emit code for one language, skipping if not in $build_languages.
     #   $1 language-out id    (ASMJS|JAVASCRIPT|PHP64|JAVA)
     #   $2 output extension   (asm.js|js|php|java)
-    #   $3 heap-size define   (ASMJS_HEAP_SIZE|PHP64_HEAP_SIZE|JAVA_HEAP_SIZE)
+    #   $3 heap-size define   (ASMJS_HEAP_SIZE|JS_HEAP_SIZE|PHP64_HEAP_SIZE|JAVA_HEAP_SIZE)
     emit_language_code() {
       case " $build_languages " in *" $1 "*) ;; *) return 0 ;; esac
       node                                        \
@@ -177,7 +177,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         emit_wasm_form 'text' wast
 
         emit_language_code ASMJS      asm.js ASMJS_HEAP_SIZE
-        emit_language_code JAVASCRIPT js     ASMJS_HEAP_SIZE
+        emit_language_code JAVASCRIPT js     JS_HEAP_SIZE
         emit_language_code PHP64      php    PHP64_HEAP_SIZE
         emit_language_code JAVA       java   JAVA_HEAP_SIZE
       done <<EOF

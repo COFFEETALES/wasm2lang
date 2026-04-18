@@ -275,34 +275,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     return self.localN_(state.inlineTempOffset + tempIndex);
   };
 
-  var /** @const {function(number): !Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ childResultAt = function (i) {
-      return A.getChildResultInfo_(childResults, i);
-    };
-
-  var /** @const {function(number): string} */ cr = function (i) {
-      return childResultAt(i).expressionString;
-    };
-
-  var /** @const {function(number): number} */ cc = function (i) {
-      return childResultAt(i).expressionCategory;
-    };
+  var /** @const */ acc = A.makeChildAccessors_(childResults);
+  var /** @const {function(number): string} */ cr = acc.cr;
+  var /** @const {function(number): number} */ cc = acc.cc;
 
   var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
   if (common) return A.buildLeaveResult_(common.emittedString, common.resultCat);
 
   switch (id) {
-    case binaryen.LocalGetId: {
-      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr.index);
-      var /** @const {number} */ localGetType = Wasm2Lang.Backend.ValueType.getLocalType(
-          binaryen,
-          state.functionInfo,
-          localGetIdx
-        );
-      result = this.localN_(localGetIdx);
-      resultCat = A.catForCoercedType_(binaryen, localGetType);
-      break;
-    }
-
     case binaryen.GlobalGetId: {
       var /** @const {string} */ globalGetName = /** @type {string} */ (expr.name);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
@@ -468,10 +448,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       }
       break;
     }
-    case binaryen.DropId:
-      result = pad(ind) + cr(0) + ';\n';
-      break;
-
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = expr.type;
       var /** @const */ selP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
@@ -537,7 +513,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       if (loopKind) {
         result = this.emitSimplifiedLoopFromIR_(state, nodeCtx, loopKind);
       } else {
-        result = pad(ind) + 'for (;;) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
+        result = this.emitRawInfiniteLoop_(ind, '', cr(0), true);
       }
       break;
     }

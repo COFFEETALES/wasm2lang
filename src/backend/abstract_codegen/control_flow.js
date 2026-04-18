@@ -152,6 +152,29 @@ Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, 
   return Wasm2Lang.Backend.AbstractCodegen.EMPTY_CHILD_RESULT_;
 };
 
+/**
+ * Builds {@code {cr, cc}} child-result accessor closures for
+ * {@code emitLeave_} dispatch tables.  {@code cr(i)} returns the expression
+ * string, {@code cc(i)} returns the expression category.  Centralizes the
+ * preamble that each backend's {@code emitLeave_} would otherwise declare
+ * verbatim.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {{cr: function(number): string, cc: function(number): number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.makeChildAccessors_ = function (childResults) {
+  var /** @const */ get = Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_;
+  return {
+    cr: /** @param {number} i @return {string} */ function (i) {
+      return get(childResults, i).expressionString;
+    },
+    cc: /** @param {number} i @return {number} */ function (i) {
+      return get(childResults, i).expressionCategory;
+    }
+  };
+};
+
 // ---------------------------------------------------------------------------
 // Label prefix constants.
 // ---------------------------------------------------------------------------
@@ -257,6 +280,30 @@ Wasm2Lang.Backend.AbstractCodegen.isBreakTo_ = function (binaryen, info, targetN
   if (binaryen.BreakId !== info.id) return false;
   if (/** @type {?string} */ (info.name) !== targetName) return false;
   return conditional === (0 !== /** @type {number} */ (info.condition || 0));
+};
+
+/**
+ * Returns true if any child in {@code children[start..end]} contains a
+ * subtree reference (Break or Switch) targeting {@code loopName}.  Used to
+ * reject {@code dowhile} loop-kind detection when the body has interior
+ * back-branches: in a JS {@code do{...}while(cond)}, {@code continue} jumps
+ * to the condition check, not to the loop head — so an interior
+ * {@code br $loop} would incorrectly exit when {@code cond} is false.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Array<number>} children
+ * @param {number} start  inclusive
+ * @param {number} end  exclusive
+ * @param {string} loopName
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_ = function (binaryen, children, start, end, loopName) {
+  var /** @const {function(!Binaryen, number, string): boolean} */ check = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
+  for (var /** @type {number} */ i = start; i < end; ++i) {
+    if (check(binaryen, children[i], loopName)) return true;
+  }
+  return false;
 };
 
 /** @protected @typedef {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */
@@ -455,7 +502,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (bi
 
     // Do-while variant B: last child is conditional br_if targeting loop.
     if (lastName === loopName && 0 !== lastCond && len > 1) {
-      return 'dowhile';
+      if (!Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_(binaryen, children, 0, len - 1, loopName)) {
+        return 'dowhile';
+      }
     }
 
     // Do-while variant A: second-to-last is conditional br_if to loop,
@@ -463,7 +512,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (bi
     if (lastName !== loopName && 0 === lastCond && len >= 2) {
       var /** @const {!BinaryenExpressionInfo} */ prevInfo = NS.safeGetExpressionInfo(binaryen, children[len - 2]);
       if (Wasm2Lang.Backend.AbstractCodegen.isBreakTo_(binaryen, prevInfo, loopName, true) && len > 2) {
-        return 'dowhile';
+        if (!Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_(binaryen, children, 0, len - 2, loopName)) {
+          return 'dowhile';
+        }
       }
     }
 
@@ -983,6 +1034,39 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.infiniteLoopKeyword_ = function () {
 };
 
 /**
+ * Renders the raw (unsimplified) infinite-loop fallback emitted when loop
+ * simplification did not apply.  Factors the shared scaffolding used by
+ * asm.js/Java/PHP; each caller supplies the label prefix (empty for PHP,
+ * {@code labelN_(...)+': '} for asm.js/Java) and decides whether to emit
+ * the trailing {@code break;}.
+ *
+ * @protected
+ * @param {number} indent
+ * @param {string} labelPrefix
+ * @param {string} bodyCode
+ * @param {boolean} includeTrailingBreak
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitRawInfiniteLoop_ = function (
+  indent,
+  labelPrefix,
+  bodyCode,
+  includeTrailingBreak
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  return (
+    A.pad_(indent) +
+    labelPrefix +
+    this.infiniteLoopKeyword_() +
+    ' {\n' +
+    bodyCode +
+    (includeTrailingBreak ? A.pad_(indent + 1) + 'break;\n' : '') +
+    A.pad_(indent) +
+    '}\n'
+  );
+};
+
+/**
  * Emits a simplified loop by inspecting the intact loop body IR directly.
  * Used when SKIP_SUBTREE was returned in enter — the leave callback has no
  * child results and must derive everything from the binaryen expression.
@@ -1117,38 +1201,25 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.computeSimplifiedLoopBodyAndConditio
       condStr = wrc.s;
       condCat = wrc.c;
     } else {
-      // while-block variant: count consecutive exit guards and combine.
-      var /** @const {!Array<number>} */ wch = /** @type {!Array<number>} */ ((bodyInfo.children || []).slice(0));
-      var /** @const {number} */ wchLen = wch.length;
+      // while-block variant: only the FIRST exit guard becomes the while
+      // condition.  Any consecutive br_if exits that follow stay in the body
+      // as `if (cond) break outer` statements — emitted by the normal body
+      // walk.  This preserves short-circuit evaluation semantics: WASM
+      // br_if sequences stop at the first triggered exit, but combining
+      // them with i32.and (which JS renders as bitwise `&`) would evaluate
+      // every guard condition every iteration.  For read-only conditions
+      // in JS that's merely wasteful, but any condition with side effects
+      // (call, memory grow, trap-adjacent op) would diverge from WASM
+      // semantics.
       var /** @const {!BinaryenExpressionInfo} */ guardInfo = /** @type {!BinaryenExpressionInfo} */ (
-          NS.safeGetExpressionInfo(binaryen, wch[0])
+          NS.safeGetExpressionInfo(binaryen, /** @type {number} */ ((bodyInfo.children || [])[0]))
         );
-      var /** @const {?string} */ guardTarget = /** @type {?string} */ (guardInfo.name);
-      var /** @type {number} */ irGuardCount = 1;
-      for (var /** @type {number} */ gci = 1; gci < wchLen - 1; ++gci) {
-        var /** @const {!BinaryenExpressionInfo} */ gcInfo = NS.safeGetExpressionInfo(binaryen, wch[gci]);
-        if (
-          binaryen.BreakId !== gcInfo.id ||
-          /** @type {?string} */ (gcInfo.name) !== guardTarget ||
-          0 === /** @type {number} */ (gcInfo.condition || 0)
-        ) {
-          break;
-        }
-        ++irGuardCount;
-      }
-      bodyCode = this.emitWhileLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd, irGuardCount);
-      var /** @type {number} */ combinedPtr = Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(
+      bodyCode = this.emitWhileLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd, 1);
+      var /** @const {number} */ combinedPtr = Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(
           binaryen,
           wm,
           /** @type {number} */ (guardInfo.condition || 0)
         );
-      for (var /** @type {number} */ gdi = 1; gdi < irGuardCount; ++gdi) {
-        var /** @const {!BinaryenExpressionInfo} */ gdInfo = NS.safeGetExpressionInfo(binaryen, wch[gdi]);
-        combinedPtr = wm.i32.and(
-          combinedPtr,
-          Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(binaryen, wm, /** @type {number} */ (gdInfo.condition || 0))
-        );
-      }
       var /** @const {{s: string, c: number}} */ ic = A.subWalkExpressionWithCategory_(state, combinedPtr);
       condStr = ic.s;
       condCat = ic.c;
@@ -1707,6 +1778,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ unOp = getInfo(childResults, 0);
     return this.emitUnaryId_(binaryen, /** @type {number} */ (expr.op), unOp.expressionString, unOp.expressionCategory);
   }
+  if (binaryen.LocalGetId === id) {
+    var /** @const {number} */ lgIdx = /** @type {number} */ (expr.index);
+    var /** @const {number} */ lgType = Wasm2Lang.Backend.ValueType.getLocalType(binaryen, functionInfo, lgIdx);
+    return {
+      emittedString: this.localN_(lgIdx),
+      resultCat: this.catForValueTypeRead_(binaryen, lgType)
+    };
+  }
   if (binaryen.LocalSetId === id) {
     if (!expr.isTee && this.localInitOverridesActive_) {
       var /** @const {string} */ liIdx = String(expr.index);
@@ -1740,8 +1819,50 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
     }
     return {emittedString: retStr, resultCat: A.CAT_VOID};
   }
-  if (binaryen.NopId === id || binaryen.UnreachableId === id) {
+  if (binaryen.NopId === id) {
     return {emittedString: '', resultCat: A.CAT_VOID};
   }
+  if (binaryen.UnreachableId === id) {
+    return {emittedString: this.renderUnreachableStatement_(indent), resultCat: A.CAT_VOID};
+  }
+  if (binaryen.DropId === id) {
+    if (!this.shouldEmitDropChild_(binaryen, /** @type {number} */ (expr.value))) {
+      return {emittedString: '', resultCat: A.CAT_VOID};
+    }
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ dropOp = getInfo(childResults, 0);
+    return {emittedString: A.pad_(indent) + dropOp.expressionString + ';\n', resultCat: A.CAT_VOID};
+  }
   return null;
+};
+
+/**
+ * Returns {@code true} when a {@code drop} should emit its child expression
+ * as a statement.  Default implementation always emits — mirroring asm.js
+ * and PHP, where any expression is a valid statement.  Java overrides to
+ * restrict emission to call children, since pure expressions are not valid
+ * statements in Java.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} dropValuePtr
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.shouldEmitDropChild_ = function (binaryen, dropValuePtr) {
+  return true;
+};
+
+/**
+ * Renders the statement emitted for a wasm {@code unreachable} opcode.
+ * Default implementation returns an empty string (no-op); JS-family
+ * backends override to emit a trap call so execution aborts — matching
+ * the WASM semantics.  Zig-produced code treats {@code unreachable} as a
+ * real termination marker (panics, exhaustive switch arms), so silently
+ * falling through corrupts state and can produce infinite loops.
+ *
+ * @protected
+ * @param {number} indent
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderUnreachableStatement_ = function (indent) {
+  return '';
 };

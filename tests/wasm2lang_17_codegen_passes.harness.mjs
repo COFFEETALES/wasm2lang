@@ -113,6 +113,10 @@ const runTest = function (buff, out, exports, data) {
     exports.exerciseBareDoWhileLoop(v);
   }
 
+  for (const pair of data.dowhile_interior_continue_pairs) {
+    exports.exerciseDowhileInteriorContinue(pair[0], pair[1]);
+  }
+
   for (const v of data.switch_continue_loop_initial) {
     exports.exerciseSwitchContinueLoop(v);
   }
@@ -143,6 +147,10 @@ const runTest = function (buff, out, exports, data) {
 
   for (const v of data.const_condition_fold_values) {
     exports.exerciseConstConditionFold(v);
+  }
+
+  for (const v of data.eqz_or_version_gate_values) {
+    exports.exerciseEqzOrVersionGate(v);
   }
 };
 
@@ -361,6 +369,17 @@ const validateCode = function (code, testName) {
     b = bodyOf('bareDoWhileLoop');
     check('bareDoWhileLoop', b && /\bdo\s*\{/.test(b), 'expected do-while loop (LEB)');
 
+    // -- interior back-branch rejection: loop body has conditional `br $L`
+    // via an inner `if`, plus a trailing `br_if $L cond`.  Naive LDB/LEB
+    // classification would emit `do { ... continue; ... } while (cond)`,
+    // but JS continue-in-do-while jumps to the while-check instead of the
+    // loop top — a semantic divergence from WASM's unconditional re-iterate.
+    // The pass must veto dowhile classification; the emitter should keep a
+    // for-loop (where continue jumps to the loop top).
+    b = bodyOf('dowhileInteriorContinue');
+    check('dowhileInteriorContinue', b && !/\bdo\s*\{/.test(b), 'expected no do-while (interior back-branch forbids LDB)');
+    check('dowhileInteriorContinue', b && /\bfor\s*\(/.test(b), 'expected for-loop (interior back-branch case)');
+
     // -- switch-continue loop (LCS/LFS): for-loop with bottom switch --
     b = bodyOf('switchContinueLoop');
     if (b) {
@@ -462,6 +481,33 @@ const validateCode = function (code, testName) {
     check('localInitAllZero', /\b7\b/.test(b), 'expected (x-7) term present');
   } else {
     check('localInitAllZero', false, 'function body not found');
+  }
+
+  // -- eqz(or(eq, eq)) compound negation (quic.js regression).
+  // The body must negate the compound condition as a whole — either by
+  // wrapping the full OR in `!(…)` or by applying De Morgan's to produce
+  // two ANDed inverted comparisons.  Flipping a single inner operator
+  // (e.g. `a != 1 | a == 2`) is the broken form the backend used to emit
+  // and is what caused every QUIC packet's version check to fail.
+  b = bodyOf('eqzOrVersionGate');
+  if (b) {
+    // 1) Strip the exported-name prefix so we see only the gate body.
+    // 2) No stray `return 0` / `return 0|0` stabilizer tail.
+    check('eqzOrVersionGate', /return\b/.test(b), 'expected a return statement');
+    // The broken form contains one inequality joined by `|` with a matching
+    // equality (e.g. `a != 1 | a == 2`) — exactly the partial-flip the buggy
+    // `negateComparison_` used to emit.  Any safe form (`!(…)`, De Morgan,
+    // `0 == (…)`, `(…) == 0`) is acceptable; the runtime exercise below is
+    // what enforces overall semantics.
+    const hasMixedInequalityOr = /(?:!==?)\s*[-\d]+\s*[|&]\s*[^|&]*?===?\s*[-\d]+/.test(b) ||
+      /===?\s*[-\d]+\s*[|&]\s*[^|&]*?(?:!==?)\s*[-\d]+/.test(b);
+    check(
+      'eqzOrVersionGate',
+      !hasMixedInequalityOr,
+      'partial-flip compound condition would miscompile the quic version gate'
+    );
+  } else {
+    check('eqzOrVersionGate', false, 'function body not found');
   }
 
   // -- root value block: function body is an unnamed value-typed block.

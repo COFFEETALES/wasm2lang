@@ -150,6 +150,24 @@ int w2lCountSimplifiedWhile(String body) {
                 if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
                     _f.add("bareDoWhileLoop: expected do-while loop (LEB)");
 
+                // -- interior back-branch rejection (see .mjs harness for
+                // details): loop body holds a conditional `br $L` inside an
+                // inner `if` plus a trailing `br_if $L cond`.  Naive LDB
+                // classification would compile to `do { ... continue; ... }
+                // while (cond);`, but JS continue-in-do-while jumps to the
+                // while-check, diverging from WASM's unconditional re-iterate.
+                // The pass vetoes LD*/LE* here; the for-loop form keeps
+                // continue meaning "jump to loop top".
+                b = w2lBodyOf(_code, "dowhileInteriorContinue");
+                if (b != null) {
+                    if (w2lHasMatch(b, "\\bdo\\s*\\{"))
+                        _f.add("dowhileInteriorContinue: expected no do-while (interior back-branch forbids LDB)");
+                    if (!w2lHasMatch(b, "\\bfor\\s*\\("))
+                        _f.add("dowhileInteriorContinue: expected for-loop (interior back-branch case)");
+                } else {
+                    _f.add("dowhileInteriorContinue: function body not found");
+                }
+
                 // -- switch-continue loop (LCS/LFS) --
                 b = w2lBodyOf(_code, "switchContinueLoop");
                 if (b != null) {
@@ -249,6 +267,26 @@ int w2lCountSimplifiedWhile(String body) {
                     _f.add("localInitAllZero: expected (x-7) term present");
             } else {
                 _f.add("localInitAllZero: function body not found");
+            }
+
+            // -- eqz(or(eq, eq)) compound negation (quic.js regression).
+            // Backend must negate the full OR (with `!` or De Morgan's) —
+            // a partial operator flip like `v != 1 | v == N` is the broken
+            // form that caused every QUIC version check to fail.
+            b = w2lBodyOf(_code, "eqzOrVersionGate");
+            if (b != null) {
+                if (!w2lHasMatch(b, "\\breturn\\b"))
+                    _f.add("eqzOrVersionGate: expected a return statement");
+                // Broken form: one inequality joined by `|`/`&` with a matching
+                // equality (e.g. `v != 1 | v == N`) — exactly the partial-flip
+                // negateComparison_ used to emit.  Any safe form (`!(…)`,
+                // De Morgan, `(…) == 0`, `0 == (…)`) is acceptable.
+                boolean hasMixed = w2lHasMatch(b, "!=\\s*-?\\d+\\s*[|&]\\s*[^|&]*?==\\s*-?\\d+") ||
+                    w2lHasMatch(b, "==\\s*-?\\d+\\s*[|&]\\s*[^|&]*?!=\\s*-?\\d+");
+                if (hasMixed)
+                    _f.add("eqzOrVersionGate: partial-flip compound condition would miscompile the quic version gate");
+            } else {
+                _f.add("eqzOrVersionGate: function body not found");
             }
 
             // -- root value block: function body is an unnamed value-typed
@@ -391,6 +429,10 @@ int w2lCountSimplifiedWhile(String body) {
         mod.exerciseBareDoWhileLoop(v.intValue());
     }
 
+    for (java.util.List<Double> pair : w2lNested(_data, "dowhile_interior_continue_pairs")) {
+        mod.exerciseDowhileInteriorContinue(pair.get(0).intValue(), pair.get(1).intValue());
+    }
+
     for (Double v : w2lFlat(_data, "switch_continue_loop_initial")) {
         mod.exerciseSwitchContinueLoop(v.intValue());
     }
@@ -421,6 +463,10 @@ int w2lCountSimplifiedWhile(String body) {
 
     for (Double v : w2lFlat(_data, "const_condition_fold_values")) {
         mod.exerciseConstConditionFold(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "eqz_or_version_gate_values")) {
+        mod.exerciseEqzOrVersionGate(v.intValue());
     }
 
     w2lDumpCRC(memBuffer);

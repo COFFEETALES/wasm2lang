@@ -300,6 +300,21 @@ Wasm2Lang.Backend.AbstractCodegen.catForConstType_ = function (binaryen, wasmTyp
 };
 
 /**
+ * Returns the category for a "value-type read" — a bare local.get/global.get
+ * expression or the result of select/if-as-expression.  Default delegates to
+ * {@code catForCoercedType_} (i32 → SIGNED).  Asm.js overrides to return INT
+ * for i32 so consumer sites can add {@code |0} coercions as needed.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} wasmType
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.catForValueTypeRead_ = function (binaryen, wasmType) {
+  return Wasm2Lang.Backend.AbstractCodegen.catForCoercedType_(binaryen, wasmType);
+};
+
+/**
  * Default metadata emission — returns the raw option string.  Concrete
  * backends override this to emit language-specific static-memory initialization.
  *

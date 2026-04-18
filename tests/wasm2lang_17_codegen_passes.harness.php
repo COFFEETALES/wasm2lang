@@ -175,6 +175,18 @@ $validateCode = function (string $code, string $testName): void {
         $b = w2lBodyOf($code, 'bareDoWhileLoop');
         $check('bareDoWhileLoop', $b !== null && (bool) preg_match('/\bdo\s*\{/', $b), 'expected do-while loop (LEB)');
 
+        // -- interior back-branch rejection (see .mjs harness for details):
+        // the pass must veto dowhile classification when the body has an
+        // interior conditional `br $L`, keeping the for-loop form where
+        // `continue` jumps to the loop top rather than to the while-check.
+        $b = w2lBodyOf($code, 'dowhileInteriorContinue');
+        if ($b !== null) {
+            $check('dowhileInteriorContinue', !preg_match('/\bdo\s*\{/', $b), 'expected no do-while (interior back-branch forbids LDB)');
+            $check('dowhileInteriorContinue', (bool) preg_match('/\bfor\s*\(/', $b), 'expected for-loop (interior back-branch case)');
+        } else {
+            $check('dowhileInteriorContinue', false, 'function body not found');
+        }
+
         // -- switch-continue loop (LCS/LFS): for-loop with bottom switch --
         $b = w2lBodyOf($code, 'switchContinueLoop');
         if ($b !== null) {
@@ -259,6 +271,28 @@ $validateCode = function (string $code, string $testName): void {
         $check('localInitAllZero', (bool) preg_match('/\b7\b/', $b), 'expected (x-7) term present');
     } else {
         $check('localInitAllZero', false, 'function body not found');
+    }
+
+    // -- eqz(or(eq, eq)) compound negation (quic.js regression).
+    // Backend must negate the full OR (with `!` or De Morgan's) — a partial
+    // operator flip like `$v != 1 | $v == N` is the broken form that caused
+    // every QUIC version check to fail.
+    $b = w2lBodyOf($code, 'eqzOrVersionGate');
+    if ($b !== null) {
+        $check('eqzOrVersionGate', (bool) preg_match('/\breturn\b/', $b), 'expected a return statement');
+        // Broken form: one inequality joined by `|`/`&` with a matching equality
+        // (e.g. `$v != 1 | $v == N`) — the partial-flip negateComparison_ used
+        // to emit.  Any safe form (`!(…)`, De Morgan, `(…) == 0`, `0 === (…)`)
+        // is acceptable; the runtime exercise enforces the overall semantics.
+        $hasMixed = preg_match('/!=\s*-?\d+\s*[|&]\s*[^|&]*?==\s*-?\d+/', $b) ||
+            preg_match('/==\s*-?\d+\s*[|&]\s*[^|&]*?!=\s*-?\d+/', $b);
+        $check(
+            'eqzOrVersionGate',
+            !$hasMixed,
+            'partial-flip compound condition would miscompile the quic version gate'
+        );
+    } else {
+        $check('eqzOrVersionGate', false, 'function body not found');
     }
 
     // -- root value block: function body is an unnamed value-typed block.
@@ -397,6 +431,10 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
         $exports['exerciseBareDoWhileLoop']($v);
     }
 
+    foreach ($data['dowhile_interior_continue_pairs'] as $pair) {
+        $exports['exerciseDowhileInteriorContinue']($pair[0], $pair[1]);
+    }
+
     foreach ($data['switch_continue_loop_initial'] as $v) {
         $exports['exerciseSwitchContinueLoop']($v);
     }
@@ -427,6 +465,10 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
 
     foreach ($data['const_condition_fold_values'] as $v) {
         $exports['exerciseConstConditionFold']($v);
+    }
+
+    foreach ($data['eqz_or_version_gate_values'] as $v) {
+        $exports['exerciseEqzOrVersionGate']($v);
     }
 };
 

@@ -34,7 +34,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
 
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {string} */ moduleName = /** @type {string} */ (options.emitCode);
-  var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, 'ASMJS_HEAP_SIZE');
+  var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, this.getHeapSizeDefinitionKey_());
   var /** @const {number} */ scratchByteOffset = heapSize - 8;
   var /** @const {number} */ scratchWordIndex = scratchByteOffset >>> 2;
   var /** @const {number} */ scratchQwordIndex = scratchByteOffset >>> 3;
@@ -156,6 +156,21 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     if (moduleInfo.impFuncs[ci].wasmFuncName in stdlibNames) continue;
     var /** @const {string} */ ciKey = '$if_' + moduleInfo.impFuncs[ci].importBaseName;
     pushBinding(ciKey, foreignName + '.' + moduleInfo.impFuncs[ci].importBaseName);
+  }
+  // The {@code $w2l_trap} call is rendered at traversal leave time for every
+  // wasm {@code unreachable} node, but dead placeholders that binaryen injects
+  // after unconditional control flow get trimmed from block bodies by
+  // {@code reachableBlockChildCount_}.  Scan the surviving function text for
+  // the mangled identifier so the binding is only declared when a live call
+  // makes it into the output.
+  if (!ub['$w2l_trap']) {
+    var /** @const {string} */ mangledTrap = this.n_('$w2l_trap');
+    for (var /** @type {number} */ fp = 0, /** @const {number} */ fpLen2 = functionParts.length; fp !== fpLen2; ++fp) {
+      if (-1 !== functionParts[fp].indexOf(mangledTrap + '(')) {
+        ub['$w2l_trap'] = true;
+        break;
+      }
+    }
   }
   pushBinding('$w2l_trap', foreignName + '.__wasm2lang_trap');
 

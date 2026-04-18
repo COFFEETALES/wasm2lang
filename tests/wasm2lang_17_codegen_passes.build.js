@@ -1291,6 +1291,57 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // dowhileInteriorContinue: Regression guard for interior back-branch
+  // rejection in do-while classification.
+  //
+  // (loop $L (block
+  //   (local.set i (add i 1))
+  //   (if (eq i skipAt) (br $L))            ;; interior re-iterate
+  //   (local.set acc (add acc i))
+  //   (br_if $L (lt_s i limit))             ;; trailing LDB-shaped br_if
+  // ))
+  //
+  // If the loop were naively classified as do-while, the emitter would
+  // produce `do { ... if (i==skipAt) continue; ... } while (i<limit);`.
+  // In JS, `continue` inside a do-while jumps to the while-check, so when
+  // skipAt == limit the check fails and the loop exits — diverging from
+  // WASM's unconditional `br $L` re-iterate.  LoopSimplificationPass
+  // scans the body for interior back-branches targeting the loop and
+  // rejects LDB/LDA/LEA/LEB classification when found, leaving the loop
+  // as a for-loop where `continue` jumps to the loop top.
+  //
+  // params: limit(0), skipAt(1)  locals: i(2), acc(3)
+  // Returns sum collected across the full WASM-semantic execution.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'dowhileInteriorContinue',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.loop(
+        'dwicLoop',
+        module.block(null, [
+          module.local.set(2, module.i32.add(p(2), i32(1))),
+          module.if(module.i32.eq(p(2), p(1)), module.br('dwicLoop')),
+          module.local.set(3, module.i32.add(p(3), p(2))),
+          module.br('dwicLoop', module.i32.lt_s(p(2), p(0)))
+        ])
+      ),
+      module.return(p(3))
+    ])
+  );
+
+  // exerciseDowhileInteriorContinue(limit: i32, skipAt: i32): void
+  module.addFunction(
+    'exerciseDowhileInteriorContinue',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('dowhileInteriorContinue', [p(0), p(1)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // switchContinueLoop: LCS/LFS pattern (for-loop ending with br_table
   // where one target is the loop itself = self-continue via switch).
   //
@@ -1670,6 +1721,47 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // eqzOrVersionGate: Regression for the quic.js AES-GCM failure.
+  //
+  //   (if (i32.eqz (i32.or (i32.eq v K1) (i32.eq v K2)))
+  //       (then return -1))
+  //   return 1
+  //
+  // This is the reduced form produced by binaryen:max when it folds
+  // two consecutive br_if guards into a single i32.or and wraps the
+  // combined branch in i32.eqz for inversion.  The backend emitter
+  // must negate the compound condition via a full De Morgan swap (or
+  // a !(…) wrapper) — flipping a single inner comparison operator is
+  // semantically wrong and was the root cause of every QUIC version
+  // check returning "unsupported" once binaryen:max had run.
+  //
+  // params: version(0)
+  // Returns 1 when version matches 1 or 0x6b3343cf (QUIC v1/v2), else -1.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'eqzOrVersionGate',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [],
+    module.block(null, [
+      module.if(
+        module.i32.eqz(module.i32.or(module.i32.eq(p(0), i32(1)), module.i32.eq(p(0), i32(1798521807 | 0)))),
+        module.return(i32(-1))
+      ),
+      module.return(i32(1))
+    ])
+  );
+
+  // exerciseEqzOrVersionGate(version: i32): void
+  module.addFunction(
+    'exerciseEqzOrVersionGate',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('eqzOrVersionGate', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
@@ -1726,6 +1818,8 @@
   module.addFunctionExport('exerciseDoWhileWithExitTail', 'exerciseDoWhileWithExitTail');
   module.addFunctionExport('bareDoWhileLoop', 'bareDoWhileLoop');
   module.addFunctionExport('exerciseBareDoWhileLoop', 'exerciseBareDoWhileLoop');
+  module.addFunctionExport('dowhileInteriorContinue', 'dowhileInteriorContinue');
+  module.addFunctionExport('exerciseDowhileInteriorContinue', 'exerciseDowhileInteriorContinue');
   module.addFunctionExport('switchContinueLoop', 'switchContinueLoop');
   module.addFunctionExport('exerciseSwitchContinueLoop', 'exerciseSwitchContinueLoop');
   module.addFunctionExport('rootSwitchStateMachine', 'rootSwitchStateMachine');
@@ -1742,6 +1836,8 @@
   module.addFunctionExport('exerciseRootValueBlock', 'exerciseRootValueBlock');
   module.addFunctionExport('constConditionFold', 'constConditionFold');
   module.addFunctionExport('exerciseConstConditionFold', 'exerciseConstConditionFold');
+  module.addFunctionExport('eqzOrVersionGate', 'eqzOrVersionGate');
+  module.addFunctionExport('exerciseEqzOrVersionGate', 'exerciseEqzOrVersionGate');
 
   common.finalizeAndOutput(module);
 
@@ -2031,6 +2127,25 @@
     })
   );
 
+  data.dowhile_interior_continue_pairs = [
+    [0, 0],
+    [1, 1],
+    [5, 5],
+    [5, 3],
+    [5, 100],
+    [10, 10],
+    [10, 3],
+    [10, 0],
+    [20, 20],
+    [100, 50],
+    [100, 100]
+  ].concat(
+    Array.from({length: 4}, function () {
+      var lim = ((Math.random() * 20) | 0) + 1;
+      return [lim, (Math.random() * (lim + 5)) | 0];
+    })
+  );
+
   data.switch_continue_loop_initial = [0, 1, 7, 100, -10, 42, 1000].concat(
     Array.from({length: 4}, function () {
       return common.rand.smallI32();
@@ -2074,6 +2189,15 @@
   );
 
   data.const_condition_fold_values = [-100, -1, 0, 1, 2, 5, 10, 42, 100, 1000].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  // QUIC v1 = 1, QUIC v2 = 0x6b3343cf (1798521807).  Both must route to the
+  // supported path (return 1); anything else must return -1.  Random values
+  // ensure the non-matching path is exercised too.
+  data.eqz_or_version_gate_values = [0, 1, 2, -1, 100, 1798521806, 1798521807, 1798521808].concat(
     Array.from({length: 4}, function () {
       return common.rand.smallI32();
     })

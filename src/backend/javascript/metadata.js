@@ -7,8 +7,8 @@
  * resized length, so the pre-existing HEAP* bindings keep working after
  * {@code buffer.resize(...)} succeeds.
  *
- * The initial size comes from the {@code JS_HEAP_SIZE} define (shared with
- * the asm.js backend).  The {@code maxByteLength} cap defaults to the wasm
+ * The initial size comes from the {@code JS_HEAP_SIZE} define (the asm.js
+ * backend uses {@code ASMJS_HEAP_SIZE}).  The {@code maxByteLength} cap defaults to the wasm
  * module's declared memory maximum ({@code max * 65536}); this mirrors the
  * V8 WASM runtime's grow semantics so {@code buffer.resize(...)} beyond the
  * declared max fails exactly where {@code WebAssembly.Memory.grow(...)} would.
@@ -25,7 +25,7 @@
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitMetadata = function (wasmModule, options) {
   var /** @const {string} */ bufferName = /** @type {string} */ (options.emitMetadata);
-  var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, 'JS_HEAP_SIZE');
+  var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, this.getHeapSizeDefinitionKey_());
   var /** @const {!BinaryenMemoryInfo} */ memInfo = wasmModule.getMemoryInfo();
   var /** @const {number} */ maxPages = memInfo.max;
   var /** @type {number} */ defaultCap;

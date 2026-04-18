@@ -54,40 +54,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @type {number} */ resultCat = A.CAT_VOID;
 
-  var /** @const {function(number): !Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ childResultAt = function (i) {
-      return A.getChildResultInfo_(childResults, i);
-    };
-
-  var /** @const {function(number): string} */ cr = function (i) {
-      return childResultAt(i).expressionString;
-    };
-
-  var /** @const {function(number): number} */ cc = function (i) {
-      return childResultAt(i).expressionCategory;
-    };
-
-  // asm.js locals/globals/select/if produce INT for i32 values (not SIGNED) —
-  // consumer sites add |0 as needed; non-i32 types follow catForCoercedType_.
-  var /** @const {function(number): number} */ asmjsResultCat = function (wasmType) {
-      return Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType) ? C.INT : A.catForCoercedType_(binaryen, wasmType);
-    };
+  var /** @const */ acc = A.makeChildAccessors_(childResults);
+  var /** @const {function(number): string} */ cr = acc.cr;
+  var /** @const {function(number): number} */ cc = acc.cc;
 
   var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
   if (common) return A.buildLeaveResult_(common.emittedString, common.resultCat);
 
   switch (id) {
-    case binaryen.LocalGetId: {
-      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr.index);
-      var /** @const {number} */ localGetType = Wasm2Lang.Backend.ValueType.getLocalType(
-          binaryen,
-          state.functionInfo,
-          localGetIdx
-        );
-      result = this.localN_(localGetIdx);
-      resultCat = asmjsResultCat(localGetType);
-      break;
-    }
-
     case binaryen.GlobalGetId: {
       var /** @const {string} */ globalGetName = /** @type {string} */ (expr.name);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
@@ -98,7 +72,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         result = this.n_(globalGetKey);
         this.markBinding_(globalGetKey);
       }
-      resultCat = asmjsResultCat(globalGetType);
+      resultCat = this.catForValueTypeRead_(binaryen, globalGetType);
       break;
     }
 
@@ -228,17 +202,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       }
       break;
     }
-    case binaryen.DropId:
-      result = pad(ind) + cr(0) + ';\n';
-      break;
-
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = expr.type;
       var /** @const {string} */ selectTrue = this.coerceAtBoundary_(binaryen, cr(1), cc(1), selectType);
       var /** @const {string} */ selectFalse = this.coerceAtBoundary_(binaryen, cr(2), cc(2), selectType);
       result = '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + selectTrue + ' : ' + selectFalse + ')';
       // Ternary produces INT for i32 (not SIGNED) — return/call sites will add |0.
-      resultCat = asmjsResultCat(selectType);
+      resultCat = this.catForValueTypeRead_(binaryen, selectType);
       break;
     }
     case binaryen.MemorySizeId:
@@ -280,7 +250,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         result = this.emitSimplifiedLoopFromIR_(state, nodeCtx, loopKind);
       } else {
         var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
-        result = pad(ind) + rawLabel + 'for (;;) {\n' + cr(0) + pad(ind + 1) + 'break;\n' + pad(ind) + '}\n';
+        result = this.emitRawInfiniteLoop_(ind, rawLabel, cr(0), true);
       }
       --state.breakableStack.length;
       break;
@@ -292,7 +262,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         var /** @const {string} */ ifFalse = this.coerceAtBoundary_(binaryen, cr(2), cc(2), ifType);
         result = '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + ifTrue + ' : ' + ifFalse + ')';
         // Ternary produces INT for i32 (not SIGNED) — return/call sites will add |0.
-        resultCat = asmjsResultCat(ifType);
+        resultCat = this.catForValueTypeRead_(binaryen, ifType);
       } else {
         result = this.emitIfStatement_(
           ind,

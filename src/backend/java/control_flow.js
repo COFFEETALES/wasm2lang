@@ -58,17 +58,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     state.lastExprIsTerminal = false;
   }
 
-  var /** @const {function(number): !Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ childResultAt = function (i) {
-      return A.getChildResultInfo_(childResults, i);
-    };
-
-  var /** @const {function(number): string} */ cr = function (i) {
-      return childResultAt(i).expressionString;
-    };
-
-  var /** @const {function(number): number} */ cc = function (i) {
-      return childResultAt(i).expressionCategory;
-    };
+  var /** @const */ acc = A.makeChildAccessors_(childResults);
+  var /** @const {function(number): string} */ cr = acc.cr;
+  var /** @const {function(number): number} */ cc = acc.cc;
 
   var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
   if (common) {
@@ -77,17 +69,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
   }
 
   switch (id) {
-    case binaryen.LocalGetId: {
-      var /** @const {number} */ localGetIdx = /** @type {number} */ (expr.index);
-      var /** @const {number} */ localGetType = Wasm2Lang.Backend.ValueType.getLocalType(
-          binaryen,
-          state.functionInfo,
-          localGetIdx
-        );
-      result = this.localN_(localGetIdx);
-      resultCat = A.catForCoercedType_(binaryen, localGetType);
-      break;
-    }
     case binaryen.GlobalGetId: {
       var /** @const {string} */ globalGetName = /** @type {string} */ (expr.name);
       var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
@@ -213,18 +194,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       }
       break;
     }
-    case binaryen.DropId: {
-      // Java only allows method calls, assignments, etc. as expression statements.
-      // Emit only when the child is a call (side-effectful); skip pure expressions.
-      var /** @const {number} */ dropValuePtr = /** @type {number} */ (expr.value);
-      var /** @const {number} */ dropValueId = dropValuePtr
-          ? Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, dropValuePtr).id
-          : 0;
-      if (binaryen.CallId === dropValueId || binaryen.CallIndirectId === dropValueId) {
-        result = pad(ind) + cr(0) + ';\n';
-      }
-      break;
-    }
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = expr.type;
       var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
@@ -279,23 +248,14 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         // Raw loop fallback (unsimplified): named body blocks can complete
         // normally via `break $blockName`, so the trailing `break;` is
         // always reachable and required.
-        var /** @const {string} */ loopBody = cr(0);
-        var /** @const {number} */ loopBodyPtr = /** @type {number} */ (expr.body);
         var /** @const {!BinaryenExpressionInfo} */ loopBodyInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
             binaryen,
-            loopBodyPtr
+            /** @type {number} */ (expr.body)
           );
         var /** @const {boolean} */ bodyBlockIsNamed = binaryen.BlockId === loopBodyInfo.id && !!loopBodyInfo.name;
         var /** @const {boolean} */ needsTrailingBreak = bodyBlockIsNamed || !bodyWasTerminal;
         var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
-        result =
-          pad(ind) +
-          rawLabel +
-          'for (;;) {\n' +
-          loopBody +
-          (needsTrailingBreak ? pad(ind + 1) + 'break;\n' : '') +
-          pad(ind) +
-          '}\n';
+        result = this.emitRawInfiniteLoop_(ind, rawLabel, cr(0), needsTrailingBreak);
       }
       --state.breakableStack.length;
       break;
@@ -458,6 +418,23 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
   }
 
   return A.buildLeaveResult_(result, resultCat);
+};
+
+/**
+ * Java only allows method calls, assignments, etc. as expression statements.
+ * Restrict drop emission to call children (the side-effectful case); pure
+ * expressions are dropped silently.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} dropValuePtr
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.JavaCodegen.prototype.shouldEmitDropChild_ = function (binaryen, dropValuePtr) {
+  if (!dropValuePtr) return false;
+  var /** @const {number} */ childId = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, dropValuePtr).id;
+  return binaryen.CallId === childId || binaryen.CallIndirectId === childId;
 };
 
 /**

@@ -34,3 +34,5 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderExportedGlobalGetterReturn_ 
   Wasm2Lang.Backend.JsCommonCodegen.prototype.renderExportedGlobalGetterReturn_;
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitParameterAnnotations_ =
   Wasm2Lang.Backend.JsCommonCodegen.prototype.emitParameterAnnotations_;
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.getHeapSizeDefinitionKey_ =
+  Wasm2Lang.Backend.JsCommonCodegen.prototype.getHeapSizeDefinitionKey_;
