@@ -66,6 +66,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       return childResultAt(i).expressionCategory;
     };
 
+  // asm.js locals/globals/select/if produce INT for i32 values (not SIGNED) —
+  // consumer sites add |0 as needed; non-i32 types follow catForCoercedType_.
+  var /** @const {function(number): number} */ asmjsResultCat = function (wasmType) {
+      return Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType) ? C.INT : A.catForCoercedType_(binaryen, wasmType);
+    };
+
   var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
   if (common) return A.buildLeaveResult_(common.emittedString, common.resultCat);
 
@@ -78,9 +84,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
           localGetIdx
         );
       result = this.localN_(localGetIdx);
-      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, localGetType)
-        ? C.INT
-        : A.catForCoercedType_(binaryen, localGetType);
+      resultCat = asmjsResultCat(localGetType);
       break;
     }
 
@@ -94,9 +98,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         result = this.n_(globalGetKey);
         this.markBinding_(globalGetKey);
       }
-      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, globalGetType)
-        ? C.INT
-        : A.catForCoercedType_(binaryen, globalGetType);
+      resultCat = asmjsResultCat(globalGetType);
       break;
     }
 
@@ -236,7 +238,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ selectFalse = this.coerceAtBoundary_(binaryen, cr(2), cc(2), selectType);
       result = '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + selectTrue + ' : ' + selectFalse + ')';
       // Ternary produces INT for i32 (not SIGNED) — return/call sites will add |0.
-      resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, selectType) ? C.INT : A.catForCoercedType_(binaryen, selectType);
+      resultCat = asmjsResultCat(selectType);
       break;
     }
     case binaryen.MemorySizeId:
@@ -290,7 +292,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         var /** @const {string} */ ifFalse = this.coerceAtBoundary_(binaryen, cr(2), cc(2), ifType);
         result = '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + ifTrue + ' : ' + ifFalse + ')';
         // Ternary produces INT for i32 (not SIGNED) — return/call sites will add |0.
-        resultCat = Wasm2Lang.Backend.ValueType.isI32(binaryen, ifType) ? C.INT : A.catForCoercedType_(binaryen, ifType);
+        resultCat = asmjsResultCat(ifType);
       } else {
         result = this.emitIfStatement_(
           ind,

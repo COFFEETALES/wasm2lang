@@ -69,8 +69,9 @@ Wasm2Lang.Backend.SIMDOps.unInfo_ = function (opName, laneType, scalarResult) {
  * @return {?Wasm2Lang.Backend.SIMDOps.BinaryOpInfo}
  */
 Wasm2Lang.Backend.SIMDOps.classifyBinaryOp = function (binaryen, op) {
-  if (!Wasm2Lang.Backend.SIMDOps.binaryOpMap_) {
-    var /** @const */ b = Wasm2Lang.Backend.SIMDOps.binInfo_;
+  var /** @const */ S = Wasm2Lang.Backend.SIMDOps;
+  if (!S.binaryOpMap_) {
+    var /** @const */ b = S.binInfo_;
     var /** @const {!Object<number, !Wasm2Lang.Backend.SIMDOps.BinaryOpInfo>} */
       m = /** @type {!Object<number, !Wasm2Lang.Backend.SIMDOps.BinaryOpInfo>} */ (Object.create(null));
 
@@ -208,9 +209,9 @@ Wasm2Lang.Backend.SIMDOps.classifyBinaryOp = function (binaryen, op) {
     m[binaryen.LeVecF64x2] = b('le', 'f64x2', false);
     m[binaryen.GeVecF64x2] = b('ge', 'f64x2', false);
 
-    Wasm2Lang.Backend.SIMDOps.binaryOpMap_ = m;
+    S.binaryOpMap_ = m;
   }
-  return Wasm2Lang.Backend.SIMDOps.binaryOpMap_[op] || null;
+  return S.binaryOpMap_[op] || null;
 };
 
 /**
@@ -221,8 +222,9 @@ Wasm2Lang.Backend.SIMDOps.classifyBinaryOp = function (binaryen, op) {
  * @return {?Wasm2Lang.Backend.SIMDOps.UnaryOpInfo}
  */
 Wasm2Lang.Backend.SIMDOps.classifyUnaryOp = function (binaryen, op) {
-  if (!Wasm2Lang.Backend.SIMDOps.unaryOpMap_) {
-    var /** @const */ u = Wasm2Lang.Backend.SIMDOps.unInfo_;
+  var /** @const */ S = Wasm2Lang.Backend.SIMDOps;
+  if (!S.unaryOpMap_) {
+    var /** @const */ u = S.unInfo_;
     var /** @const {!Object<number, !Wasm2Lang.Backend.SIMDOps.UnaryOpInfo>} */
       m = /** @type {!Object<number, !Wasm2Lang.Backend.SIMDOps.UnaryOpInfo>} */ (Object.create(null));
 
@@ -305,7 +307,7 @@ Wasm2Lang.Backend.SIMDOps.classifyUnaryOp = function (binaryen, op) {
     m[binaryen.ConvertLowUVecI32x4ToVecF64x2] = u('convert_low_u_i32x4', 'f64x2', false);
     m[binaryen.PromoteLowVecF32x4ToVecF64x2] = u('promote_low_f32x4', 'f64x2', false);
 
-    Wasm2Lang.Backend.SIMDOps.unaryOpMap_ = m;
+    S.unaryOpMap_ = m;
   }
-  return Wasm2Lang.Backend.SIMDOps.unaryOpMap_[op] || null;
+  return S.unaryOpMap_[op] || null;
 };

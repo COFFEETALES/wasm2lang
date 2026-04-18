@@ -222,26 +222,38 @@ Wasm2Lang.Wasm.Tree.NodeSchema.getEdgeSpecs = function (expressionId) {
 };
 
 /**
- * Lazily-built set of binaryen expression IDs that are safe to pass to
- * {@code binaryen.getExpressionInfo()} — i.e. IDs whose property-accessor
- * class is registered in binaryen's internal PA table.  IDs NOT in this set
- * would cause getExpressionInfo to crash with "Cannot convert undefined or
- * null to object".
+ * Lazily-built array of booleans indexed by binaryen expression ID.  A
+ * {@code true} entry means the id has a property-accessor class registered
+ * in binaryen's internal PA table and can therefore be passed to
+ * {@code getExpressionInfo} without crashing with "Cannot convert
+ * undefined or null to object".
+ *
+ * Backed by a plain Array (not {@code Object.create(null)}) so V8 keeps
+ * the storage in PACKED/HOLEY_SMI_ELEMENTS mode, which makes the
+ * per-node bounds-checked indexed load in the traversal hot path
+ * meaningfully cheaper than a generic property lookup.
  *
  * @private
- * @type {?Object<number, boolean>}
+ * @type {?Array<boolean>}
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.safeExpressionIds_ = null;
 
 /**
  * @private
  * @param {!Binaryen} binaryen
- * @return {!Object<number, boolean>}
+ * @return {!Array<boolean>}
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.ensureSafeExpressionIds_ = function (binaryen) {
-  var /** @type {?Object<number, boolean>} */ s = Wasm2Lang.Wasm.Tree.NodeSchema.safeExpressionIds_;
+  var /** @type {?Array<boolean>} */ s = Wasm2Lang.Wasm.Tree.NodeSchema.safeExpressionIds_;
   if (s) return s;
-  s = /** @type {!Object<number, boolean>} */ (Object.create(null));
+  // Pre-size to the max known safe id so V8 allocates a packed array in one
+  // shot instead of walking it through HOLEY transitions.  MVP + SIMD +
+  // bulk-memory ids all fit in 0..40; allocate a touch larger for safety.
+  s = [];
+  var /** @const {number} */ maxId = 48;
+  for (var /** @type {number} */ i = 0; i !== maxId; ++i) {
+    s[i] = false;
+  }
   // All expression IDs that have a property-accessor class in binaryen's PA
   // table and can therefore be passed to getExpressionInfo safely.
   s[binaryen.BlockId] = true;
@@ -286,9 +298,12 @@ Wasm2Lang.Wasm.Tree.NodeSchema.ensureSafeExpressionIds_ = function (binaryen) {
  * UnreachableId, or expression types introduced by LTO / binaryen
  * optimizations that the JS bindings do not cover).
  *
- * Uses a whitelist pre-check instead of try-catch because Closure Compiler
- * ADVANCED mode eliminates catch blocks when the callee's extern type
- * implies no throw.
+ * Uses a whitelist pre-check rather than a try/catch.  Closure Compiler
+ * ADVANCED does preserve try/catch across externs, but V8 deoptimises
+ * try-protected functions and the extra boundary crossings dominate the
+ * savings — measured regression of ~5% end-to-end on quic.wasm.  The
+ * dense-array whitelist lookup here is ~1ns versus the ~1μs cost of a
+ * spurious getExpressionInfo call that would throw.
  *
  * @param {!Binaryen} binaryen
  * @param {number} exprPtr

@@ -55,6 +55,39 @@ Wasm2Lang.Wasm.Tree.CustomPasses.createEnterLeaveVisitor = function (target, ent
 };
 
 /**
+ * Returns true when {@code name} starts with any prefix in {@code prefixes}.
+ * Centralizes the skip-guard used by normalization passes to leave blocks
+ * carrying pass-specific markers (sw$/fused/rootsw) untouched.
+ *
+ * @param {string} name
+ * @param {!Array<string>} prefixes
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.hasAnyPrefix = function (name, prefixes) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ n = prefixes.length; i !== n; ++i) {
+    if (0 === name.indexOf(prefixes[i])) return true;
+  }
+  return false;
+};
+
+/**
+ * Full block-marker skip set: labels owned by switch-dispatch, block-loop
+ * fusion, or root-switch passes.  Hoisted so normalize passes don't
+ * reallocate the array on every leave invocation.
+ *
+ * @const {!Array<string>}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.FULL_BLOCK_SKIP_PREFIXES = ['w2l_switch$', 'w2l_fused$', 'w2l_rootsw$'];
+
+/**
+ * Skip-prefix set excluding the fusion marker.  Used by passes whose
+ * output is correct even when fused blocks are unwrapped.
+ *
+ * @const {!Array<string>}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.NONFUSED_BLOCK_SKIP_PREFIXES = ['w2l_switch$', 'w2l_rootsw$'];
+
+/**
  * Convenience wrapper that extracts binaryen/module/expr from a traversal
  * node context and delegates to {@code applyMarkerRenaming_}.  Used by
  * leave_ callbacks that only need marker renaming (no additional logic).

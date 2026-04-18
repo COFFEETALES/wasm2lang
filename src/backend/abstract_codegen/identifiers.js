@@ -340,14 +340,29 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getFixedModuleBindings_ = function (
 };
 
 /**
- * Backend hook: returns all possible helper function names that could be
- * emitted.  Concrete backends override this.
+ * Returns every helper function name the backend's {@code emitHelpers_} is
+ * capable of emitting.
+ *
+ * Implemented by running {@code emitHelpers_} in a collect-only dry pass:
+ * each {@code h(name, ...)} call (routed through {@code emitOrCollectHelper_})
+ * records {@code name} into a temporary collector instead of emitting a body.
+ * This keeps the emittable-helper list and the actual emission in lock-step
+ * with a single source of truth, eliminating the drift that a hand-maintained
+ * override would introduce.
  *
  * @protected
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.getAllHelperNames_ = function () {
-  return [];
+  var /** @const {!Array<string>} */ collector = [];
+  this.helperNameCollector_ = collector;
+  try {
+    this.emitHelpers_(0, 0, 0, 0);
+  } finally {
+    this.helperNameCollector_ = null;
+  }
+  collector.sort();
+  return collector;
 };
 
 /**

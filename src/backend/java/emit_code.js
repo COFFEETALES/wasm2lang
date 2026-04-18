@@ -121,7 +121,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   }
 
   // Helper methods (only those referenced by function bodies).
-  var /** @const {!Array<string>} */ helperLines = this.emitHelpers_();
+  var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(0, 0, 0, 0);
   this.usedHelpers_ = null;
   this.castNames_ = null;
   var /** @const {!Object<string, boolean>} */ jub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);

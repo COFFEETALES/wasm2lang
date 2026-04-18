@@ -178,13 +178,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCastImportInline_ = function (
  * @const {!Object<number, string>}
  * @private
  */
-Wasm2Lang.Backend.AsmjsCodegen.ASMJS_I32_UNARY_HELPERS_ = /** @return {!Object<number, string>} */ (function () {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  var /** @const {!Object<number, string>} */ table = {};
-  table[C.UNARY_CTZ] = '$w2l_ctz';
-  table[C.UNARY_POPCNT] = '$w2l_popcnt';
-  return table;
-})();
+Wasm2Lang.Backend.AsmjsCodegen.ASMJS_I32_UNARY_HELPERS_ = /** @type {!Object<number, string>} */ (
+  Wasm2Lang.Backend.I32Coercion.buildKeyedTable([
+    [Wasm2Lang.Backend.I32Coercion.UNARY_CTZ, '$w2l_ctz'],
+    [Wasm2Lang.Backend.I32Coercion.UNARY_POPCNT, '$w2l_popcnt']
+  ])
+);
 
 /**
  * Shift amount used to express {@code extendN_s} as a paired left/right-
@@ -194,13 +193,12 @@ Wasm2Lang.Backend.AsmjsCodegen.ASMJS_I32_UNARY_HELPERS_ = /** @return {!Object<n
  * @const {!Object<number, number>}
  * @private
  */
-Wasm2Lang.Backend.AsmjsCodegen.ASMJS_I32_UNARY_EXTEND_SHIFTS_ = /** @return {!Object<number, number>} */ (function () {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  var /** @const {!Object<number, number>} */ table = {};
-  table[C.UNARY_EXTEND8_S] = 24;
-  table[C.UNARY_EXTEND16_S] = 16;
-  return table;
-})();
+Wasm2Lang.Backend.AsmjsCodegen.ASMJS_I32_UNARY_EXTEND_SHIFTS_ = /** @type {!Object<number, number>} */ (
+  Wasm2Lang.Backend.I32Coercion.buildKeyedTable([
+    [Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND8_S, 24],
+    [Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND16_S, 16]
+  ])
+);
 
 /**
  * @override

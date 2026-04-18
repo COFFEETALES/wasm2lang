@@ -65,11 +65,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
   }
 
   // Skip blocks already handled by other passes.
-  if (
-    0 === blockName.indexOf('w2l_switch$') ||
-    0 === blockName.indexOf('w2l_fused$') ||
-    0 === blockName.indexOf('w2l_rootsw$')
-  ) {
+  if (Wasm2Lang.Wasm.Tree.CustomPasses.hasAnyPrefix(blockName, Wasm2Lang.Wasm.Tree.CustomPasses.FULL_BLOCK_SKIP_PREFIXES)) {
     return null;
   }
 

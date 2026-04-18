@@ -35,7 +35,6 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
   heapPageCount
 ) {
   var /** @const {!Array<string>} */ lines = [];
-  var /** @const {!Object<string, boolean>} */ used = this.usedHelpers_ || {};
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const {string} */ pad1 = pad(1);
   var /** @const {string} */ pad2 = pad(2);
@@ -63,15 +62,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
   var /** @const {string} */ nMathClz32 = n('Math_clz32');
 
   /**
-   * Conditionally emit a helper: guard on used[], mark bindings, push body.
+   * Conditionally emit a helper via the shared emit-or-collect funnel.
    * @param {string} name
    * @param {!Array<string>} bindings
    * @param {string} body
    */
   var h = function (name, bindings, body) {
-    if (!used[name]) return;
-    for (var bi = 0; bi < bindings.length; ++bi) self.markBinding_(bindings[bi]);
-    lines[lines.length] = body;
+    self.emitOrCollectHelper_(lines, name, bindings, body);
   };
 
   /**

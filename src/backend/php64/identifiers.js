@@ -46,40 +46,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.getInlineTempCount_ = function () {
 };
 
 /**
- * @override
- * @return {!Array<string>}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.getAllHelperNames_ = function () {
-  return [
-    '_w2l_clz',
-    '_w2l_copysign_f32',
-    '_w2l_copysign_f64',
-    '_w2l_convert_u_i32_to_f32',
-    '_w2l_convert_u_i32_to_f64',
-    '_w2l_ctz',
-    '_w2l_imul',
-    '_w2l_nearest_f32',
-    '_w2l_nearest_f64',
-    '_w2l_popcnt',
-    '_w2l_reinterpret_f32_to_i32',
-    '_w2l_reinterpret_i32_to_f32',
-    '_w2l_trunc_f32',
-    '_w2l_trunc_f64',
-    '_w2l_trunc_s_f32_to_i32',
-    '_w2l_trunc_s_f64_to_i32',
-    '_w2l_trunc_sat_s_f32_to_i32',
-    '_w2l_trunc_sat_s_f64_to_i32',
-    '_w2l_trunc_sat_u_f32_to_i32',
-    '_w2l_trunc_sat_u_f64_to_i32',
-    '_w2l_trunc_u_f32_to_i32',
-    '_w2l_trunc_u_f64_to_i32',
-    '_w2l_memory_copy',
-    '_w2l_memory_fill',
-    '_w2l_memory_grow'
-  ];
-};
-
-/**
  * Returns a local variable name with PHP {@code $} sigil.  When the mangler
  * is active the mangled name is prefixed with {@code $}; otherwise the
  * default {@code $l{index}} form already starts with {@code $}.

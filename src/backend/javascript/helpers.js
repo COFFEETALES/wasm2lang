@@ -55,9 +55,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
       heapPageCount
     );
 
-  var /** @const {!Object<string, boolean>} */ used = /** @type {!Object<string, boolean>} */ (
-      this.usedHelpers_ || Object.create(null)
-    );
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const {string} */ pad1 = pad(1);
   var /** @const {string} */ pad2 = pad(2);
@@ -79,25 +76,28 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
   var /** @const {string} */ scratchByte = String(scratchByteOffset);
 
   /**
-   * Conditionally emit a helper: guard on a direct boolean (for the pre-
-   * suppressed memory helpers) or on used[name] otherwise, mark bindings,
-   * push body.
-   * @param {boolean} cond
-   * @param {!Array<string>} bindings
-   * @param {string} body
-   */
-  var hCond = function (cond, bindings, body) {
-    if (!cond) return;
-    for (var bi = 0; bi < bindings.length; ++bi) self.markBinding_(bindings[bi]);
-    lines[lines.length] = body;
-  };
-  /**
+   * Conditionally emit a helper via the shared emit-or-collect funnel.
    * @param {string} name
    * @param {!Array<string>} bindings
    * @param {string} body
    */
   var h = function (name, bindings, body) {
-    hCond(!!used[name], bindings, body);
+    self.emitOrCollectHelper_(lines, name, bindings, body);
+  };
+
+  /**
+   * Emits a helper body whose name is not supplied (overrides of helpers
+   * already recorded via the parent asm.js h() pass).  Skipped in collect
+   * mode since the name was captured on the parent pass.
+   *
+   * @param {boolean} cond
+   * @param {!Array<string>} bindings
+   * @param {string} body
+   */
+  var hCond = function (cond, bindings, body) {
+    if (self.helperNameCollector_ || !cond) return;
+    for (var bi = 0; bi < bindings.length; ++bi) self.markBinding_(bindings[bi]);
+    lines[lines.length] = body;
   };
 
   // prettier-ignore

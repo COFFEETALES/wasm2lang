@@ -99,14 +99,13 @@ Wasm2Lang.Backend.JavaCodegen.renderV128Const_ = function (value) {
  * @const {!Object<number, string>}
  * @private
  */
-Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_METHODS_ = /** @return {!Object<number, string>} */ (function () {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  var /** @const {!Object<number, string>} */ table = {};
-  table[C.UNARY_CLZ] = 'Integer.numberOfLeadingZeros';
-  table[C.UNARY_CTZ] = 'Integer.numberOfTrailingZeros';
-  table[C.UNARY_POPCNT] = 'Integer.bitCount';
-  return table;
-})();
+Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_METHODS_ = /** @type {!Object<number, string>} */ (
+  Wasm2Lang.Backend.I32Coercion.buildKeyedTable([
+    [Wasm2Lang.Backend.I32Coercion.UNARY_CLZ, 'Integer.numberOfLeadingZeros'],
+    [Wasm2Lang.Backend.I32Coercion.UNARY_CTZ, 'Integer.numberOfTrailingZeros'],
+    [Wasm2Lang.Backend.I32Coercion.UNARY_POPCNT, 'Integer.bitCount']
+  ])
+);
 
 /**
  * Target Java primitive type for each sign-extend {@code UNARY_*} category.
@@ -116,13 +115,12 @@ Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_METHODS_ = /** @return {!Object<num
  * @const {!Object<number, string>}
  * @private
  */
-Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_CASTS_ = /** @return {!Object<number, string>} */ (function () {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  var /** @const {!Object<number, string>} */ table = {};
-  table[C.UNARY_EXTEND8_S] = 'byte';
-  table[C.UNARY_EXTEND16_S] = 'short';
-  return table;
-})();
+Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_CASTS_ = /** @type {!Object<number, string>} */ (
+  Wasm2Lang.Backend.I32Coercion.buildKeyedTable([
+    [Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND8_S, 'byte'],
+    [Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND16_S, 'short']
+  ])
+);
 
 /**
  * Method name for each i64 {@code UNARY_*} category that dispatches to a
@@ -131,14 +129,13 @@ Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_CASTS_ = /** @return {!Object<numbe
  * @const {!Object<number, string>}
  * @private
  */
-Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_METHODS_ = /** @return {!Object<number, string>} */ (function () {
-  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
-  var /** @const {!Object<number, string>} */ table = {};
-  table[I.UNARY_CLZ] = 'Long.numberOfLeadingZeros';
-  table[I.UNARY_CTZ] = 'Long.numberOfTrailingZeros';
-  table[I.UNARY_POPCNT] = 'Long.bitCount';
-  return table;
-})();
+Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_METHODS_ = /** @type {!Object<number, string>} */ (
+  Wasm2Lang.Backend.I32Coercion.buildKeyedTable([
+    [Wasm2Lang.Backend.I64Coercion.UNARY_CLZ, 'Long.numberOfLeadingZeros'],
+    [Wasm2Lang.Backend.I64Coercion.UNARY_CTZ, 'Long.numberOfTrailingZeros'],
+    [Wasm2Lang.Backend.I64Coercion.UNARY_POPCNT, 'Long.bitCount']
+  ])
+);
 
 /**
  * Target Java primitive type for each i64 sign-extend {@code UNARY_*}
@@ -149,14 +146,13 @@ Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_METHODS_ = /** @return {!Object<num
  * @const {!Object<number, string>}
  * @private
  */
-Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_CASTS_ = /** @return {!Object<number, string>} */ (function () {
-  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
-  var /** @const {!Object<number, string>} */ table = {};
-  table[I.UNARY_EXTEND8_S] = 'byte';
-  table[I.UNARY_EXTEND16_S] = 'short';
-  table[I.UNARY_EXTEND32_S] = 'int';
-  return table;
-})();
+Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_CASTS_ = /** @type {!Object<number, string>} */ (
+  Wasm2Lang.Backend.I32Coercion.buildKeyedTable([
+    [Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND8_S, 'byte'],
+    [Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND16_S, 'short'],
+    [Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND32_S, 'int']
+  ])
+);
 
 /**
  * @override

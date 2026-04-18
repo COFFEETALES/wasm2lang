@@ -36,12 +36,12 @@ Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_ = function (expr) {
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI32ComparisonBinary_ = function (self, info, L, R) {
   void self;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const */ J = Wasm2Lang.Backend.JsCommonCodegen;
-  var /** @const {number} */ precedence = '==' === info.opStr || '!=' === info.opStr ? P.PREC_EQUALITY_ : P.PREC_RELATIONAL_;
-  var /** @const {string} */ left = info.unsigned ? J.renderUnsignedCoercion_(L) : L;
-  var /** @const {string} */ right = info.unsigned ? J.renderUnsignedCoercion_(R) : R;
-  return P.renderInfix(left, info.opStr, right, precedence);
+  return Wasm2Lang.Backend.AbstractCodegen.renderComparisonInfix_(
+    info,
+    L,
+    R,
+    Wasm2Lang.Backend.JsCommonCodegen.renderUnsignedCoercion_
+  );
 };
 
 /**
@@ -80,11 +80,15 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI32RotateBinary_ = function (self, inf
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI32DivisionBinary_ = function (self, info, L, R) {
   void self;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ J = Wasm2Lang.Backend.JsCommonCodegen;
-  var /** @const {string} */ left = info.unsigned ? J.renderUnsignedCoercion_(L) : L;
-  var /** @const {string} */ right = info.unsigned ? J.renderUnsignedCoercion_(R) : R;
-  var /** @const {string} */ quotient = P.renderInfix(left, info.opStr, right, P.PREC_MULTIPLICATIVE_);
+  var /** @const {string} */ quotient = A.renderUnsignedAwareInfix_(
+      info,
+      L,
+      R,
+      J.renderUnsignedCoercion_,
+      A.Precedence_.PREC_MULTIPLICATIVE_
+    );
   return '/' === info.opStr ? J.renderSignedCoercion_(quotient) : quotient;
 };
 
@@ -134,10 +138,10 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI64MultiplyBinary_ = function (self, i
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64DivisionBinary_ = function (self, info, L, R) {
   void self;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ left = info.unsigned ? Wasm2Lang.Backend.JavaScriptCodegen.asUint64_(L) : L;
-  var /** @const {string} */ right = info.unsigned ? Wasm2Lang.Backend.JavaScriptCodegen.asUint64_(R) : R;
-  return Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_(P.renderInfix(left, info.opStr, right, P.PREC_MULTIPLICATIVE_));
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  return Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_(
+    A.renderUnsignedAwareInfix_(info, L, R, Wasm2Lang.Backend.JavaScriptCodegen.asUint64_, A.Precedence_.PREC_MULTIPLICATIVE_)
+  );
 };
 
 /**
@@ -185,9 +189,5 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI64RotateBinary_ = function (self, inf
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64ComparisonBinary_ = function (self, info, L, R) {
   void self;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {number} */ precedence = '==' === info.opStr || '!=' === info.opStr ? P.PREC_EQUALITY_ : P.PREC_RELATIONAL_;
-  var /** @const {string} */ left = info.unsigned ? Wasm2Lang.Backend.JavaScriptCodegen.asUint64_(L) : L;
-  var /** @const {string} */ right = info.unsigned ? Wasm2Lang.Backend.JavaScriptCodegen.asUint64_(R) : R;
-  return P.renderInfix(left, info.opStr, right, precedence);
+  return Wasm2Lang.Backend.AbstractCodegen.renderComparisonInfix_(info, L, R, Wasm2Lang.Backend.JavaScriptCodegen.asUint64_);
 };

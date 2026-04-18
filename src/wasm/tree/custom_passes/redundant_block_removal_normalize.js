@@ -55,7 +55,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass.prototype.leave_ = fu
   }
 
   // Skip blocks with pass-specific prefixes — they carry semantic meaning.
-  if (0 === blockName.indexOf('w2l_switch$') || 0 === blockName.indexOf('w2l_rootsw$')) {
+  if (Wasm2Lang.Wasm.Tree.CustomPasses.hasAnyPrefix(blockName, Wasm2Lang.Wasm.Tree.CustomPasses.NONFUSED_BLOCK_SKIP_PREFIXES)) {
     return null;
   }
 

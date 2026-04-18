@@ -81,36 +81,18 @@ Wasm2Lang.Backend.Php64Codegen.renderBitwiseBinary_ = function (self, info, L, R
  */
 Wasm2Lang.Backend.Php64Codegen.renderRotateBinary_ = function (self, info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ nI = self.n_('_w2l_i');
   var /** @const {string} */ shiftMask = Wasm2Lang.Backend.Php64Codegen.renderShiftMask_(R);
   var /** @const {string} */ reverseShift = P.renderInfix('32', '-', shiftMask, P.PREC_ADDITIVE_);
-
-  if (info.rotateLeft) {
-    return (
-      nI +
-      '(' +
-      P.renderInfix(
-        P.renderInfix(L, '<<', shiftMask, P.PREC_SHIFT_),
-        '|',
-        P.renderInfix(Wasm2Lang.Backend.Php64Codegen.renderMask32_(L), '>>', reverseShift, P.PREC_SHIFT_),
-        P.PREC_BIT_OR_,
-        true
-      ) +
-      ')'
-    );
-  }
-  return (
-    nI +
-    '(' +
-    P.renderInfix(
-      P.renderInfix(Wasm2Lang.Backend.Php64Codegen.renderMask32_(L), '>>', shiftMask, P.PREC_SHIFT_),
-      '|',
-      P.renderInfix(L, '<<', reverseShift, P.PREC_SHIFT_),
-      P.PREC_BIT_OR_,
-      true
-    ) +
-    ')'
-  );
+  var /** @const {string} */ maskedL = Wasm2Lang.Backend.Php64Codegen.renderMask32_(L);
+  // For rotl: L<<shiftMask | (L&0xFFFFFFFF)>>reverseShift.
+  // For rotr: (L&0xFFFFFFFF)>>shiftMask | L<<reverseShift.
+  // Flip the per-side shift amounts and which side gets the 32-bit mask.
+  var /** @const {string} */ highPart = P.renderInfix(L, '<<', info.rotateLeft ? shiftMask : reverseShift, P.PREC_SHIFT_);
+  var /** @const {string} */ lowPart = P.renderInfix(maskedL, '>>', info.rotateLeft ? reverseShift : shiftMask, P.PREC_SHIFT_);
+  var /** @const {string} */ ordered = info.rotateLeft
+      ? P.renderInfix(highPart, '|', lowPart, P.PREC_BIT_OR_, true)
+      : P.renderInfix(lowPart, '|', highPart, P.PREC_BIT_OR_, true);
+  return self.n_('_w2l_i') + '(' + ordered + ')';
 };
 
 /**
@@ -122,13 +104,6 @@ Wasm2Lang.Backend.Php64Codegen.renderRotateBinary_ = function (self, info, L, R)
  */
 Wasm2Lang.Backend.Php64Codegen.renderComparisonBinary_ = function (self, info, L, R) {
   void self;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @type {string} */ leftExpr = L;
-  var /** @type {string} */ rightExpr = R;
-
-  if (info.unsigned) {
-    leftExpr = P.wrap_(Wasm2Lang.Backend.Php64Codegen.renderMask32_(L), P.PREC_RELATIONAL_, false);
-    rightExpr = P.wrap_(Wasm2Lang.Backend.Php64Codegen.renderMask32_(R), P.PREC_RELATIONAL_, false);
-  }
-  return P.renderInfix(leftExpr, info.opStr, rightExpr, P.PREC_RELATIONAL_);
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  return A.renderUnsignedAwareInfix_(info, L, R, Wasm2Lang.Backend.Php64Codegen.renderMask32_, A.Precedence_.PREC_RELATIONAL_);
 };

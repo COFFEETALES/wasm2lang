@@ -45,23 +45,3 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.constructor = Wasm2Lang.Backend.JsCo
  */
 Wasm2Lang.Backend.JsCommonCodegen.prototype.heapPageCount_ = 0;
 
-/**
- * Concrete backends (asm.js, modern JS) emit their conditional runtime
- * helper bundle through this method.  The base declaration here just
- * informs the type checker — the body is provided by subclasses.
- *
- * @protected
- * @param {number} scratchByteOffset
- * @param {number} scratchWordIndex
- * @param {number} scratchQwordIndex
- * @param {number} heapPageCount
- * @return {!Array<string>}
- */
-Wasm2Lang.Backend.JsCommonCodegen.prototype.emitHelpers_ = function (
-  scratchByteOffset,
-  scratchWordIndex,
-  scratchQwordIndex,
-  heapPageCount
-) {
-  return [];
-};

@@ -33,11 +33,25 @@ Wasm2Lang.Backend.JavaCodegen.prototype.getHelperDeps_ = function () {
 /**
  * Emits only the helpers that were referenced during function body emission.
  *
+ * @override
+ * @protected
+ * @param {number} scratchByteOffset
+ * @param {number} scratchWordIndex
+ * @param {number} scratchQwordIndex
+ * @param {number} heapPageCount
  * @return {!Array<string>}
  */
-Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
+Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function (
+  scratchByteOffset,
+  scratchWordIndex,
+  scratchQwordIndex,
+  heapPageCount
+) {
+  void scratchByteOffset;
+  void scratchWordIndex;
+  void scratchQwordIndex;
+  void heapPageCount;
   var /** @const {!Array<string>} */ lines = [];
-  var /** @const {!Object<string, boolean>} */ used = this.usedHelpers_ || {};
 
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const {string} */ pad1 = pad(1);
@@ -53,13 +67,13 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
   };
 
   /**
-   * Conditionally emit a helper: guard on used[], push body.
+   * Conditionally emit a helper via the shared emit-or-collect funnel.  Java
+   * does not track per-helper bindings, so {@code null} is passed.
    * @param {string} name
    * @param {string} body
    */
   var h = function (name, body) {
-    if (!used[name]) return;
-    lines[lines.length] = body;
+    self.emitOrCollectHelper_(lines, name, null, body);
   };
 
   // prettier-ignore
@@ -196,16 +210,14 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     pad2 + l0 + '.put(' + l1 + ', ' + n('$t') + ', 0, ' + l3 + ');\n' +
     pad1 + '}');
 
-  if (used['$w2l_memory_grow']) {
-    var /** @const {string} */ nBuf = this.n_('buffer');
-    // prettier-ignore
-    lines[lines.length] =
-      pad1 + 'int ' + n('$w2l_memory_grow') + '(int ' + l0 + ') {\n' +
-      pad2 + 'int ' + l1 + ' = this.' + nBuf + '.capacity() / 65536;\n' +
-      pad2 + 'if (' + l0 + ' == 0) return ' + l1 + ';\n' +
-      pad2 + 'return -1;\n' +
-      pad1 + '}';
-  }
+  var /** @const {string} */ nBuf = this.n_('buffer');
+  // prettier-ignore
+  h('$w2l_memory_grow',
+    pad1 + 'int ' + n('$w2l_memory_grow') + '(int ' + l0 + ') {\n' +
+    pad2 + 'int ' + l1 + ' = this.' + nBuf + '.capacity() / 65536;\n' +
+    pad2 + 'if (' + l0 + ' == 0) return ' + l1 + ';\n' +
+    pad2 + 'return -1;\n' +
+    pad1 + '}');
 
   // prettier-ignore
   h('$w2l_v128_load',
@@ -241,7 +253,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
     ];
   for (var /** @type {number} */ di = 0; di < F32_DELEGATES.length; ++di) {
     var /** @const {string} */ dName = F32_DELEGATES[di];
-    if (!used[dName]) continue;
     var /** @const {string} */ dTarget = dName.replace('_f32', '_f64');
     var /** @type {string} */ dRet;
     var /** @type {string} */ dCast;
@@ -256,10 +267,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function () {
       dCast = '(float)';
     }
     // prettier-ignore
-    lines[lines.length] =
+    h(dName,
       pad1 + 'static ' + dRet + ' ' + n(dName) + '(float ' + l0 + ') {\n' +
       pad2 + 'return ' + dCast + n(dTarget) + '((double)' + l0 + ');\n' +
-      pad1 + '}';
+      pad1 + '}');
   }
 
   return lines;

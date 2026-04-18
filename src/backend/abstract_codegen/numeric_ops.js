@@ -61,6 +61,21 @@ Wasm2Lang.Backend.AbstractCodegen.decomposeI64_ = function (value) {
 };
 
 /**
+ * Formats a {@code (hi, lo)} pair as the canonical
+ * {@code 0xHHHHHHHHLLLLLLLL} + {@code suffix} hex literal.  Shared by
+ * {@link formatI64WithSuffix_} and the base {@link renderI64Const_}.
+ *
+ * @protected
+ * @param {number} hi  Signed 32-bit upper half.
+ * @param {number} lo  Unsigned 32-bit lower half.
+ * @param {string} suffix
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.renderI64HexLiteral_ = function (hi, lo, suffix) {
+  return '0x' + (hi >>> 0).toString(16) + ('00000000' + lo.toString(16)).slice(-8) + suffix;
+};
+
+/**
  * Renders an i64 literal with a language-specific suffix and small-value
  * shortcuts (zero, small positive, small negative).  Falls back to a hex
  * encoding of the unsigned 64-bit pattern for the general case.
@@ -77,7 +92,7 @@ Wasm2Lang.Backend.AbstractCodegen.formatI64WithSuffix_ = function (value, suffix
   if (0 === low && 0 === high) return '0' + suffix;
   if (0 === high) return String(low) + suffix;
   if (-1 === high && low >= 0x80000000) return String(low - 4294967296) + suffix;
-  return '0x' + (high >>> 0).toString(16) + ('00000000' + low.toString(16)).slice(-8) + suffix;
+  return Wasm2Lang.Backend.AbstractCodegen.renderI64HexLiteral_(high, low, suffix);
 };
 
 /**
@@ -94,7 +109,7 @@ Wasm2Lang.Backend.AbstractCodegen.formatI64WithSuffix_ = function (value, suffix
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderI64Const_ = function (binaryen, value) {
   void binaryen;
   var /** @const */ parts = Wasm2Lang.Backend.AbstractCodegen.decomposeI64_(value);
-  return '0x' + (parts.w2lI64Hi >>> 0).toString(16) + ('00000000' + parts.w2lI64Lo.toString(16)).slice(-8) + '/*i64*/';
+  return Wasm2Lang.Backend.AbstractCodegen.renderI64HexLiteral_(parts.w2lI64Hi, parts.w2lI64Lo, '/*i64*/');
 };
 
 /**
@@ -667,6 +682,48 @@ Wasm2Lang.Backend.AbstractCodegen.renderPlainMultiplyBinary_ = function (self, i
   void info;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   return P.renderInfix(L, '*', R, P.PREC_MULTIPLICATIVE_);
+};
+
+/**
+ * Renders {@code L info.opStr R} via {@link Precedence_.renderInfix}, passing
+ * each operand through {@code coerceFn} when {@code info.unsigned} is true.
+ * Collapses the "info.unsigned ? coerce(x) : x" pairing that every backend's
+ * unsigned-aware division/comparison renderer would otherwise duplicate.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @param {function(string): string} coerceFn
+ * @param {number} precedence
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.renderUnsignedAwareInfix_ = function (info, L, R, coerceFn, precedence) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @const {string} */ left = info.unsigned ? coerceFn(L) : L;
+  var /** @const {string} */ right = info.unsigned ? coerceFn(R) : R;
+  return P.renderInfix(left, info.opStr, right, precedence);
+};
+
+/**
+ * Specializes {@link renderUnsignedAwareInfix_} for comparison ops.  The
+ * precedence is picked from {@code info.opStr}: {@code ==}/{@code !=} land at
+ * {@code PREC_EQUALITY_}, every other comparison at {@code PREC_RELATIONAL_}.
+ * Collapses the op→precedence ternary that each backend's i32/i64 comparison
+ * renderer would otherwise inline.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @param {function(string): string} coerceFn
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.renderComparisonInfix_ = function (info, L, R, coerceFn) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ P = A.Precedence_;
+  var /** @const {number} */ precedence = '==' === info.opStr || '!=' === info.opStr ? P.PREC_EQUALITY_ : P.PREC_RELATIONAL_;
+  return A.renderUnsignedAwareInfix_(info, L, R, coerceFn, precedence);
 };
 
 /**

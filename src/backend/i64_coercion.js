@@ -20,62 +20,85 @@ Wasm2Lang.Backend.I64Coercion.binaryOpMap_ = null;
 /**
  * Classifies a binaryen i64 binary operation.
  *
- * @suppress {accessControls}
  * @param {!Binaryen} binaryen
  * @param {number} op
  * @return {?Wasm2Lang.Backend.I32Coercion.BinaryOpInfo}
  */
 Wasm2Lang.Backend.I64Coercion.classifyBinaryOp = function (binaryen, op) {
-  if (!Wasm2Lang.Backend.I64Coercion.binaryOpMap_) {
-    var /** @const {number} */ A = Wasm2Lang.Backend.I32Coercion.OP_ARITHMETIC;
-    var /** @const {number} */ M = Wasm2Lang.Backend.I32Coercion.OP_MULTIPLY;
-    var /** @const {number} */ D = Wasm2Lang.Backend.I32Coercion.OP_DIVISION;
-    var /** @const {number} */ B = Wasm2Lang.Backend.I32Coercion.OP_BITWISE;
-    var /** @const {number} */ R = Wasm2Lang.Backend.I32Coercion.OP_ROTATE;
-    var /** @const {number} */ C = Wasm2Lang.Backend.I32Coercion.OP_COMPARISON;
-    var /** @const {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>} */
-      m = /** @type {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>} */ (Object.create(null));
-    var /** @const */ reg = Wasm2Lang.Backend.I32Coercion.registerBinaryOps_;
-    reg(m, A, false, false, [
-      [binaryen.AddInt64, '+'],
-      [binaryen.SubInt64, '-']
+  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
+  if (!I.binaryOpMap_) {
+    var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+    I.binaryOpMap_ = C.buildBinaryOpMap([
+      [
+        C.OP_ARITHMETIC,
+        false,
+        false,
+        [
+          [binaryen.AddInt64, '+'],
+          [binaryen.SubInt64, '-']
+        ]
+      ],
+      [C.OP_MULTIPLY, false, false, [[binaryen.MulInt64, '*']]],
+      [
+        C.OP_DIVISION,
+        false,
+        false,
+        [
+          [binaryen.DivSInt64, '/'],
+          [binaryen.RemSInt64, '%']
+        ]
+      ],
+      [
+        C.OP_DIVISION,
+        true,
+        false,
+        [
+          [binaryen.DivUInt64, '/'],
+          [binaryen.RemUInt64, '%']
+        ]
+      ],
+      [
+        C.OP_BITWISE,
+        false,
+        false,
+        [
+          [binaryen.AndInt64, '&'],
+          [binaryen.OrInt64, '|'],
+          [binaryen.XorInt64, '^'],
+          [binaryen.ShlInt64, '<<'],
+          [binaryen.ShrSInt64, '>>']
+        ]
+      ],
+      [C.OP_BITWISE, true, false, [[binaryen.ShrUInt64, '>>>']]],
+      [C.OP_ROTATE, false, true, [[binaryen.RotLInt64, '']]],
+      [C.OP_ROTATE, false, false, [[binaryen.RotRInt64, '']]],
+      [
+        C.OP_COMPARISON,
+        false,
+        false,
+        [
+          [binaryen.EqInt64, '=='],
+          [binaryen.NeInt64, '!='],
+          [binaryen.LtSInt64, '<'],
+          [binaryen.LeSInt64, '<='],
+          [binaryen.GtSInt64, '>'],
+          [binaryen.GeSInt64, '>=']
+        ]
+      ],
+      [
+        C.OP_COMPARISON,
+        true,
+        false,
+        [
+          [binaryen.LtUInt64, '<'],
+          [binaryen.LeUInt64, '<='],
+          [binaryen.GtUInt64, '>'],
+          [binaryen.GeUInt64, '>=']
+        ]
+      ]
     ]);
-    reg(m, M, false, false, [[binaryen.MulInt64, '*']]);
-    reg(m, D, false, false, [
-      [binaryen.DivSInt64, '/'],
-      [binaryen.RemSInt64, '%']
-    ]);
-    reg(m, D, true, false, [
-      [binaryen.DivUInt64, '/'],
-      [binaryen.RemUInt64, '%']
-    ]);
-    reg(m, B, false, false, [
-      [binaryen.AndInt64, '&'],
-      [binaryen.OrInt64, '|'],
-      [binaryen.XorInt64, '^'],
-      [binaryen.ShlInt64, '<<'],
-      [binaryen.ShrSInt64, '>>']
-    ]);
-    reg(m, B, true, false, [[binaryen.ShrUInt64, '>>>']]);
-    reg(m, R, false, true, [[binaryen.RotLInt64, '']]);
-    reg(m, R, false, false, [[binaryen.RotRInt64, '']]);
-    reg(m, C, false, false, [
-      [binaryen.EqInt64, '=='],
-      [binaryen.NeInt64, '!='],
-      [binaryen.LtSInt64, '<'],
-      [binaryen.LeSInt64, '<='],
-      [binaryen.GtSInt64, '>'],
-      [binaryen.GeSInt64, '>=']
-    ]);
-    reg(m, C, true, false, [
-      [binaryen.LtUInt64, '<'],
-      [binaryen.LeUInt64, '<='],
-      [binaryen.GtUInt64, '>'],
-      [binaryen.GeUInt64, '>=']
-    ]);
-    Wasm2Lang.Backend.I64Coercion.binaryOpMap_ = m;
   }
-  return Wasm2Lang.Backend.I64Coercion.binaryOpMap_[op] || null;
+  return I.binaryOpMap_[op] || null;
 };
 
 // ---------------------------------------------------------------------------
@@ -91,6 +114,14 @@ Wasm2Lang.Backend.I64Coercion.classifyBinaryOp = function (binaryen, op) {
 /** @const {number} */ Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND32_S = 6;
 
 /**
+ * Lazily-built map from binaryen i64 unary-op constants to UNARY_* categories.
+ *
+ * @private
+ * @type {?Object<number, number>}
+ */
+Wasm2Lang.Backend.I64Coercion.unaryOpMap_ = null;
+
+/**
  * Classifies a binaryen i64 unary operation.
  *
  * @param {!Binaryen} binaryen
@@ -98,12 +129,20 @@ Wasm2Lang.Backend.I64Coercion.classifyBinaryOp = function (binaryen, op) {
  * @return {number}  One of the UNARY_* constants, or {@code -1} if unknown.
  */
 Wasm2Lang.Backend.I64Coercion.classifyUnaryOp = function (binaryen, op) {
-  if (binaryen.EqZInt64 === op) return Wasm2Lang.Backend.I64Coercion.UNARY_EQZ;
-  if (binaryen.ClzInt64 === op) return Wasm2Lang.Backend.I64Coercion.UNARY_CLZ;
-  if (binaryen.CtzInt64 === op) return Wasm2Lang.Backend.I64Coercion.UNARY_CTZ;
-  if (binaryen.PopcntInt64 === op) return Wasm2Lang.Backend.I64Coercion.UNARY_POPCNT;
-  if (binaryen.ExtendS8Int64 === op) return Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND8_S;
-  if (binaryen.ExtendS16Int64 === op) return Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND16_S;
-  if (binaryen.ExtendS32Int64 === op) return Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND32_S;
-  return -1;
+  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  if (!I.unaryOpMap_) {
+    I.unaryOpMap_ = /** @type {!Object<number, number>} */ (
+      C.buildKeyedTable([
+        [binaryen.EqZInt64, I.UNARY_EQZ],
+        [binaryen.ClzInt64, I.UNARY_CLZ],
+        [binaryen.CtzInt64, I.UNARY_CTZ],
+        [binaryen.PopcntInt64, I.UNARY_POPCNT],
+        [binaryen.ExtendS8Int64, I.UNARY_EXTEND8_S],
+        [binaryen.ExtendS16Int64, I.UNARY_EXTEND16_S],
+        [binaryen.ExtendS32Int64, I.UNARY_EXTEND32_S]
+      ])
+    );
+  }
+  return C.lookupCategoryOrMinusOne_(I.unaryOpMap_, op);
 };

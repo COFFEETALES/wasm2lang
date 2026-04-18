@@ -143,6 +143,24 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
 ) {
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {boolean} */ isJsTarget = 'asmjs' === targetLanguage;
+  var /** @const {boolean} */ profileOn = Wasm2Lang.Wasm.Tree.PassRunner.isProfileEnabled();
+  /**
+   * @param {string} label
+   * @param {!Array<string>} passNames
+   * @return {void}
+   */
+  var runTimed = function (label, passNames) {
+    if (!profileOn) {
+      wasmModule.runPasses(passNames);
+      return;
+    }
+    var /** @const {number} */ t0 = Date.now();
+    wasmModule.runPasses(passNames);
+    var /** @const {number} */ dt = Date.now() - t0;
+    Wasm2Lang.Wasm.Tree.PassRunner.writeProfileLine(
+      '[wasm2lang profile] binaryen ' + label + ' [' + passNames.join(',') + ']: ' + dt + 'ms\n'
+    );
+  };
   // Feature mask already set by readWasmModule; refresh in case the caller
   // bypassed that entry point.
   wasmModule.setFeatures(Wasm2Lang.Wasm.WasmNormalization.getFeatureMask_(binaryen));
@@ -151,7 +169,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   if (isJsTarget) {
     // Simplify ops that map poorly to JS (e.g. reinterprets, copysign)
     // before any lowering touches the IR.
-    wasmModule.runPasses(['optimize-for-js']);
+    runTimed('phase1', ['optimize-for-js']);
   }
 
   // Phase 2 — i64 lowering.
@@ -160,7 +178,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // "remove-non-js-ops" converts i64 selects to if/else which the lowering
   // pass requires; both passes need flat IR so "flatten" runs before each.
   if (!skipI64Lowering) {
-    wasmModule.runPasses(['flatten', 'remove-non-js-ops', 'flatten', 'i64-to-i32-lowering']);
+    runTimed('phase2', ['flatten', 'remove-non-js-ops', 'flatten', 'i64-to-i32-lowering']);
   }
 
   // Phase 3 — Post-lowering optimization (aggressive only).
@@ -175,11 +193,17 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
       // full optimization since the optimizer can reintroduce patterns.
       postLoweringPasses[postLoweringPasses.length] = 'avoid-reinterprets';
     }
-    wasmModule.runPasses(postLoweringPasses);
+    runTimed('phase3.prop', postLoweringPasses);
     binaryen.setOptimizeLevel(2);
     binaryen.setShrinkLevel(1);
     try {
+      var /** @const {number} */ tOpt = profileOn ? Date.now() : 0;
       wasmModule.optimize();
+      if (profileOn) {
+        Wasm2Lang.Wasm.Tree.PassRunner.writeProfileLine(
+          '[wasm2lang profile] binaryen phase3.optimize: ' + (Date.now() - tOpt) + 'ms\n'
+        );
+      }
       optimizeSucceeded = true;
     } catch (e) {
       // Binaryen's optimizer can Fatal() on certain IR patterns produced
@@ -187,7 +211,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
       // state — skip the full optimization and continue.
     }
     if (isJsTarget) {
-      wasmModule.runPasses(['avoid-reinterprets']);
+      runTimed('phase3.reinterprets', ['avoid-reinterprets']);
     }
   }
 
@@ -211,8 +235,8 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // per-function local count (flatten lifts every nested expression into a
   // temp local); the subsequent simplify-locals-* passes reclaim most of
   // them but can leave thousands behind on very large functions.
-  wasmModule.runPasses(['flatten', 'simplify-locals-nostructure', 'vacuum', 'merge-blocks']);
-  wasmModule.runPasses(['flatten', 'simplify-locals-notee-nostructure']);
+  runTimed('phase4a.1', ['flatten', 'simplify-locals-nostructure', 'vacuum', 'merge-blocks']);
+  runTimed('phase4a.2', ['flatten', 'simplify-locals-notee-nostructure']);
 
   // Phase 4b — coalesce-locals (optional).  The interference graph is O(L²)
   // per function.  Real-world modules produced by i64 lowering + flatten
@@ -227,21 +251,21 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // threshold can be removed and coalesce-locals re-enabled unconditionally
   // when {@code optimizeSucceeded} is true.
   if (optimizeSucceeded && !Wasm2Lang.Wasm.WasmNormalization.hasPathologicalLocalCount_(wasmModule, binaryen, 2000)) {
-    wasmModule.runPasses(['coalesce-locals']);
+    runTimed('phase4b', ['coalesce-locals']);
   }
 
   // Phase 4c — peephole + final cleanup.
-  wasmModule.runPasses(['optimize-instructions', 'reorder-locals', 'remove-unused-names', 'vacuum']);
+  runTimed('phase4c', ['optimize-instructions', 'reorder-locals', 'remove-unused-names', 'vacuum']);
   if (aggressive) {
     // remove-unused-module-elements + DCE at the end ensures all IR nodes
     // have valid types before wasm2lang custom passes.  Run separately
     // because remove-unused-module-elements can Fatal() on certain
     // i64-lowered IR patterns.
     try {
-      wasmModule.runPasses(['remove-unused-module-elements', 'dce']);
+      runTimed('phase4c.dce', ['remove-unused-module-elements', 'dce']);
     } catch (e) {
       // Fall back to DCE alone — it handles most cleanup on its own.
-      wasmModule.runPasses(['dce']);
+      runTimed('phase4c.dce-fallback', ['dce']);
     }
   }
 };

@@ -152,16 +152,15 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderPtrWithOffset_ = function (baseEx
  * @const {!Object<number, string>}
  * @private
  */
-Wasm2Lang.Backend.Php64Codegen.PHP_I32_UNARY_HELPERS_ = /** @return {!Object<number, string>} */ (function () {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  var /** @const {!Object<number, string>} */ table = {};
-  table[C.UNARY_CLZ] = '_w2l_clz';
-  table[C.UNARY_CTZ] = '_w2l_ctz';
-  table[C.UNARY_POPCNT] = '_w2l_popcnt';
-  table[C.UNARY_EXTEND8_S] = '_w2l_extend8_s';
-  table[C.UNARY_EXTEND16_S] = '_w2l_extend16_s';
-  return table;
-})();
+Wasm2Lang.Backend.Php64Codegen.PHP_I32_UNARY_HELPERS_ = /** @type {!Object<number, string>} */ (
+  Wasm2Lang.Backend.I32Coercion.buildKeyedTable([
+    [Wasm2Lang.Backend.I32Coercion.UNARY_CLZ, '_w2l_clz'],
+    [Wasm2Lang.Backend.I32Coercion.UNARY_CTZ, '_w2l_ctz'],
+    [Wasm2Lang.Backend.I32Coercion.UNARY_POPCNT, '_w2l_popcnt'],
+    [Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND8_S, '_w2l_extend8_s'],
+    [Wasm2Lang.Backend.I32Coercion.UNARY_EXTEND16_S, '_w2l_extend16_s']
+  ])
+);
 
 /**
  * @override

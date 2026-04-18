@@ -173,6 +173,64 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.markBinding_ = function (name) {
   }
 };
 
+/**
+ * Unified helper emission path shared by all backends.  Each backend's local
+ * {@code h(name, bindings, body)} closure delegates here so that the helper
+ * name is routed through a single funnel.  Two modes:
+ *
+ *  - Collect mode ({@code helperNameCollector_} is non-null): records the
+ *    helper name into the collector and returns.  Used by
+ *    {@code getAllHelperNames_} to auto-derive the full set of emittable
+ *    helpers without duplicating the list.
+ *  - Emit mode (default): if {@code usedHelpers_[name]} is set, marks any
+ *    declared bindings and appends {@code body} to {@code bucket}.
+ *
+ * @protected
+ * @param {!Array<string>} bucket  Emission sink (ignored in collect mode).
+ * @param {string} name  Helper function name (the key used for usage tracking).
+ * @param {?Array<string>} bindings  Binding names to mark if this helper is
+ *     emitted, or {@code null} for backends that do not track bindings.
+ * @param {string} body  Fully-formed helper definition text.
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitOrCollectHelper_ = function (bucket, name, bindings, body) {
+  var /** @const {?Array<string>} */ collector = this.helperNameCollector_;
+  if (collector) {
+    collector[collector.length] = name;
+    return;
+  }
+  if (!this.usedHelpers_ || !this.usedHelpers_[name]) return;
+  if (bindings) {
+    for (var /** @type {number} */ bi = 0, /** @const {number} */ bLen = bindings.length; bi !== bLen; ++bi) {
+      this.markBinding_(bindings[bi]);
+    }
+  }
+  bucket[bucket.length] = body;
+};
+
+/**
+ * Default helper emission — returns an empty array.  Concrete backends
+ * override this to emit their runtime helper definitions.
+ *
+ * @protected
+ * @param {number} scratchByteOffset
+ * @param {number} scratchWordIndex
+ * @param {number} scratchQwordIndex
+ * @param {number} heapPageCount
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitHelpers_ = function (
+  scratchByteOffset,
+  scratchWordIndex,
+  scratchQwordIndex,
+  heapPageCount
+) {
+  void scratchByteOffset;
+  void scratchWordIndex;
+  void scratchQwordIndex;
+  void heapPageCount;
+  return [];
+};
+
 // ---------------------------------------------------------------------------
 // Expression category constants.
 //

@@ -250,24 +250,9 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderStore_ = function (
  * @return {?string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.unwrapF32ReinterpretI32_ = function (expr) {
-  var /** @type {string} */ candidate = expr;
-  var /** @const {string} */ frPrefix = this.n_('Math_fround') + '(';
-  if (
-    0 === candidate.indexOf(frPrefix) &&
-    ')' === candidate.charAt(candidate.length - 1) &&
-    this.isBalancedHelperArg_(candidate, frPrefix.length)
-  ) {
-    candidate = candidate.substring(frPrefix.length, candidate.length - 1);
-  }
-  var /** @const {string} */ reinterpretPrefix = this.n_('$w2l_reinterpret_i32_to_f32') + '(';
-  if (
-    0 === candidate.indexOf(reinterpretPrefix) &&
-    ')' === candidate.charAt(candidate.length - 1) &&
-    this.isBalancedHelperArg_(candidate, reinterpretPrefix.length)
-  ) {
-    return candidate.substring(reinterpretPrefix.length, candidate.length - 1);
-  }
-  return null;
+  var /** @const {?string} */ unfrounded = this.stripHelperWrapper_(expr, this.n_('Math_fround') + '(');
+  var /** @const {string} */ candidate = null !== unfrounded ? unfrounded : expr;
+  return this.stripHelperWrapper_(candidate, this.n_('$w2l_reinterpret_i32_to_f32') + '(');
 };
 
 /**
@@ -282,7 +267,20 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.unwrapF32ReinterpretI32_ = functio
  * @return {?string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.unwrapF64ReinterpretI64_ = function (expr) {
-  var /** @const {string} */ prefix = this.n_('$w2l_reinterpret_i64_to_f64') + '(';
+  return this.stripHelperWrapper_(expr, this.n_('$w2l_reinterpret_i64_to_f64') + '(');
+};
+
+/**
+ * Strips a single {@code prefix + '(' + arg + ')'} wrapper from {@code expr}
+ * and returns {@code arg}, or {@code null} when the expression does not
+ * have that exact shape.  Shared by the F32/F64 reinterpret unwrap helpers.
+ *
+ * @protected
+ * @param {string} expr
+ * @param {string} prefix  Must include the trailing {@code '('}.
+ * @return {?string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.stripHelperWrapper_ = function (expr, prefix) {
   if (0 === expr.indexOf(prefix) && ')' === expr.charAt(expr.length - 1) && this.isBalancedHelperArg_(expr, prefix.length)) {
     return expr.substring(prefix.length, expr.length - 1);
   }

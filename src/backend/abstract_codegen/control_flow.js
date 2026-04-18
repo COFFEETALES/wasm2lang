@@ -28,6 +28,22 @@ Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) 
 };
 
 /**
+ * Reads the {@code 'c'} category field from a typed-expression object,
+ * returning {@code CAT_VOID} when the field is missing or non-numeric.
+ * Centralizes the category-extraction guard used by return/sub-walk/child
+ * helpers — load-bearing because a valid {@code FIXNUM} value of {@code 0}
+ * would otherwise be misread as absent.
+ *
+ * @protected
+ * @param {*} typedExpr
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.categoryOf_ = function (typedExpr) {
+  var /** @const {*} */ c = typedExpr['c'];
+  return 'number' === typeof c ? /** @type {number} */ (c) : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+};
+
+/**
  * Renders the coerced return expression for an implicit return statement.
  * The default implementation extracts the expression category and delegates
  * to {@code coerceToType_}.  Asm.js overrides to use
@@ -42,10 +58,7 @@ Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) 
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderImplicitReturn_ = function (binaryen, bodyResult, resultType) {
   var /** @const {string} */ implicitExpr = /** @type {string} */ (bodyResult['s']);
-  var /** @const {number} */ implicitCat =
-      'number' === typeof bodyResult['c']
-        ? /** @type {number} */ (bodyResult['c'])
-        : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+  var /** @const {number} */ implicitCat = Wasm2Lang.Backend.AbstractCodegen.categoryOf_(bodyResult);
   return this.coerceAtBoundary_(binaryen, implicitExpr, implicitCat, resultType);
 };
 
@@ -132,8 +145,7 @@ Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, 
     return {
       hasExpression: true,
       expressionString: /** @type {string} */ (value['s']),
-      expressionCategory:
-        'number' === typeof value['c'] ? /** @type {number} */ (value['c']) : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+      expressionCategory: Wasm2Lang.Backend.AbstractCodegen.categoryOf_(value)
     };
   }
 
@@ -1459,16 +1471,11 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_ = function (sta
       /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor),
       conditionPtr
     );
-  if (raw && 'object' === typeof raw && 'string' === typeof raw['s']) {
-    return {
-      s: /** @type {string} */ (raw['s']),
-      c: 'number' === typeof raw['c'] ? /** @type {number} */ (raw['c']) : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
-    };
+  var /** @const {number} */ voidCat = Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
+  if (raw && 'string' === typeof raw['s']) {
+    return {s: /** @type {string} */ (raw['s']), c: Wasm2Lang.Backend.AbstractCodegen.categoryOf_(raw)};
   }
-  if ('string' === typeof raw) {
-    return {s: /** @type {string} */ (raw), c: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID};
-  }
-  return {s: '', c: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID};
+  return {s: 'string' === typeof raw ? /** @type {string} */ (raw) : '', c: voidCat};
 };
 
 /**
