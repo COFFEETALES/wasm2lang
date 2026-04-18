@@ -864,6 +864,8 @@ BinaryenI32Api.prototype.ge_u = function (l, r) {};
 BinaryenI32Api.prototype.and = function (l, r) {};
 /** @param {number} v @return {number} */
 BinaryenI32Api.prototype.eqz = function (v) {};
+/** @param {number} value @return {number} */
+BinaryenI32Api.prototype.const = function (value) {};
 
 /** @type {!BinaryenI32Api} */
 BinaryenModule.prototype.i32;

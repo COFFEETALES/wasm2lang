@@ -1617,6 +1617,59 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // constConditionFold: Exercises all fold categories handled by
+  // ConstConditionFoldingPass.
+  //
+  //   (i32.eqz (i32.const 0))         → 1
+  //   (i32.eqz (i32.const 42))        → 0
+  //   (select K x (i32.const 0))      → x   (keeps ifFalse)
+  //   (select x K (i32.const 1))      → x   (keeps ifTrue)
+  //   (br_if $L (i32.const 0))        → nop (never branches)
+  //   (br_if $L (i32.const 1))        → br  (always branches)
+  //
+  // After folding the semantic result is unchanged, so the baseline
+  // (no codegen pass) and the codegen/prenorm variants must agree.
+  //
+  // params: x(0)  locals: e(1), f(2)
+  //
+  // Result: e = 50 (store executes because br_if never),
+  //         f = 0  (store skipped because br_if always),
+  //   eqz(0) + eqz(42) + select(cond=0)→x + select(cond=1)→x + e + f
+  //   = 1 + 0 + x + x + 50 + 0
+  //   = 2*x + 51
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'constConditionFold',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(1, i32(99)),
+      module.local.set(2, i32(0)),
+      module.block('ccfExitNever', [module.br('ccfExitNever', i32(0)), module.local.set(1, i32(50))]),
+      module.block('ccfExitAlways', [module.br('ccfExitAlways', i32(1)), module.local.set(2, i32(77))]),
+      module.return(
+        module.i32.add(
+          module.i32.add(
+            module.i32.add(module.i32.eqz(i32(0)), module.i32.eqz(i32(42))),
+            module.i32.add(module.select(i32(0), i32(100), p(0)), module.select(i32(1), p(0), i32(200)))
+          ),
+          module.i32.add(p(1), p(2))
+        )
+      )
+    ])
+  );
+
+  // exerciseConstConditionFold(x: i32): void
+  module.addFunction(
+    'exerciseConstConditionFold',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('constConditionFold', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
@@ -1687,6 +1740,8 @@
   module.addFunctionExport('exerciseLocalInitAllZero', 'exerciseLocalInitAllZero');
   module.addFunctionExport('rootValueBlock', 'rootValueBlock');
   module.addFunctionExport('exerciseRootValueBlock', 'exerciseRootValueBlock');
+  module.addFunctionExport('constConditionFold', 'constConditionFold');
+  module.addFunctionExport('exerciseConstConditionFold', 'exerciseConstConditionFold');
 
   common.finalizeAndOutput(module);
 
@@ -2013,6 +2068,12 @@
   );
 
   data.root_value_block_values = [-10, -1, 0, 1, 2, 5, 10, 42, 100, 1000].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  data.const_condition_fold_values = [-100, -1, 0, 1, 2, 5, 10, 42, 100, 1000].concat(
     Array.from({length: 4}, function () {
       return common.rand.smallI32();
     })

@@ -140,6 +140,10 @@ const runTest = function (buff, out, exports, data) {
   for (const v of data.root_value_block_values) {
     exports.exerciseRootValueBlock(v);
   }
+
+  for (const v of data.const_condition_fold_values) {
+    exports.exerciseConstConditionFold(v);
+  }
 };
 
 /**

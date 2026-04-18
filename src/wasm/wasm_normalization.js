@@ -202,18 +202,36 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // cleans up the final IR without reintroducing tee (which causes broken
   // multi-line ternaries in the codegen).
   // "merge-blocks" merges adjacent blocks, reducing nesting.
+  // "optimize-instructions" peepholes algebraic patterns (e.g.
+  // {@code sub(x, -C)} → {@code add(x, C)}) on the stabilized IR.
   // "reorder-locals" compacts local indices to a tighter layout.
   // "remove-unused-names" strips unreferenced block/loop labels.
   // "vacuum" removes unreachable code left by earlier passes.
-  var /** @const {!Array<string>} */ finalPasses = ['flatten', 'simplify-locals-nostructure', 'vacuum', 'merge-blocks'];
-  finalPasses.push('flatten', 'simplify-locals-notee-nostructure');
-  if (optimizeSucceeded) {
-    // coalesce-locals merges non-interfering locals.  O(n²) but acceptable
-    // when optimize() reduced the IR; prohibitively slow on unoptimized IR.
-    finalPasses[finalPasses.length] = 'coalesce-locals';
+  // Phase 4a — Flatten + simplify pair.  This is the stage that inflates the
+  // per-function local count (flatten lifts every nested expression into a
+  // temp local); the subsequent simplify-locals-* passes reclaim most of
+  // them but can leave thousands behind on very large functions.
+  wasmModule.runPasses(['flatten', 'simplify-locals-nostructure', 'vacuum', 'merge-blocks']);
+  wasmModule.runPasses(['flatten', 'simplify-locals-notee-nostructure']);
+
+  // Phase 4b — coalesce-locals (optional).  The interference graph is O(L²)
+  // per function.  Real-world modules produced by i64 lowering + flatten
+  // have been observed with a single function of 60k+ locals, which makes
+  // coalesce-locals run effectively forever.  Gate it on a per-function
+  // local-count probe taken AFTER Phase 4a — this reflects the actual
+  // input the pass sees.
+  //
+  // TODO: revisit / drop this gate once upstream binaryen makes
+  // coalesce-locals resilient to very large local counts.  The check is
+  // purely a defensive workaround — if the pass itself becomes cheap, the
+  // threshold can be removed and coalesce-locals re-enabled unconditionally
+  // when {@code optimizeSucceeded} is true.
+  if (optimizeSucceeded && !Wasm2Lang.Wasm.WasmNormalization.hasPathologicalLocalCount_(wasmModule, binaryen, 2000)) {
+    wasmModule.runPasses(['coalesce-locals']);
   }
-  finalPasses.push('reorder-locals', 'remove-unused-names', 'vacuum');
-  wasmModule.runPasses(finalPasses);
+
+  // Phase 4c — peephole + final cleanup.
+  wasmModule.runPasses(['optimize-instructions', 'reorder-locals', 'remove-unused-names', 'vacuum']);
   if (aggressive) {
     // remove-unused-module-elements + DCE at the end ensures all IR nodes
     // have valid types before wasm2lang custom passes.  Run separately
@@ -226,6 +244,33 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
       wasmModule.runPasses(['dce']);
     }
   }
+};
+
+/**
+ * Returns true when any function in the module has at least {@code threshold}
+ * locals (params + vars).  Used to gate coalesce-locals on oversized
+ * post-flatten IRs — see the Phase 4b comment in applyBinaryenNormalization_.
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {number} threshold
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.WasmNormalization.hasPathologicalLocalCount_ = function (wasmModule, binaryen, threshold) {
+  var /** @const {number} */ functionCount = wasmModule.getNumFunctions();
+  for (var /** @type {number} */ i = 0; i !== functionCount; ++i) {
+    var /** @const {number} */ functionPtr = wasmModule.getFunctionByIndex(i);
+    var /** @const {!BinaryenFunctionInfo} */ info = /** @type {!BinaryenFunctionInfo} */ (
+        binaryen.getFunctionInfo(functionPtr)
+      );
+    var /** @const {!Array} */ vars = /** @type {!Array} */ (info.vars || []);
+    var /** @const {!Array} */ paramTypes = /** @type {!Array} */ (binaryen.expandType(info.params));
+    if (paramTypes.length + vars.length >= threshold) {
+      return true;
+    }
+  }
+  return false;
 };
 
 /**

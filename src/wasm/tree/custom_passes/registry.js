@@ -20,6 +20,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses = function (options) {
   void options;
   return [
     new Wasm2Lang.Wasm.Tree.CustomPasses.LocalUsageAnalysisPass(),
+    new Wasm2Lang.Wasm.Tree.CustomPasses.ConstConditionFoldingPass(),
     new Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass(),
     new Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass(),
     new Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass(),

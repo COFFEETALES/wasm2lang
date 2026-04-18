@@ -419,6 +419,10 @@ int w2lCountSimplifiedWhile(String body) {
         mod.exerciseRootValueBlock(v.intValue());
     }
 
+    for (Double v : w2lFlat(_data, "const_condition_fold_values")) {
+        mod.exerciseConstConditionFold(v.intValue());
+    }
+
     w2lDumpCRC(memBuffer);
 }
 

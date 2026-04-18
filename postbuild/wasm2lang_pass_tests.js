@@ -309,6 +309,42 @@ var redundantBlockRemoval = new PassFamily('redundant-block-removal', 'redundant
 });
 
 // ---------------------------------------------------------------------------
+// Family: const-condition-folding
+// ---------------------------------------------------------------------------
+
+var constConditionFolding = new PassFamily('const-condition-folding', 'const_condition_folding.wast', function (result) {
+  assertHasKey(result, 'eqzZero', '$eqzZero must exist');
+  assertEqual(result['eqzZero']['constConditionFolding']['eqzConst'], 1, '$eqzZero eqzConst count');
+
+  assertHasKey(result, 'eqzNonZero', '$eqzNonZero must exist');
+  assertEqual(result['eqzNonZero']['constConditionFolding']['eqzConst'], 1, '$eqzNonZero eqzConst count');
+
+  assertHasKey(result, 'eqzZeroI64', '$eqzZeroI64 must exist');
+  assertEqual(result['eqzZeroI64']['constConditionFolding']['eqzConst'], 1, '$eqzZeroI64 eqzConst count');
+
+  assertHasKey(result, 'eqzMulti', '$eqzMulti must exist');
+  assertEqual(result['eqzMulti']['constConditionFolding']['eqzConst'], 2, '$eqzMulti eqzConst count');
+
+  assertHasKey(result, 'brIfNever', '$brIfNever must exist');
+  assertEqual(result['brIfNever']['constConditionFolding']['brIfNever'], 1, '$brIfNever brIfNever count');
+
+  assertHasKey(result, 'brIfAlways', '$brIfAlways must exist');
+  assertEqual(result['brIfAlways']['constConditionFolding']['brIfAlways'], 1, '$brIfAlways brIfAlways count');
+
+  assertHasKey(result, 'selectZero', '$selectZero must exist');
+  assertEqual(result['selectZero']['constConditionFolding']['selectFold'], 1, '$selectZero selectFold count');
+
+  assertHasKey(result, 'selectOne', '$selectOne must exist');
+  assertEqual(result['selectOne']['constConditionFolding']['selectFold'], 1, '$selectOne selectFold count');
+
+  // Call side effect blocks select folding.
+  assertMetadataNull(result, 'selectBlocked', 'constConditionFolding');
+
+  // No constants on a condition anywhere → metric absent entirely.
+  assertMetadataNull(result, 'noFold', 'constConditionFolding');
+});
+
+// ---------------------------------------------------------------------------
 // Async binaryen loader (same pattern as build_common.js)
 // ---------------------------------------------------------------------------
 
@@ -331,7 +367,8 @@ var families = [
   loopSimplification,
   ifElseRecovery,
   blockGuardElision,
-  redundantBlockRemoval
+  redundantBlockRemoval,
+  constConditionFolding
 ];
 
 loadBinaryen().then(function (binaryen) {

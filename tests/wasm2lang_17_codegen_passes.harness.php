@@ -424,6 +424,10 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ($data['root_value_block_values'] as $v) {
         $exports['exerciseRootValueBlock']($v);
     }
+
+    foreach ($data['const_condition_fold_values'] as $v) {
+        $exports['exerciseConstConditionFold']($v);
+    }
 };
 
 $dumpMemory = true;
