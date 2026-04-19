@@ -215,7 +215,7 @@ Targets Closure Compiler ADVANCED_OPTIMIZATIONS, ES5 strict.
 
 Per-version files live under [`changelog/`](changelog/), indexed in
 [`CHANGELOG.md`](CHANGELOG.md). Current release:
-[**v2026.04.111**](changelog/v2026.04.111.md).
+[**v2026.04.112**](changelog/v2026.04.112.md).
 
 ## Contributing
 
