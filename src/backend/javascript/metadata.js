@@ -26,13 +26,13 @@
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitMetadata = function (wasmModule, options) {
   var /** @const {string} */ bufferName = /** @type {string} */ (options.emitMetadata);
   var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, this.getHeapSizeDefinitionKey_());
-  var /** @const {!BinaryenMemoryInfo} */ memInfo = wasmModule.getMemoryInfo();
-  var /** @const {number} */ maxPages = memInfo.max;
-  var /** @type {number} */ defaultCap;
-  if (isFinite(maxPages) && 0 < maxPages && maxPages < 65535) {
-    defaultCap = maxPages * 65536;
-  } else {
-    defaultCap = heapSize * 16;
+  var /** @type {number} */ defaultCap = heapSize * 16;
+  if (wasmModule.hasMemory()) {
+    var /** @const {!BinaryenMemoryInfo} */ memInfo = wasmModule.getMemoryInfo();
+    var /** @const {number} */ maxPages = memInfo.max;
+    if (isFinite(maxPages) && 0 < maxPages && maxPages < 65535) {
+      defaultCap = maxPages * 65536;
+    }
   }
   var /** @const {!Object<string, string>} */ definitions = options.definitions;
   var /** @type {number} */ maxHeapSize = defaultCap;
