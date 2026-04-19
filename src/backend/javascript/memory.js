@@ -126,7 +126,8 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderLoad_ = function (binaryen, 
     if (4 === bytes && !isSigned) {
       narrow = P.renderInfix(narrow, '>>>', '0', P.PREC_SHIFT_);
     }
-    return 'BigInt(' + narrow + ')';
+    this.markHelper_('$w2l_bigint');
+    return this.n_('$w2l_bigint') + '(' + narrow + ')';
   }
   // Non-i64 loads: typed-array reads already produce properly-typed Numbers in
   // JavaScript (HEAP8/HEAPU8/HEAP16/HEAPU16/HEAP32 return int32-ranged values;
@@ -206,7 +207,10 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderStore_ = function (
       return this.n_('$w2l_store_i64') + '(' + ptrExpr + ', ' + i64Value + ');';
     }
     var /** @const {number} */ narrowBits = bytes << 3;
-    var /** @const {string} */ narrowed = 'Number(BigInt.asIntN(' + narrowBits + ', ' + P.stripOuter(i64Value) + '))';
+    this.markHelper_('$w2l_number');
+    this.markHelper_('$w2l_bigint_asintn');
+    var /** @const {string} */ narrowed =
+        this.n_('$w2l_number') + '(' + this.n_('$w2l_bigint_asintn') + '(' + narrowBits + ', ' + P.stripOuter(i64Value) + '))';
     var /** @type {string} */ storeView;
     var /** @type {string} */ storeShift;
     if (4 === bytes) {

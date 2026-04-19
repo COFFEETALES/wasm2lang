@@ -50,13 +50,17 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderNumericUnaryOp_ = function (
   var /** @const {string} */ name = info.opName;
 
   if ('extend_s_i32_to_i64' === name) {
-    return 'BigInt(' + P.stripOuter(valueExpr) + ')';
+    this.markHelper_('$w2l_bigint');
+    return this.n_('$w2l_bigint') + '(' + P.stripOuter(valueExpr) + ')';
   }
   if ('extend_u_i32_to_i64' === name) {
-    return 'BigInt(' + P.wrap_(valueExpr, P.PREC_SHIFT_, false) + ' >>> 0)';
+    this.markHelper_('$w2l_bigint');
+    return this.n_('$w2l_bigint') + '(' + P.wrap_(valueExpr, P.PREC_SHIFT_, false) + ' >>> 0)';
   }
   if ('wrap_i64_to_i32' === name) {
-    return 'Number(BigInt.asIntN(32, ' + P.stripOuter(valueExpr) + '))';
+    this.markHelper_('$w2l_number');
+    this.markHelper_('$w2l_bigint_asintn');
+    return this.n_('$w2l_number') + '(' + this.n_('$w2l_bigint_asintn') + '(32, ' + P.stripOuter(valueExpr) + '))';
   }
 
   // convert_<s|u>_i64_to_<f32|f64>: the four variants share the
@@ -71,9 +75,11 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderNumericUnaryOp_ = function (
   ) {
     var /** @type {string} */ inner = P.stripOuter(valueExpr);
     if ('convert_u' === name.substr(0, 9)) {
-      inner = 'BigInt.asUintN(64, ' + inner + ')';
+      this.markHelper_('$w2l_bigint_asuintn');
+      inner = this.n_('$w2l_bigint_asuintn') + '(64, ' + inner + ')';
     }
-    var /** @const {string} */ numberExpr = 'Number(' + inner + ')';
+    this.markHelper_('$w2l_number');
+    var /** @const {string} */ numberExpr = this.n_('$w2l_number') + '(' + inner + ')';
     return '_f32' === name.substr(name.length - 4) ? this.renderMathFroundCall_(numberExpr) : numberExpr;
   }
 

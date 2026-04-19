@@ -20,6 +20,46 @@
 // ---------------------------------------------------------------------------
 
 /**
+ * Inter-helper dependencies for the JavaScript backend.  Extends the asm.js
+ * deps with the BigInt/Number bridge helpers — every i64 path that would
+ * otherwise call {@code BigInt(...)} / {@code Number(...)} / {@code
+ * BigInt.asIntN(...)} / {@code BigInt.asUintN(...)} goes through a mangleable
+ * helper, so the references the i64 helpers generate inside their own bodies
+ * must be recorded transitively or those bridges would not be emitted.
+ *
+ * @const {!Object<string, !Array<string>>}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.HELPER_DEPS_ = /** @return {!Object<string, !Array<string>>} */ (function () {
+  var /** @const {!Object<string, !Array<string>>} */ merged = /** @type {!Object<string, !Array<string>>} */ (
+      Object.create(null)
+    );
+  var /** @const {!Object<string, !Array<string>>} */ parent = Wasm2Lang.Backend.AsmjsCodegen.HELPER_DEPS_;
+  var /** @const {!Array<string>} */ parentKeys = Object.keys(parent);
+  for (var /** @type {number} */ pi = 0, /** @const {number} */ pLen = parentKeys.length; pi !== pLen; ++pi) {
+    merged[parentKeys[pi]] = parent[parentKeys[pi]].slice();
+  }
+  merged['$w2l_i64_clz'] = ['$w2l_bigint', '$w2l_number'];
+  merged['$w2l_i64_ctz'] = ['$w2l_bigint', '$w2l_number'];
+  merged['$w2l_i64_popcnt'] = ['$w2l_bigint', '$w2l_number'];
+  merged['$w2l_i64_rotl'] = ['$w2l_bigint_asintn', '$w2l_bigint_asuintn'];
+  merged['$w2l_i64_rotr'] = ['$w2l_bigint_asintn', '$w2l_bigint_asuintn'];
+  merged['$w2l_trunc_s_f32_to_i64'] = ['$w2l_bigint'];
+  merged['$w2l_trunc_u_f32_to_i64'] = ['$w2l_bigint'];
+  merged['$w2l_trunc_s_f64_to_i64'] = ['$w2l_bigint'];
+  merged['$w2l_trunc_u_f64_to_i64'] = ['$w2l_bigint'];
+  merged['$w2l_trunc_sat_s_f32_to_i64'] = ['$w2l_bigint'];
+  merged['$w2l_trunc_sat_u_f32_to_i64'] = ['$w2l_bigint'];
+  merged['$w2l_trunc_sat_s_f64_to_i64'] = ['$w2l_bigint'];
+  merged['$w2l_trunc_sat_u_f64_to_i64'] = ['$w2l_bigint'];
+  return merged;
+})();
+
+/** @override @protected @return {?Object<string, !Array<string>>} */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.getHelperDeps_ = function () {
+  return Wasm2Lang.Backend.JavaScriptCodegen.HELPER_DEPS_;
+};
+
+/**
  * @override
  * @param {number} scratchByteOffset
  * @param {number} scratchWordIndex
@@ -72,6 +112,10 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
   var /** @const {string} */ l2 = this.localN_(2);
   var /** @const {string} */ nMathClz32 = n('Math_clz32');
   var /** @const {string} */ nMathImul = n('Math_imul');
+  var /** @const {string} */ nBigInt = n('$w2l_bigint');
+  var /** @const {string} */ nBigIntAsIntN = n('$w2l_bigint_asintn');
+  var /** @const {string} */ nBigIntAsUintN = n('$w2l_bigint_asuintn');
+  var /** @const {string} */ nNumber = n('$w2l_number');
   var /** @const {string} */ scratchQ = String(scratchQwordIndex);
   var /** @const {string} */ scratchByte = String(scratchByteOffset);
 
@@ -99,6 +143,16 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
     for (var bi = 0; bi < bindings.length; ++bi) self.markBinding_(bindings[bi]);
     lines[lines.length] = body;
   };
+
+  // BigInt/Number bridge helpers — plain variable aliases so each call site
+  // dispatches through a mangleable identifier without paying the cost of a
+  // wrapping function.  {@code BigInt.asIntN}/{@code BigInt.asUintN} are
+  // static library methods that do not rely on their {@code this} binding,
+  // so aliasing preserves semantics.
+  h('$w2l_bigint', [], pad1 + 'var ' + nBigInt + ' = BigInt;');
+  h('$w2l_number', [], pad1 + 'var ' + nNumber + ' = Number;');
+  h('$w2l_bigint_asintn', [], pad1 + 'var ' + nBigIntAsIntN + ' = BigInt.asIntN;');
+  h('$w2l_bigint_asuintn', [], pad1 + 'var ' + nBigIntAsUintN + ' = BigInt.asUintN;');
 
   // prettier-ignore
   hCond(memFillUsed, ['HEAPU8'],
@@ -132,27 +186,27 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
   h('$w2l_i64_clz', ['Math_clz32'],
     pad1 + 'function ' + n('$w2l_i64_clz') + '(' + l0 + ') {\n' +
     pad2 + 'if (' + l0 + ' === 0n) return 64n;\n' +
-    pad2 + 'var ' + l1 + ' = Number((' + l0 + ' >> 32n) & 0xFFFFFFFFn) | 0;\n' +
-    pad2 + 'var ' + l2 + ' = Number(' + l0 + ' & 0xFFFFFFFFn) | 0;\n' +
-    pad2 + 'if (' + l1 + ' !== 0) return BigInt(' + nMathClz32 + '(' + l1 + '));\n' +
-    pad2 + 'return 32n + BigInt(' + nMathClz32 + '(' + l2 + '));\n' +
+    pad2 + 'var ' + l1 + ' = ' + nNumber + '((' + l0 + ' >> 32n) & 0xFFFFFFFFn) | 0;\n' +
+    pad2 + 'var ' + l2 + ' = ' + nNumber + '(' + l0 + ' & 0xFFFFFFFFn) | 0;\n' +
+    pad2 + 'if (' + l1 + ' !== 0) return ' + nBigInt + '(' + nMathClz32 + '(' + l1 + '));\n' +
+    pad2 + 'return 32n + ' + nBigInt + '(' + nMathClz32 + '(' + l2 + '));\n' +
     pad1 + '}');
 
   // prettier-ignore
   h('$w2l_i64_ctz', ['Math_clz32'],
     pad1 + 'function ' + n('$w2l_i64_ctz') + '(' + l0 + ') {\n' +
     pad2 + 'if (' + l0 + ' === 0n) return 64n;\n' +
-    pad2 + 'var ' + l1 + ' = Number((' + l0 + ' >> 32n) & 0xFFFFFFFFn) | 0;\n' +
-    pad2 + 'var ' + l2 + ' = Number(' + l0 + ' & 0xFFFFFFFFn) | 0;\n' +
-    pad2 + 'if (' + l2 + ' !== 0) return BigInt(31 - ' + nMathClz32 + '(' + l2 + ' & -' + l2 + '));\n' +
-    pad2 + 'return 32n + BigInt(31 - ' + nMathClz32 + '(' + l1 + ' & -' + l1 + '));\n' +
+    pad2 + 'var ' + l1 + ' = ' + nNumber + '((' + l0 + ' >> 32n) & 0xFFFFFFFFn) | 0;\n' +
+    pad2 + 'var ' + l2 + ' = ' + nNumber + '(' + l0 + ' & 0xFFFFFFFFn) | 0;\n' +
+    pad2 + 'if (' + l2 + ' !== 0) return ' + nBigInt + '(31 - ' + nMathClz32 + '(' + l2 + ' & -' + l2 + '));\n' +
+    pad2 + 'return 32n + ' + nBigInt + '(31 - ' + nMathClz32 + '(' + l1 + ' & -' + l1 + '));\n' +
     pad1 + '}');
 
   // prettier-ignore
   h('$w2l_i64_popcnt', ['Math_imul'],
     pad1 + 'function ' + n('$w2l_i64_popcnt') + '(' + l0 + ') {\n' +
-    pad2 + 'var ' + l1 + ' = Number((' + l0 + ' >> 32n) & 0xFFFFFFFFn) | 0;\n' +
-    pad2 + 'var ' + l2 + ' = Number(' + l0 + ' & 0xFFFFFFFFn) | 0;\n' +
+    pad2 + 'var ' + l1 + ' = ' + nNumber + '((' + l0 + ' >> 32n) & 0xFFFFFFFFn) | 0;\n' +
+    pad2 + 'var ' + l2 + ' = ' + nNumber + '(' + l0 + ' & 0xFFFFFFFFn) | 0;\n' +
     pad2 + l1 + ' = ' + l1 + ' - ((' + l1 + ' >>> 1) & 0x55555555);\n' +
     pad2 + l1 + ' = (' + l1 + ' & 0x33333333) + ((' + l1 + ' >>> 2) & 0x33333333);\n' +
     pad2 + l1 + ' = (' + l1 + ' + (' + l1 + ' >>> 4)) & 0x0f0f0f0f;\n' +
@@ -161,7 +215,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
     pad2 + l2 + ' = (' + l2 + ' & 0x33333333) + ((' + l2 + ' >>> 2) & 0x33333333);\n' +
     pad2 + l2 + ' = (' + l2 + ' + (' + l2 + ' >>> 4)) & 0x0f0f0f0f;\n' +
     pad2 + l2 + ' = ' + nMathImul + '(' + l2 + ', 0x01010101) >>> 24;\n' +
-    pad2 + 'return BigInt(' + l1 + ' + ' + l2 + ');\n' +
+    pad2 + 'return ' + nBigInt + '(' + l1 + ' + ' + l2 + ');\n' +
     pad1 + '}');
 
   // prettier-ignore
@@ -169,8 +223,8 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
     pad1 + 'function ' + n('$w2l_i64_rotl') + '(' + l0 + ', ' + l1 + ') {\n' +
     pad2 + l1 + ' = ' + l1 + ' & 63n;\n' +
     pad2 + 'if (' + l1 + ' === 0n) return ' + l0 + ';\n' +
-    pad2 + 'var ' + l2 + ' = BigInt.asUintN(64, ' + l0 + ');\n' +
-    pad2 + 'return BigInt.asIntN(64, (' + l2 + ' << ' + l1 + ') | (' + l2 + ' >> (64n - ' + l1 + ')));\n' +
+    pad2 + 'var ' + l2 + ' = ' + nBigIntAsUintN + '(64, ' + l0 + ');\n' +
+    pad2 + 'return ' + nBigIntAsIntN + '(64, (' + l2 + ' << ' + l1 + ') | (' + l2 + ' >> (64n - ' + l1 + ')));\n' +
     pad1 + '}');
 
   // prettier-ignore
@@ -178,8 +232,8 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
     pad1 + 'function ' + n('$w2l_i64_rotr') + '(' + l0 + ', ' + l1 + ') {\n' +
     pad2 + l1 + ' = ' + l1 + ' & 63n;\n' +
     pad2 + 'if (' + l1 + ' === 0n) return ' + l0 + ';\n' +
-    pad2 + 'var ' + l2 + ' = BigInt.asUintN(64, ' + l0 + ');\n' +
-    pad2 + 'return BigInt.asIntN(64, (' + l2 + ' >> ' + l1 + ') | (' + l2 + ' << (64n - ' + l1 + ')));\n' +
+    pad2 + 'var ' + l2 + ' = ' + nBigIntAsUintN + '(64, ' + l0 + ');\n' +
+    pad2 + 'return ' + nBigIntAsIntN + '(64, (' + l2 + ' >> ' + l1 + ') | (' + l2 + ' << (64n - ' + l1 + ')));\n' +
     pad1 + '}');
 
   var /** @const {string} */ nTrap = n('$w2l_trap');
@@ -196,7 +250,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
       pad1 + 'function ' + n(helperName) + '(' + l0 + ') {\n' +
       pad2 + 'if (' + l0 + ' !== ' + l0 + ') { ' + nTrap + '(); return 0n; }\n' +
       pad2 + rangeCheck + '\n' +
-      pad2 + 'return BigInt(' + l0 + ' < 0 ? Math.ceil(' + l0 + ') : Math.floor(' + l0 + '));\n' +
+      pad2 + 'return ' + nBigInt + '(' + l0 + ' < 0 ? Math.ceil(' + l0 + ') : Math.floor(' + l0 + '));\n' +
       pad1 + '}');
   };
 
@@ -235,7 +289,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
       pad2 + 'if (' + l0 + ' !== ' + l0 + ') return 0n;\n' +
       pad2 + 'if (' + l0 + ' <= ' + lowRangeLit + ') return ' + lowClampLit + ';\n' +
       pad2 + 'if (' + l0 + ' >= ' + highRangeLit + ') return ' + highClampLit + ';\n' +
-      pad2 + 'return BigInt(' + l0 + ' < 0 ? Math.ceil(' + l0 + ') : Math.floor(' + l0 + '));\n' +
+      pad2 + 'return ' + nBigInt + '(' + l0 + ' < 0 ? Math.ceil(' + l0 + ') : Math.floor(' + l0 + '));\n' +
       pad1 + '}');
   };
 

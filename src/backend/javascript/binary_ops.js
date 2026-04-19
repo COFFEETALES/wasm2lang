@@ -12,13 +12,18 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Wraps an i64-producing expression with {@code BigInt.asIntN(64, ...)}.
+ * Wraps an i64-producing expression with a call to the mangleable
+ * {@code $w2l_bigint_asintn} helper — equivalent to
+ * {@code BigInt.asIntN(64, expr)} but routed through a helper so the
+ * identifier participates in the mangler profile.
  * @private
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {string} expr
  * @return {string}
  */
-Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_ = function (expr) {
-  return 'BigInt.asIntN(64, ' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
+Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_ = function (self, expr) {
+  self.markHelper_('$w2l_bigint_asintn');
+  return self.n_('$w2l_bigint_asintn') + '(64, ' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
 };
 
 /**
@@ -95,11 +100,13 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI32DivisionBinary_ = function (self, i
 /**
  * Re-interprets an i64 operand as unsigned for division/comparison.
  * @private
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {string} expr
  * @return {string}
  */
-Wasm2Lang.Backend.JavaScriptCodegen.asUint64_ = function (expr) {
-  return 'BigInt.asUintN(64, ' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
+Wasm2Lang.Backend.JavaScriptCodegen.asUint64_ = function (self, expr) {
+  self.markHelper_('$w2l_bigint_asuintn');
+  return self.n_('$w2l_bigint_asuintn') + '(64, ' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
 };
 
 /**
@@ -110,9 +117,8 @@ Wasm2Lang.Backend.JavaScriptCodegen.asUint64_ = function (expr) {
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64ArithmeticBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_(P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_));
+  return Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_(self, P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_));
 };
 
 /**
@@ -123,10 +129,9 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI64ArithmeticBinary_ = function (self,
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64MultiplyBinary_ = function (self, info, L, R) {
-  void self;
   void info;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_(P.renderInfix(L, '*', R, P.PREC_MULTIPLICATIVE_));
+  return Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_(self, P.renderInfix(L, '*', R, P.PREC_MULTIPLICATIVE_));
 };
 
 /**
@@ -137,11 +142,13 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI64MultiplyBinary_ = function (self, i
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64DivisionBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  return Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_(
-    A.renderUnsignedAwareInfix_(info, L, R, Wasm2Lang.Backend.JavaScriptCodegen.asUint64_, A.Precedence_.PREC_MULTIPLICATIVE_)
-  );
+  var /** @const */ M = Wasm2Lang.Backend.JavaScriptCodegen;
+  /** @param {string} expr @return {string} */
+  var asUint = function (expr) {
+    return M.asUint64_(self, expr);
+  };
+  return M.wrapI64_(self, A.renderUnsignedAwareInfix_(info, L, R, asUint, A.Precedence_.PREC_MULTIPLICATIVE_));
 };
 
 /**
@@ -153,16 +160,17 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI64DivisionBinary_ = function (self, i
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64BitwiseBinary_ = function (self, info, L, R) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @const */ M = Wasm2Lang.Backend.JavaScriptCodegen;
   var /** @const {string} */ op = info.opStr;
   if ('>>>' === op || '<<' === op || '>>' === op) {
     // BigInt has no unsigned right shift — reinterpret L as uint64 and use
     // arithmetic `>>`.  Left-shift and unsigned right-shift can produce
     // values outside the signed 64-bit range, so rewrap; arithmetic `>>` on
     // an already-signed value preserves the range and needs no rewrap.
-    var /** @const {string} */ leftExpr = '>>>' === op ? Wasm2Lang.Backend.JavaScriptCodegen.asUint64_(L) : L;
+    var /** @const {string} */ leftExpr = '>>>' === op ? M.asUint64_(self, L) : L;
     var /** @const {string} */ physicalOp = '>>>' === op ? '>>' : op;
     var /** @const {string} */ shiftExpr = P.renderInfix(leftExpr, physicalOp, '(' + R + ' & 63n)', P.PREC_SHIFT_);
-    return '>>' === op ? shiftExpr : Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_(shiftExpr);
+    return '>>' === op ? shiftExpr : M.wrapI64_(self, shiftExpr);
   }
   return Wasm2Lang.Backend.AbstractCodegen.renderPlainBitwiseBinary_(self, info, L, R);
 };
@@ -188,6 +196,9 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI64RotateBinary_ = function (self, inf
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64ComparisonBinary_ = function (self, info, L, R) {
-  void self;
-  return Wasm2Lang.Backend.AbstractCodegen.renderComparisonInfix_(info, L, R, Wasm2Lang.Backend.JavaScriptCodegen.asUint64_);
+  /** @param {string} expr @return {string} */
+  var asUint = function (expr) {
+    return Wasm2Lang.Backend.JavaScriptCodegen.asUint64_(self, expr);
+  };
+  return Wasm2Lang.Backend.AbstractCodegen.renderComparisonInfix_(info, L, R, asUint);
 };

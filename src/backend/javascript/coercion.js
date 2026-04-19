@@ -154,7 +154,8 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.numericComparisonCat_ = function (
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderCoercionByType_ = function (binaryen, expr, wasmType) {
   var /** @const */ V = Wasm2Lang.Backend.ValueType;
   if (V.isI64(binaryen, wasmType)) {
-    return 'BigInt.asIntN(64, ' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
+    this.markHelper_('$w2l_bigint_asintn');
+    return this.n_('$w2l_bigint_asintn') + '(64, ' + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
   }
   // JavaScript numbers are doubles by default — no explicit +x coercion needed.
   if (V.isF64(binaryen, wasmType)) return expr;
@@ -309,15 +310,17 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderCastImportInline_ = function
   var /** @const {boolean} */ inputIsI64 = V.isI64(binaryen, castInputType);
   var /** @const {boolean} */ outputIsI64 = V.isI64(binaryen, callType);
   if (inputIsI64) {
-    var /** @const {string} */ numberExpr = 'Number(' + P.stripOuter(inputExpr) + ')';
+    this.markHelper_('$w2l_number');
+    var /** @const {string} */ numberExpr = this.n_('$w2l_number') + '(' + P.stripOuter(inputExpr) + ')';
     if (V.isF32(binaryen, callType)) {
       return {emittedString: this.renderMathFroundCall_(numberExpr), resultCat: A.CAT_F32};
     }
     return {emittedString: numberExpr, resultCat: A.CAT_F64};
   }
   if (outputIsI64) {
+    this.markHelper_('$w2l_bigint');
     return {
-      emittedString: 'BigInt(Math.trunc(' + P.stripOuter(inputExpr) + '))',
+      emittedString: this.n_('$w2l_bigint') + '(Math.trunc(' + P.stripOuter(inputExpr) + '))',
       resultCat: A.CAT_I64
     };
   }
@@ -391,7 +394,11 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitI64Unary_ = function (binaryen
   var /** @const {number|undefined} */ extendWidth =
       Wasm2Lang.Backend.JavaScriptCodegen.JS_I64_UNARY_EXTEND_WIDTHS_[unaryCategory];
   if (extendWidth) {
-    return {emittedString: 'BigInt.asIntN(' + extendWidth + ', ' + P.stripOuter(operandExpr) + ')', resultCat: A.CAT_I64};
+    this.markHelper_('$w2l_bigint_asintn');
+    return {
+      emittedString: this.n_('$w2l_bigint_asintn') + '(' + extendWidth + ', ' + P.stripOuter(operandExpr) + ')',
+      resultCat: A.CAT_I64
+    };
   }
   return null;
 };

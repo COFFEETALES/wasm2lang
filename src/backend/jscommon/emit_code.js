@@ -44,12 +44,13 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   var /** @const {string} */ pad1 = Wasm2Lang.Backend.AbstractCodegen.pad_(1);
   var /** @const {string} */ pad2 = Wasm2Lang.Backend.AbstractCodegen.pad_(2);
 
-  var /** @const {string} */ moduleFnName = this.n_(this.getModuleFunctionBindingName_());
+  var /** @const {string} */ moduleFnBaseName = this.getModuleFunctionBindingName_();
+  var /** @const {string} */ moduleFnSuffix = '' === moduleFnBaseName ? '' : ' ' + this.n_(moduleFnBaseName);
   var /** @const {string} */ stdlibName = this.n_('stdlib');
   var /** @const {string} */ foreignName = this.n_('foreign');
   var /** @const {string} */ bufferName = this.n_('buffer');
   outputParts[outputParts.length] =
-    'var ' + moduleName + ' = function ' + moduleFnName + '(' + stdlibName + ', ' + foreignName + ', ' + bufferName + ') {';
+    'var ' + moduleName + ' = function' + moduleFnSuffix + '(' + stdlibName + ', ' + foreignName + ', ' + bufferName + ') {';
   this.emitUseAsmDirective_(outputParts, pad1);
 
   // Reserve the slot where conditional binding declarations are spliced in

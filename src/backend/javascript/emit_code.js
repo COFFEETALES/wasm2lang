@@ -12,8 +12,18 @@
  */
 'use strict';
 
-Wasm2Lang.Backend.JavaScriptCodegen.prototype.getModuleFunctionBindingName_ =
-  Wasm2Lang.Backend.JsCommonCodegen.prototype.getModuleFunctionBindingName_;
+/**
+ * The plain JavaScript module shell does not need an inner function name:
+ * the outer {@code var X = ...} binding already names the closure for stack
+ * traces, and omitting the inner name shortens the output.
+ *
+ * @override
+ * @protected
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.getModuleFunctionBindingName_ = function () {
+  return '';
+};
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitUseAsmDirective_ =
   Wasm2Lang.Backend.JsCommonCodegen.prototype.emitUseAsmDirective_;
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.getHeapBindingTable_ =
