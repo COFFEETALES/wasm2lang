@@ -34,194 +34,204 @@ int w2lCountSimplifiedWhile(String body) {
 }
 
 {
-    // ---- Code structure validation (codegen variant only) ----
+    // ---- Code structure validation ----
     String _testName = System.getProperty("w2l.testname", "");
-    if (_testName.endsWith("_codegen") || _testName.endsWith("_prenorm")) {
-        String _code = w2lReadSource(_testName);
-        if (_code != null && !_code.isEmpty()) {
-            java.util.List<String> _f = new java.util.ArrayList<>();
+    String _code = w2lReadSource(_testName);
+    if (_code != null && !_code.isEmpty()) {
+        java.util.List<String> _f = new java.util.ArrayList<>();
 
-            // Simplification checks only apply to the prenorm variant
-            // (--pre-normalized enables backend simplifications; the codegen
-            // variant verifies correctness without them).
-            boolean _hasSimplifications = _testName.endsWith("_prenorm") || _testName.endsWith("_codegen");
+        // Simplification checks only apply to variants where wasm2lang:codegen
+        // has been applied with metadata still available at emit time
+        // (single-process codegen, or pre-normalized binary read with
+        // --pre-normalized).
+        boolean _hasSimplifications = _testName.endsWith("_prenorm")
+            || _testName.endsWith("_codegen")
+            || _testName.endsWith("_nomangle");
+        // IR restructuring (if-else recovery, guard elision) leaves the
+        // simplified shape in the IR itself, so it survives binary round-trip
+        // even without metadata.  Only the bare _baseline variant skips it.
+        boolean _hasIrRestructuring = !_testName.endsWith("_baseline");
 
-            String b;
+        String b;
 
-            if (_hasSimplifications) {
-                // -- while simplification --
-                b = w2lBodyOf(_code, "fusedWhileSum");
-                if (b == null || w2lCountSimplifiedWhile(b) < 1)
-                    _f.add("fusedWhileSum: expected while loop with condition");
+        if (_hasSimplifications) {
+            // -- while simplification --
+            b = w2lBodyOf(_code, "fusedWhileSum");
+            if (b == null || w2lCountSimplifiedWhile(b) < 1)
+                _f.add("fusedWhileSum: expected while loop with condition");
 
-                b = w2lBodyOf(_code, "fusedBreakFromNestedIf");
-                if (b == null || w2lCountSimplifiedWhile(b) < 1)
-                    _f.add("fusedBreakFromNestedIf: expected while loop with condition");
+            b = w2lBodyOf(_code, "fusedBreakFromNestedIf");
+            if (b == null || w2lCountSimplifiedWhile(b) < 1)
+                _f.add("fusedBreakFromNestedIf: expected while loop with condition");
 
-                b = w2lBodyOf(_code, "nestedWhileLoops");
-                if (b == null || w2lCountSimplifiedWhile(b) < 2)
-                    _f.add("nestedWhileLoops: expected >= 2 while loops with conditions");
+            b = w2lBodyOf(_code, "nestedWhileLoops");
+            if (b == null || w2lCountSimplifiedWhile(b) < 2)
+                _f.add("nestedWhileLoops: expected >= 2 while loops with conditions");
 
-                b = w2lBodyOf(_code, "whileWithInnerContinue");
-                if (b == null || w2lCountSimplifiedWhile(b) < 1)
-                    _f.add("whileWithInnerContinue: expected while loop with condition");
+            b = w2lBodyOf(_code, "whileWithInnerContinue");
+            if (b == null || w2lCountSimplifiedWhile(b) < 1)
+                _f.add("whileWithInnerContinue: expected while loop with condition");
 
-                // -- do-while --
-                b = w2lBodyOf(_code, "doWhileBreakOuter");
-                if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
-                    _f.add("doWhileBreakOuter: expected do-while loop");
+            // -- do-while --
+            b = w2lBodyOf(_code, "doWhileBreakOuter");
+            if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
+                _f.add("doWhileBreakOuter: expected do-while loop");
 
-                b = w2lBodyOf(_code, "fusedDoWhile");
-                if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
-                    _f.add("fusedDoWhile: expected do-while loop");
+            b = w2lBodyOf(_code, "fusedDoWhile");
+            if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
+                _f.add("fusedDoWhile: expected do-while loop");
 
-                // -- flat switch dispatch (labeled block count < case count = flattened) --
-                b = w2lBodyOf(_code, "switchRequiresLabel");
-                if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
-                    _f.add("switchRequiresLabel: expected flat switch (fewer labeled blocks than cases)");
+            // -- flat switch dispatch (labeled block count < case count = flattened) --
+            b = w2lBodyOf(_code, "switchRequiresLabel");
+            if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
+                _f.add("switchRequiresLabel: expected flat switch (fewer labeled blocks than cases)");
 
-                b = w2lBodyOf(_code, "nonWrappingDispatch");
-                if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
-                    _f.add("nonWrappingDispatch: expected flat switch (fewer labeled blocks than cases)");
+            b = w2lBodyOf(_code, "nonWrappingDispatch");
+            if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
+                _f.add("nonWrappingDispatch: expected flat switch (fewer labeled blocks than cases)");
 
-                b = w2lBodyOf(_code, "wrappingDispatchEpilogue");
-                if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
-                    _f.add("wrappingDispatchEpilogue: expected flat switch (fewer labeled blocks than cases)");
+            b = w2lBodyOf(_code, "wrappingDispatchEpilogue");
+            if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
+                _f.add("wrappingDispatchEpilogue: expected flat switch (fewer labeled blocks than cases)");
 
-                b = w2lBodyOf(_code, "terminatorDispatch");
-                if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
-                    _f.add("terminatorDispatch: expected flat switch (fewer labeled blocks than cases)");
+            b = w2lBodyOf(_code, "terminatorDispatch");
+            if (b == null || w2lCountMatches(b, "\\w+\\s*:\\s*\\{") >= w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:"))
+                _f.add("terminatorDispatch: expected flat switch (fewer labeled blocks than cases)");
 
-                // -- redundant block removal --
-                b = w2lBodyOf(_code, "redundantLoopBlock");
-                if (b == null || w2lCountSimplifiedWhile(b) < 1)
-                    _f.add("redundantLoopBlock: expected while loop with condition");
+            // -- redundant block removal --
+            b = w2lBodyOf(_code, "redundantLoopBlock");
+            if (b == null || w2lCountSimplifiedWhile(b) < 1)
+                _f.add("redundantLoopBlock: expected while loop with condition");
 
-                // -- multi-guard while (compound condition) --
-                b = w2lBodyOf(_code, "multiGuardWhile");
-                if (b == null || w2lCountSimplifiedWhile(b) < 1)
-                    _f.add("multiGuardWhile: expected while loop with compound condition");
+            // -- multi-guard while (compound condition) --
+            b = w2lBodyOf(_code, "multiGuardWhile");
+            if (b == null || w2lCountSimplifiedWhile(b) < 1)
+                _f.add("multiGuardWhile: expected while loop with compound condition");
 
-                // -- switch label elision (no labeled block wrapping the switch) --
-                b = w2lBodyOf(_code, "switchNoLabel");
-                if (b != null) {
-                    if (w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:") < 2)
-                        _f.add("switchNoLabel: expected flat switch with cases");
-                    if (w2lCountMatches(b, "\\w+\\s*:\\s*switch\\s*\\(") > 0)
-                        _f.add("switchNoLabel: expected switch without label prefix");
-                } else {
-                    _f.add("switchNoLabel: function body not found");
-                }
-
-                // -- fused for loop label elision --
-                b = w2lBodyOf(_code, "fusedForNoLabel");
-                if (b != null) {
-                    if (!w2lHasMatch(b, "\\bfor\\s*\\("))
-                        _f.add("fusedForNoLabel: expected for loop");
-                    if (w2lCountMatches(b, "\\w+\\s*:\\s*for\\s*\\(") > 0)
-                        _f.add("fusedForNoLabel: expected for loop without label prefix");
-                } else {
-                    _f.add("fusedForNoLabel: function body not found");
-                }
-
-                // -- if-guarded while (LWI): loop body is If promoted to while --
-                b = w2lBodyOf(_code, "ifGuardedWhileInner");
-                if (b == null || w2lCountSimplifiedWhile(b) < 1)
-                    _f.add("ifGuardedWhileInner: expected while loop (LWI)");
-
-                // -- terminal-exit loop (LCT/LFT): for-loop with unconditional exit --
-                b = w2lBodyOf(_code, "terminalExitLoop");
-                if (b != null) {
-                    if (!w2lHasMatch(b, "\\bfor\\s*\\("))
-                        _f.add("terminalExitLoop: expected for-loop");
-                    if (w2lCountSimplifiedWhile(b) != 0)
-                        _f.add("terminalExitLoop: expected no while-loop (is for-loop)");
-                } else {
-                    _f.add("terminalExitLoop: function body not found");
-                }
-
-                // -- do-while + trailing exit (LDA/LEA) --
-                b = w2lBodyOf(_code, "doWhileWithExitTail");
-                if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
-                    _f.add("doWhileWithExitTail: expected do-while loop");
-
-                // -- bare do-while (LEB) --
-                b = w2lBodyOf(_code, "bareDoWhileLoop");
-                if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
-                    _f.add("bareDoWhileLoop: expected do-while loop (LEB)");
-
-                // -- interior back-branch rejection (see .mjs harness for
-                // details): loop body holds a conditional `br $L` inside an
-                // inner `if` plus a trailing `br_if $L cond`.  Naive LDB
-                // classification would compile to `do { ... continue; ... }
-                // while (cond);`, but JS continue-in-do-while jumps to the
-                // while-check, diverging from WASM's unconditional re-iterate.
-                // The pass vetoes LD*/LE* here; the for-loop form keeps
-                // continue meaning "jump to loop top".
-                b = w2lBodyOf(_code, "dowhileInteriorContinue");
-                if (b != null) {
-                    if (w2lHasMatch(b, "\\bdo\\s*\\{"))
-                        _f.add("dowhileInteriorContinue: expected no do-while (interior back-branch forbids LDB)");
-                    if (!w2lHasMatch(b, "\\bfor\\s*\\("))
-                        _f.add("dowhileInteriorContinue: expected for-loop (interior back-branch case)");
-                } else {
-                    _f.add("dowhileInteriorContinue: function body not found");
-                }
-
-                // -- switch-continue loop (LCS/LFS) --
-                b = w2lBodyOf(_code, "switchContinueLoop");
-                if (b != null) {
-                    if (!w2lHasMatch(b, "\\bfor\\s*\\("))
-                        _f.add("switchContinueLoop: expected for-loop");
-                    if (!w2lHasMatch(b, "\\bswitch\\s*\\("))
-                        _f.add("switchContinueLoop: expected switch dispatch");
-                } else {
-                    _f.add("switchContinueLoop: function body not found");
-                }
-
-                // -- root switch state machine (rs$) --
-                b = w2lBodyOf(_code, "rootSwitchStateMachine");
-                if (b != null) {
-                    if (!w2lHasMatch(b, "\\bswitch\\s*\\("))
-                        _f.add("rootSwitchStateMachine: expected switch dispatch");
-                    if (w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:") < 3)
-                        _f.add("rootSwitchStateMachine: expected >=3 cases");
-                } else {
-                    _f.add("rootSwitchStateMachine: function body not found");
-                }
-
-                // -- Pattern B fusion (loop with named body block) --
-                b = w2lBodyOf(_code, "loopWithNamedBodyBlock");
-                if (b != null) {
-                    boolean anyLoop = w2lHasMatch(b, "\\bwhile\\s*\\(") ||
-                        w2lHasMatch(b, "\\bfor\\s*\\(") || w2lHasMatch(b, "\\bdo\\s*\\{");
-                    if (!anyLoop)
-                        _f.add("loopWithNamedBodyBlock: expected fused loop construct");
-                } else {
-                    _f.add("loopWithNamedBodyBlock: function body not found");
-                }
-
-                // -- 3-arm if-else chain --
-                b = w2lBodyOf(_code, "ifElseChainThree");
-                if (b != null) {
-                    if (w2lCountMatches(b, "\\}\\s*else\\b") < 2)
-                        _f.add("ifElseChainThree: expected >=2 else branches");
-                } else {
-                    _f.add("ifElseChainThree: function body not found");
-                }
+            // -- switch label elision (no labeled block wrapping the switch) --
+            b = w2lBodyOf(_code, "switchNoLabel");
+            if (b != null) {
+                if (w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:") < 2)
+                    _f.add("switchNoLabel: expected flat switch with cases");
+                if (w2lCountMatches(b, "\\w+\\s*:\\s*switch\\s*\\(") > 0)
+                    _f.add("switchNoLabel: expected switch without label prefix");
+            } else {
+                _f.add("switchNoLabel: function body not found");
             }
 
-            // -- if-else recovery (IR restructuring, always active) --
+            // -- fused for loop label elision --
+            b = w2lBodyOf(_code, "fusedForNoLabel");
+            if (b != null) {
+                if (!w2lHasMatch(b, "\\bfor\\s*\\("))
+                    _f.add("fusedForNoLabel: expected for loop");
+                if (w2lCountMatches(b, "\\w+\\s*:\\s*for\\s*\\(") > 0)
+                    _f.add("fusedForNoLabel: expected for loop without label prefix");
+            } else {
+                _f.add("fusedForNoLabel: function body not found");
+            }
+
+            // -- if-guarded while (LWI): loop body is If promoted to while --
+            b = w2lBodyOf(_code, "ifGuardedWhileInner");
+            if (b == null || w2lCountSimplifiedWhile(b) < 1)
+                _f.add("ifGuardedWhileInner: expected while loop (LWI)");
+
+            // -- terminal-exit loop (LCT/LFT): for-loop with unconditional exit --
+            b = w2lBodyOf(_code, "terminalExitLoop");
+            if (b != null) {
+                if (!w2lHasMatch(b, "\\bfor\\s*\\("))
+                    _f.add("terminalExitLoop: expected for-loop");
+                if (w2lCountSimplifiedWhile(b) != 0)
+                    _f.add("terminalExitLoop: expected no while-loop (is for-loop)");
+            } else {
+                _f.add("terminalExitLoop: function body not found");
+            }
+
+            // -- do-while + trailing exit (LDA/LEA) --
+            b = w2lBodyOf(_code, "doWhileWithExitTail");
+            if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
+                _f.add("doWhileWithExitTail: expected do-while loop");
+
+            // -- bare do-while (LEB) --
+            b = w2lBodyOf(_code, "bareDoWhileLoop");
+            if (b == null || !w2lHasMatch(b, "\\bdo\\s*\\{"))
+                _f.add("bareDoWhileLoop: expected do-while loop (LEB)");
+
+            // -- interior back-branch rejection (see .mjs harness for
+            // details): loop body holds a conditional `br $L` inside an
+            // inner `if` plus a trailing `br_if $L cond`.  Naive LDB
+            // classification would compile to `do { ... continue; ... }
+            // while (cond);`, but JS continue-in-do-while jumps to the
+            // while-check, diverging from WASM's unconditional re-iterate.
+            // The pass vetoes LD*/LE* here; the for-loop form keeps
+            // continue meaning "jump to loop top".
+            b = w2lBodyOf(_code, "dowhileInteriorContinue");
+            if (b != null) {
+                if (w2lHasMatch(b, "\\bdo\\s*\\{"))
+                    _f.add("dowhileInteriorContinue: expected no do-while (interior back-branch forbids LDB)");
+                if (!w2lHasMatch(b, "\\bfor\\s*\\("))
+                    _f.add("dowhileInteriorContinue: expected for-loop (interior back-branch case)");
+            } else {
+                _f.add("dowhileInteriorContinue: function body not found");
+            }
+
+            // -- switch-continue loop (LCS/LFS) --
+            b = w2lBodyOf(_code, "switchContinueLoop");
+            if (b != null) {
+                if (!w2lHasMatch(b, "\\bfor\\s*\\("))
+                    _f.add("switchContinueLoop: expected for-loop");
+                if (!w2lHasMatch(b, "\\bswitch\\s*\\("))
+                    _f.add("switchContinueLoop: expected switch dispatch");
+            } else {
+                _f.add("switchContinueLoop: function body not found");
+            }
+
+            // -- root switch state machine (rs$) --
+            b = w2lBodyOf(_code, "rootSwitchStateMachine");
+            if (b != null) {
+                if (!w2lHasMatch(b, "\\bswitch\\s*\\("))
+                    _f.add("rootSwitchStateMachine: expected switch dispatch");
+                if (w2lCountMatches(b, "\\bcase\\s+\\d+\\s*:") < 3)
+                    _f.add("rootSwitchStateMachine: expected >=3 cases");
+            } else {
+                _f.add("rootSwitchStateMachine: function body not found");
+            }
+
+            // -- Pattern B fusion (loop with named body block) --
+            b = w2lBodyOf(_code, "loopWithNamedBodyBlock");
+            if (b != null) {
+                boolean anyLoop = w2lHasMatch(b, "\\bwhile\\s*\\(") ||
+                    w2lHasMatch(b, "\\bfor\\s*\\(") || w2lHasMatch(b, "\\bdo\\s*\\{");
+                if (!anyLoop)
+                    _f.add("loopWithNamedBodyBlock: expected fused loop construct");
+            } else {
+                _f.add("loopWithNamedBodyBlock: function body not found");
+            }
+
+            // -- 3-arm if-else chain --
+            b = w2lBodyOf(_code, "ifElseChainThree");
+            if (b != null) {
+                if (w2lCountMatches(b, "\\}\\s*else\\b") < 2)
+                    _f.add("ifElseChainThree: expected >=2 else branches");
+            } else {
+                _f.add("ifElseChainThree: function body not found");
+            }
+        }
+
+        // -- if-else recovery (IR restructuring; baseline skips it) --
+        if (_hasIrRestructuring) {
             b = w2lBodyOf(_code, "ifElseSimple");
             if (b == null || !w2lHasMatch(b, "\\}\\s*else\\s*\\{"))
                 _f.add("ifElseSimple: expected if/else structure");
 
-            // -- guard elision (IR restructuring, always active) --
+            // -- guard elision (IR restructuring; baseline skips it) --
             b = w2lBodyOf(_code, "guardElisionProduct");
             if (b == null || w2lHasMatch(b, "\\w+\\s*:\\s*\\{"))
                 _f.add("guardElisionProduct: expected guard elision (no labeled block)");
+        }
 
-            // -- local init folding (always active) --
+        // -- local init folding (requires pass metadata; only active under
+        // simplification variants) --
+        if (_hasSimplifications) {
             b = w2lBodyOf(_code, "localInitFolding");
             if (b != null) {
                 if (!w2lHasMatch(b, "int\\s+[\\w$]+\\s*=\\s*10\\s*;"))
@@ -268,50 +278,84 @@ int w2lCountSimplifiedWhile(String body) {
             } else {
                 _f.add("localInitAllZero: function body not found");
             }
+        }
 
-            // -- eqz(or(eq, eq)) compound negation (quic.js regression).
-            // Backend must negate the full OR (with `!` or De Morgan's) —
-            // a partial operator flip like `v != 1 | v == N` is the broken
-            // form that caused every QUIC version check to fail.
-            b = w2lBodyOf(_code, "eqzOrVersionGate");
-            if (b != null) {
-                if (!w2lHasMatch(b, "\\breturn\\b"))
-                    _f.add("eqzOrVersionGate: expected a return statement");
-                // Broken form: one inequality joined by `|`/`&` with a matching
-                // equality (e.g. `v != 1 | v == N`) — exactly the partial-flip
-                // negateComparison_ used to emit.  Any safe form (`!(…)`,
-                // De Morgan, `(…) == 0`, `0 == (…)`) is acceptable.
-                boolean hasMixed = w2lHasMatch(b, "!=\\s*-?\\d+\\s*[|&]\\s*[^|&]*?==\\s*-?\\d+") ||
-                    w2lHasMatch(b, "==\\s*-?\\d+\\s*[|&]\\s*[^|&]*?!=\\s*-?\\d+");
-                if (hasMixed)
-                    _f.add("eqzOrVersionGate: partial-flip compound condition would miscompile the quic version gate");
-            } else {
-                _f.add("eqzOrVersionGate: function body not found");
-            }
+        // -- eqz(or(eq, eq)) compound negation (quic.js regression).
+        // Backend must negate the full OR (with `!` or De Morgan's) —
+        // a partial operator flip like `v != 1 | v == N` is the broken
+        // form that caused every QUIC version check to fail.
+        b = w2lBodyOf(_code, "eqzOrVersionGate");
+        if (b != null) {
+            if (!w2lHasMatch(b, "\\breturn\\b"))
+                _f.add("eqzOrVersionGate: expected a return statement");
+            // Broken form: one inequality joined by `|`/`&` with a matching
+            // equality (e.g. `v != 1 | v == N`) — exactly the partial-flip
+            // negateComparison_ used to emit.  Any safe form (`!(…)`,
+            // De Morgan, `(…) == 0`, `0 == (…)`) is acceptable.
+            boolean hasMixed = w2lHasMatch(b, "!=\\s*-?\\d+\\s*[|&]\\s*[^|&]*?==\\s*-?\\d+") ||
+                w2lHasMatch(b, "==\\s*-?\\d+\\s*[|&]\\s*[^|&]*?!=\\s*-?\\d+");
+            if (hasMixed)
+                _f.add("eqzOrVersionGate: partial-flip compound condition would miscompile the quic version gate");
+        } else {
+            _f.add("eqzOrVersionGate: function body not found");
+        }
 
-            // -- root value block: function body is an unnamed value-typed
-            // block.  The last child must be emitted as `return <tail>`,
-            // not as a dangling expression followed by a `return 0`
-            // stabilizer.  Regression guard for tryEmitRootValueBlock_.
-            //
-            // Tail expression is `i32.add(p(0), p(1))` — the return must
-            // contain the `+` operator.  Bug signature: the tail is emitted
-            // as a dangling stmt and replaced by `return 0`.
-            b = w2lBodyOf(_code, "rootValueBlock");
-            if (b != null) {
-                if (!w2lHasMatch(b, "\\breturn\\b"))
-                    _f.add("rootValueBlock: expected a return statement");
-                if (w2lHasMatch(b, "(?m)^\\s*return\\s+0\\s*;"))
-                    _f.add("rootValueBlock: expected real tail value, not bare `return 0` stabilizer");
-                if (!w2lHasMatch(b, "return\\s+[^;]*\\+"))
-                    _f.add("rootValueBlock: expected return to contain the `+` tail operator");
-            } else {
-                _f.add("rootValueBlock: function body not found");
-            }
+        // -- root value block: function body is an unnamed value-typed
+        // block.  The last child must be emitted as `return <tail>`,
+        // not as a dangling expression followed by a `return 0`
+        // stabilizer.  Regression guard for tryEmitRootValueBlock_.
+        //
+        // Tail expression is `i32.add(p(0), p(1))` — the return must
+        // contain the `+` operator.  Bug signature: the tail is emitted
+        // as a dangling stmt and replaced by `return 0`.
+        b = w2lBodyOf(_code, "rootValueBlock");
+        if (b != null) {
+            if (!w2lHasMatch(b, "\\breturn\\b"))
+                _f.add("rootValueBlock: expected a return statement");
+            if (w2lHasMatch(b, "(?m)^\\s*return\\s+0\\s*;"))
+                _f.add("rootValueBlock: expected real tail value, not bare `return 0` stabilizer");
+            if (!w2lHasMatch(b, "return\\s+[^;]*\\+"))
+                _f.add("rootValueBlock: expected return to contain the `+` tail operator");
+        } else {
+            _f.add("rootValueBlock: function body not found");
+        }
 
-            if (!_f.isEmpty()) {
-                throw new RuntimeException("Code structure validation FAILED:\n  " + String.join("\n  ", _f));
-            }
+        // -- direct labeled if --
+        b = w2lBodyOf(_code, "directLabeledIf");
+        if (b != null) {
+            if (!w2lHasMatch(b, "[\\w$]+\\s*:\\s*if\\s*\\("))
+                _f.add("directLabeledIf: expected direct labeled if statement");
+            if (w2lHasMatch(b, "[\\w$]+\\s*:\\s*\\{\\s*\\n\\s*if\\s*\\("))
+                _f.add("directLabeledIf: expected labeled if without block wrapper");
+        } else {
+            _f.add("directLabeledIf: function body not found");
+        }
+
+        // -- direct labeled loop: block+loop pair must collapse to a bare or
+        // directly-labeled loop, never a `label: { for(...) }` wrapper.
+        b = w2lBodyOf(_code, "directLabeledLoop");
+        if (b != null) {
+            if (!w2lHasMatch(b, "(for\\s*\\(|while\\s*\\(|do\\s*\\{)"))
+                _f.add("directLabeledLoop: expected loop statement in body");
+            if (w2lHasMatch(b, "[\\w$]+\\s*:\\s*\\{\\s*\\n\\s*(for\\s*\\(|while\\s*\\(|do\\s*\\{)"))
+                _f.add("directLabeledLoop: expected loop without block wrapper");
+        } else {
+            _f.add("directLabeledLoop: function body not found");
+        }
+
+        // -- assignment RHS paren elision --
+        b = w2lBodyOf(_code, "assignmentParenElision");
+        if (b != null) {
+            if (!w2lHasMatch(b, "\\?"))
+                _f.add("assignmentParenElision: expected lowered select/conditional expression");
+            if (w2lHasMatch(b, "=\\s*\\([^;\\n]*\\?"))
+                _f.add("assignmentParenElision: expected assignment RHS without redundant outer parentheses");
+        } else {
+            _f.add("assignmentParenElision: function body not found");
+        }
+
+        if (!_f.isEmpty()) {
+            throw new RuntimeException("Code structure validation FAILED:\n  " + String.join("\n  ", _f));
         }
     }
 
@@ -463,6 +507,18 @@ int w2lCountSimplifiedWhile(String body) {
 
     for (Double v : w2lFlat(_data, "const_condition_fold_values")) {
         mod.exerciseConstConditionFold(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "direct_labeled_if_values")) {
+        mod.exerciseDirectLabeledIf(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "direct_labeled_loop_values")) {
+        mod.exerciseDirectLabeledLoop(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "assignment_paren_elision_values")) {
+        mod.exerciseAssignmentParenElision(v.intValue());
     }
 
     for (Double v : w2lFlat(_data, "eqz_or_version_gate_values")) {

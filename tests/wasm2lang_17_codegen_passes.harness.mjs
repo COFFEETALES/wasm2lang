@@ -149,18 +149,28 @@ const runTest = function (buff, out, exports, data) {
     exports.exerciseConstConditionFold(v);
   }
 
+  for (const v of data.direct_labeled_if_values) {
+    exports.exerciseDirectLabeledIf(v);
+  }
+
+  for (const v of data.direct_labeled_loop_values) {
+    exports.exerciseDirectLabeledLoop(v);
+  }
+
+  for (const v of data.assignment_paren_elision_values) {
+    exports.exerciseAssignmentParenElision(v);
+  }
+
   for (const v of data.eqz_or_version_gate_values) {
     exports.exerciseEqzOrVersionGate(v);
   }
 };
 
 /**
- * Validates that wasm2lang:codegen structural transformations are present
- * in the generated asm.js code.  Only runs for the _codegen variant.
+ * Validates generated code structure across variants, with the heavier
+ * simplification checks enabled only for _codegen/_prenorm output.
  */
 const validateCode = function (code, testName) {
-  if (!testName.endsWith('_codegen') && !testName.endsWith('_prenorm')) return;
-
   // ---- export name -> internal function name map ----
   const retIdx = code.lastIndexOf('return {');
   if (retIdx < 0) throw new Error('validateCode: module return statement not found');
@@ -220,10 +230,14 @@ const validateCode = function (code, testName) {
 
   let b;
 
-  // Simplification checks only apply to the prenorm variant (--pre-normalized
-  // enables backend simplifications; the codegen variant verifies correctness
-  // without them).
-  const hasSimplifications = testName.endsWith('_prenorm') || testName.endsWith('_codegen');
+  // Simplification checks only apply to variants where wasm2lang:codegen has
+  // been applied with metadata still available at emit time (single-process
+  // codegen, or pre-normalized binary read with --pre-normalized).
+  const hasSimplifications = testName.endsWith('_prenorm') || testName.endsWith('_codegen') || testName.endsWith('_nomangle');
+  // IR restructuring (if-else recovery, guard elision) leaves the simplified
+  // shape in the IR itself, so it survives binary round-trip even without
+  // metadata.  Only the bare `_baseline` variant skips it entirely.
+  const hasIrRestructuring = !testName.endsWith('_baseline');
 
   if (hasSimplifications) {
     // -- while simplification --
@@ -427,60 +441,65 @@ const validateCode = function (code, testName) {
     }
   }
 
-  // -- if-else recovery (IR restructuring, always active) --
-  b = bodyOf('ifElseSimple');
-  check('ifElseSimple', b && /\}\s*else\s*\{/.test(b), 'expected if/else structure');
+  // -- if-else recovery (IR restructuring; baseline skips it) --
+  if (hasIrRestructuring) {
+    b = bodyOf('ifElseSimple');
+    check('ifElseSimple', b && /\}\s*else\s*\{/.test(b), 'expected if/else structure');
 
-  // -- guard elision (IR restructuring, always active) --
-  b = bodyOf('guardElisionProduct');
-  check('guardElisionProduct', b && !/\w+\s*:\s*\{/.test(b), 'expected guard elision (no labeled block)');
-
-  // -- local init folding (var declaration line contains folded values) --
-  b = bodyOf('localInitFolding');
-  if (b) {
-    const varLine = (b.match(/\bvar\b[^;]*;/) || [''])[0];
-    check('localInitFolding', /\b10\b/.test(varLine), 'expected var init with value 10');
-    check('localInitFolding', /\b20\b/.test(varLine), 'expected var init with value 20');
-  } else {
-    check('localInitFolding', false, 'function body not found');
+    // -- guard elision (IR restructuring; baseline skips it) --
+    b = bodyOf('guardElisionProduct');
+    check('guardElisionProduct', b && !/\w+\s*:\s*\{/.test(b), 'expected guard elision (no labeled block)');
   }
 
-  // -- local init folding mixed (non-foldable before foldable) --
-  b = bodyOf('localInitFoldingMixed');
-  if (b) {
-    const varLine = (b.match(/\bvar\b[^;]*;/) || [''])[0];
-    check('localInitFoldingMixed', /\b42\b/.test(varLine), 'expected var init with value 42');
-    // The non-foldable local.set (base = param + 100) must NOT be skipped.
-    check('localInitFoldingMixed', /100/.test(b), 'expected non-foldable base computation (+ 100) present');
-  } else {
-    check('localInitFoldingMixed', false, 'function body not found');
-  }
+  // -- local init folding (requires pass metadata; only active under
+  // simplification variants) --
+  if (hasSimplifications) {
+    b = bodyOf('localInitFolding');
+    if (b) {
+      const varLine = (b.match(/\bvar\b[^;]*;/) || [''])[0];
+      check('localInitFolding', /\b10\b/.test(varLine), 'expected var init with value 10');
+      check('localInitFolding', /\b20\b/.test(varLine), 'expected var init with value 20');
+    } else {
+      check('localInitFolding', false, 'function body not found');
+    }
 
-  // -- local init repeated set: first foldable, second is a runtime store --
-  // initOverrides records 10 on the first local; the second store (20) is
-  // preserved as a regular assignment.  The function returns x*20+30 so
-  // the value 20 must appear somewhere in the body.
-  b = bodyOf('localInitRepeatedSet');
-  if (b) {
-    const varLine = (b.match(/\bvar\b[^;]*;/) || [''])[0];
-    check('localInitRepeatedSet', /\b10\b/.test(varLine), 'expected var init with value 10 (first set folded)');
-    check('localInitRepeatedSet', /\b20\b/.test(b), 'expected runtime assignment of value 20 (second set NOT folded)');
-    check('localInitRepeatedSet', /\b30\b/.test(varLine), 'expected var init with value 30');
-  } else {
-    check('localInitRepeatedSet', false, 'function body not found');
-  }
+    // -- local init folding mixed (non-foldable before foldable) --
+    b = bodyOf('localInitFoldingMixed');
+    if (b) {
+      const varLine = (b.match(/\bvar\b[^;]*;/) || [''])[0];
+      check('localInitFoldingMixed', /\b42\b/.test(varLine), 'expected var init with value 42');
+      // The non-foldable local.set (base = param + 100) must NOT be skipped.
+      check('localInitFoldingMixed', /100/.test(b), 'expected non-foldable base computation (+ 100) present');
+    } else {
+      check('localInitFoldingMixed', false, 'function body not found');
+    }
 
-  // -- local init all-zero: no override values; leading sets become nops --
-  // hasOverrides is false (all folded values are zero) but hasZeroFolds is
-  // true, so the zeroFoldSet visitor replaces each leading local.set 0 with
-  // nop.  The body must still emit the subsequent non-zero assignments.
-  b = bodyOf('localInitAllZero');
-  if (b) {
-    check('localInitAllZero', /\b5\b/.test(b), 'expected (x+5) term present');
-    check('localInitAllZero', /\b3\b/.test(b), 'expected (x*3) term present');
-    check('localInitAllZero', /\b7\b/.test(b), 'expected (x-7) term present');
-  } else {
-    check('localInitAllZero', false, 'function body not found');
+    // -- local init repeated set: first foldable, second is a runtime store --
+    // initOverrides records 10 on the first local; the second store (20) is
+    // preserved as a regular assignment.  The function returns x*20+30 so
+    // the value 20 must appear somewhere in the body.
+    b = bodyOf('localInitRepeatedSet');
+    if (b) {
+      const varLine = (b.match(/\bvar\b[^;]*;/) || [''])[0];
+      check('localInitRepeatedSet', /\b10\b/.test(varLine), 'expected var init with value 10 (first set folded)');
+      check('localInitRepeatedSet', /\b20\b/.test(b), 'expected runtime assignment of value 20 (second set NOT folded)');
+      check('localInitRepeatedSet', /\b30\b/.test(varLine), 'expected var init with value 30');
+    } else {
+      check('localInitRepeatedSet', false, 'function body not found');
+    }
+
+    // -- local init all-zero: no override values; leading sets become nops --
+    // hasOverrides is false (all folded values are zero) but hasZeroFolds is
+    // true, so the zeroFoldSet visitor replaces each leading local.set 0 with
+    // nop.  The body must still emit the subsequent non-zero assignments.
+    b = bodyOf('localInitAllZero');
+    if (b) {
+      check('localInitAllZero', /\b5\b/.test(b), 'expected (x+5) term present');
+      check('localInitAllZero', /\b3\b/.test(b), 'expected (x*3) term present');
+      check('localInitAllZero', /\b7\b/.test(b), 'expected (x-7) term present');
+    } else {
+      check('localInitAllZero', false, 'function body not found');
+    }
   }
 
   // -- eqz(or(eq, eq)) compound negation (quic.js regression).
@@ -499,13 +518,9 @@ const validateCode = function (code, testName) {
     // `negateComparison_` used to emit.  Any safe form (`!(…)`, De Morgan,
     // `0 == (…)`, `(…) == 0`) is acceptable; the runtime exercise below is
     // what enforces overall semantics.
-    const hasMixedInequalityOr = /(?:!==?)\s*[-\d]+\s*[|&]\s*[^|&]*?===?\s*[-\d]+/.test(b) ||
-      /===?\s*[-\d]+\s*[|&]\s*[^|&]*?(?:!==?)\s*[-\d]+/.test(b);
-    check(
-      'eqzOrVersionGate',
-      !hasMixedInequalityOr,
-      'partial-flip compound condition would miscompile the quic version gate'
-    );
+    const hasMixedInequalityOr =
+      /(?:!==?)\s*[-\d]+\s*[|&]\s*[^|&]*?===?\s*[-\d]+/.test(b) || /===?\s*[-\d]+\s*[|&]\s*[^|&]*?(?:!==?)\s*[-\d]+/.test(b);
+    check('eqzOrVersionGate', !hasMixedInequalityOr, 'partial-flip compound condition would miscompile the quic version gate');
   } else {
     check('eqzOrVersionGate', false, 'function body not found');
   }
@@ -525,6 +540,41 @@ const validateCode = function (code, testName) {
     check('rootValueBlock', /return\s+[^;]*\+/.test(b), 'expected return to contain the `+` tail operator');
   } else {
     check('rootValueBlock', false, 'function body not found');
+  }
+
+  // -- direct labeled if: single-child named block should emit as
+  // `label: if (...) { ... }`, not `label: { if (...) { ... } }`.
+  b = bodyOf('directLabeledIf');
+  if (b) {
+    check('directLabeledIf', /[\w$]+\s*:\s*if\s*\(/.test(b), 'expected direct labeled if statement');
+    check('directLabeledIf', !/[\w$]+\s*:\s*\{\s*\n\s*if\s*\(/.test(b), 'expected labeled if without block wrapper');
+  } else {
+    check('directLabeledIf', false, 'function body not found');
+  }
+
+  // -- direct labeled loop: regardless of variant, the block+loop pair should
+  // collapse into a bare or directly-labeled loop, never a `label: { for(...) }`
+  // block wrapper around the loop.
+  b = bodyOf('directLabeledLoop');
+  if (b) {
+    check('directLabeledLoop', /(for\s*\(|while\s*\(|do\s*\{)/.test(b), 'expected loop statement in body');
+    check(
+      'directLabeledLoop',
+      !/[\w$]+\s*:\s*\{\s*\n\s*(for\s*\(|while\s*\(|do\s*\{)/.test(b),
+      'expected loop without block wrapper'
+    );
+  } else {
+    check('directLabeledLoop', false, 'function body not found');
+  }
+
+  // -- assignment RHS paren elision: whole select expression should not be
+  // wrapped as `lhs = (cond ? a : b);` when used as a statement assignment.
+  b = bodyOf('assignmentParenElision');
+  if (b) {
+    check('assignmentParenElision', /\?/.test(b), 'expected lowered select/conditional expression');
+    check('assignmentParenElision', !/=\s*\([^;\n]*\?/.test(b), 'expected assignment RHS without redundant outer parentheses');
+  } else {
+    check('assignmentParenElision', false, 'function body not found');
   }
 
   if (failures.length) {

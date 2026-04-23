@@ -216,6 +216,45 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.enter_ = functio
 };
 
 /**
+ * Re-runs the analysis half of the pass against a canonicalised module so
+ * that {@code localInitOverrides} reference local indices in their post
+ * binary round-trip ordering.  Binaryen's binary writer groups locals by
+ * type for compact LEB128 encoding, which renumbers {@code local.set}
+ * indices and invalidates indices recorded prior to the round-trip.  The
+ * analysis is idempotent — zero-valued folds were already replaced with
+ * nops in the original run and survive the round-trip, so the rerun only
+ * rebuilds the non-zero override map.
+ *
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Wasm.Tree.PassRunResult} passRunResult
+ * @param {!Binaryen} binaryen
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.reanalyzeOverrides = function (wasmModule, passRunResult, binaryen) {
+  var /** @const {!Array<!Wasm2Lang.Wasm.Tree.PassMetadata>} */ funcs = passRunResult.functions;
+  var /** @const {!Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} */ byName = Object.create(null);
+  for (var /** @type {number} */ i = 0, /** @const {number} */ n = funcs.length; i !== n; ++i) {
+    var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ entry = funcs[i];
+    if (entry.passFuncName) {
+      byName[/** @type {string} */ (entry.passFuncName)] = entry;
+    }
+  }
+  var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass} */ pass =
+      new Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass();
+  var /** @const {number} */ funcCount = wasmModule.getNumFunctions();
+  for (var /** @type {number} */ f = 0; f !== funcCount; ++f) {
+    var /** @const {number} */ funcPtr = wasmModule.getFunctionByIndex(f);
+    var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
+    if ('' !== funcInfo.base || 0 === funcInfo.body) continue;
+    var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm = byName[funcInfo.name];
+    if (!fm) continue;
+    fm.localInitOverrides = void 0;
+    fm._localInitZeroFoldSet = void 0;
+    pass.onFunctionEnter_(funcInfo, fm);
+  }
+};
+
+/**
  * Creates a visitor that replaces foldable local.set(const 0) with nop.
  * When no zero-value folds were identified, returns an empty visitor.
  *

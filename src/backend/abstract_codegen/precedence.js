@@ -29,6 +29,7 @@
  *   renderInfix: function(string, string, string, number, boolean=): string,
  *   formatCondition: function(string): string,
  *   stripOuter: function(string): string,
+ *   stripForAssignment: function(string): string,
  *   bitwiseInfo: function(string): {bitwisePrecedence: number, bitwiseAllowRightEqual: boolean}
  * }}
  */
@@ -328,6 +329,40 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
   stripOuter: function (expr) {
 
     return P.isFullyParenthesized(expr) ? expr.slice(1, -1) : expr;
+  },
+
+  /**
+   * Strips redundant outer parentheses when the expression occupies the full
+   * right-hand side of an assignment/declaration/store.
+   *
+   * Keep a top-level comma operator grouped so `a = (b, c)` does not degrade
+   * into `(a = b), c`.
+   *
+   * @param {string} expr
+   * @return {string}
+   */
+  stripForAssignment: function (expr) {
+    var /** @type {string} */ out = expr.trim();
+    while (P.isFullyParenthesized(out)) {
+      var /** @const {string} */ inner = out.slice(1, -1).trim();
+      var /** @type {number} */ depthParen = 0;
+      var /** @type {number} */ depthBracket = 0;
+      var /** @type {boolean} */ hasTopComma = false;
+      for (var /** @type {number} */ i = 0; i < inner.length; ++i) {
+        var /** @const {string} */ ch = inner.charAt(i);
+        if ('(' === ch) ++depthParen;
+        else if (')' === ch) --depthParen;
+        else if ('[' === ch) ++depthBracket;
+        else if (']' === ch) --depthBracket;
+        else if (',' === ch && 0 === depthParen && 0 === depthBracket) {
+          hasTopComma = true;
+          break;
+        }
+      }
+      if (hasTopComma) return out;
+      out = inner;
+    }
+    return out;
   },
 
   /**

@@ -217,26 +217,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNodeIndex_ = function (bin
 // ---------------------------------------------------------------------------
 
 /**
- * Splits an i64 BigInt into unsigned low / signed high 32-bit halves.
- * JSON.stringify cannot serialize BigInt, so i64 locals from
- * {@code localInitOverrides} must be rewritten into a {@code {low, high}}
- * pair before being embedded in the metadata custom section.  Backends
- * reconstruct the value through {@code AbstractCodegen.decomposeI64_}, which
- * accepts this shape alongside a raw BigInt.
- *
- * @private
- * @suppress {checkTypes}
- * @param {*} bv  The BigInt value.
- * @return {!Object<string, number>}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.splitI64Bigint_ = function (bv) {
-  var /** @const {!Object<string, number>} */ split = Object.create(null);
-  split['low'] = Number(BigInt(bv) & BigInt(0xffffffff)) >>> 0;
-  split['high'] = Number((BigInt(bv) >> BigInt(32)) & BigInt(0xffffffff)) | 0;
-  return split;
-};
-
-/**
  * Serializes a PassRunResult into a WASM custom section on the module.
  * Called after all wasm2lang:codegen normalization passes have completed.
  *
@@ -266,29 +246,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializePassRunResult = functi
         nodeIndex.nameToPos
       );
 
-    var /** @type {?Object<string, *>} */ liOverrides = null;
-    if (fm.localInitOverrides) {
-      var /** @const {!Object<string, *>} */ liSrc = /** @type {!Object<string, *>} */ (fm.localInitOverrides);
-      var /** @const {!Array<string>} */ liKeys = Object.keys(liSrc);
-      if (0 !== liKeys.length) {
-        liOverrides = Object.create(null);
-        for (var /** @type {number} */ li = 0, /** @const {number} */ liLen = liKeys.length; li < liLen; ++li) {
-          var /** @const {string} */ liKey = liKeys[li];
-          var /** @const {*} */ liVal = liSrc[liKey];
-          /** @type {!Object<string, *>} */ (liOverrides)[liKey] =
-            'bigint' === typeof liVal ? Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.splitI64Bigint_(liVal) : liVal;
-        }
-      }
-    }
+    if (0 === entries.length) continue;
 
-    if (0 === entries.length && !liOverrides) continue;
-
+    // localInitOverrides intentionally omitted — its keys are local indices,
+    // and binaryen's binary writer regroups locals by type, renumbering the
+    // local.set indices.  Re-derived from the canonicalised IR via
+    // {@link LocalInitFoldingPass.reanalyzeOverrides} after round-trip.
     var /** @const {!Object} */ funcEntry = Object.create(null);
     funcEntry['n'] = funcInfo.name;
     funcEntry['m'] = entries;
-    if (liOverrides) {
-      funcEntry['li'] = liOverrides;
-    }
     serializedFunctions[serializedFunctions.length] = funcEntry;
   }
 
@@ -536,15 +502,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult = function
       MS.restoreUnnamedPositions_(metaEntries, nodeIndex, binaryen);
 
       MS.applyMetadataEntries_(fm, metaEntries, nodeIndex.posToName, binaryen, wasmModule, bodyPtr, funcInfo.name);
-
-      var /** @type {*} */ rawLi = funcEntry['li'];
-      var /** @const {?Object<string, number>} */ liData = /** @type {?Object<string, number>} */ (rawLi || null);
-      if (liData) {
-        fm.localInitOverrides = liData;
-      }
-      // Legacy: lfc (localInitFoldCount) is no longer used.  Zero-value
-      // folds are handled by nop replacement in the normalization layer;
-      // non-zero folds use initOverrides (the 'li' field above).
     }
 
     funcsArray[funcsArray.length] = fm;

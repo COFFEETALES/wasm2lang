@@ -115,7 +115,12 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
       var /** @const {string} */ globalSetKey = '$g_' + this.safeName_(globalName);
       this.markBinding_(globalSetKey);
-      result = pad(ind) + this.n_(globalSetKey) + ' = ' + this.coerceToType_(binaryen, cr(0), cc(0), globalType) + ';\n';
+      result =
+        pad(ind) +
+        this.n_(globalSetKey) +
+        ' = ' +
+        A.Precedence_.stripForAssignment(this.coerceToType_(binaryen, cr(0), cc(0), globalType)) +
+        ';\n';
       break;
     }
     case binaryen.CallId: {

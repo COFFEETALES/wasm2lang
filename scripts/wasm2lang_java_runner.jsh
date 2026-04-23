@@ -10,7 +10,7 @@ import com.google.gson.reflect.TypeToken;
 java.util.Map<String, Object> w2lLoadSharedData(String testName) {
     if (testName == null || testName.isEmpty()) return java.util.Collections.emptyMap();
     String base = testName.contains("/") ? testName.substring(testName.lastIndexOf('/') + 1) : testName;
-    base = base.replaceAll("_(baseline|codegen|none|prenorm|nopre|nomangle)$", "");
+    base = base.replaceAll("_(baseline|codegen|none|prenorm|nopre|nomangle|codegen_max|prenorm_max)$", "");
     try {
         String c = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(base + ".shared.data.json")));
         return (java.util.Map<String, Object>) new Gson().fromJson(c, new TypeToken<java.util.Map<String, Object>>(){}.getType());

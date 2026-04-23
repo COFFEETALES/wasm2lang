@@ -98,15 +98,48 @@ if (!isset($memBuffer) || !isset($module)) {
     exit(1);
 }
 
+/**
+ * binaryen's optimize-for-js / avoid-reinterprets passes (active under
+ * binaryen:max for asmjs/javascript) replace reinterpret instructions
+ * with calls to these scratch helpers; provide an 8-byte buffer with
+ * aliased i32/f32/f64 views so generated code can round-trip
+ * i32<->f32 and i64<->f64 reinterprets.
+ */
+$__w2l_scratch = "\x00\x00\x00\x00\x00\x00\x00\x00";
+$__w2l_foreign = ($moduleImports ?? []);
+$__w2l_foreign['wasm2js_scratch_store_i32'] = function (int $idx, int $val) use (&$__w2l_scratch): void {
+    $bytes = pack('V', $val & 0xFFFFFFFF);
+    $off = $idx * 4;
+    for ($i = 0; $i < 4; ++$i) { $__w2l_scratch[$off + $i] = $bytes[$i]; }
+};
+$__w2l_foreign['wasm2js_scratch_load_i32'] = function (int $idx) use (&$__w2l_scratch): int {
+    $v = unpack('V', substr($__w2l_scratch, $idx * 4, 4))[1];
+    return ($v > 2147483647) ? ($v - 4294967296) : $v;
+};
+$__w2l_foreign['wasm2js_scratch_store_f32'] = function (float $val) use (&$__w2l_scratch): void {
+    $bytes = pack('g', $val);
+    for ($i = 0; $i < 4; ++$i) { $__w2l_scratch[$i] = $bytes[$i]; }
+};
+$__w2l_foreign['wasm2js_scratch_load_f32'] = function () use (&$__w2l_scratch): float {
+    return unpack('g', substr($__w2l_scratch, 0, 4))[1];
+};
+$__w2l_foreign['wasm2js_scratch_store_f64'] = function (float $val) use (&$__w2l_scratch): void {
+    $bytes = pack('e', $val);
+    for ($i = 0; $i < 8; ++$i) { $__w2l_scratch[$i] = $bytes[$i]; }
+};
+$__w2l_foreign['wasm2js_scratch_load_f64'] = function () use (&$__w2l_scratch): float {
+    return unpack('e', $__w2l_scratch)[1];
+};
+
 /** @var array */
-$exports = $module($moduleImports ?? [], $memBuffer);
+$exports = $module($__w2l_foreign, $memBuffer);
 // Alias — harness callbacks that captured &$instanceMemoryBuffer now see
 // the same string that the module closures mutate via &$buffer.
 $instanceMemoryBuffer = &$memBuffer;
 
 if (isset($runTest)) {
     $sharedData = null;
-    $testBase = preg_replace('/_(baseline|codegen|none|prenorm|nopre|nomangle)$/', '', basename($testName));
+    $testBase = preg_replace('/_(baseline|codegen|none|prenorm|nopre|nomangle|codegen_max|prenorm_max)$/', '', basename($testName));
     $dataPath = __DIR__ . '/' . $testBase . '.shared.data.json';
     if (is_file($dataPath)) {
         $sharedData = json_decode(file_get_contents($dataPath), true);

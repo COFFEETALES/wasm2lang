@@ -174,43 +174,53 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderStore_ = function (
   if (V.isF32(binaryen, wasmType)) {
     var /** @const {?string} */ reinterpret32Inner = this.unwrapF32ReinterpretI32_(valueExpr);
     if (null !== reinterpret32Inner) {
+      var /** @const {string} */ reinterpretedI32 = P.stripForAssignment(reinterpret32Inner);
       if (align >= bytes) {
         this.markBinding_('HEAP32');
-        return this.n_('HEAP32') + '[' + P.renderInfix(ptrExpr, '>>', '2', P.PREC_SHIFT_) + '] = ' + reinterpret32Inner + ';';
+        return this.n_('HEAP32') + '[' + P.renderInfix(ptrExpr, '>>', '2', P.PREC_SHIFT_) + '] = ' + reinterpretedI32 + ';';
       }
       var /** @const {string} */ i32StoreHelper = 1 === align ? '$w2l_store_i32_a1' : '$w2l_store_i32_a2';
       this.markHelper_(i32StoreHelper);
-      return this.n_(i32StoreHelper) + '(' + ptrExpr + ', ' + reinterpret32Inner + ');';
+      return this.n_(i32StoreHelper) + '(' + ptrExpr + ', ' + reinterpretedI32 + ');';
     }
   }
 
   if (V.isF64(binaryen, wasmType)) {
     var /** @const {?string} */ reinterpret64Inner = this.unwrapF64ReinterpretI64_(valueExpr);
     if (null !== reinterpret64Inner) {
+      var /** @const {string} */ reinterpretedI64 = P.stripForAssignment(reinterpret64Inner);
       if (align >= bytes) {
         this.markBinding_('HEAP64');
-        return this.n_('HEAP64') + '[' + P.renderInfix(ptrExpr, '>>', '3', P.PREC_SHIFT_) + '] = ' + reinterpret64Inner + ';';
+        return this.n_('HEAP64') + '[' + P.renderInfix(ptrExpr, '>>', '3', P.PREC_SHIFT_) + '] = ' + reinterpretedI64 + ';';
       }
       this.markHelper_('$w2l_store_i64');
-      return this.n_('$w2l_store_i64') + '(' + ptrExpr + ', ' + reinterpret64Inner + ');';
+      return this.n_('$w2l_store_i64') + '(' + ptrExpr + ', ' + reinterpretedI64 + ');';
     }
   }
 
   if (V.isI64(binaryen, wasmType)) {
     var /** @const {string} */ i64Value = this.coerceToType_(binaryen, valueExpr, valueCat, binaryen.i64);
+    var /** @const {string} */ storeI64Value = P.stripForAssignment(i64Value);
     if (8 === bytes) {
       if (align >= 8) {
         this.markBinding_('HEAP64');
-        return this.n_('HEAP64') + '[' + P.renderInfix(ptrExpr, '>>', '3', P.PREC_SHIFT_) + '] = ' + i64Value + ';';
+        return this.n_('HEAP64') + '[' + P.renderInfix(ptrExpr, '>>', '3', P.PREC_SHIFT_) + '] = ' + storeI64Value + ';';
       }
       this.markHelper_('$w2l_store_i64');
-      return this.n_('$w2l_store_i64') + '(' + ptrExpr + ', ' + i64Value + ');';
+      return this.n_('$w2l_store_i64') + '(' + ptrExpr + ', ' + storeI64Value + ');';
     }
     var /** @const {number} */ narrowBits = bytes << 3;
     this.markHelper_('$w2l_number');
     this.markHelper_('$w2l_bigint_asintn');
     var /** @const {string} */ narrowed =
-        this.n_('$w2l_number') + '(' + this.n_('$w2l_bigint_asintn') + '(' + narrowBits + ', ' + P.stripOuter(i64Value) + '))';
+        this.n_('$w2l_number') +
+        '(' +
+        this.n_('$w2l_bigint_asintn') +
+        '(' +
+        narrowBits +
+        ', ' +
+        P.stripOuter(storeI64Value) +
+        '))';
     var /** @type {string} */ storeView;
     var /** @type {string} */ storeShift;
     if (4 === bytes) {

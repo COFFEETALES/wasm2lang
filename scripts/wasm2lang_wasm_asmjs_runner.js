@@ -41,7 +41,7 @@ const wasm = !!obj['wasm'];
 
   let sharedData = null;
   try {
-    const testBase = testName.replace(/^.*\//, '').replace(/_(baseline|codegen|none|prenorm|nopre|nomangle)$/, '');
+    const testBase = testName.replace(/^.*\//, '').replace(/_(baseline|codegen|none|prenorm|nopre|nomangle|codegen_max|prenorm_max)$/, '');
     const dataPath = ['./', testBase, '.shared.data.json'].join('');
     if (isNode) {
       sharedData = JSON.parse(require('fs').readFileSync(dataPath, 'utf8'));
@@ -97,6 +97,23 @@ const wasm = !!obj['wasm'];
     foreign.__wasm2lang_trap = function () {
       throw new Error('wasm trap: integer overflow');
     };
+    // binaryen's optimize-for-js / avoid-reinterprets passes (active under
+    // binaryen:max for asmjs/javascript) replace reinterpret instructions
+    // with calls to these scratch helpers; provide an 8-byte buffer with
+    // aliased i32/f32/f64 views so generated code can round-trip
+    // i32<->f32 and i64<->f64 reinterprets.
+    {
+      const scratchBuffer = new ArrayBuffer(8);
+      const scratchI32 = new Int32Array(scratchBuffer);
+      const scratchF32 = new Float32Array(scratchBuffer);
+      const scratchF64 = new Float64Array(scratchBuffer);
+      foreign.wasm2js_scratch_store_i32 = function (idx, val) { scratchI32[idx] = val | 0; };
+      foreign.wasm2js_scratch_load_i32 = function (idx) { return scratchI32[idx] | 0; };
+      foreign.wasm2js_scratch_store_f32 = function (val) { scratchF32[0] = val; };
+      foreign.wasm2js_scratch_load_f32 = function () { return scratchF32[0]; };
+      foreign.wasm2js_scratch_store_f64 = function (val) { scratchF64[0] = val; };
+      foreign.wasm2js_scratch_load_f64 = function () { return scratchF64[0]; };
+    }
     const l = module(isNode ? global : globalThis, foreign, memBuffer);
     harness.runTest((instanceMemoryBuffer = memBuffer), stdoutWrite, l, sharedData);
   }

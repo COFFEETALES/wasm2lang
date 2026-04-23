@@ -110,7 +110,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {string} */ javaGlobalSetKey = '$g_' + this.safeName_(globalName);
       this.markBinding_(javaGlobalSetKey);
       result =
-        pad(ind) + 'this.' + this.n_(javaGlobalSetKey) + ' = ' + this.coerceToType_(binaryen, cr(0), cc(0), globalType) + ';\n';
+        pad(ind) +
+        'this.' +
+        this.n_(javaGlobalSetKey) +
+        ' = ' +
+        A.Precedence_.stripForAssignment(this.coerceToType_(binaryen, cr(0), cc(0), globalType)) +
+        ';\n';
       break;
     }
     case binaryen.CallId: {

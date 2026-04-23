@@ -28,6 +28,7 @@ Wasm2Lang.Backend.Php64Codegen.LabelEntry_;
  *   wasmModule: !BinaryenModule,
  *   visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor,
  *   pendingBlockFusion: string,
+ *   fusedBlockNames: !Object<string, boolean>,
  *   usedCaptures: !Object<string, boolean>,
  *   rootSwitchExitMap: ?Object<string, !Array<number>>,
  *   rootSwitchRsName: string,
@@ -142,6 +143,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.adjustLeaveIndent_ = function (state, n
     // fused (metadata position drift), so we must undo indent + pop.
     var /** @type {boolean} */ isFused =
         !!lfp && (!('a' === lfp.fusionVariant) || this.detectBlockLoopFusionFromIR_(binaryen, expr));
+    // IR-based fusion path: enter handler recorded the block in
+    // {@code state.fusedBlockNames} when it skipped pushing the label,
+    // so the leave handler must skip the pop in lockstep.  This runtime
+    // record stays correct even when {@code useSimplifications_} is off
+    // (baseline / nopre variants where {@code getBlockFusionPlan_} returns null).
+    if (!isFused && state.fusedBlockNames && state.fusedBlockNames[bn]) {
+      isFused = true;
+    }
     var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn);
     if (!isFused && !isRootSwitch) {
       --state.indent;
@@ -225,6 +234,11 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, no
   if (blockName) {
     var /** @const {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ bfp = this.getBlockFusionPlan_(state.functionInfo.name, blockName);
     isFused = !!bfp && (!('a' === bfp.fusionVariant) || this.detectBlockLoopFusionFromIR_(state.binaryen, expr));
+    // IR-only fusion path (baseline / nopre): no metadata, but enter handler
+    // recorded the block in {@code state.fusedBlockNames}.
+    if (!isFused && state.fusedBlockNames && state.fusedBlockNames[blockName]) {
+      isFused = true;
+    }
   }
   var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
   var /** @const {number} */ emitCount = A.reachableBlockChildCount_(state.binaryen, expr);
@@ -377,7 +391,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {string} */ globalSetVar = this.phpVar_(globalSetKey);
       state.usedCaptures[globalSetVar] = true;
       this.markBinding_(globalSetKey);
-      result = pad(ind) + globalSetVar + ' = ' + this.coerceToType_(binaryen, cr(0), cc(0), globalType) + ';\n';
+      result =
+        pad(ind) +
+        globalSetVar +
+        ' = ' +
+        A.Precedence_.stripForAssignment(this.coerceToType_(binaryen, cr(0), cc(0), globalType)) +
+        ';\n';
       break;
     }
     case binaryen.CallId: {
@@ -839,8 +858,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
         } else {
           state.labelStack[state.labelStack.length - 1].alias = bName;
         }
-      } else if (this.useSimplifications_ && this.detectBlockLoopFusionFromIR_(binaryen, expr)) {
+      } else if (this.detectBlockLoopFusionFromIR_(binaryen, expr)) {
         state.pendingBlockFusion = bName;
+        state.fusedBlockNames[bName] = true;
         if (this.irFusedBlocks_) this.irFusedBlocks_[fName + '\0' + bName] = 'a';
       } else if (this.isBlockRootSwitch_(fName, bName)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};

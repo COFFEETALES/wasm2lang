@@ -198,9 +198,13 @@ Wasm2Lang.Processor.transpile_ = function (options) {
     var /** @const {?Object} */ parsedMeta = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.deserializeFromBinary(
         /** @type {!Uint8Array} */ (options.inputData)
       );
+    var /** @type {?Wasm2Lang.Wasm.Tree.PassRunResult} */ rebuiltResult = null;
     if (parsedMeta) {
-      var /** @const {!Wasm2Lang.Wasm.Tree.PassRunResult} */ rebuiltResult =
-          Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult(wasmModule, parsedMeta, preNormBinaryen);
+      rebuiltResult = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult(
+        wasmModule,
+        parsedMeta,
+        preNormBinaryen
+      );
       codegen.setPassRunResult_(rebuiltResult);
     }
     // Clean up redundant blocks introduced by binaryen during binary
@@ -213,6 +217,12 @@ Wasm2Lang.Processor.transpile_ = function (options) {
       [new Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass()],
       preNormBinaryen
     );
+    // Re-derive local-init overrides from the loaded IR.  The original
+    // analysis ran before the binary writer regrouped locals by type, so
+    // the indices recorded in metadata would point at the wrong locals.
+    if (rebuiltResult) {
+      Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.reanalyzeOverrides(wasmModule, rebuiltResult, preNormBinaryen);
+    }
     codegen.enableSimplifications_();
   }
 

@@ -73,21 +73,23 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
   align,
   opt_valueCat
 ) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const {number} */ valueCat = void 0 !== opt_valueCat ? opt_valueCat : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
   // asm.js heap stores accept intish for i32 — skip coercion when already intish.
   var /** @const {string} */ coercedValue =
       Wasm2Lang.Backend.I32Coercion.INTISH === valueCat && Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)
         ? valueExpr
         : this.coerceToType_(binaryen, valueExpr, valueCat, wasmType);
+  var /** @const {string} */ storeValue = P.stripForAssignment(coercedValue);
   if (Wasm2Lang.Backend.ValueType.isFloat(binaryen, wasmType)) {
     // Use direct HEAPF32/HEAPF64 when alignment is declared sufficient.
     // Fall back to byte-copy helpers for sub-natural alignment.
     if (align >= bytes) {
-      return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, true) + ' = ' + coercedValue + ';';
+      return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, true) + ' = ' + storeValue + ';';
     }
     var /** @const {string} */ storeName = '$w2l_store_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, wasmType);
     this.markHelper_(storeName);
-    return this.n_(storeName) + '(' + ptrExpr + ', ' + coercedValue + ');';
+    return this.n_(storeName) + '(' + ptrExpr + ', ' + storeValue + ');';
   }
   // Integer stores with sub-natural alignment: the asm.js typed-array shift
   // (>> 1 for HEAP16, >> 2 for HEAP32) truncates the address to an aligned
@@ -97,15 +99,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
     var /** @const {string} */ intStoreName = '$w2l_store_i' + (bytes << 3) + '_a' + align;
     this.markHelper_(intStoreName);
     return (
-      this.n_(intStoreName) +
-      '(' +
-      Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(ptrExpr) +
-      ', ' +
-      coercedValue +
-      ');'
+      this.n_(intStoreName) + '(' + Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(ptrExpr) + ', ' + storeValue + ');'
     );
   }
-  return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, true) + ' = ' + coercedValue + ';';
+  return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, true) + ' = ' + storeValue + ';';
 };
 
 // ---------------------------------------------------------------------------

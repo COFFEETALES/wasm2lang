@@ -438,6 +438,39 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectBlockLoopFusionFromIR_ = funct
 };
 
 /**
+ * Returns true when a named block can be emitted as a directly labeled
+ * statement instead of a labeled block wrapper.
+ *
+ * Applies only to single-child named blocks whose sole child is a void/
+ * unreachable-typed if.  Loops are excluded because they already emit their
+ * own label, and asm.js rejects double-labeled statements like
+ * {@code outer: inner: for (;;) ...}.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} expr
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.canDirectLabelNamedBlock_ = function (binaryen, expr) {
+  if (binaryen.BlockId !== expr.id || !expr.name) return false;
+  var /** @const {!Array<number>|void} */ children = /** @type {!Array<number>|void} */ (expr.children);
+  if (!children || children.length < 1) return false;
+  // Binaryen may append a synthetic typed-unreachable sibling after a
+  // terminator in the binary round-trip; treat the block as single-child
+  // when only one reachable child precedes that artifact.
+  var /** @const {number} */ reachableCount = Wasm2Lang.Backend.AbstractCodegen.reachableBlockChildCount_(binaryen, expr);
+  if (1 !== reachableCount) return false;
+  var /** @const {!BinaryenExpressionInfo} */ childInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+      binaryen,
+      children[0]
+    );
+  return (
+    binaryen.IfId === childInfo.id &&
+    (binaryen.none === childInfo.type || 0 === childInfo.type || binaryen.unreachable === childInfo.type)
+  );
+};
+
+/**
  * IR-based fallback detection for loop simplification patterns.
  * Inspects the loop body structure to determine if it matches a while,
  * dowhile, or for pattern.  Used when metadata-based loop plans are
@@ -565,18 +598,26 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
           // Variant 'a': block wraps a loop as its sole child.
           // After binary round-trip, metadata positions may drift, pointing
           // to a block that is NOT a simple block-loop wrapper.  Validate
-          // the structure before accepting the fusion plan.
+          // the structure before accepting the fusion plan; on mismatch, fall
+          // through to the generic named-block path.
           if (this.detectBlockLoopFusionFromIR_(binaryen, expr)) {
             state.pendingBlockFusion = bName;
-          } else {
-            ++state.indent;
+            return null;
           }
         } else {
           state.fusedBlockToLoop[bName] = state.currentLoopName;
+          return null;
         }
-      } else if (this.useSimplifications_ && this.detectBlockLoopFusionFromIR_(binaryen, expr)) {
+      } else if (this.detectBlockLoopFusionFromIR_(binaryen, expr)) {
+        // Block-loop fusion is a pure backend optimization: a named block
+        // whose only child is a loop collapses into the loop, with breaks
+        // targeting the block rerouted to the loop label.  Apply even
+        // without simplification metadata so baseline/nopre output gets
+        // {@code label: for(;;)...} instead of {@code label: { for(;;)... }},
+        // which asm.js rejects as a double label when both names are kept.
         state.pendingBlockFusion = bName;
         if (this.irFusedBlocks_) this.irFusedBlocks_[fName + '\0' + bName] = 'a';
+        return null;
       } else if (this.isBlockRootSwitch_(fName, bName)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else if (this.isBlockSwitchDispatch_(fName, bName)) {
@@ -592,11 +633,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
         }
         // Metadata rebuilt from a pre-normalized binary can point at a block
         // whose dispatch wrapper was flattened or otherwise drifted.  Falling
-        // back to normal block emission preserves semantics; forcing the
-        // flat-switch path here would emit `switch (|0) {}` from the empty
-        // fallback descriptor returned by extractStructure().
-        ++state.indent;
-      } else {
+        // back to the generic named-block path preserves semantics; forcing
+        // the flat-switch path here would emit `switch (|0) {}` from the
+        // empty fallback descriptor returned by extractStructure().
+      }
+      if (!this.canDirectLabelNamedBlock_(binaryen, expr)) {
         ++state.indent;
       }
     }
@@ -631,8 +672,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
 /**
  * Shared leave-callback indent adjustment for labeled-break backends.
  * Decrements state.indent for LoopId, IfId, and named blocks (excluding
- * fused blocks and root-switch blocks).  PHP overrides its leave callback
- * entirely because it additionally pops labelStack entries.
+ * fused blocks, direct-labeled blocks, and root-switch blocks).  PHP
+ * overrides its leave callback entirely because it additionally pops
+ * labelStack entries.
  *
  * @protected
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
@@ -653,6 +695,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.adjustLeaveIndent_ = function (state
     var /** @const {string} */ bn = /** @type {string} */ (expr.name);
     var /** @const {string} */ fn = state.functionInfo.name;
     var /** @const {string|undefined} */ fusedTarget = state.fusedBlockToLoop[bn];
+    var /** @const {boolean} */ canDirectLabel = this.canDirectLabelNamedBlock_(binaryen, expr);
     // '*' is the switch-sentinel redirect used by flat-switch emission; it
     // suppresses labeled breaks but does not represent a block-loop fusion,
     // so the enter/leave indent bump around the dispatch outer must still
@@ -660,7 +703,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.adjustLeaveIndent_ = function (state
     // the simplified-loop emitter instead.
     var /** @const {boolean} */ isFused = !!fusedTarget && fusedTarget !== '*';
     var /** @const {boolean} */ isRootSwitch = this.isBlockRootSwitch_(fn, bn);
-    if (!isFused && !isRootSwitch) {
+    if (!isFused && !isRootSwitch && !canDirectLabel) {
       --state.indent;
     }
   }
@@ -925,8 +968,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state
 
 /**
  * Emits a BlockId node body for labeled-break backends (asm.js, Java).
- * Handles fused blocks and child assembly.  PHP overrides to use
- * {@code do { } while (false)} wrapping instead of labeled blocks.
+ * Handles fused blocks, direct-labeled single statements, and child
+ * assembly.  PHP overrides to use {@code do { } while (false)} wrapping
+ * instead of labeled blocks.
  *
  * @protected
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
@@ -945,7 +989,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
   // drift after binary round-trip; fusedBlockToLoop is set only when the
   // block-loop fusion actually occurred in emitEnter_.
   var /** @const {boolean} */ isFused = !!blockName && !!state.fusedBlockToLoop[blockName];
-  var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
+  var /** @const {boolean} */ canDirectLabel = !!blockName && this.canDirectLabelNamedBlock_(state.binaryen, expr);
+  var /** @const {number} */ childInd = blockName && !isFused && !canDirectLabel ? ind + 1 : ind;
   var /** @const {number} */ emitCount = A.reachableBlockChildCount_(state.binaryen, expr);
   var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
   if (isFused) {
@@ -965,7 +1010,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
           'Use binaryen:min normalization to flatten value-typed blocks before codegen.'
       );
     }
-    return pad(ind) + this.labelN_(state.labelMap, blockName) + ': {\n' + blockBody + pad(ind) + '}\n';
+    var /** @const {string} */ labelHead = this.labelN_(state.labelMap, blockName) + ': ';
+    if (canDirectLabel) {
+      // Child statement was emitted at the same indent as this block, so
+      // the leading pad is replaced by the label prefix.
+      return pad(ind) + labelHead + blockBody.slice(pad(ind).length);
+    }
+    return pad(ind) + labelHead + '{\n' + blockBody + pad(ind) + '}\n';
   }
   return blockBody;
 };
@@ -1660,7 +1711,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLocalSet_ = function (
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const {number} */ localType = Wasm2Lang.Backend.ValueType.getLocalType(binaryen, functionInfo, localIndex);
-  var /** @const {string} */ setValue = this.coerceToType_(binaryen, valueExpr, valueCat, localType);
+  var /** @const {string} */ setValue = A.Precedence_.stripForAssignment(
+      this.coerceToType_(binaryen, valueExpr, valueCat, localType)
+    );
   if (isTee) {
     return {
       emittedString: '(' + this.localN_(localIndex) + ' = ' + setValue + ')',

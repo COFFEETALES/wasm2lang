@@ -225,52 +225,55 @@ $validateCode = function (string $code, string $testName): void {
     $b = w2lBodyOf($code, 'guardElisionProduct');
     $check('guardElisionProduct', $b !== null && !preg_match('/while\s*\(\s*false\s*\)/', $b), 'expected guard elision (no labeled block wrapper)');
 
-    // -- local init folding --
+    // -- local init folding (requires pass metadata; only active under
+    // simplification variants) --
     // PHP declarations are semicolon-joined on one line: $l1 = 10; $l2 = 20; ...
     // Match a line with 2+ "$var = val;" assignments and check for folded values.
-    $b = w2lBodyOf($code, 'localInitFolding');
-    if ($b !== null) {
-        $hasDeclLine = preg_match('/^[ \t]*(\$\w+\s*=\s*[^;]+;\s*){2,}/m', $b, $declMatch);
-        $check('localInitFolding', $hasDeclLine && strpos($declMatch[0], '10') !== false, 'expected init value 10 in declarations');
-        $check('localInitFolding', $hasDeclLine && strpos($declMatch[0], '20') !== false, 'expected init value 20 in declarations');
-    } else {
-        $check('localInitFolding', false, 'function body not found');
-    }
+    if ($hasSimplifications) {
+        $b = w2lBodyOf($code, 'localInitFolding');
+        if ($b !== null) {
+            $hasDeclLine = preg_match('/^[ \t]*(\$\w+\s*=\s*[^;]+;\s*){2,}/m', $b, $declMatch);
+            $check('localInitFolding', $hasDeclLine && strpos($declMatch[0], '10') !== false, 'expected init value 10 in declarations');
+            $check('localInitFolding', $hasDeclLine && strpos($declMatch[0], '20') !== false, 'expected init value 20 in declarations');
+        } else {
+            $check('localInitFolding', false, 'function body not found');
+        }
 
-    // -- local init folding mixed (non-foldable before foldable) --
-    $b = w2lBodyOf($code, 'localInitFoldingMixed');
-    if ($b !== null) {
-        $hasDeclLine = preg_match('/^[ \t]*(\$\w+\s*=\s*[^;]+;\s*){2,}/m', $b, $declMatch);
-        $check('localInitFoldingMixed', $hasDeclLine && strpos($declMatch[0], '42') !== false, 'expected init value 42 in declarations');
-        $check('localInitFoldingMixed', strpos($b, '100') !== false, 'expected non-foldable base computation (+ 100) present');
-    } else {
-        $check('localInitFoldingMixed', false, 'function body not found');
-    }
+        // -- local init folding mixed (non-foldable before foldable) --
+        $b = w2lBodyOf($code, 'localInitFoldingMixed');
+        if ($b !== null) {
+            $hasDeclLine = preg_match('/^[ \t]*(\$\w+\s*=\s*[^;]+;\s*){2,}/m', $b, $declMatch);
+            $check('localInitFoldingMixed', $hasDeclLine && strpos($declMatch[0], '42') !== false, 'expected init value 42 in declarations');
+            $check('localInitFoldingMixed', strpos($b, '100') !== false, 'expected non-foldable base computation (+ 100) present');
+        } else {
+            $check('localInitFoldingMixed', false, 'function body not found');
+        }
 
-    // -- local init repeated set: first foldable, second is a runtime store --
-    // initOverrides records 10 on the first local; the second store (20) is
-    // preserved as a regular assignment.  The function returns x*20+30.
-    $b = w2lBodyOf($code, 'localInitRepeatedSet');
-    if ($b !== null) {
-        $hasDeclLine = preg_match('/^[ \t]*(\$\w+\s*=\s*[^;]+;\s*){2,}/m', $b, $declMatch);
-        $check('localInitRepeatedSet', $hasDeclLine && strpos($declMatch[0], '10') !== false, 'expected init value 10 in declarations (first set folded)');
-        $check('localInitRepeatedSet', strpos($b, '20') !== false, 'expected runtime assignment of value 20 (second set NOT folded)');
-        $check('localInitRepeatedSet', $hasDeclLine && strpos($declMatch[0], '30') !== false, 'expected init value 30 in declarations (other local folded)');
-    } else {
-        $check('localInitRepeatedSet', false, 'function body not found');
-    }
+        // -- local init repeated set: first foldable, second is a runtime store --
+        // initOverrides records 10 on the first local; the second store (20) is
+        // preserved as a regular assignment.  The function returns x*20+30.
+        $b = w2lBodyOf($code, 'localInitRepeatedSet');
+        if ($b !== null) {
+            $hasDeclLine = preg_match('/^[ \t]*(\$\w+\s*=\s*[^;]+;\s*){2,}/m', $b, $declMatch);
+            $check('localInitRepeatedSet', $hasDeclLine && strpos($declMatch[0], '10') !== false, 'expected init value 10 in declarations (first set folded)');
+            $check('localInitRepeatedSet', strpos($b, '20') !== false, 'expected runtime assignment of value 20 (second set NOT folded)');
+            $check('localInitRepeatedSet', $hasDeclLine && strpos($declMatch[0], '30') !== false, 'expected init value 30 in declarations (other local folded)');
+        } else {
+            $check('localInitRepeatedSet', false, 'function body not found');
+        }
 
-    // -- local init all-zero: leading zero sets become nops; subsequent runtime sets emit --
-    // hasOverrides is false (all folded values are zero) but hasZeroFolds is
-    // true, so the zeroFoldSet visitor replaces each leading local.set 0 with
-    // nop.  The body must still emit the non-zero runtime assignments.
-    $b = w2lBodyOf($code, 'localInitAllZero');
-    if ($b !== null) {
-        $check('localInitAllZero', (bool) preg_match('/\b5\b/', $b), 'expected (x+5) term present');
-        $check('localInitAllZero', (bool) preg_match('/\b3\b/', $b), 'expected (x*3) term present');
-        $check('localInitAllZero', (bool) preg_match('/\b7\b/', $b), 'expected (x-7) term present');
-    } else {
-        $check('localInitAllZero', false, 'function body not found');
+        // -- local init all-zero: leading zero sets become nops; subsequent runtime sets emit --
+        // hasOverrides is false (all folded values are zero) but hasZeroFolds is
+        // true, so the zeroFoldSet visitor replaces each leading local.set 0 with
+        // nop.  The body must still emit the non-zero runtime assignments.
+        $b = w2lBodyOf($code, 'localInitAllZero');
+        if ($b !== null) {
+            $check('localInitAllZero', (bool) preg_match('/\b5\b/', $b), 'expected (x+5) term present');
+            $check('localInitAllZero', (bool) preg_match('/\b3\b/', $b), 'expected (x*3) term present');
+            $check('localInitAllZero', (bool) preg_match('/\b7\b/', $b), 'expected (x-7) term present');
+        } else {
+            $check('localInitAllZero', false, 'function body not found');
+        }
     }
 
     // -- eqz(or(eq, eq)) compound negation (quic.js regression).
@@ -310,6 +313,15 @@ $validateCode = function (string $code, string $testName): void {
         $check('rootValueBlock', (bool) preg_match('/return\s+[^;]*\+/', $b), 'expected return to contain the `+` tail operator');
     } else {
         $check('rootValueBlock', false, 'function body not found');
+    }
+
+    // -- assignment RHS paren elision --
+    $b = w2lBodyOf($code, 'assignmentParenElision');
+    if ($b !== null) {
+        $check('assignmentParenElision', (bool) preg_match('/\?/', $b), 'expected lowered select/conditional expression');
+        $check('assignmentParenElision', !preg_match('/=\s*\([^;\n]*\?/', $b), 'expected assignment RHS without redundant outer parentheses');
+    } else {
+        $check('assignmentParenElision', false, 'function body not found');
     }
 
     if (count($failures) > 0) {
@@ -465,6 +477,18 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
 
     foreach ($data['const_condition_fold_values'] as $v) {
         $exports['exerciseConstConditionFold']($v);
+    }
+
+    foreach ($data['direct_labeled_if_values'] as $v) {
+        $exports['exerciseDirectLabeledIf']($v);
+    }
+
+    foreach ($data['direct_labeled_loop_values'] as $v) {
+        $exports['exerciseDirectLabeledLoop']($v);
+    }
+
+    foreach ($data['assignment_paren_elision_values'] as $v) {
+        $exports['exerciseAssignmentParenElision']($v);
     }
 
     foreach ($data['eqz_or_version_gate_values'] as $v) {

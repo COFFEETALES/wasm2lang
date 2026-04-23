@@ -1721,6 +1721,84 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // directLabeledIf: named block with a single If child.
+  //
+  // JS/asm.js/Java can label the if-statement directly:
+  //   label: if (...) { ... }
+  // instead of:
+  //   label: { if (...) { ... } }
+  //
+  // params: x(0)
+  // Returns: 1 when x > 0 and x != 7, else 0.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'directLabeledIf',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [],
+    module.block(null, [
+      module.block('directLabeledIfExit', [
+        module.if(
+          module.i32.gt_s(p(0), i32(0)),
+          module.block(null, [module.if(module.i32.eq(p(0), i32(7)), module.br('directLabeledIfExit')), module.return(i32(1))])
+        )
+      ]),
+      module.return(i32(0))
+    ])
+  );
+
+  // exerciseDirectLabeledIf(x: i32): void
+  module.addFunction(
+    'exerciseDirectLabeledIf',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('directLabeledIf', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // directLabeledLoop: named block with a single Loop child.
+  //
+  // In baseline / nopre output the backend should be able to emit:
+  //   label: for (;;) { ... }
+  // instead of:
+  //   label: { for (;;) { ... } }
+  //
+  // params: x(0)  locals: trips(1)
+  // Returns: 1 when x > 0 after two trips, else 0.
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'directLabeledLoop',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.local.set(1, i32(2)),
+      module.block('directLabeledLoopExit', [
+        module.loop(
+          'directLabeledLoopBody',
+          module.block(null, [
+            module.if(module.i32.le_s(p(0), i32(0)), module.br('directLabeledLoopExit')),
+            module.local.set(1, module.i32.sub(p(1), i32(1))),
+            module.if(module.i32.eqz(p(1)), module.return(i32(1))),
+            module.br('directLabeledLoopBody')
+          ])
+        )
+      ]),
+      module.return(i32(0))
+    ])
+  );
+
+  // exerciseDirectLabeledLoop(x: i32): void
+  module.addFunction(
+    'exerciseDirectLabeledLoop',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('directLabeledLoop', [p(0)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // eqzOrVersionGate: Regression for the quic.js AES-GCM failure.
   //
   //   (if (i32.eqz (i32.or (i32.eq v K1) (i32.eq v K2)))
@@ -1750,6 +1828,36 @@
       ),
       module.return(i32(1))
     ])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
+  // assignmentParenElision: select assigned into a local.
+  //
+  // The backend may still need coercions around the selected value, but
+  // the full RHS must not be wrapped in redundant outer parentheses in
+  // assignment position.
+  //
+  // params: x(0)  locals: out(1)
+  // Returns: x != 0 ? x + 10 : 10 - x
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'assignmentParenElision',
+    binaryen.createType([binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.local.set(1, module.select(p(0), module.i32.add(p(0), i32(10)), module.i32.sub(i32(10), p(0)))),
+      module.return(p(1))
+    ])
+  );
+
+  // exerciseAssignmentParenElision(x: i32): void
+  module.addFunction(
+    'exerciseAssignmentParenElision',
+    binaryen.createType([binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('assignmentParenElision', [p(0)], binaryen.i32)), module.return()])
   );
 
   // exerciseEqzOrVersionGate(version: i32): void
@@ -1836,6 +1944,12 @@
   module.addFunctionExport('exerciseRootValueBlock', 'exerciseRootValueBlock');
   module.addFunctionExport('constConditionFold', 'constConditionFold');
   module.addFunctionExport('exerciseConstConditionFold', 'exerciseConstConditionFold');
+  module.addFunctionExport('directLabeledIf', 'directLabeledIf');
+  module.addFunctionExport('exerciseDirectLabeledIf', 'exerciseDirectLabeledIf');
+  module.addFunctionExport('directLabeledLoop', 'directLabeledLoop');
+  module.addFunctionExport('exerciseDirectLabeledLoop', 'exerciseDirectLabeledLoop');
+  module.addFunctionExport('assignmentParenElision', 'assignmentParenElision');
+  module.addFunctionExport('exerciseAssignmentParenElision', 'exerciseAssignmentParenElision');
   module.addFunctionExport('eqzOrVersionGate', 'eqzOrVersionGate');
   module.addFunctionExport('exerciseEqzOrVersionGate', 'exerciseEqzOrVersionGate');
 
@@ -2189,6 +2303,24 @@
   );
 
   data.const_condition_fold_values = [-100, -1, 0, 1, 2, 5, 10, 42, 100, 1000].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  data.direct_labeled_if_values = [-10, -1, 0, 1, 5, 7, 10].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  data.direct_labeled_loop_values = [-10, -1, 0, 1, 2, 5].concat(
+    Array.from({length: 4}, function () {
+      return common.rand.smallI32();
+    })
+  );
+
+  data.assignment_paren_elision_values = [-10, -3, -1, 0, 1, 2, 5, 10].concat(
     Array.from({length: 4}, function () {
       return common.rand.smallI32();
     })

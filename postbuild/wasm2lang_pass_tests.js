@@ -184,6 +184,13 @@ var switchDispatch = new PassFamily('switch-dispatch', 'switch_dispatch.wast', f
   assertDispatchKey(result, 'wrappingDispatchEpilogue', 'switchDispatch', 'w2l_switch$');
   assertMetadataNull(result, 'wrappingDispatchEpilogue', 'rootSwitch');
 
+  // Epilogue chain-name break: dispatch whose epilogue contains a br to one
+  // of the chain block names.  Detection itself must still emit w2l_switch$;
+  // emission correctness (no `break $_;`) is covered by the structural
+  // regex in tests/wasm2lang_17_codegen_passes.harness.mjs.
+  assertDispatchKey(result, 'epilogueChainBreak', 'switchDispatch', 'w2l_switch$');
+  assertMetadataNull(result, 'epilogueChainBreak', 'rootSwitch');
+
   // Terminator-ended dispatch: intermediate blocks end with return
   // rather than unconditional break — still detected as w2l_switch$.
   assertDispatchKey(result, 'terminatorDispatch', 'switchDispatch', 'w2l_switch$');

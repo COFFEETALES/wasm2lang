@@ -144,6 +144,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
         wasmModule: wasmModule,
         visitor: null,
         pendingBlockFusion: '',
+        fusedBlockNames: /** @type {!Object<string, boolean>} */ (Object.create(null)),
         rootSwitchExitMap: null,
         rootSwitchRsName: '',
         rootSwitchLoopName: '',

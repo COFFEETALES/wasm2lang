@@ -91,6 +91,34 @@
     (local.get $result)
   )
 
+  ;; Epilogue chain-name break: the epilogue contains `br $chainBlockName`
+  ;; where the target is one of the dispatch chain blocks.  No case action
+  ;; crosses a loop (so requiresLabel from the case-action scan is false),
+  ;; but the epilogue does reference a chain name — without the epilogue
+  ;; scan in SwitchDispatchApplication.extractStructure, requiresLabel
+  ;; stays false and chain names redirect to the '*' switch sentinel,
+  ;; producing `break $_;` (safeIdentifier_('*') == '_') in the epilogue
+  ;; and breaking asm.js / JS validation.
+  (func $epilogueChainBreak (param $n i32) (result i32)
+    (local $result i32)
+    (block $ecbOuter
+      (block $ecbChain
+        (block $ecbCase1
+          (block $ecbCase0
+            (br_table $ecbCase0 $ecbCase1 $ecbChain (local.get $n)))
+          (local.set $result (i32.const 10))
+          (br $ecbChain))
+        (local.set $result (i32.const 20))
+        (br $ecbChain))
+      ;; epilogue: chain-name break targeting $ecbOuter (a chain name)
+      (if (i32.gt_s (local.get $n) (i32.const 100))
+        (then
+          (local.set $result (i32.const 99))
+          (br $ecbOuter)))
+      (local.set $result (i32.add (local.get $result) (i32.const 1))))
+    (local.get $result)
+  )
+
   ;; Terminator-ended dispatch: intermediate blocks end with return
   ;; (not unconditional break).  All case actions are terminal, so no
   ;; synthetic fall-through breaks are needed — the detection pass must

@@ -334,6 +334,23 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
             }
           }
         }
+        // Epilogue runs AFTER the switch closes — any chain-name break there
+        // has no implicit switch-break target and must resolve to a labeled
+        // outer scope.  Force requiresLabel=true so the labeledEpilogue path
+        // activates and chain-name breaks route to `break outerLabel;` /
+        // `break innerLabel;` instead of `break $_;` (undefined label from
+        // the `'*'` sentinel).
+        if (!needsLabel && epilogue.length > 0) {
+          for (
+            var /** @type {number} */ epi = 0, /** @const {number} */ epLen = epilogue.length;
+            epi < epLen && !needsLabel;
+            ++epi
+          ) {
+            if (hasLoopBreak(binaryen, epilogue[epi], chainNames, true)) {
+              needsLabel = true;
+            }
+          }
+        }
 
         return /** @type {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ ({
           conditionPtr: conditionPtr,
