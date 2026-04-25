@@ -40,24 +40,23 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderConst_ = function (binaryen, v
 };
 
 /**
- * Decomposes an i64 value (BigInt or {@code {low, high}} pair) into unsigned
- * low and signed high 32-bit halves.  Used by backends that emit i64 literals
- * with language-specific suffixes.
+ * Decomposes an i64 value (BigInt or {@code {low, high}} pair) into a
+ * {@code [unsignedLow32, signedHigh32]} tuple.  Returning a positional array
+ * sidesteps the property-name renaming hazard caused by the binaryen extern
+ * already defining {@code .low} / {@code .high}, which would otherwise
+ * prevent Closure from mangling typedef field names on the result.
  *
  * @suppress {checkTypes}
  * @protected
  * @param {*} value
- * @return {{w2lI64Lo: number, w2lI64Hi: number}}
+ * @return {!Array<number>}  Two-element array [low, high].
  */
 Wasm2Lang.Backend.AbstractCodegen.decomposeI64_ = function (value) {
   if ('bigint' === typeof value) {
-    return {
-      w2lI64Lo: Number(BigInt(value) & BigInt(0xffffffff)) >>> 0,
-      w2lI64Hi: Number((BigInt(value) >> BigInt(32)) & BigInt(0xffffffff)) | 0
-    };
+    return [Number(BigInt(value) & BigInt(0xffffffff)) >>> 0, Number((BigInt(value) >> BigInt(32)) & BigInt(0xffffffff)) | 0];
   }
   var /** @const {!Object} */ v = /** @type {!Object} */ (value);
-  return {w2lI64Lo: v['low'] >>> 0, w2lI64Hi: v['high'] | 0};
+  return [v['low'] >>> 0, v['high'] | 0];
 };
 
 /**
@@ -86,9 +85,9 @@ Wasm2Lang.Backend.AbstractCodegen.renderI64HexLiteral_ = function (hi, lo, suffi
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.formatI64WithSuffix_ = function (value, suffix) {
-  var /** @const */ parts = Wasm2Lang.Backend.AbstractCodegen.decomposeI64_(value);
-  var /** @const {number} */ low = parts.w2lI64Lo;
-  var /** @const {number} */ high = parts.w2lI64Hi;
+  var /** @const {!Array<number>} */ parts = Wasm2Lang.Backend.AbstractCodegen.decomposeI64_(value);
+  var /** @const {number} */ low = parts[0];
+  var /** @const {number} */ high = parts[1];
   if (0 === low && 0 === high) return '0' + suffix;
   if (0 === high) return String(low) + suffix;
   if (-1 === high && low >= 0x80000000) return String(low - 4294967296) + suffix;
@@ -108,8 +107,8 @@ Wasm2Lang.Backend.AbstractCodegen.formatI64WithSuffix_ = function (value, suffix
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderI64Const_ = function (binaryen, value) {
   void binaryen;
-  var /** @const */ parts = Wasm2Lang.Backend.AbstractCodegen.decomposeI64_(value);
-  return Wasm2Lang.Backend.AbstractCodegen.renderI64HexLiteral_(parts.w2lI64Hi, parts.w2lI64Lo, '/*i64*/');
+  var /** @const {!Array<number>} */ parts = Wasm2Lang.Backend.AbstractCodegen.decomposeI64_(value);
+  return Wasm2Lang.Backend.AbstractCodegen.renderI64HexLiteral_(parts[1], parts[0], '/*i64*/');
 };
 
 /**

@@ -114,6 +114,19 @@ Wasm2Lang.Backend.AbstractCodegen.formatFloatLiteral_ = function (value) {
 };
 
 /**
+ * Returns the array {@code [localN_(0), …, localN_(numParams-1)]}.
+ *
+ * @protected
+ * @param {number} numParams
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.buildParamNameList_ = function (numParams) {
+  var /** @const {!Array<string>} */ names = [];
+  for (var /** @type {number} */ pi = 0; pi !== numParams; ++pi) names[pi] = this.localN_(pi);
+  return names;
+};
+
+/**
  * Builds per-local init strings for function variables, applying
  * LocalInitFoldingPass overrides when available.
  *

@@ -240,14 +240,26 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNodeIndex_ = function (bin
 Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializePassRunResult = function (wasmModule, passRunResult, binaryen) {
   var /** @const */ MS_PUB = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection;
   var /** @const {!Object} */ payloadV3 = MS_PUB.serializeWithAnchorsV3_(wasmModule, passRunResult, binaryen);
-  var /** @const {!Array<!Object>} */ v3Funcs = /** @type {!Array<!Object>} */ (payloadV3['f']);
-  if (0 === v3Funcs.length) return;
-  var /** @const {string} */ jsonStrV3 = JSON.stringify(payloadV3);
-  var /** @const {!Uint8Array} */ bytesV3 = new Uint8Array(jsonStrV3.length);
-  for (var /** @type {number} */ bvi = 0, /** @const {number} */ bvLen = jsonStrV3.length; bvi < bvLen; ++bvi) {
-    bytesV3[bvi] = jsonStrV3.charCodeAt(bvi);
-  }
-  wasmModule.addCustomSection(MS_PUB.SECTION_NAME, bytesV3);
+  if (0 === /** @type {!Array<!Object>} */ (payloadV3['f']).length) return;
+  wasmModule.addCustomSection(MS_PUB.SECTION_NAME, MS_PUB.encodeJsonAscii_(payloadV3));
+};
+
+/**
+ * JSON-encodes {@code payload} and returns its bytes as a {@code Uint8Array}.
+ * The metadata payload is restricted to ASCII (label names and small JSON),
+ * so a charCodeAt-per-byte loop is sufficient and avoids pulling in a
+ * TextEncoder dependency that wasn't available at the original write time.
+ *
+ * @private
+ * @param {!Object} payload
+ * @return {!Uint8Array}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.encodeJsonAscii_ = function (payload) {
+  var /** @const {string} */ s = JSON.stringify(payload);
+  var /** @const {number} */ n = s.length;
+  var /** @const {!Uint8Array} */ bytes = new Uint8Array(n);
+  for (var /** @type {number} */ i = 0; i < n; ++i) bytes[i] = s.charCodeAt(i);
+  return bytes;
 };
 
 /**
@@ -301,13 +313,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializePassRunResultV2_ = fun
   payload['v'] = 2;
   payload['f'] = serializedFunctions;
 
-  var /** @const {string} */ jsonStr = JSON.stringify(payload);
-  var /** @const {!Uint8Array} */ bytes = new Uint8Array(jsonStr.length);
-  for (var /** @type {number} */ bi = 0, /** @const {number} */ bLen = jsonStr.length; bi < bLen; ++bi) {
-    bytes[bi] = jsonStr.charCodeAt(bi);
-  }
-
-  wasmModule.addCustomSection(Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.SECTION_NAME, bytes);
+  var /** @const */ MS = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection;
+  wasmModule.addCustomSection(MS.SECTION_NAME, MS.encodeJsonAscii_(payload));
 };
 
 /**
@@ -389,15 +396,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.convertMetadataToEntries_ = fun
 
 /**
  * Reads one unsigned LEB128 value from a Uint8Array at the given offset.
- * Returns the decoded value and the new offset.  Struct field names use
- * {@code w2l}-prefixed identifiers to avoid collision with Binaryen externs
- * like {@code .value} and {@code .offset}, which would otherwise prevent
- * Closure from mangling these keys.
+ * Returns a {@code [value, newOffset]} tuple — using a positional array
+ * sidesteps the property-name renaming hazard caused by Binaryen externs
+ * already using {@code .value} and {@code .offset}, which would otherwise
+ * prevent Closure from mangling typedef field names.
  *
  * @private
  * @param {!Uint8Array} data
  * @param {number} offset
- * @return {{w2lLebValue: number, w2lLebOffset: number}}
+ * @return {!Array<number>}  Two-element array [value, newOffset].
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.readLEB128_ = function (data, offset) {
   var /** @type {number} */ result = 0;
@@ -408,7 +415,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.readLEB128_ = function (data, o
     result |= (byte & 0x7f) << shift;
     shift += 7;
   } while (0 !== (byte & 0x80));
-  return {w2lLebValue: result, w2lLebOffset: offset};
+  return [result, offset];
 };
 
 /**
@@ -430,17 +437,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.deserializeFromBinary = functio
 
   while (offset < dataLen) {
     var /** @const {number} */ sectionId = binaryData[offset++];
-    var /** @const {{w2lLebValue: number, w2lLebOffset: number}} */ sizeResult = MS.readLEB128_(binaryData, offset);
-    var /** @const {number} */ sectionSize = sizeResult.w2lLebValue;
-    var /** @const {number} */ sectionEnd = sizeResult.w2lLebOffset + sectionSize;
-    offset = sizeResult.w2lLebOffset;
+    var /** @const {!Array<number>} */ sizeResult = MS.readLEB128_(binaryData, offset);
+    offset = sizeResult[1];
+    var /** @const {number} */ sectionEnd = offset + sizeResult[0];
 
     if (0 === sectionId) {
       // Custom section: read name.
-      var /** @const {{w2lLebValue: number, w2lLebOffset: number}} */ nameLen = MS.readLEB128_(binaryData, offset);
-      offset = nameLen.w2lLebOffset;
+      var /** @const {!Array<number>} */ nameLen = MS.readLEB128_(binaryData, offset);
+      offset = nameLen[1];
       var /** @type {string} */ sectionName = '';
-      for (var /** @type {number} */ ni = 0; ni < nameLen.w2lLebValue; ++ni) {
+      for (var /** @type {number} */ ni = 0; ni < nameLen[0]; ++ni) {
         sectionName += String.fromCharCode(binaryData[offset++]);
       }
 
@@ -908,32 +914,39 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializeWithAnchorsV3_ = funct
           entries[entries.length] = e;
         };
 
-    if (fm.switchDispatchNames) {
-      var /** @const {!Array<string>} */ sdKeys = Object.keys(/** @type {!Object} */ (fm.switchDispatchNames));
-      for (var /** @type {number} */ sdi = 0; sdi !== sdKeys.length; ++sdi) {
-        insertBlockAnchor(sdKeys[sdi], MS.TYPE_SWITCH_DISPATCH_, null);
-      }
-    }
-    if (fm.rootSwitchNames) {
-      var /** @const {!Array<string>} */ rsKeys = Object.keys(/** @type {!Object} */ (fm.rootSwitchNames));
-      for (var /** @type {number} */ rsi = 0; rsi !== rsKeys.length; ++rsi) {
-        insertBlockAnchor(rsKeys[rsi], MS.TYPE_ROOT_SWITCH_, null);
-      }
-    }
-    if (fm.fusedBlocks) {
-      var /** @const {!Object} */ fb = /** @type {!Object} */ (fm.fusedBlocks);
-      var /** @const {!Array<string>} */ fbKeys = Object.keys(fb);
-      for (var /** @type {number} */ fbi = 0; fbi !== fbKeys.length; ++fbi) {
-        var /** @const {string} */ fbName = fbKeys[fbi];
+    /**
+     * @param {*} src
+     * @param {string} type
+     * @param {?function(string, *, !Object):void} fillFn
+     */
+    var anchorAllKeys = function (src, type, fillFn) {
+      if (!src) return;
+      var /** @const {!Object} */ srcObj = /** @type {!Object} */ (src);
+      var /** @const {!Array<string>} */ keys = Object.keys(srcObj);
+      for (var /** @type {number} */ ki = 0; ki !== keys.length; ++ki) {
+        var /** @const {string} */ k = keys[ki];
         insertBlockAnchor(
-          fbName,
-          MS.TYPE_FUSED_BLOCK_,
-          /** @param {!Object} e */ function (e) {
-            e['v'] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (fb[fbName]).fusionVariant;
-          }
+          k,
+          type,
+          fillFn
+            ? /** @param {!Object} e */ function (e) {
+                /** @type {!Function} */ (fillFn)(k, srcObj[k], e);
+              }
+            : null
         );
       }
-    }
+    };
+
+    anchorAllKeys(fm.switchDispatchNames, MS.TYPE_SWITCH_DISPATCH_, null);
+    anchorAllKeys(fm.rootSwitchNames, MS.TYPE_ROOT_SWITCH_, null);
+    anchorAllKeys(
+      fm.fusedBlocks,
+      MS.TYPE_FUSED_BLOCK_,
+      /** @param {string} k @param {*} v @param {!Object} e */ function (k, v, e) {
+        void k;
+        e['v'] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (v).fusionVariant;
+      }
+    );
 
     // Loop-typed entries keyed by DFS loop-position.  Loop NAMES are nulled
     // by binaryen 125's binary round-trip whenever the loop has no back-edge

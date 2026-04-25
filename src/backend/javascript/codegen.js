@@ -12,17 +12,26 @@
 Wasm2Lang.Backend.JavaScriptCodegen = function () {
   Wasm2Lang.Backend.AsmjsCodegen.call(this);
   this.reservedWords_ = Wasm2Lang.Backend.JavaScriptCodegen.RESERVED_;
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ M = Wasm2Lang.Backend.JavaScriptCodegen;
-  this.binaryRenderers_[C.OP_COMPARISON] = M.renderI32ComparisonBinary_;
-  this.binaryRenderers_[C.OP_DIVISION] = M.renderI32DivisionBinary_;
-  this.binaryRenderers_[C.OP_ROTATE] = M.renderI32RotateBinary_;
-  this.i64BinaryRenderers_[C.OP_ARITHMETIC] = M.renderI64ArithmeticBinary_;
-  this.i64BinaryRenderers_[C.OP_MULTIPLY] = M.renderI64MultiplyBinary_;
-  this.i64BinaryRenderers_[C.OP_DIVISION] = M.renderI64DivisionBinary_;
-  this.i64BinaryRenderers_[C.OP_BITWISE] = M.renderI64BitwiseBinary_;
-  this.i64BinaryRenderers_[C.OP_ROTATE] = M.renderI64RotateBinary_;
-  this.i64BinaryRenderers_[C.OP_COMPARISON] = M.renderI64ComparisonBinary_;
+  var /** @const */ install = Wasm2Lang.Backend.AbstractCodegen.installBinaryRenderers_;
+  install(
+    this.binaryRenderers_,
+    null,
+    null,
+    M.renderI32DivisionBinary_,
+    null,
+    M.renderI32RotateBinary_,
+    M.renderI32ComparisonBinary_
+  );
+  install(
+    this.i64BinaryRenderers_,
+    M.renderI64ArithmeticBinary_,
+    M.renderI64MultiplyBinary_,
+    M.renderI64DivisionBinary_,
+    M.renderI64BitwiseBinary_,
+    M.renderI64RotateBinary_,
+    M.renderI64ComparisonBinary_
+  );
 };
 
 Wasm2Lang.Backend.JavaScriptCodegen.prototype = Object.create(Wasm2Lang.Backend.AsmjsCodegen.prototype);

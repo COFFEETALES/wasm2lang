@@ -23,14 +23,16 @@
  */
 Wasm2Lang.Backend.JsCommonCodegen = function () {
   Wasm2Lang.Backend.AbstractCodegen.call(this);
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ J = Wasm2Lang.Backend.JsCommonCodegen;
-  this.binaryRenderers_[C.OP_ARITHMETIC] = J.renderArithmeticBinary_;
-  this.binaryRenderers_[C.OP_MULTIPLY] = J.renderMultiplyBinary_;
-  this.binaryRenderers_[C.OP_DIVISION] = J.renderDivisionBinary_;
-  this.binaryRenderers_[C.OP_BITWISE] = J.renderBitwiseBinary_;
-  this.binaryRenderers_[C.OP_ROTATE] = J.renderRotateBinary_;
-  this.binaryRenderers_[C.OP_COMPARISON] = J.renderComparisonBinary_;
+  Wasm2Lang.Backend.AbstractCodegen.installBinaryRenderers_(
+    this.binaryRenderers_,
+    J.renderArithmeticBinary_,
+    J.renderMultiplyBinary_,
+    J.renderDivisionBinary_,
+    J.renderBitwiseBinary_,
+    J.renderRotateBinary_,
+    J.renderComparisonBinary_
+  );
 };
 
 Wasm2Lang.Backend.JsCommonCodegen.prototype = Object.create(Wasm2Lang.Backend.AbstractCodegen.prototype);

@@ -95,10 +95,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
 
   // Parameter list.
-  var /** @const {!Array<string>} */ paramNames = [];
-  for (var /** @type {number} */ pi = 0; pi !== numParams; ++pi) {
-    paramNames[paramNames.length] = this.localN_(pi);
-  }
+  var /** @const {!Array<string>} */ paramNames = this.buildParamNameList_(numParams);
   // Reserve slot for the function header; the use clause is finalised after
   // the body walk so that &$ftable is only captured when actually needed.
   var /** @const {number} */ headerIndex = parts.length;

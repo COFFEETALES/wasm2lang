@@ -176,47 +176,18 @@ Wasm2Lang.Backend.AbstractCodegen.makeChildAccessors_ = function (childResults) 
 };
 
 // ---------------------------------------------------------------------------
-// Label prefix constants.
+// Label-elided loop name detection.
+//
+// Loop normalization tags labels that need no source-level label with one of
+// the w2l_u{for,dowhile,while}$ prefixes.  Backends omit the label and emit
+// plain break/continue when the name matches.
 // ---------------------------------------------------------------------------
 
 /**
- * Prefix for label-elided for(;;) loops (no label needed in output).
- *
- * @protected
- * @const {string}
+ * @private
+ * @const {!RegExp}
  */
-Wasm2Lang.Backend.AbstractCodegen.LF_FORLOOP_PREFIX_ = 'w2l_ufor$';
-
-/**
- * Prefix for label-elided do-while loops (no label needed in output).
- *
- * @protected
- * @const {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.LE_DOWHILE_PREFIX_ = 'w2l_udowhile$';
-
-/**
- * Prefix for label-elided while loops (no label needed in output).
- *
- * @protected
- * @const {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.LY_WHILE_PREFIX_ = 'w2l_uwhile$';
-
-/**
- * Returns true when {@code name} starts with {@code prefix}.
- *
- * Replaces the repeated {@code 0 === name.indexOf(prefix)} idiom across all
- * backend and pass code, improving readability without changing semantics.
- *
- * @protected
- * @param {string} name
- * @param {string} prefix
- * @return {boolean}
- */
-Wasm2Lang.Backend.AbstractCodegen.hasPrefix_ = function (name, prefix) {
-  return 0 === name.indexOf(prefix);
-};
+Wasm2Lang.Backend.AbstractCodegen.LABEL_ELIDED_RE_ = /^w2l_u(?:for|dowhile|while)\$/;
 
 /**
  * Returns true if the given loop name carries a label-elided prefix,
@@ -227,9 +198,7 @@ Wasm2Lang.Backend.AbstractCodegen.hasPrefix_ = function (name, prefix) {
  * @return {boolean}
  */
 Wasm2Lang.Backend.AbstractCodegen.isLabelElided = function (name) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  // prettier-ignore
-  return A.hasPrefix_(name, A.LF_FORLOOP_PREFIX_) || A.hasPrefix_(name, A.LE_DOWHILE_PREFIX_) || A.hasPrefix_(name, A.LY_WHILE_PREFIX_);
+  return Wasm2Lang.Backend.AbstractCodegen.LABEL_ELIDED_RE_.test(name);
 };
 
 /**
@@ -442,9 +411,19 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectBlockLoopFusionFromIR_ = funct
  * statement instead of a labeled block wrapper.
  *
  * Applies only to single-child named blocks whose sole child is a void/
- * unreachable-typed if.  Loops are excluded because they already emit their
- * own label, and asm.js rejects double-labeled statements like
- * {@code outer: inner: for (;;) ...}.
+ * unreachable-typed if WITHOUT an else arm.  Loops are excluded because
+ * they already emit their own label, and asm.js rejects double-labeled
+ * statements like {@code outer: inner: for (;;) ...}.
+ *
+ * If-with-else is also excluded: V8's asm.js validator rejects a
+ * {@code break label;} statement that targets a label placed on an
+ * {@code if} statement when the {@code break} originates from the
+ * {@code else} arm — emitted as "Invalid asm.js: Illegal break".  Wrapping
+ * the if in {@code label: { if (...) {...} else {...} }} sidesteps that
+ * validator quirk and remains semantically identical for all targets.
+ * The directly-labeled form is still kept for the if-without-else shape
+ * (where every break naturally lives in the then arm), which is the
+ * common case in normalized output and where the savings are real.
  *
  * @protected
  * @param {!Binaryen} binaryen
@@ -464,10 +443,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.canDirectLabelNamedBlock_ = function
       binaryen,
       children[0]
     );
-  return (
-    binaryen.IfId === childInfo.id &&
-    (binaryen.none === childInfo.type || 0 === childInfo.type || binaryen.unreachable === childInfo.type)
-  );
+  if (binaryen.IfId !== childInfo.id) return false;
+  if (binaryen.none !== childInfo.type && 0 !== childInfo.type && binaryen.unreachable !== childInfo.type) return false;
+  return 0 === /** @type {number} */ (childInfo.ifFalse || 0);
 };
 
 /**

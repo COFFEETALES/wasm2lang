@@ -20,17 +20,16 @@ Wasm2Lang.Utilities.Environment.sliceArgs_ = function (args, startIndex) {
  * @param {!NodeWritableStream} stream
  * @param {!IArrayLike<(string|!Uint8Array)>} args
  * @param {number} startIndex
- * @param {function((string|!Uint8Array)): boolean} isBinaryChunk
- * @return {boolean}
+ * @return {boolean}  True if every written chunk was a Uint8Array.
  */
-Wasm2Lang.Utilities.Environment.writeCliChunks_ = function (stream, args, startIndex, isBinaryChunk) {
+Wasm2Lang.Utilities.Environment.writeCliChunks_ = function (stream, args, startIndex) {
   var /** @type {boolean} */ binaryOnly = true;
   for (var /** @type {number} */ i = startIndex, /** @const {number} */ argCount = args.length; i !== argCount; ++i) {
     if (i !== startIndex) {
       stream.write(' ');
     }
     var /** @const {(string|!Uint8Array)} */ chunk = args[i];
-    if (isBinaryChunk(chunk)) {
+    if (chunk instanceof Uint8Array) {
       stream.write(Buffer.from(/** @type {!Uint8Array} */ (chunk)));
       continue;
     }
@@ -87,18 +86,7 @@ Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.Ou
  * @return {void}
  */
 Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.OutputTarget.CLI] = function (data) {
-  var /** @const {boolean} */ binaryOnly = Wasm2Lang.Utilities.Environment.writeCliChunks_(
-      process.stdout,
-      arguments,
-      0,
-      /**
-       * @param {(string|!Uint8Array)} chunk
-       * @return {boolean}
-       */
-      function (chunk) {
-        return chunk instanceof Uint8Array;
-      }
-    );
+  var /** @const {boolean} */ binaryOnly = Wasm2Lang.Utilities.Environment.writeCliChunks_(process.stdout, arguments, 0);
   if (!binaryOnly) {
     process.stdout.write('\n');
   }
@@ -133,18 +121,7 @@ Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.Ou
  * @return {void}
  */
 Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.OutputTarget.CLI] = function (level, data) {
-  Wasm2Lang.Utilities.Environment.writeCliChunks_(
-    process.stderr,
-    arguments,
-    1,
-    /**
-     * @param {(string|!Uint8Array)} chunk
-     * @return {boolean}
-     */
-    function (chunk) {
-      return chunk instanceof Uint8Array;
-    }
-  );
+  Wasm2Lang.Utilities.Environment.writeCliChunks_(process.stderr, arguments, 1);
   process.stderr.write('\n');
 };
 

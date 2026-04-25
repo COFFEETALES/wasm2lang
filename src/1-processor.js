@@ -176,6 +176,37 @@ Wasm2Lang.Processor.emitResults_ = function (wasmModule, codegen, options) {
 };
 
 /**
+ * Post-load recovery shared by --pre-normalized and the internal single-pass
+ * binary round-trip.  Reads metadata from the binary's w2l_codegen_meta
+ * custom section, rebuilds {@code PassRunResult} on the loaded module, runs
+ * the redundant-block-removal cleanup that mirrors the binaryen reader's
+ * structural drift, re-derives local-init overrides against the new local
+ * layout, and strips the anchor markers/import.  Does not change the order
+ * of normalization vs. apply — this is the apply-side recovery only.
+ *
+ * @private
+ * @param {!BinaryenModule} mod
+ * @param {!Uint8Array} binary
+ * @param {!Binaryen} binaryen
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} codegen
+ * @return {void}
+ */
+Wasm2Lang.Processor.recoverFromBinary_ = function (mod, binary, binaryen, codegen) {
+  var /** @const */ MS = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection;
+  var /** @const {?Object} */ parsedMeta = MS.deserializeFromBinary(binary);
+  var /** @type {?Wasm2Lang.Wasm.Tree.PassRunResult} */ rebuilt = null;
+  if (parsedMeta) {
+    rebuilt = MS.rebuildPassRunResult(mod, parsedMeta, binaryen);
+    codegen.setPassRunResult_(rebuilt);
+  }
+  Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(mod, [new Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass()], binaryen);
+  if (rebuilt) {
+    Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.reanalyzeOverrides(mod, rebuilt, binaryen);
+  }
+  Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll(mod, binaryen);
+};
+
+/**
  * @private
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
  * @return {!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>}
@@ -195,38 +226,12 @@ Wasm2Lang.Processor.transpile_ = function (options) {
   // must not leak into plain codegen output.
   if (options.preNormalized && options.inputData instanceof Uint8Array) {
     var /** @const {!Binaryen} */ preNormBinaryen = Wasm2Lang.Processor.getBinaryen();
-    var /** @const {?Object} */ parsedMeta = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.deserializeFromBinary(
-        /** @type {!Uint8Array} */ (options.inputData)
-      );
-    var /** @type {?Wasm2Lang.Wasm.Tree.PassRunResult} */ rebuiltResult = null;
-    if (parsedMeta) {
-      rebuiltResult = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult(
-        wasmModule,
-        parsedMeta,
-        preNormBinaryen
-      );
-      codegen.setPassRunResult_(rebuiltResult);
-    }
-    // Clean up redundant blocks introduced by binaryen during binary
-    // round-trip.  Binaryen may wrap if-then arms or restructure scopes,
-    // adding named blocks with no branch references.  Running
-    // RedundantBlockRemovalPass here ensures the pre-normalized IR
-    // matches the one-pass IR structure.
-    Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(
+    Wasm2Lang.Processor.recoverFromBinary_(
       wasmModule,
-      [new Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass()],
-      preNormBinaryen
+      /** @type {!Uint8Array} */ (options.inputData),
+      preNormBinaryen,
+      codegen
     );
-    // Re-derive local-init overrides from the loaded IR.  The original
-    // analysis ran before the binary writer regrouped locals by type, so
-    // the indices recorded in metadata would point at the wrong locals.
-    if (rebuiltResult) {
-      Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.reanalyzeOverrides(wasmModule, rebuiltResult, preNormBinaryen);
-    }
-    // Strip the w2l_anchor markers and their import.  After
-    // rebuildPassRunResult has used them to rebuild PassMetadata, they have
-    // no further role and must not appear in the emitted code.
-    Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll(wasmModule, preNormBinaryen);
     codegen.enableSimplifications_();
   }
 
@@ -252,22 +257,7 @@ Wasm2Lang.Processor.transpile_ = function (options) {
       var /** @const {!Binaryen} */ rtBinaryen = Wasm2Lang.Processor.getBinaryen();
       var /** @const {!Uint8Array} */ rtBinary = wasmModule.emitBinary();
       var /** @const {!BinaryenModule} */ rtModule = rtBinaryen.readBinary(rtBinary);
-      var /** @const {?Object} */ rtMeta = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.deserializeFromBinary(rtBinary);
-      if (rtMeta) {
-        passRunResult = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult(rtModule, rtMeta, rtBinaryen);
-        codegen.setPassRunResult_(passRunResult);
-      }
-      Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(
-        rtModule,
-        [new Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass()],
-        rtBinaryen
-      );
-      if (passRunResult) {
-        Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.reanalyzeOverrides(rtModule, passRunResult, rtBinaryen);
-      }
-      // Strip anchor markers from the round-tripped module before code
-      // emission — they served their purpose during metadata rebuild.
-      Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll(rtModule, rtBinaryen);
+      Wasm2Lang.Processor.recoverFromBinary_(rtModule, rtBinary, rtBinaryen, codegen);
       wasmModule = rtModule;
     }
   }

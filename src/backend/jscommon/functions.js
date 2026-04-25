@@ -64,10 +64,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitFunction_ = function (
   var /** @const {!Array<number>} */ varTypes = /** @type {!Array<number>} */ (funcInfo.vars) || [];
   var /** @const {number} */ numVars = varTypes.length;
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
-  var /** @const {!Array<string>} */ paramNames = [];
-  for (var /** @type {number} */ pi = 0; pi !== numParams; ++pi) {
-    paramNames[paramNames.length] = this.localN_(pi);
-  }
+  var /** @const {!Array<string>} */ paramNames = this.buildParamNameList_(numParams);
   parts[parts.length] = pad(1) + 'function ' + fnName + '(' + paramNames.join(', ') + ') {';
 
   this.emitParameterAnnotations_(parts, binaryen, paramTypes, numParams, pad(2));

@@ -10,14 +10,16 @@ Wasm2Lang.Backend.Php64Codegen = function () {
   this.reservedWords_ = Wasm2Lang.Backend.Php64Codegen.RESERVED_;
   this.caseInsensitiveReserved_ = true;
   this.preSanitizeRegex_ = /[^a-zA-Z0-9_]/g;
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ H = Wasm2Lang.Backend.Php64Codegen;
-  this.binaryRenderers_[C.OP_ARITHMETIC] = H.renderArithmeticBinary_;
-  this.binaryRenderers_[C.OP_MULTIPLY] = H.renderMultiplyBinary_;
-  this.binaryRenderers_[C.OP_DIVISION] = H.renderDivisionBinary_;
-  this.binaryRenderers_[C.OP_BITWISE] = H.renderBitwiseBinary_;
-  this.binaryRenderers_[C.OP_ROTATE] = H.renderRotateBinary_;
-  this.binaryRenderers_[C.OP_COMPARISON] = H.renderComparisonBinary_;
+  Wasm2Lang.Backend.AbstractCodegen.installBinaryRenderers_(
+    this.binaryRenderers_,
+    H.renderArithmeticBinary_,
+    H.renderMultiplyBinary_,
+    H.renderDivisionBinary_,
+    H.renderBitwiseBinary_,
+    H.renderRotateBinary_,
+    H.renderComparisonBinary_
+  );
 };
 
 Wasm2Lang.Backend.Php64Codegen.prototype = Object.create(Wasm2Lang.Backend.AbstractCodegen.prototype);

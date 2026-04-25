@@ -8,20 +8,26 @@ Wasm2Lang.Backend.JavaCodegen = function () {
   Wasm2Lang.Backend.AbstractCodegen.call(this);
   this.f32WidensToF64_ = true;
   this.reservedWords_ = Wasm2Lang.Backend.JavaCodegen.RESERVED_;
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ J = Wasm2Lang.Backend.JavaCodegen;
-  this.binaryRenderers_[C.OP_ARITHMETIC] = J.renderArithmeticBinary_;
-  this.binaryRenderers_[C.OP_MULTIPLY] = J.renderMultiplyBinary_;
-  this.binaryRenderers_[C.OP_DIVISION] = J.renderDivisionBinary_;
-  this.binaryRenderers_[C.OP_BITWISE] = J.renderBitwiseBinary_;
-  this.binaryRenderers_[C.OP_ROTATE] = J.renderRotateBinary_;
-  this.binaryRenderers_[C.OP_COMPARISON] = J.renderComparisonBinary_;
-  this.i64BinaryRenderers_[C.OP_ARITHMETIC] = J.renderArithmeticBinary_;
-  this.i64BinaryRenderers_[C.OP_MULTIPLY] = J.renderMultiplyBinary_;
-  this.i64BinaryRenderers_[C.OP_DIVISION] = J.renderI64DivisionBinary_;
-  this.i64BinaryRenderers_[C.OP_BITWISE] = J.renderBitwiseBinary_;
-  this.i64BinaryRenderers_[C.OP_ROTATE] = J.renderI64RotateBinary_;
-  this.i64BinaryRenderers_[C.OP_COMPARISON] = J.renderI64ComparisonBinary_;
+  var /** @const */ install = Wasm2Lang.Backend.AbstractCodegen.installBinaryRenderers_;
+  install(
+    this.binaryRenderers_,
+    J.renderArithmeticBinary_,
+    J.renderMultiplyBinary_,
+    J.renderDivisionBinary_,
+    J.renderBitwiseBinary_,
+    J.renderRotateBinary_,
+    J.renderComparisonBinary_
+  );
+  install(
+    this.i64BinaryRenderers_,
+    J.renderArithmeticBinary_,
+    J.renderMultiplyBinary_,
+    J.renderI64DivisionBinary_,
+    J.renderBitwiseBinary_,
+    J.renderI64RotateBinary_,
+    J.renderI64ComparisonBinary_
+  );
 };
 
 Wasm2Lang.Backend.JavaCodegen.prototype = Object.create(Wasm2Lang.Backend.AbstractCodegen.prototype);

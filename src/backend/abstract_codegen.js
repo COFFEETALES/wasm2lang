@@ -267,6 +267,33 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
 Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_;
 
 /**
+ * Installs binary-op renderers into a backend's renderer table at the slot
+ * indices defined by {@code Wasm2Lang.Backend.I32Coercion.OP_*}.  Positional
+ * arguments map 1:1 to OP_ARITHMETIC, OP_MULTIPLY, OP_DIVISION, OP_BITWISE,
+ * OP_ROTATE, OP_COMPARISON.  A {@code null} slot leaves the existing entry
+ * (used by JavaScript backend to override only some of the parent's slots).
+ *
+ * @protected
+ * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined>} table
+ * @param {?Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} arith
+ * @param {?Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} mult
+ * @param {?Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} div
+ * @param {?Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} bitw
+ * @param {?Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} rot
+ * @param {?Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} comp
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.installBinaryRenderers_ = function (table, arith, mult, div, bitw, rot, comp) {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  if (arith) table[C.OP_ARITHMETIC] = arith;
+  if (mult) table[C.OP_MULTIPLY] = mult;
+  if (div) table[C.OP_DIVISION] = div;
+  if (bitw) table[C.OP_BITWISE] = bitw;
+  if (rot) table[C.OP_ROTATE] = rot;
+  if (comp) table[C.OP_COMPARISON] = comp;
+};
+
+/**
  * Returns whether this backend requires i64-to-i32 lowering.
  * Backends that handle i64 natively (e.g. Java) override this to return
  * {@code false}, causing the normalization pipeline to skip the
