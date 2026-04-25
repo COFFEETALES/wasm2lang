@@ -181,7 +181,7 @@ Wasm2Lang.Processor.emitResults_ = function (wasmModule, codegen, options) {
  * @return {!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>}
  */
 Wasm2Lang.Processor.transpile_ = function (options) {
-  var /** @const {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(options.inputData);
+  var /** @type {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(options.inputData);
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ codegen = Wasm2Lang.Backend.createBackend(options.languageOut);
 
   // When --pre-normalized is set, reconstruct pass metadata from the
@@ -223,15 +223,62 @@ Wasm2Lang.Processor.transpile_ = function (options) {
     if (rebuiltResult) {
       Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.reanalyzeOverrides(wasmModule, rebuiltResult, preNormBinaryen);
     }
+    // Strip the w2l_anchor markers and their import.  After
+    // rebuildPassRunResult has used them to rebuild PassMetadata, they have
+    // no further role and must not appear in the emitted code.
+    Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll(wasmModule, preNormBinaryen);
     codegen.enableSimplifications_();
   }
 
   // prettier-ignore
-  var /** @const {?Wasm2Lang.Wasm.Tree.PassRunResult} */ passRunResult =
+  var /** @type {?Wasm2Lang.Wasm.Tree.PassRunResult} */ passRunResult =
     Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles(wasmModule, options, !codegen.needsI64Lowering());
   if (passRunResult) {
     codegen.setPassRunResult_(passRunResult);
     codegen.enableSimplifications_();
+
+    // Single-pass / two-pass convergence:
+    // When the same invocation runs wasm2lang:codegen normalization AND
+    // emits code (no separate --emit-web-assembly stage), force the
+    // module through an internal binary round-trip + the same post-load
+    // recovery the --pre-normalized branch performs.  This makes the
+    // single-pass output byte-identical to the two-pass output for any
+    // input where the user could split the work, and keeps the codegen
+    // exclusively driven by the metadata in the {@code w2l_codegen_meta}
+    // custom section that {@code serializePassRunResult} embeds.
+    var /** @const {boolean} */ emitsCodeOnly =
+        'string' === typeof options.emitCode && 'string' !== typeof options.emitWebAssembly;
+    if (emitsCodeOnly) {
+      var /** @const {!Binaryen} */ rtBinaryen = Wasm2Lang.Processor.getBinaryen();
+      var /** @const {!Uint8Array} */ rtBinary = wasmModule.emitBinary();
+      var /** @const {!BinaryenModule} */ rtModule = rtBinaryen.readBinary(rtBinary);
+      var /** @const {?Object} */ rtMeta = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.deserializeFromBinary(rtBinary);
+      if (rtMeta) {
+        passRunResult = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult(rtModule, rtMeta, rtBinaryen);
+        codegen.setPassRunResult_(passRunResult);
+      }
+      Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(
+        rtModule,
+        [new Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass()],
+        rtBinaryen
+      );
+      if (passRunResult) {
+        Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.reanalyzeOverrides(rtModule, passRunResult, rtBinaryen);
+      }
+      // Strip anchor markers from the round-tripped module before code
+      // emission — they served their purpose during metadata rebuild.
+      Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll(rtModule, rtBinaryen);
+      wasmModule = rtModule;
+    }
+  }
+
+  // Anchor markers must never reach emitted code.  When this invocation
+  // emits a binary (--emit-web-assembly), the anchors stay so a downstream
+  // --pre-normalized invocation can deserialize them.  When code is
+  // emitted (with or without binary alongside), strip first.  Idempotent
+  // and a no-op when no anchors exist.
+  if ('string' === typeof options.emitCode) {
+    Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll(wasmModule, Wasm2Lang.Processor.getBinaryen());
   }
 
   if (options.mangler) {

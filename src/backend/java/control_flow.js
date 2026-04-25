@@ -47,13 +47,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @type {number} */ resultCat = A.CAT_VOID;
 
-  // Capture terminal flag before reset — LoopId reads the flag set by its
-  // body's last child (propagated through Block).
-  var /** @const {boolean} */ bodyWasTerminal = state.lastExprIsTerminal;
-
   // Reset terminal flag for all non-Block expressions (Block propagates from
   // its last child).  Terminal handlers (Return, unconditional Break, Switch
-  // with default) override to true so LoopId can omit an unreachable break.
+  // with default) override to true so callers (e.g. SwitchId default-case
+  // detection) can suppress an unreachable trailing statement.
   if (binaryen.BlockId !== id) {
     state.lastExprIsTerminal = false;
   }
@@ -250,15 +247,20 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       if (loopKind) {
         result = this.emitSimplifiedLoopFromIR_(state, nodeCtx, loopKind);
       } else {
-        // Raw loop fallback (unsimplified): named body blocks can complete
-        // normally via `break $blockName`, so the trailing `break;` is
-        // always reachable and required.
+        // Raw loop fallback (unsimplified): the body's static wasm type
+        // determines whether the for(;;) needs an explicit trailing
+        // {@code break;}.  Body type {@code none} means the body can fall
+        // through (either by reaching its end naturally, or by exiting a
+        // named child block via label-break).  Java requires the trailing
+        // break to escape the for(;;) on that fall-through path.  Body type
+        // {@code unreachable} means every path inside the body either
+        // continues the loop ({@code br $label}) or breaks to an outer
+        // scope, so the trailing break would itself be unreachable.
         var /** @const {!BinaryenExpressionInfo} */ loopBodyInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
             binaryen,
             /** @type {number} */ (expr.body)
           );
-        var /** @const {boolean} */ bodyBlockIsNamed = binaryen.BlockId === loopBodyInfo.id && !!loopBodyInfo.name;
-        var /** @const {boolean} */ needsTrailingBreak = bodyBlockIsNamed || !bodyWasTerminal;
+        var /** @const {boolean} */ needsTrailingBreak = binaryen.unreachable !== loopBodyInfo.type;
         var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
         result = this.emitRawInfiniteLoop_(ind, rawLabel, cr(0), needsTrailingBreak);
       }

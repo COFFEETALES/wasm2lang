@@ -40,6 +40,18 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.SECTION_NAME = 'w2l_codegen_met
  * round-trip.  Returns maps from label name to position and from position
  * to label name.
  *
+ * <p><b>Why this is a hand-rolled walker, not
+ * {@link Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression}.</b>  This
+ * routine intentionally <em>simulates</em> binaryen's reader-time
+ * canonicalization rules — it must skip unnamed multi-child blocks that
+ * binaryen flattens into their parent on read, inline single-child blocks,
+ * and so on.  The shared kernel walks the IR <em>as it currently exists</em>;
+ * here we need to walk a <em>projection</em> of the IR that matches what
+ * binaryen's reader would produce.  Used only by the v2 (DFS-position)
+ * deserialize fallback retained for binaries written before the v3 anchor
+ * scheme — new code should use the shared kernel via
+ * {@link buildLoopPositionToPtrList_} or {@link buildNameToPtrMap_}.
+ *
  * <p>Binaryen's binary reader drops or flattens certain block shapes during
  * round-trip.  To keep position numbering stable across the two-step
  * workflow (normalize → emit binary → re-read with --pre-normalized), this
@@ -226,6 +238,31 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNodeIndex_ = function (bin
  * @return {void}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializePassRunResult = function (wasmModule, passRunResult, binaryen) {
+  var /** @const */ MS_PUB = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection;
+  var /** @const {!Object} */ payloadV3 = MS_PUB.serializeWithAnchorsV3_(wasmModule, passRunResult, binaryen);
+  var /** @const {!Array<!Object>} */ v3Funcs = /** @type {!Array<!Object>} */ (payloadV3['f']);
+  if (0 === v3Funcs.length) return;
+  var /** @const {string} */ jsonStrV3 = JSON.stringify(payloadV3);
+  var /** @const {!Uint8Array} */ bytesV3 = new Uint8Array(jsonStrV3.length);
+  for (var /** @type {number} */ bvi = 0, /** @const {number} */ bvLen = jsonStrV3.length; bvi < bvLen; ++bvi) {
+    bytesV3[bvi] = jsonStrV3.charCodeAt(bvi);
+  }
+  wasmModule.addCustomSection(MS_PUB.SECTION_NAME, bytesV3);
+};
+
+/**
+ * V2 (DFS-position) serializer.  Retained for compatibility with binaries
+ * produced before the v3 anchor-based scheme.  Currently unused at write
+ * time (v3 is the default); v2 binaries are still readable by
+ * {@code rebuildPassRunResult}.
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Wasm.Tree.PassRunResult} passRunResult
+ * @param {!Binaryen} binaryen
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializePassRunResultV2_ = function (wasmModule, passRunResult, binaryen) {
   var /** @const {!Array<!Wasm2Lang.Wasm.Tree.PassMetadata>} */ funcs = passRunResult.functions;
   var /** @const {number} */ fLen = funcs.length;
   var /** @const {!Array<!Object>} */ serializedFunctions = [];
@@ -445,6 +482,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.deserializeFromBinary = functio
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult = function (wasmModule, parsedMeta, binaryen) {
   var /** @const */ MS = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection;
+  var /** @type {*} */ rawVersion = parsedMeta['v'];
+  var /** @const {number} */ versionField = 'number' === typeof rawVersion ? /** @type {number} */ (rawVersion) : 2;
+  if (3 === versionField) {
+    return MS.rebuildWithAnchorsV3_(wasmModule, parsedMeta, binaryen);
+  }
+  // Fall through to v2 path below.
   var /** @const {number} */ funcCount = wasmModule.getNumFunctions();
 
   // prettier-ignore
@@ -641,45 +684,35 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.restoreUnnamedPositions_ = func
 
 /**
  * Finds the Loop expression with the given name within a function body.
+ * Driven by the shared traversal kernel; early-terminates via skip-subtree
+ * once the match is captured.
  *
  * @private
+ * @param {!BinaryenModule} wasmModule
  * @param {!Binaryen} binaryen
  * @param {number} rootPtr
  * @param {string} loopName
  * @return {number}  Expression pointer to the Loop, or 0 if not found.
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.findLoopByName_ = function (binaryen, rootPtr, loopName) {
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.findLoopByName_ = function (wasmModule, binaryen, rootPtr, loopName) {
   if (0 === rootPtr) return 0;
-  var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ info = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
-      binaryen,
-      rootPtr
-    );
-  var /** @const {number} */ id = info.id;
-
-  if (binaryen.LoopId === id && /** @type {string} */ (info.name) === loopName) {
-    return rootPtr;
-  }
-
-  var /** @const {function(!Binaryen, number, string): number} */ find =
-      Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.findLoopByName_;
-
-  if (binaryen.BlockId === id) {
-    var /** @const {!Array<number>|void} */ ch = /** @type {!Array<number>|void} */ (info.children);
-    if (ch) {
-      for (var /** @type {number} */ i = 0, /** @const {number} */ cLen = ch.length; i < cLen; ++i) {
-        var /** @const {number} */ found = find(binaryen, ch[i], loopName);
-        if (0 !== found) return found;
+  var /** @type {number} */ found = 0;
+  Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
+    binaryen,
+    wasmModule,
+    rootPtr,
+    /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+        @return {(string|undefined)} */ function (nodeCtx) {
+      if (found) return 'skip-subtree';
+      var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (nodeCtx.expression);
+      if (binaryen.LoopId === info.id && /** @type {?string} */ (info.name) === loopName) {
+        found = /** @type {number} */ (nodeCtx.expressionPointer);
+        return 'skip-subtree';
       }
+      return undefined;
     }
-  } else if (binaryen.LoopId === id) {
-    return find(binaryen, /** @type {number} */ (info.body || 0), loopName);
-  } else if (binaryen.IfId === id) {
-    var /** @type {number} */ r = find(binaryen, /** @type {number} */ (info.ifTrue || 0), loopName);
-    if (0 === r) r = find(binaryen, /** @type {number} */ (info.ifFalse || 0), loopName);
-    return r;
-  }
-
-  return 0;
+  );
+  return found;
 };
 
 /**
@@ -707,7 +740,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.extractLoopConditionPtr_ = func
   var /** @const {function(!Binaryen, number): !Wasm2Lang.Wasm.Tree.ExpressionInfo} */ getInfo =
       Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo;
 
-  var /** @const {number} */ loopPtr = MS.findLoopByName_(binaryen, bodyPtr, loopName);
+  var /** @const {number} */ loopPtr = MS.findLoopByName_(wasmModule, binaryen, bodyPtr, loopName);
   if (0 === loopPtr) return 0;
 
   var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ loopInfo = getInfo(binaryen, loopPtr);
@@ -771,4 +804,513 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.extractLoopConditionPtr_ = func
   }
 
   return 0;
+};
+
+// ---------------------------------------------------------------------------
+// V3 anchor-based serialize / deserialize
+//
+// Format v3 keys block-typed metadata (sd / rs / fb) by anchor IDs that are
+// inserted into the IR as {@code call $w2l_anchor (i32.const id)} markers.
+// Anchors survive every binaryen pass and binary round-trip because imported
+// calls are opaque side-effects to the optimizer, which gives this scheme
+// drift-free node identity without depending on DFS-position invariants.
+// Loop-typed metadata (lp) keeps its name-based key — loop names are
+// preserved by the binary writer so an anchor would be redundant.
+// ---------------------------------------------------------------------------
+
+/**
+ * Walks a function body via the shared traversal kernel and records every
+ * named Block / Loop with its expression pointer.  Used at serialize-time
+ * (when w2l_-prefixed names are still on the in-memory IR) to find each
+ * marked node by name.
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {number} rootPtr
+ * @return {!Object<string, number>}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildNameToPtrMap_ = function (wasmModule, binaryen, rootPtr) {
+  var /** @const {!Object<string, number>} */ nameToPtr = /** @type {!Object<string, number>} */ (Object.create(null));
+  Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
+    binaryen,
+    wasmModule,
+    rootPtr,
+    /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+        @return {(string|undefined)} */ function (nodeCtx) {
+      var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (nodeCtx.expression);
+      var /** @const {number} */ id = info.id;
+      if (binaryen.BlockId === id || binaryen.LoopId === id) {
+        var /** @const {?string} */ name = /** @type {?string} */ (info.name);
+        if (name) nameToPtr[name] = /** @type {number} */ (nodeCtx.expressionPointer);
+      }
+      return undefined;
+    }
+  );
+  return nameToPtr;
+};
+
+/**
+ * V3 serializer.  For each function in the PassRunResult:
+ *   - For every block-typed marker (sd / rs / fb), find the marked block by
+ *     name, insert an anchor with a fresh global id at its first-child
+ *     position, and emit an entry {@code {id, t, n, ...}} into the section.
+ *   - For every loop plan, emit an entry {@code {t: 'lp', n, k, l}} keyed by
+ *     loop name (no anchor — loop names survive round-trip).
+ * Returns the JSON-ready payload (which the caller serializes into the
+ * {@code w2l_codegen_meta} custom section).
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Wasm.Tree.PassRunResult} passRunResult
+ * @param {!Binaryen} binaryen
+ * @return {!Object}  Payload ready for JSON.stringify.
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializeWithAnchorsV3_ = function (wasmModule, passRunResult, binaryen) {
+  var /** @const */ MS = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection;
+  var /** @const */ AM = Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers;
+  var /** @const {!Array<!Wasm2Lang.Wasm.Tree.PassMetadata>} */ funcs = passRunResult.functions;
+  var /** @const {number} */ fLen = funcs.length;
+  var /** @const {!Array<!Object>} */ outFuncs = [];
+  var /** @type {number} */ nextAnchorId = 1;
+
+  for (var /** @type {number} */ fi = 0; fi !== fLen; ++fi) {
+    var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ fm = funcs[fi];
+    if (!fm.passFuncPtr) continue;
+    var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(/** @type {number} */ (fm.passFuncPtr));
+    var /** @const {number} */ bodyPtr = funcInfo.body;
+    if (0 === bodyPtr) continue;
+
+    var /** @const {!Object<string, number>} */ nameToPtr = MS.buildNameToPtrMap_(wasmModule, binaryen, bodyPtr);
+    var /** @const {!Array<!Object>} */ entries = [];
+
+    // Block-typed entries get anchor IDs.
+    var /** @const */ insertBlockAnchor =
+        /** @param {string} name @param {string} type @param {?function(!Object):void} fillFn @return {void} */ function (
+          name,
+          type,
+          fillFn
+        ) {
+          var /** @const {number|void} */ ptr = nameToPtr[name];
+          if (!ptr) return;
+          var /** @const {!BinaryenExpressionInfo} */ info = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+              binaryen,
+              ptr
+            );
+          if (binaryen.BlockId !== info.id) return;
+          var /** @const {number} */ aid = nextAnchorId++;
+          AM.insertAtBlockStart(wasmModule, binaryen, /** @type {number} */ (ptr), aid);
+          var /** @const {!Object} */ e = Object.create(null);
+          e['id'] = aid;
+          e['t'] = type;
+          e['n'] = name;
+          if (fillFn) fillFn(e);
+          entries[entries.length] = e;
+        };
+
+    if (fm.switchDispatchNames) {
+      var /** @const {!Array<string>} */ sdKeys = Object.keys(/** @type {!Object} */ (fm.switchDispatchNames));
+      for (var /** @type {number} */ sdi = 0; sdi !== sdKeys.length; ++sdi) {
+        insertBlockAnchor(sdKeys[sdi], MS.TYPE_SWITCH_DISPATCH_, null);
+      }
+    }
+    if (fm.rootSwitchNames) {
+      var /** @const {!Array<string>} */ rsKeys = Object.keys(/** @type {!Object} */ (fm.rootSwitchNames));
+      for (var /** @type {number} */ rsi = 0; rsi !== rsKeys.length; ++rsi) {
+        insertBlockAnchor(rsKeys[rsi], MS.TYPE_ROOT_SWITCH_, null);
+      }
+    }
+    if (fm.fusedBlocks) {
+      var /** @const {!Object} */ fb = /** @type {!Object} */ (fm.fusedBlocks);
+      var /** @const {!Array<string>} */ fbKeys = Object.keys(fb);
+      for (var /** @type {number} */ fbi = 0; fbi !== fbKeys.length; ++fbi) {
+        var /** @const {string} */ fbName = fbKeys[fbi];
+        insertBlockAnchor(
+          fbName,
+          MS.TYPE_FUSED_BLOCK_,
+          /** @param {!Object} e */ function (e) {
+            e['v'] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (fb[fbName]).fusionVariant;
+          }
+        );
+      }
+    }
+
+    // Loop-typed entries keyed by DFS loop-position.  Loop NAMES are nulled
+    // by binaryen 125's binary round-trip whenever the loop has no back-edge
+    // (e.g. a "for(;;)" with only forward exits) — but the LoopId node itself
+    // always survives.  Walk the function body, count loops in pre-order,
+    // record each marked loop's position.  Deserialize finds the Nth loop
+    // and restores its name.  This is a strict subset of v2's DFS scheme:
+    // only loops, no blocks, and binaryen's serialization treats loops as a
+    // structural primitive (no flatten / inline / drop rules apply to them),
+    // making the position invariant under round-trip.
+    if (fm.loopPlans) {
+      var /** @const {!Object<string, number>} */ loopPositions = MS.buildLoopPositionMap_(wasmModule, binaryen, bodyPtr);
+      var /** @const {!Object} */ lp2 = /** @type {!Object} */ (fm.loopPlans);
+      var /** @const {!Array<string>} */ lpKeys2 = Object.keys(lp2);
+      for (var /** @type {number} */ lpi2 = 0; lpi2 !== lpKeys2.length; ++lpi2) {
+        var /** @const {string} */ lpName2 = lpKeys2[lpi2];
+        if (!(lpName2 in loopPositions)) continue;
+        var /** @const {!Wasm2Lang.Wasm.Tree.LoopPlan} */ plan2 = /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ (lp2[lpName2]);
+        var /** @const {!Object} */ pe2 = Object.create(null);
+        pe2['t'] = MS.TYPE_LOOP_PLAN_;
+        pe2['n'] = lpName2;
+        pe2['p'] = loopPositions[lpName2];
+        pe2['k'] = plan2.simplifiedLoopKind;
+        pe2['l'] = plan2.needsLabel ? 1 : 0;
+        entries[entries.length] = pe2;
+      }
+    }
+
+    if (0 === entries.length) continue;
+    var /** @const {!Object} */ funcEntry = Object.create(null);
+    funcEntry['n'] = funcInfo.name;
+    funcEntry['m'] = entries;
+    outFuncs[outFuncs.length] = funcEntry;
+  }
+
+  var /** @const {!Object} */ payload = Object.create(null);
+  payload['v'] = 3;
+  payload['f'] = outFuncs;
+  return payload;
+};
+
+/**
+ * V3 deserializer.  Walks the loaded module's IR for anchor calls, looks up
+ * each anchor's entry in {@code parsedMeta}, restores the marked block's
+ * synthetic name (binary writer strips names that aren't branch targets),
+ * and populates {@code PassMetadata} for the codegen.  Loop-typed entries
+ * are applied by name lookup (loop names survive round-trip).
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Object} parsedMeta
+ * @param {!Binaryen} binaryen
+ * @return {!Wasm2Lang.Wasm.Tree.PassRunResult}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildWithAnchorsV3_ = function (wasmModule, parsedMeta, binaryen) {
+  var /** @const */ MS = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection;
+  var /** @const */ AM = Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers;
+  var /** @const {number} */ funcCount = wasmModule.getNumFunctions();
+
+  // Build {funcName: {anchor: {id: entry}, byName: [entries]}} from payload.
+  var /** @const {!Object<string, {anchor: !Object<string, !Object>, byName: !Array<!Object>}>} */ perFunc =
+      /** @type {!Object<string, {anchor: !Object<string, !Object>, byName: !Array<!Object>}>} */ (Object.create(null));
+  var /** @type {*} */ rawFuncs = parsedMeta['f'];
+  var /** @const {!Array<!Object>} */ funcs = /** @type {!Array<!Object>} */ (rawFuncs || []);
+  for (var /** @type {number} */ fi = 0; fi !== funcs.length; ++fi) {
+    var /** @const {!Object} */ fe = funcs[fi];
+    var /** @const {string} */ fname = /** @type {string} */ (fe['n']);
+    var /** @type {*} */ rawEntries = fe['m'];
+    var /** @const {!Array<!Object>} */ es = /** @type {!Array<!Object>} */ (rawEntries || []);
+    var /** @const {!Object<string, !Object>} */ anchorMap = /** @type {!Object<string, !Object>} */ (Object.create(null));
+    var /** @const {!Array<!Object>} */ byName = [];
+    for (var /** @type {number} */ ei = 0; ei !== es.length; ++ei) {
+      var /** @const {!Object} */ ent = es[ei];
+      if (void 0 !== ent['id']) {
+        anchorMap[String(ent['id'])] = ent;
+      } else {
+        byName[byName.length] = ent;
+      }
+    }
+    perFunc[fname] = {anchor: anchorMap, byName: byName};
+  }
+
+  // Walk anchors in IR; restore block names; populate per-function PassMetadata.
+  var /** @const {!Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} */ fmByName =
+      /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} */ (Object.create(null));
+
+  AM.forEachAnchor(
+    wasmModule,
+    binaryen,
+    /** @param {number} funcPtr @param {!BinaryenFunctionInfo} funcInfo @param {number} parentPtr @param {number} anchorIndex @param {number} anchorId */ function (
+      funcPtr,
+      funcInfo,
+      parentPtr,
+      anchorIndex,
+      anchorId
+    ) {
+      void anchorIndex;
+      var /** @const {string} */ fname = funcInfo.name;
+      var /** @const */ fdata = perFunc[fname];
+      if (!fdata) return;
+      var /** @const {!Object|void} */ entry = fdata.anchor[String(anchorId)];
+      if (!entry) return;
+      if (!parentPtr) return;
+
+      var /** @const {!BinaryenExpressionInfo} */ parentInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+          binaryen,
+          parentPtr
+        );
+      if (binaryen.BlockId !== parentInfo.id) return;
+
+      var /** @const {string} */ name = /** @type {string} */ (entry['n']);
+      // Always restore the original w2l_-prefixed name.  Binary round-trip
+      // renames non-target blocks to synthetic identifiers like $block, $block1
+      // (NOT null), so checking for missing name would skip the restore and
+      // the codegen's prefix-based dispatch detection would silently miss it.
+      var /** @const {?string} */ oldName = /** @type {?string} */ (parentInfo.name);
+      if (oldName !== name) {
+        binaryen.Block.setName(parentPtr, name);
+        // br/br_table targets that previously pointed at oldName are now
+        // dangling — rewrite them to the restored label so the IR stays
+        // self-consistent for codegen and validation.
+        if (oldName) {
+          MS.renameLabelRefs_(
+            wasmModule,
+            binaryen,
+            /** @type {number} */ (binaryen.getFunctionInfo(funcPtr).body),
+            oldName,
+            name
+          );
+        }
+      }
+
+      var /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm = fmByName[fname];
+      if (!fm) {
+        fm = MS.makeFreshPassMetadata_(funcPtr, funcInfo, wasmModule);
+        fmByName[fname] = fm;
+      }
+      var /** @const {string} */ etype = /** @type {string} */ (entry['t']);
+      if (MS.TYPE_SWITCH_DISPATCH_ === etype) {
+        if (!fm.switchDispatchNames) fm.switchDispatchNames = /** @type {!Object<string, boolean>} */ (Object.create(null));
+        /** @type {!Object<string, boolean>} */ (fm.switchDispatchNames)[name] = true;
+      } else if (MS.TYPE_ROOT_SWITCH_ === etype) {
+        if (!fm.rootSwitchNames) fm.rootSwitchNames = /** @type {!Object<string, boolean>} */ (Object.create(null));
+        /** @type {!Object<string, boolean>} */ (fm.rootSwitchNames)[name] = true;
+      } else if (MS.TYPE_FUSED_BLOCK_ === etype) {
+        if (!fm.fusedBlocks)
+          fm.fusedBlocks = /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (Object.create(null));
+        /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (fm.fusedBlocks)[name] =
+          /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({
+            fusionVariant: /** @type {string} */ (entry['v'])
+          });
+      }
+    }
+  );
+
+  // Apply position-keyed entries (loop plans).  Walk each function's body
+  // to build the position→ptr list, then for every byName entry look up the
+  // loop pointer at the recorded position, restore the loop's name (binary
+  // round-trip nulls names of loops with no back-edge), and rewrite any
+  // dangling br/br_table references to the new name.
+  var /** @const {!Array<string>} */ funcNames = Object.keys(perFunc);
+  for (var /** @type {number} */ fnIdx = 0; fnIdx !== funcNames.length; ++fnIdx) {
+    var /** @const {string} */ fnKey = funcNames[fnIdx];
+    var /** @const */ fdata2 = perFunc[fnKey];
+    if (0 === fdata2.byName.length) continue;
+    var /** @const {number} */ funcPtr2 = MS.findFunctionByName_(wasmModule, fnKey);
+    if (!funcPtr2) continue;
+    var /** @const {!BinaryenFunctionInfo} */ funcInfo2 = binaryen.getFunctionInfo(funcPtr2);
+    if ('' !== funcInfo2.base) continue;
+    var /** @const {number} */ bodyPtr2 = funcInfo2.body;
+    if (!bodyPtr2) continue;
+    var /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm2 = fmByName[fnKey];
+    if (!fm2) {
+      fm2 = MS.makeFreshPassMetadata_(funcPtr2, funcInfo2, wasmModule);
+      fmByName[fnKey] = fm2;
+    }
+    var /** @const {!Array<number>} */ loopPtrList = MS.buildLoopPositionToPtrList_(wasmModule, binaryen, bodyPtr2);
+    for (var /** @type {number} */ bi = 0; bi !== fdata2.byName.length; ++bi) {
+      var /** @const {!Object} */ bne = fdata2.byName[bi];
+      if (MS.TYPE_LOOP_PLAN_ !== bne['t']) continue;
+      var /** @const {string} */ loopName = /** @type {string} */ (bne['n']);
+      var /** @const {string} */ loopKind = /** @type {string} */ (bne['k']);
+      var /** @const {boolean} */ needsLabel = 1 === /** @type {number} */ (bne['l']);
+      var /** @const {number} */ loopPos = /** @type {number} */ (bne['p']);
+      var /** @const {number} */ loopPtr = loopPos < loopPtrList.length ? loopPtrList[loopPos] : 0;
+      if (loopPtr) {
+        var /** @const {!BinaryenExpressionInfo} */ loopFi = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+            binaryen,
+            loopPtr
+          );
+        var /** @const {?string} */ loopOldName = /** @type {?string} */ (loopFi.name);
+        if (loopOldName !== loopName) {
+          binaryen.Loop.setName(loopPtr, loopName);
+          if (loopOldName) {
+            MS.renameLabelRefs_(wasmModule, binaryen, bodyPtr2, loopOldName, loopName);
+          }
+        }
+      }
+      if (!fm2.loopPlans) fm2.loopPlans = /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (Object.create(null));
+      /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (fm2.loopPlans)[loopName] =
+        /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ ({
+          simplifiedLoopKind: loopKind,
+          needsLabel: needsLabel,
+          conditionPtr: MS.extractLoopConditionPtr_(binaryen, wasmModule, bodyPtr2, loopName, loopKind)
+        });
+    }
+  }
+
+  // Build PassRunResult shape including all functions (some may have no
+  // metadata but the codegen still needs the entry).
+  var /** @const {!Wasm2Lang.Wasm.Tree.PassRunResult} */ runResult = /** @type {!Wasm2Lang.Wasm.Tree.PassRunResult} */ ({
+      functionCount: funcCount,
+      processedCount: 0,
+      functions: []
+    });
+  var /** @const {!Array<!Wasm2Lang.Wasm.Tree.PassMetadata>} */ outArr =
+      /** @type {!Array<!Wasm2Lang.Wasm.Tree.PassMetadata>} */ (runResult.functions);
+  for (var /** @type {number} */ f = 0; f !== funcCount; ++f) {
+    var /** @const {number} */ fp = wasmModule.getFunctionByIndex(f);
+    var /** @const {!BinaryenFunctionInfo} */ fi2 = binaryen.getFunctionInfo(fp);
+    if ('' !== fi2.base) continue;
+    if (!fi2.body) continue;
+    var /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ existing = fmByName[fi2.name];
+    if (!existing) {
+      existing = MS.makeFreshPassMetadata_(fp, fi2, wasmModule);
+    }
+    outArr[outArr.length] = existing;
+    ++runResult.processedCount;
+  }
+  return runResult;
+};
+
+/**
+ * @private
+ * @param {number} funcPtr
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!BinaryenModule} wasmModule
+ * @return {!Wasm2Lang.Wasm.Tree.PassMetadata}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.makeFreshPassMetadata_ = function (funcPtr, funcInfo, wasmModule) {
+  var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ fm = /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata} */ (
+      Object.create(null)
+    );
+  fm.passFuncName = funcInfo.name;
+  fm.passFuncPtr = funcPtr;
+  fm.passTreeModule = wasmModule;
+  fm.bodyReplaced = false;
+  return fm;
+};
+
+/**
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {string} name
+ * @return {number}  Function pointer or 0.
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.findFunctionByName_ = function (wasmModule, name) {
+  return wasmModule.getFunction(name) || 0;
+};
+
+/**
+ * Walks the function body in DFS pre-order via the shared traversal kernel
+ * and assigns sequential indices to every Loop node.  Returns name→position
+ * for currently-named loops; the inverse (position→ptr) is built on the
+ * deserialize side via {@code buildLoopPositionToPtrList_}.  The shared
+ * kernel uses {@code NodeSchema.expressionEdgeSpecs_} to cover every
+ * expression slot consistently — no need to enumerate IfId / DropId / etc.
+ * locally.
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {number} rootPtr
+ * @return {!Object<string, number>}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildLoopPositionMap_ = function (wasmModule, binaryen, rootPtr) {
+  var /** @const {!Object<string, number>} */ out = /** @type {!Object<string, number>} */ (Object.create(null));
+  var /** @type {number} */ counter = 0;
+  Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
+    binaryen,
+    wasmModule,
+    rootPtr,
+    /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+        @return {(string|undefined)} */ function (nodeCtx) {
+      var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (nodeCtx.expression);
+      if (binaryen.LoopId === info.id) {
+        var /** @const {?string} */ ln = /** @type {?string} */ (info.name);
+        if (ln) out[ln] = counter;
+        counter++;
+      }
+      return undefined;
+    }
+  );
+  return out;
+};
+
+/**
+ * Same DFS pre-order walk as {@code buildLoopPositionMap_}, but produces
+ * the position-indexed list of Loop pointers — the inverse needed at
+ * deserialize time when names may have been stripped.
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {number} rootPtr
+ * @return {!Array<number>}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildLoopPositionToPtrList_ = function (wasmModule, binaryen, rootPtr) {
+  var /** @const {!Array<number>} */ out = [];
+  Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
+    binaryen,
+    wasmModule,
+    rootPtr,
+    /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+        @return {(string|undefined)} */ function (nodeCtx) {
+      var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (nodeCtx.expression);
+      if (binaryen.LoopId === info.id) {
+        out[out.length] = /** @type {number} */ (nodeCtx.expressionPointer);
+      }
+      return undefined;
+    }
+  );
+  return out;
+};
+
+/**
+ * Walks the function body via the shared traversal kernel and rewrites every
+ * {@code br} / {@code br_if} / {@code br_table} reference to {@code oldName}
+ * so it points to {@code newName} instead.  Used after {@code Block.setName}
+ * (or {@code Loop.setName}) restores a w2l_-prefixed label — binary
+ * round-trip renames the block/loop AND its references consistently to
+ * synthetic names like {@code $block4}; flipping the original name back
+ * leaves the references dangling unless we patch them in tandem.
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {number} rootPtr  Function body pointer.
+ * @param {string} oldName  Name binaryen assigned during round-trip.
+ * @param {string} newName  Name we just restored on the marked block/loop.
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.renameLabelRefs_ = function (wasmModule, binaryen, rootPtr, oldName, newName) {
+  Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
+    binaryen,
+    wasmModule,
+    rootPtr,
+    /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+        @return {(string|undefined)} */ function (nodeCtx) {
+      var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (nodeCtx.expression);
+      var /** @const {number} */ id = info.id;
+      if (binaryen.BreakId === id) {
+        if (/** @type {?string} */ (info.name) === oldName) {
+          binaryen.Break.setName(/** @type {number} */ (nodeCtx.expressionPointer), newName);
+        }
+      } else if (binaryen.SwitchId === id) {
+        var /** @const {!Array<string>|void} */ names = /** @type {!Array<string>|void} */ (info.names);
+        if (names) {
+          var /** @type {boolean} */ swChanged = false;
+          var /** @const {!Array<string>} */ newNames = [];
+          for (var /** @type {number} */ ni = 0, /** @const {number} */ nLen = names.length; ni < nLen; ++ni) {
+            if (names[ni] === oldName) {
+              newNames[newNames.length] = newName;
+              swChanged = true;
+            } else {
+              newNames[newNames.length] = names[ni];
+            }
+          }
+          if (swChanged) {
+            binaryen.Switch.setNames(/** @type {number} */ (nodeCtx.expressionPointer), newNames);
+          }
+        }
+        if (/** @type {?string} */ (info.defaultName) === oldName) {
+          binaryen.Switch.setDefaultName(/** @type {number} */ (nodeCtx.expressionPointer), newName);
+        }
+      }
+      return undefined;
+    }
+  );
 };

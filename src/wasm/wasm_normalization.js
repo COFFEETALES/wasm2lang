@@ -194,25 +194,11 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
       postLoweringPasses[postLoweringPasses.length] = 'avoid-reinterprets';
     }
     runTimed('phase3.prop', postLoweringPasses);
-    // {@code wasmModule.optimize()} at level 2 is intentionally skipped.
-    // Its passes (notably aggressive control-flow restructuring) produce
-    // IR patterns around multi-action switch/br_table loops that the
-    // wasm2lang codegen mishandles — manifesting as early-exit from
-    // handshake iteration loops in real QUIC traffic (see quic-zig
-    // WebTransport echo test).  The targeted passes above
-    // (simplify-locals-nonesting, precompute-propagate, avoid-reinterprets)
-    // cover the useful optimizations for the JS target; phase 4a's
-    // flatten+simplify pair handles the rest.  Partial pass lists
-    // (running e.g. just dce/vacuum/remove-unused-brs/merge-blocks/
-    // optimize-instructions/precompute) regress
-    // wasm2lang_08_algorithms_*_max, so the whole phase 3 optimize step
-    // is dropped.  Removing it also halves the advisory codegen_max-vs-
-    // prenorm_max warnings in the test suite (8 → 4).
-    //
-    // TODO: move the control-flow-pattern repair into a proper custom
-    // pass under src/wasm/tree/custom_passes (per project plan) so that
-    // the full binaryen optimizer can run again.  This is tracked in
-    // memory/project_quic_webtransport_codegen.md.
+    // {@code wasmModule.optimize()} skipped — its passes restructure
+    // multi-action switch/br_table loops in ways the wasm2lang codegen
+    // emitter mistranslates (stalls QUIC TLS handshake at step 2).  The
+    // surrounding targeted passes cover what the JS target benefits from.
+    // Tracked in memory/project_quic_webtransport_codegen.md as TODO.
     optimizeSucceeded = true;
     if (isJsTarget) {
       runTimed('phase3.reinterprets', ['avoid-reinterprets']);

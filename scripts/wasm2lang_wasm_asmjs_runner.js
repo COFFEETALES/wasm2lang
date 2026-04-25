@@ -64,6 +64,15 @@ const wasm = !!obj['wasm'];
     }
 
     const wasmImportObject = harness.wasmImports || {'module': harness.moduleImports};
+    // wasm2lang:codegen normalization persists pass metadata via a synthetic
+    // {@code (import "w2l" "anchor")} that survives binary round-trip.
+    // Provide a no-op stub so binaries containing anchors instantiate cleanly
+    // when run directly through this test runner.
+    if (!wasmImportObject['w2l']) {
+      wasmImportObject['w2l'] = {'anchor': function () {}};
+    } else if (!wasmImportObject['w2l']['anchor']) {
+      wasmImportObject['w2l']['anchor'] = function () {};
+    }
     const instance = new WebAssembly.Instance(new WebAssembly.Module(bin), wasmImportObject);
     instanceMemoryBuffer = instance.exports.memory.buffer;
     harness.runTest(instanceMemoryBuffer, stdoutWrite, instance.exports, sharedData);

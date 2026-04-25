@@ -253,6 +253,12 @@ Binaryen.prototype.f64;
 Binaryen.prototype.i64;
 
 /**
+ * @param {!Array<number>} types
+ * @return {number}
+ */
+Binaryen.prototype.createType = function (types) {};
+
+/**
  * @type {number}
  */
 Binaryen.prototype.v128;
@@ -403,6 +409,36 @@ BinaryenModule.prototype.getDataSegmentByIndex = function (index) {};
  * @return {number}
  */
 BinaryenModule.prototype.getFunctionByIndex = function (index) {};
+
+/**
+ * @param {string} name
+ * @return {number}
+ */
+BinaryenModule.prototype.getFunction = function (name) {};
+
+/**
+ * @param {string} internalName
+ * @param {string} externalModuleName
+ * @param {string} externalBaseName
+ * @param {number} params
+ * @param {number} results
+ * @return {void}
+ */
+BinaryenModule.prototype.addFunctionImport = function (internalName, externalModuleName, externalBaseName, params, results) {};
+
+/**
+ * @param {string} name
+ * @return {void}
+ */
+BinaryenModule.prototype.removeFunction = function (name) {};
+
+/**
+ * @param {string} target
+ * @param {!Array<number>} operands
+ * @param {number} returnType
+ * @return {number}
+ */
+BinaryenModule.prototype.call = function (target, operands, returnType) {};
 
 /**
  * @return {string}
@@ -925,6 +961,28 @@ BinaryenBlockApi.prototype.setChildAt = function (ptr, index, child) {};
 
 /**
  * @param {number} ptr
+ * @param {number} index
+ * @param {number} child
+ * @return {void}
+ */
+BinaryenBlockApi.prototype.insertChildAt = function (ptr, index, child) {};
+
+/**
+ * @param {number} ptr
+ * @param {number} index
+ * @return {void}
+ */
+BinaryenBlockApi.prototype.removeChildAt = function (ptr, index) {};
+
+/**
+ * @param {number} ptr
+ * @param {number} child
+ * @return {void}
+ */
+BinaryenBlockApi.prototype.appendChild = function (ptr, child) {};
+
+/**
+ * @param {number} ptr
  * @param {string} name
  * @return {void}
  */
@@ -985,6 +1043,13 @@ var BinaryenLoopApi = function () {};
 BinaryenLoopApi.prototype.setBody = function (ptr, body) {};
 
 /**
+ * @param {number} ptr
+ * @param {string} name
+ * @return {void}
+ */
+BinaryenLoopApi.prototype.setName = function (ptr, name) {};
+
+/**
  * @type {!BinaryenLoopApi}
  */
 Binaryen.prototype.Loop;
@@ -1009,6 +1074,12 @@ BinaryenBreakApi.prototype.setCondition = function (ptr, cond) {};
  * @return {void}
  */
 BinaryenBreakApi.prototype.setValue = function (ptr, val) {};
+/**
+ * @param {number} ptr
+ * @param {string} name
+ * @return {void}
+ */
+BinaryenBreakApi.prototype.setName = function (ptr, name) {};
 
 /**
  * @type {!BinaryenBreakApi}
@@ -1035,6 +1106,18 @@ BinaryenSwitchApi.prototype.setCondition = function (ptr, cond) {};
  * @return {void}
  */
 BinaryenSwitchApi.prototype.setValue = function (ptr, val) {};
+/**
+ * @param {number} ptr
+ * @param {!Array<string>} names
+ * @return {void}
+ */
+BinaryenSwitchApi.prototype.setNames = function (ptr, names) {};
+/**
+ * @param {number} ptr
+ * @param {string} name
+ * @return {void}
+ */
+BinaryenSwitchApi.prototype.setDefaultName = function (ptr, name) {};
 
 /**
  * @type {!BinaryenSwitchApi}

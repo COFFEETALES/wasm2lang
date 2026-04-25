@@ -277,3 +277,53 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.applyChildReplacement_ = function (parentExp
     );
   setter(parentExprPtr, edgeIndex, newChildPtr);
 };
+
+/**
+ * Lightweight visit-each helper that drives {@link walkExpression} with a
+ * minimal context for analysis-only walks (anchor scanning, label-ref
+ * rewriting, name→ptr indexing, etc.) — the third major traversal use-case
+ * alongside pass execution and code emission.  The callback may return
+ * {@code 'skip-subtree'} to prune; any other return value is treated as
+ * "continue".  Mutations on visited nodes (e.g. {@code binaryen.Break.setName})
+ * are allowed.  Returns {@code true} if the visit completed normally,
+ * {@code false} if {@code abortSentinel} was returned at any point.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
+ * @param {number} rootPtr  Function body root, or any sub-expression.
+ * @param {function(!Wasm2Lang.Wasm.Tree.TraversalNodeContext): (string|undefined)} fn
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression = function (binaryen, wasmModule, rootPtr, fn) {
+  if (!rootPtr) return;
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalContext} */ ctx = {
+      binaryen: binaryen,
+      treeModule: wasmModule,
+      functionInfo: /** @type {!BinaryenFunctionInfo} */ (
+        /** @type {!BinaryenFunctionInfo} */ ({
+          base: '',
+          name: '',
+          body: 0,
+          type: 0,
+          params: 0,
+          results: 0,
+          vars: [],
+          module: ''
+        })
+      ),
+      treeMetadata: /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata} */ (Object.create(null)),
+      ancestors: []
+    };
+  var /** @const {string} */ SKIP = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE;
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor = {
+      enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+                @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function (nodeCtx) {
+        var /** @const {(string|undefined)} */ result = fn(nodeCtx);
+        if ('skip-subtree' === result) {
+          return /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ ({decisionAction: SKIP});
+        }
+        return null;
+      }
+    };
+  Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression(rootPtr, ctx, visitor);
+};
