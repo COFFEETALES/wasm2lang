@@ -86,6 +86,14 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
   usedPre['$w2l_memory_fill'] = false;
   usedPre['$w2l_memory_copy'] = false;
   usedPre['$w2l_memory_grow'] = false;
+  /**
+   * @param {!Object<string, boolean>} marks
+   */
+  var restoreMemMarks = function (marks) {
+    if (memFillUsed) marks['$w2l_memory_fill'] = true;
+    if (memCopyUsed) marks['$w2l_memory_copy'] = true;
+    if (memGrowUsed) marks['$w2l_memory_grow'] = true;
+  };
 
   var /** @const {!Array<string>} */ lines = Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_.call(
       this,
@@ -112,6 +120,8 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
   var /** @const {string} */ l2 = this.localN_(2);
   var /** @const {string} */ nMathClz32 = n('Math_clz32');
   var /** @const {string} */ nMathImul = n('Math_imul');
+  var /** @const {string} */ nMathCeil = n('Math_ceil');
+  var /** @const {string} */ nMathFloor = n('Math_floor');
   var /** @const {string} */ nBigInt = n('$w2l_bigint');
   var /** @const {string} */ nBigIntAsIntN = n('$w2l_bigint_asintn');
   var /** @const {string} */ nBigIntAsUintN = n('$w2l_bigint_asuintn');
@@ -244,13 +254,15 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
    * @param {boolean} needsFround
    */
   var emitTruncI64 = function (helperName, rangeCheck, needsFround) {
-    var /** @const {!Array<string>} */ bindings = needsFround ? ['$w2l_trap', 'Math_fround'] : ['$w2l_trap'];
+    var /** @const {!Array<string>} */ bindings = needsFround
+        ? ['$w2l_trap', 'Math_fround', 'Math_ceil', 'Math_floor']
+        : ['$w2l_trap', 'Math_ceil', 'Math_floor'];
     // prettier-ignore
     h(helperName, bindings,
       pad1 + 'function ' + n(helperName) + '(' + l0 + ') {\n' +
       pad2 + 'if (' + l0 + ' !== ' + l0 + ') { ' + nTrap + '(); return 0n; }\n' +
       pad2 + rangeCheck + '\n' +
-      pad2 + 'return ' + nBigInt + '(' + l0 + ' < 0 ? Math.ceil(' + l0 + ') : Math.floor(' + l0 + '));\n' +
+      pad2 + 'return ' + nBigInt + '(' + l0 + ' < 0 ? ' + nMathCeil + '(' + l0 + ') : ' + nMathFloor + '(' + l0 + '));\n' +
       pad1 + '}');
   };
 
@@ -284,12 +296,12 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
    */
   var emitTruncSatI64 = function (helperName, lowClampLit, highClampLit, lowRangeLit, highRangeLit) {
     // prettier-ignore
-    h(helperName, [],
+    h(helperName, ['Math_ceil', 'Math_floor'],
       pad1 + 'function ' + n(helperName) + '(' + l0 + ') {\n' +
       pad2 + 'if (' + l0 + ' !== ' + l0 + ') return 0n;\n' +
       pad2 + 'if (' + l0 + ' <= ' + lowRangeLit + ') return ' + lowClampLit + ';\n' +
       pad2 + 'if (' + l0 + ' >= ' + highRangeLit + ') return ' + highClampLit + ';\n' +
-      pad2 + 'return ' + nBigInt + '(' + l0 + ' < 0 ? Math.ceil(' + l0 + ') : Math.floor(' + l0 + '));\n' +
+      pad2 + 'return ' + nBigInt + '(' + l0 + ' < 0 ? ' + nMathCeil + '(' + l0 + ') : ' + nMathFloor + '(' + l0 + '));\n' +
       pad1 + '}');
   };
 
@@ -348,6 +360,13 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
     pad2 + n('HEAP64') + '[' + scratchQ + '] = 0n;\n' +
     pad2 + 'return ' + l1 + ';\n' +
     pad1 + '}');
+
+  // Restore the memory-helper marks that were temporarily cleared above so
+  // the asm.js parent {@code emitHelpers_} would skip its byte-loop versions.
+  // Leaving them clear would make {@code runUsageDiscovery_} miss these JS
+  // helpers and the precompute filter would skip registering their mangled
+  // names — falling back to the verbatim {@code $w2l_memory_*} strings.
+  restoreMemMarks(usedPre);
 
   return lines;
 };

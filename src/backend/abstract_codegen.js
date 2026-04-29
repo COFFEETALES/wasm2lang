@@ -1,8 +1,8 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Bootstrap: backend registry, mangler profile registry, buildReservedSet,
-// AbstractCodegen constructor, and BinaryRenderer_ typedef.
+// Bootstrap: backend registry, mangler profile registry, AbstractCodegen
+// constructor, and BinaryRenderer_ typedef.
 //
 // Split files under abstract_codegen/ attach additional statics and prototype
 // methods after this file loads.
@@ -94,37 +94,9 @@ Wasm2Lang.Backend.getManglerProfile = function (languageId) {
 };
 
 /**
- * Builds a reserved-word lookup table from an array of words.
- *
- * @param {!Array<string>} words
- * @return {!Object<string, boolean>}
- */
-Wasm2Lang.Backend.buildReservedSet = function (words) {
-  var /** @const {!Object<string, boolean>} */ set = /** @type {!Object<string, boolean>} */ (Object.create(null));
-  for (var /** @type {number} */ i = 0, /** @const {number} */ wordLen = words.length; i < wordLen; ++i) {
-    set[words[i]] = true;
-  }
-  return set;
-};
-
-/**
- * Builds a standard rejectName function for a mangler profile.
- * Rejects names starting with a digit or matching a reserved word.
- *
- * @param {!Object<string, boolean>} reserved
- * @param {boolean} caseInsensitive  If true, lower-cases before lookup.
- * @return {function(string): boolean}
- */
-Wasm2Lang.Backend.buildRejectName = function (reserved, caseInsensitive) {
-  return /** @param {string} name @return {boolean} */ function (name) {
-    var /** @const {number} */ ch = name.charCodeAt(0);
-    return (48 <= ch && ch <= 57) || !!reserved[caseInsensitive ? name.toLowerCase() : name];
-  };
-};
-
-/**
  * Defines and registers a mangler profile for a backend language in one call.
- * Builds the reserved-word set, the rejectName predicate, and the default
+ * Builds the reserved-word set, a rejectName predicate (rejecting digit-led
+ * names plus reserved words, case-folding when requested), and the default
  * charsets (case-insensitive profiles use lowercase-only charsets without
  * {@code $}).  Returns the reserved-word set so concrete backends can assign
  * it to their {@code reservedWords_} field.
@@ -135,18 +107,21 @@ Wasm2Lang.Backend.buildRejectName = function (reserved, caseInsensitive) {
  * @return {!Object<string, boolean>}
  */
 Wasm2Lang.Backend.defineLanguageManglerProfile = function (languageId, words, caseInsensitive) {
-  var /** @const {!Object<string, boolean>} */ reserved = Wasm2Lang.Backend.buildReservedSet(words);
-  var /** @const {string} */ single = caseInsensitive
+  var /** @const {!Object<string, boolean>} */ reserved = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  for (var /** @type {number} */ i = 0, /** @const {number} */ wordLen = words.length; i < wordLen; ++i) {
+    reserved[words[i]] = true;
+  }
+  var /** @const {string} */ alpha = caseInsensitive
       ? 'abcdefghijklmnopqrstuvwxyz_'
       : '$ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
-  var /** @const {string} */ block = caseInsensitive
-      ? 'abcdefghijklmnopqrstuvwxyz_0123456789'
-      : '$ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz0123456789';
   Wasm2Lang.Backend.registerManglerProfile(languageId, {
     reservedWords: reserved,
-    rejectName: Wasm2Lang.Backend.buildRejectName(reserved, caseInsensitive),
-    singleCharset: single,
-    blockCharset: block,
+    rejectName: /** @param {string} name @return {boolean} */ function (name) {
+      var /** @const {number} */ ch = name.charCodeAt(0);
+      return (48 <= ch && ch <= 57) || !!reserved[caseInsensitive ? name.toLowerCase() : name];
+    },
+    singleCharset: alpha,
+    blockCharset: alpha + '0123456789',
     caseInsensitive: caseInsensitive
   });
   return reserved;
@@ -170,6 +145,31 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
 
   /** @protected @type {?Wasm2Lang.Backend.IdentifierMangler} */
   this.mangler_ = null;
+
+  /**
+   * Snapshot of the final {@code usedHelpers_} populated by the most recent
+   * {@code emitCode} invocation, captured before {@code emitCode} resets the
+   * working field to null.  {@code runUsageDiscovery_} reads it to seed the
+   * helper-registration filter; subsequent emit invocations overwrite it.
+   * @protected @type {?Object<string, boolean>}
+   */
+  this.lastEmitUsedHelpers_ = null;
+
+  /** @protected @type {?Object<string, boolean>} */
+  this.lastEmitUsedBindings_ = null;
+
+  /**
+   * Filter sets populated by {@code runUsageDiscovery_} from the snapshot
+   * fields above.  When non-null, {@code precomputeMangledNames_} skips
+   * registering helpers and cold-tier bindings whose keys are absent — the
+   * encoder slot freed by each skipped key is reclaimed by an identifier
+   * that the emit will actually reference.
+   * @protected @type {?Object<string, boolean>}
+   */
+  this.discoveredHelpers_ = null;
+
+  /** @protected @type {?Object<string, boolean>} */
+  this.discoveredBindings_ = null;
 
   /** @protected @type {?Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} */
   this.passRunResultIndex_ = null;

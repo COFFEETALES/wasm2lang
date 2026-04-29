@@ -272,6 +272,14 @@ Wasm2Lang.Processor.transpile_ = function (options) {
   }
 
   if (options.mangler) {
+    // Run a discovery pass with the mangler disabled to populate the codegen's
+    // {@code usedHelpers_} / {@code usedBindings_} fields as if a real emit had
+    // happened, then capture them so the upcoming {@code precomputeMangledNames_}
+    // can register only the helpers and cold-tier bindings that the emit will
+    // actually reference.  Modules that hit only a small slice of the helper
+    // roster reclaim the freed encoder slots for shorter mangled names on the
+    // identifiers that do appear in the output.
+    codegen.runUsageDiscovery_(wasmModule, options);
     return codegen.precomputeMangledNames_(wasmModule, options).then(function () {
       return Wasm2Lang.Processor.emitResults_(wasmModule, codegen, options);
     });

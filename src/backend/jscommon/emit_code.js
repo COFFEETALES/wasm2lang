@@ -107,6 +107,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
       this.heapPageCount_
     );
   var /** @const {!Object<string, boolean>} */ ub = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
+  var /** @const {!Object<string, boolean>} */ uh = /** @type {!Object<string, boolean>} */ (this.usedHelpers_);
   this.usedHelpers_ = null;
   this.usedBindings_ = null;
   this.castNames_ = null;
@@ -140,7 +141,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     pushBinding(heapBindings[hbi][0], this.renderHeapInitializer_(heapBindings[hbi][1], stdlibName, bufferName));
   }
 
-  var /** @const {!Array<string>} */ mathBindings = Wasm2Lang.Backend.JsCommonCodegen.MATH_FUNCTION_BINDINGS_;
+  var /** @const {!Array<string>} */ mathBindings = this.getMathFunctionBindings_();
   for (var /** @type {number} */ mbi = 0, /** @const {number} */ mbLen = mathBindings.length; mbi !== mbLen; ++mbi) {
     pushBinding(mathBindings[mbi], this.renderMathFunctionInitializer_(mathBindings[mbi], stdlibName));
   }
@@ -163,11 +164,14 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   // after unconditional control flow get trimmed from block bodies by
   // {@code reachableBlockChildCount_}.  Scan the surviving function text for
   // the mangled identifier so the binding is only declared when a live call
-  // makes it into the output.
+  // makes it into the output — using identifier-boundary detection so a trap
+  // mangled to a single character (e.g. "t") is not falsely matched inside an
+  // unrelated call site that ends with the same character (e.g. "Jt(").
   if (!ub['$w2l_trap']) {
     var /** @const {string} */ mangledTrap = this.n_('$w2l_trap');
+    var /** @const */ hasCall = Wasm2Lang.Backend.AbstractCodegen.containsIdentifierCall_;
     for (var /** @type {number} */ fp = 0, /** @const {number} */ fpLen2 = functionParts.length; fp !== fpLen2; ++fp) {
-      if (-1 !== functionParts[fp].indexOf(mangledTrap + '(')) {
+      if (hasCall(functionParts[fp], mangledTrap)) {
         ub['$w2l_trap'] = true;
         break;
       }
@@ -296,6 +300,13 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   outputParts[outputParts.length] = pad1 + 'return { ' + returnEntries.join(', ') + ' };';
   outputParts[outputParts.length] = '};';
 
+  // Expose the populated marker sets so a preceding {@code runUsageDiscovery_}
+  // can read the final state after all force-marks (exported globals, stdlib
+  // entries, trap-call detection) have been applied.  Real emit invocations
+  // overwrite these on every call, so they only reflect the most recent run.
+  this.lastEmitUsedHelpers_ = uh;
+  this.lastEmitUsedBindings_ = ub;
+
   return outputParts.join('\n');
 };
 
@@ -348,6 +359,19 @@ Wasm2Lang.Backend.JsCommonCodegen.MATH_CONSTANT_BINDINGS_ = [
  */
 Wasm2Lang.Backend.JsCommonCodegen.prototype.getModuleFunctionBindingName_ = function () {
   return 'javascriptModule';
+};
+
+/**
+ * Returns the list of {@code Math.X} function bindings that may be declared
+ * at the top of the emitted module.  Defaults to the asm.js-compatible set;
+ * the modern-JavaScript backend appends {@code Math_trunc} which is used by
+ * i64 helpers and i64 cast inlines but is not a valid asm.js stdlib import.
+ *
+ * @protected
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.JsCommonCodegen.prototype.getMathFunctionBindings_ = function () {
+  return Wasm2Lang.Backend.JsCommonCodegen.MATH_FUNCTION_BINDINGS_;
 };
 
 /**

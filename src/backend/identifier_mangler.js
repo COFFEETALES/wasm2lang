@@ -70,37 +70,8 @@ Wasm2Lang.Backend.IdentifierMangler.ENCODER_MAX_CHARS_ = 4;
 
 /**
  * @private
- * @param {string} charset
- * @return {!Object<string, number>}
- */
-Wasm2Lang.Backend.IdentifierMangler.buildCharsetIndex_ = function (charset) {
-  var /** @type {!Object<string, number>} */ indexByChar = Object.create(null);
-  for (var /** @type {number} */ i = 0, /** @const {number} */ charLen = charset.length; i < charLen; ++i) {
-    indexByChar[charset.charAt(i)] = i;
-  }
-  return indexByChar;
-};
-
-/**
- * @private
- * @param {number} base
- * @param {number} exponent
- * @return {number}
- */
-Wasm2Lang.Backend.IdentifierMangler.intPow_ = function (base, exponent) {
-  var /** @type {number} */ result = 1;
-  for (var /** @type {number} */ i = 0; i < exponent; ++i) {
-    result *= base;
-  }
-  return result;
-};
-
-/**
- * @private
  * @typedef {{
  *   chars: string,
- *   domainSize: number,
- *   indexByChar: !Object<string, number>,
  *   len: number,
  *   leftModulus: number,
  *   ofs: number,
@@ -114,39 +85,11 @@ Wasm2Lang.Backend.IdentifierMangler.EncoderTier_;
  * @private
  * @typedef {{
  *   encKey: string,
- *   maxNumber: number,
  *   rounds: number,
  *   tiers: !Array<!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_>
  * }}
  */
 Wasm2Lang.Backend.IdentifierMangler.EncoderSpec_;
-
-/**
- * @private
- * @param {number} length
- * @param {string} singleCharset
- * @param {string} blockCharset
- * @param {number} offset
- * @return {!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_}
- */
-Wasm2Lang.Backend.IdentifierMangler.newEncoderTier_ = function (length, singleCharset, blockCharset, offset) {
-  var /** @const {string} */ charset = 1 === length ? singleCharset : blockCharset;
-  var /** @const {number} */ range = charset.length;
-  var /** @const {number} */ stateLength = Math.max(2, length);
-  var /** @const {number} */ rightDigits = Math.floor(stateLength / 2);
-  var /** @const {number} */ leftDigits = stateLength - rightDigits;
-
-  return {
-    chars: charset,
-    domainSize: Wasm2Lang.Backend.IdentifierMangler.intPow_(range, stateLength),
-    indexByChar: Wasm2Lang.Backend.IdentifierMangler.buildCharsetIndex_(charset),
-    len: length,
-    leftModulus: Wasm2Lang.Backend.IdentifierMangler.intPow_(range, leftDigits),
-    ofs: offset,
-    rightModulus: Wasm2Lang.Backend.IdentifierMangler.intPow_(range, rightDigits),
-    tierSize: Wasm2Lang.Backend.IdentifierMangler.intPow_(range, length)
-  };
-};
 
 /**
  * Builds the encoder specification from charsets and parameters.
@@ -158,20 +101,25 @@ Wasm2Lang.Backend.IdentifierMangler.newEncoderTier_ = function (length, singleCh
  * @return {!Wasm2Lang.Backend.IdentifierMangler.EncoderSpec_}
  */
 Wasm2Lang.Backend.IdentifierMangler.buildEncoderSpec_ = function (key, singleCharset, blockCharset) {
-  var /** @const {string} */ sc = singleCharset;
-  var /** @const {string} */ bc = blockCharset;
-  var /** @const {number} */ maxChars = Wasm2Lang.Backend.IdentifierMangler.ENCODER_MAX_CHARS_;
   var /** @const {!Array<!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_>} */ tiers = [];
   var /** @type {number} */ offset = 0;
-
-  for (var /** @type {number} */ length = 1; length <= maxChars; ++length) {
-    var /** @const {!Wasm2Lang.Backend.IdentifierMangler.EncoderTier_} */ tier =
-        Wasm2Lang.Backend.IdentifierMangler.newEncoderTier_(length, sc, bc, offset);
-    tiers[tiers.length] = tier;
-    offset += tier.tierSize;
+  for (var /** @type {number} */ length = 1; length <= Wasm2Lang.Backend.IdentifierMangler.ENCODER_MAX_CHARS_; ++length) {
+    var /** @const {string} */ charset = 1 === length ? singleCharset : blockCharset;
+    var /** @const {number} */ range = charset.length;
+    var /** @const {number} */ stateLength = Math.max(2, length);
+    var /** @const {number} */ rightDigits = Math.floor(stateLength / 2);
+    var /** @const {number} */ tierSize = Math.pow(range, length);
+    tiers[tiers.length] = {
+      chars: charset,
+      len: length,
+      leftModulus: Math.pow(range, stateLength - rightDigits),
+      ofs: offset,
+      rightModulus: Math.pow(range, rightDigits),
+      tierSize: tierSize
+    };
+    offset += tierSize;
   }
-
-  return {encKey: key, maxNumber: offset - 1, rounds: Wasm2Lang.Backend.IdentifierMangler.ENCODER_ROUNDS_, tiers: tiers};
+  return {encKey: key, rounds: Wasm2Lang.Backend.IdentifierMangler.ENCODER_ROUNDS_, tiers: tiers};
 };
 
 /**

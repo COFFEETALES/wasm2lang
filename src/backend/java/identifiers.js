@@ -11,6 +11,19 @@ Wasm2Lang.Backend.JavaCodegen.prototype.getFixedModuleBindings_ = function (opti
 };
 
 /**
+ * The {@code buffer} field appears in {@code this.buffer.X} expressions for
+ * every memory load / store / bulk op, so promote it to the hot tier.
+ *
+ * @override
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.JavaCodegen.prototype.getHotModuleBindings_ = function (options) {
+  void options;
+  return ['buffer'];
+};
+
+/**
  * Maps a wasm value type to a Java type name.
  *
  * @param {!Binaryen} binaryen

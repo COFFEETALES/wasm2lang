@@ -319,8 +319,9 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderCastImportInline_ = function
   }
   if (outputIsI64) {
     this.markHelper_('$w2l_bigint');
+    this.markBinding_('Math_trunc');
     return {
-      emittedString: this.n_('$w2l_bigint') + '(Math.trunc(' + P.stripOuter(inputExpr) + '))',
+      emittedString: this.n_('$w2l_bigint') + '(' + this.n_('Math_trunc') + '(' + P.stripOuter(inputExpr) + '))',
       resultCat: A.CAT_I64
     };
   }

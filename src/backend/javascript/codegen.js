@@ -36,6 +36,7 @@ Wasm2Lang.Backend.JavaScriptCodegen = function () {
 
 Wasm2Lang.Backend.JavaScriptCodegen.prototype = Object.create(Wasm2Lang.Backend.AsmjsCodegen.prototype);
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.constructor = Wasm2Lang.Backend.JavaScriptCodegen;
+Wasm2Lang.Backend.registerBackend('javascript', Wasm2Lang.Backend.JavaScriptCodegen);
 
 /**
  * JavaScript handles i64 natively via BigInt — no lowering needed.
@@ -46,5 +47,3 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.constructor = Wasm2Lang.Backend.Ja
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.needsI64Lowering = function () {
   return false;
 };
-
-Wasm2Lang.Backend.registerBackend('javascript', Wasm2Lang.Backend.JavaScriptCodegen);

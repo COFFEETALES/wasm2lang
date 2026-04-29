@@ -28,6 +28,21 @@ Wasm2Lang.Backend.Php64Codegen.prototype.getFixedModuleBindings_ = function (opt
   return ['buffer', '_w2l_i', '_w2l_f32'];
 };
 
+/**
+ * {@code _w2l_i} (i32 wrap) and {@code _w2l_f32} (f32 wrap) appear in nearly
+ * every expression, and {@code $buffer} is captured by reference for every
+ * memory access, so promote all three to the hot tier ahead of internal
+ * function names and helpers.
+ *
+ * @override
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.getHotModuleBindings_ = function (options) {
+  void options;
+  return ['_w2l_i', '_w2l_f32', 'buffer'];
+};
+
 /** @const {number} */
 Wasm2Lang.Backend.Php64Codegen.TEMP_P_ = 0;
 

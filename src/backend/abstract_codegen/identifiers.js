@@ -353,6 +353,54 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getFixedModuleBindings_ = function (
 };
 
 /**
+ * Backend hook: returns the subset of fixed module-scope identifiers that
+ * appear most frequently in emitted function bodies and therefore deserve
+ * the shortest mangled names.  Default empty — concrete backends override.
+ *
+ * Names returned here are registered ahead of locals, internal functions,
+ * and helpers so that they claim the encoder's first single-letter slots.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getHotModuleBindings_ = function (options) {
+  void options;
+  return [];
+};
+
+/**
+ * Returns {@code true} when {@code text} contains a call to the identifier
+ * {@code name} — i.e., the name appears immediately followed by {@code "("}
+ * with no preceding identifier character.  Used by the JS-family module-shell
+ * emitter to detect live {@code $w2l_trap} references after dead-code
+ * trimming, without false-positives when {@code name} is a substring suffix
+ * of another mangled identifier (e.g. {@code mangledTrap === "t"} matched
+ * inside {@code "Jt("}).
+ *
+ * @protected
+ * @param {string} text
+ * @param {string} name
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.containsIdentifierCall_ = function (text, name) {
+  var /** @const {number} */ nLen = name.length;
+  if (0 === nLen) return false;
+  var /** @type {number} */ idx = 0;
+  for (;;) {
+    var /** @const {number} */ found = text.indexOf(name, idx);
+    if (-1 === found) return false;
+    if (40 === text.charCodeAt(found + nLen)) {
+      var /** @const {number} */ prev = found > 0 ? text.charCodeAt(found - 1) : 0;
+      var /** @const {boolean} */ prevIsIdent =
+          (48 <= prev && prev <= 57) || (65 <= prev && prev <= 90) || (97 <= prev && prev <= 122) || 95 === prev || 36 === prev;
+      if (!prevIsIdent) return true;
+    }
+    idx = found + 1;
+  }
+};
+
+/**
  * Returns every helper function name the backend's {@code emitHelpers_} is
  * capable of emitting.
  *
@@ -379,6 +427,69 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getAllHelperNames_ = function () {
 };
 
 /**
+ * Backend hook: returns the subset of fixed module-scope bindings that are
+ * structurally required and must be registered with the mangler regardless
+ * of usage discovery.  These are the closure parameters and module-function
+ * names that the emitter inserts via {@code n_(...)} without going through
+ * {@code markBinding_}, so a discovery walk would miss them and they would
+ * leak into the output unmangled.
+ *
+ * Default empty.  Concrete backends override.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getAlwaysRegisteredBindings_ = function (options) {
+  void options;
+  return [];
+};
+
+/**
+ * Runs a throwaway {@code emitCode} pass with the mangler disabled to
+ * populate {@code usedHelpers_} / {@code usedBindings_} as if a real emit
+ * had occurred, then captures them into {@code discoveredHelpers_} /
+ * {@code discoveredBindings_} so {@code precomputeMangledNames_} can register
+ * only the keys that will actually appear in the output.
+ *
+ * Without this pass, the precompute eagerly registers every emittable helper
+ * and every fixed cold-tier binding, burning encoder slots on names that the
+ * emitter never references.  With it, modules that use only a handful of
+ * helpers (e.g. the {@code cast} sample which inlines all eight i32/f32/f64
+ * coercions and never reaches a runtime helper) reclaim those slots for
+ * other identifiers — pushing names like {@code Math_floor} and
+ * {@code Math_sqrt} from the two-character tier into the single-character
+ * tier.
+ *
+ * State is fully restored after the pass: {@code mangler_} stays null
+ * (precompute will reinitialize it), {@code usedHelpers_} /
+ * {@code usedBindings_} are reset to null, and any transient fields the
+ * emit phase populates ({@code castNames_}, {@code heapPageCount_},
+ * {@code helperNameCollector_}) are reverted to their pre-pass values.
+ *
+ * Only meaningful when the invocation emits source code — binary-only
+ * emission does not exercise the helper or binding marking infrastructure.
+ *
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.runUsageDiscovery_ = function (wasmModule, options) {
+  if ('string' !== typeof options.emitCode) return;
+  var /** @const {?Wasm2Lang.Backend.IdentifierMangler} */ savedMangler = this.mangler_;
+  this.mangler_ = null;
+  try {
+    this.emitCode(wasmModule, options);
+    this.discoveredHelpers_ = this.lastEmitUsedHelpers_;
+    this.discoveredBindings_ = this.lastEmitUsedBindings_;
+  } finally {
+    this.mangler_ = savedMangler;
+    this.lastEmitUsedHelpers_ = null;
+    this.lastEmitUsedBindings_ = null;
+  }
+};
+
+/**
  * Precomputes mangled names for all identifiers in the module.
  *
  * Collects module-scope identifiers from: backend fixed bindings, all
@@ -395,42 +506,99 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_} */ moduleInfo =
       this.collectModuleCodegenInfo_(wasmModule);
 
-  // Register all module-scope identifiers in deterministic order.
-  // Frequently-referenced names (fixed bindings, globals, imports,
-  // functions) are registered first so they claim shorter identifiers.
-  // Helper function names are registered last — they appear at most once
-  // each as declarations and rarely in call sites.
+  // Register module-scope identifiers in priority order — earlier keys
+  // claim shorter mangled names (the encoder allocates the single-character
+  // tier first, then the two-character tier, etc.).
+  //
+  // Tier order, hottest first:
+  //   1. Hot fixed bindings (HEAP arrays, Math_fround, Math_imul, …)
+  //   2. Internal function names — referenced once per call site
+  //   3. Imports — same
+  //   4. Module globals — accessed inside function bodies
+  //   5. Exported global getter/setter accessors — called via the export object
+  //   6. All emittable helper function names — each is declared once but
+  //      may be called many times from user code (e.g. $w2l_store_f64)
+  //   7. Cold fixed bindings (closure params, rare Math constants, $w2l_trap)
+  //   8. Function table bindings (only present when the module uses tables)
+  //
+  // {@code registerModuleBindings} silently skips duplicates, so the cold
+  // pass that re-registers everything from {@code getFixedModuleBindings_}
+  // only adds the keys not already promoted by {@code getHotModuleBindings_}.
   var /** @const {!Array<string>} */ keys = [];
 
-  // 1. Backend-specific fixed bindings (sorted for determinism).
-  var /** @const {!Array<string>} */ fixed = this.getFixedModuleBindings_(options);
-  for (var /** @type {number} */ fi = 0, /** @const {number} */ fLen = fixed.length; fi !== fLen; ++fi) {
-    keys[keys.length] = fixed[fi];
+  // 1. Hot fixed bindings.
+  var /** @const {!Array<string>} */ hot = this.getHotModuleBindings_(options);
+  for (var /** @type {number} */ ho = 0, /** @const {number} */ hoLen = hot.length; ho !== hoLen; ++ho) {
+    keys[keys.length] = hot[ho];
   }
 
-  // 2. Globals (module order).
-  for (var /** @type {number} */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
-    keys[keys.length] = '$g_' + this.safeName_(moduleInfo.globals[gi].globalName);
-  }
-
-  // 3. Import bindings (module order).
-  for (var /** @type {number} */ ii = 0, /** @const {number} */ iLen = moduleInfo.impFuncs.length; ii !== iLen; ++ii) {
-    keys[keys.length] = '$if_' + this.safeName_(moduleInfo.impFuncs[ii].importBaseName);
-  }
-
-  // 4. Internal function names (module order).
+  // 2. Internal function names (module order).
   for (var /** @type {number} */ fn = 0, /** @const {number} */ fnLen = moduleInfo.functions.length; fn !== fnLen; ++fn) {
     keys[keys.length] = this.safeName_(moduleInfo.functions[fn].name);
   }
 
-  // 5. All possible helper function names (sorted for determinism).
-  // Registered last: helpers appear at most once as declarations.
+  // 3. Import bindings (module order).  Cast imports (rewritten to native
+  //    coercion expressions) and stdlib Math imports (rewritten to inline
+  //    {@code Math_*} references) never produce {@code $if_*} call sites,
+  //    so excluding them frees up encoder slots for genuinely hot names.
+  var /** @const {!Object<string, string>} */ castNamesMap = moduleInfo.castNames;
+  var /** @const */ classifyStdlib = Wasm2Lang.Backend.AbstractCodegen.classifyStdlibImport;
+  for (var /** @type {number} */ ii = 0, /** @const {number} */ iLen = moduleInfo.impFuncs.length; ii !== iLen; ++ii) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_} */ impFunc = moduleInfo.impFuncs[ii];
+    if (impFunc.wasmFuncName in castNamesMap) continue;
+    if ('math_func' === classifyStdlib(impFunc.importModule, impFunc.importBaseName)) continue;
+    keys[keys.length] = '$if_' + this.safeName_(impFunc.importBaseName);
+  }
+
+  // 4. Module globals (module order).
+  for (var /** @type {number} */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
+    keys[keys.length] = '$g_' + this.safeName_(moduleInfo.globals[gi].globalName);
+  }
+
+  // 5. Exported global getter / setter accessors (built from exported names).
+  var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedGlobalInfo_>} */ expGlobals = moduleInfo.expGlobals;
+  for (var /** @type {number} */ eg = 0, /** @const {number} */ egLen = expGlobals.length; eg !== egLen; ++eg) {
+    var /** @const {string} */ egExportSafe = this.safeName_(expGlobals[eg].exportName);
+    keys[keys.length] = '$get_' + egExportSafe;
+    if (expGlobals[eg].globalMutable) {
+      keys[keys.length] = '$set_' + egExportSafe;
+    }
+  }
+
+  // 6. Helper function names.  When usage discovery has populated
+  //    {@code discoveredHelpers_}, register only the helpers the emit will
+  //    actually reference (deps already expanded transitively by
+  //    {@code markHelper_}); otherwise fall back to the full sorted list
+  //    from {@code getAllHelperNames_}.
+  var /** @const {?Object<string, boolean>} */ usedHelpers = this.discoveredHelpers_;
   var /** @const {!Array<string>} */ helpers = this.getAllHelperNames_();
   for (var /** @type {number} */ hi = 0, /** @const {number} */ hLen = helpers.length; hi !== hLen; ++hi) {
+    if (usedHelpers && !usedHelpers[helpers[hi]]) continue;
     keys[keys.length] = helpers[hi];
   }
 
-  // 6. Function table bindings (per-signature table, stub, and interface names).
+  // 7. Cold fixed bindings — anything from {@code getFixedModuleBindings_}
+  //    that wasn't already promoted to the hot tier above.  When discovery
+  //    populated {@code discoveredBindings_}, restrict to the union of
+  //    structurally-required bindings ({@code getAlwaysRegisteredBindings_})
+  //    and bindings that an emit-time {@code markBinding_} call observed.
+  var /** @const {?Object<string, boolean>} */ usedBindings = this.discoveredBindings_;
+  var /** @type {?Object<string, boolean>} */ alwaysSet = null;
+  if (usedBindings) {
+    alwaysSet = /** @type {!Object<string, boolean>} */ (Object.create(null));
+    var /** @const {!Array<string>} */ alwaysList = this.getAlwaysRegisteredBindings_(options);
+    for (var /** @type {number} */ ai = 0, /** @const {number} */ aLen = alwaysList.length; ai !== aLen; ++ai) {
+      alwaysSet[alwaysList[ai]] = true;
+    }
+  }
+  var /** @const {!Array<string>} */ fixed = this.getFixedModuleBindings_(options);
+  for (var /** @type {number} */ fi = 0, /** @const {number} */ fLen = fixed.length; fi !== fLen; ++fi) {
+    var /** @const {string} */ fixedKey = fixed[fi];
+    if (usedBindings && !usedBindings[fixedKey] && (!alwaysSet || !alwaysSet[fixedKey])) continue;
+    keys[keys.length] = fixedKey;
+  }
+
+  // 8. Function table bindings (per-signature table, stub, and interface names).
   var /** @const {!Array<string>} */ ftBindingKeys = Object.keys(moduleInfo.functionTables);
   if (0 !== ftBindingKeys.length) {
     keys[keys.length] = 'ftable';
