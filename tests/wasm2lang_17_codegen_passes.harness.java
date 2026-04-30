@@ -449,6 +449,10 @@ int w2lCountSimplifiedWhile(String body) {
         mod.exerciseSwitchNoLabel(pair.get(0).intValue(), pair.get(1).intValue());
     }
 
+    for (java.util.List<Double> pair : w2lNested(_data, "external_case_target_pairs")) {
+        mod.exerciseExternalCaseTarget(pair.get(0).intValue(), pair.get(1).intValue());
+    }
+
     for (Double v : w2lFlat(_data, "fused_for_no_label_limits")) {
         mod.exerciseFusedForNoLabel(v.intValue());
     }

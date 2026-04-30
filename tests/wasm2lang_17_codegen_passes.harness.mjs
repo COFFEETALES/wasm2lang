@@ -89,6 +89,10 @@ const runTest = function (buff, out, exports, data) {
     exports.exerciseSwitchNoLabel(pair[0], pair[1]);
   }
 
+  for (const pair of data.external_case_target_pairs) {
+    exports.exerciseExternalCaseTarget(pair[0], pair[1]);
+  }
+
   for (const v of data.fused_for_no_label_limits) {
     exports.exerciseFusedForNoLabel(v);
   }
@@ -339,6 +343,21 @@ const validateCode = function (code, testName) {
       );
     } else {
       check('switchNoLabel', false, 'function body not found');
+    }
+
+    // -- external case target dispatch (case 1 / default land outside the
+    // chain, mirroring the small fn_67 dispatches in quic.wasm).  The flat
+    // switch must materialize even with non-default external case targets.
+    b = bodyOf('externalCaseTarget');
+    if (b) {
+      check('externalCaseTarget', (b.match(/\bcase\s+\d+\s*:/g) || []).length >= 2, 'expected flat switch with multiple cases');
+      check(
+        'externalCaseTarget',
+        (b.match(/\w+\s*:\s*\{/g) || []).length < (b.match(/\bcase\s+\d+\s*:/g) || []).length,
+        'expected flat switch (fewer labeled blocks than cases)'
+      );
+    } else {
+      check('externalCaseTarget', false, 'function body not found');
     }
 
     // -- fused for loop label elision --

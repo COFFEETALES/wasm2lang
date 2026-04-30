@@ -1017,6 +1017,65 @@
   );
 
   // ═══════════════════════════════════════════════════════════════════
+  // externalCaseTarget: 2-level br_table dispatch where one case targets
+  // a block OUTSIDE the chain (mirrors quic.wasm fn_67's small
+  // `HEAPU8[$l1+86]&3` switches: case 1 and the default break to a
+  // function-level outer block while cases 0/2 stay in the dispatch
+  // chain).  The detection pass must accept non-default external targets;
+  // existing extraction handles them via SwitchCaseGroup.externalTarget.
+  //
+  // (block $ectFnRoot
+  //   (local.set ...)            ;; ensures $ectDispatch is not first child
+  //   (block $ectDispatch (block $ectInner
+  //     (br_table $ectDispatch $ectFnRoot $ectInner $ectFnRoot (idx))))
+  //   case2 actions (= $ectDispatch trailing): r = x + 100
+  //   ;; (no terminator — falls through to $ectDispatch close)
+  //   post-dispatch ($ectFnRoot trailing): r = r * 2)
+  //
+  // params: idx(0), x(1)  locals: r(2), pad(3)
+  // Returns: idx=0 → -1*2 = -2 (br $ectDispatch + post-dispatch),
+  //          idx=1 → -1 (br $ectFnRoot, external — skips post-dispatch),
+  //          idx=2 → (x+100)*2 (case 2 actions + post-dispatch),
+  //          default(3+) → -1 (br $ectFnRoot external).
+  // ═══════════════════════════════════════════════════════════════════
+  module.addFunction(
+    'externalCaseTarget',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32, binaryen.i32],
+    module.block(null, [
+      module.local.set(2, i32(-1)),
+      module.block('ectFnRoot', [
+        // Padding local.set ensures $ectDispatch is not the first child of
+        // $ectFnRoot, which selects the non-wrapping leave_ branch (mirrors
+        // the fn_67 pattern where the dispatch is preceded by setup code).
+        module.local.set(3, i32(0)),
+        module.block('ectDispatch', [
+          module.block('ectInner', [module.switch(['ectDispatch', 'ectFnRoot', 'ectInner'], 'ectFnRoot', p(0))]),
+          // case 2 actions ($ectDispatch trailing): assign r without an
+          // explicit terminator so control falls through to $ectDispatch's
+          // close, then naturally reaches $ectFnRoot's trailing.
+          module.local.set(2, module.i32.add(p(1), i32(100)))
+        ]),
+        // post-dispatch trailing — runs for case 0 (br $ectDispatch exits
+        // the inner block) and case 2 (action falls through), but NOT for
+        // case 1 / default (br $ectFnRoot exits the entire scope).
+        module.local.set(2, module.i32.mul(p(2), i32(2)))
+      ]),
+      module.return(p(2))
+    ])
+  );
+
+  // exerciseExternalCaseTarget(idx: i32, x: i32): void
+  module.addFunction(
+    'exerciseExternalCaseTarget',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.block(null, [storeI32(module.call('externalCaseTarget', [p(0), p(1)], binaryen.i32)), module.return()])
+  );
+
+  // ═══════════════════════════════════════════════════════════════════
   // fusedForNoLabel: Fused block+loop where the only break exits the
   // loop itself. Since the break is to the fused block (which maps to
   // the loop), and the loop is the innermost breakable, the label
@@ -1914,6 +1973,8 @@
   module.addFunctionExport('exerciseMultiGuardWhile', 'exerciseMultiGuardWhile');
   module.addFunctionExport('switchNoLabel', 'switchNoLabel');
   module.addFunctionExport('exerciseSwitchNoLabel', 'exerciseSwitchNoLabel');
+  module.addFunctionExport('externalCaseTarget', 'externalCaseTarget');
+  module.addFunctionExport('exerciseExternalCaseTarget', 'exerciseExternalCaseTarget');
   module.addFunctionExport('fusedForNoLabel', 'fusedForNoLabel');
   module.addFunctionExport('exerciseFusedForNoLabel', 'exerciseFusedForNoLabel');
   module.addFunctionExport('noWhileBlockTail', 'noWhileBlockTail');
@@ -2193,6 +2254,25 @@
   ].concat(
     Array.from({length: 4}, function () {
       return [(Math.random() * 4) | 0, common.rand.smallI32()];
+    })
+  );
+
+  data.external_case_target_pairs = [
+    [0, 5],
+    [1, 5],
+    [2, 5],
+    [3, 5],
+    [4, 5],
+    [0, 0],
+    [0, -1],
+    [0, 100],
+    [1, 100],
+    [2, 100],
+    [10, 5],
+    [3, -50]
+  ].concat(
+    Array.from({length: 4}, function () {
+      return [(Math.random() * 5) | 0, common.rand.smallI32()];
     })
   );
 

@@ -71,6 +71,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
   var /** @const {!Object<string, boolean>} */ blockNameSet = /** @type {!Object<string, boolean>} */ (Object.create(null));
   blockNameSet[outerName] = true;
 
+  // chainOrder mirrors blockNameSet but preserves outer→inner ordering so we
+  // can reject chains with more than one outer wrapper sitting above the
+  // shallowest case-target block — the existing single-epilogue extraction
+  // can't represent multi-level wrapper trailings correctly.
+  var /** @const {!Array<string>} */ chainOrder = /** @type {!Array<string>} */ ([outerName]);
+
   var /** @type {!BinaryenExpressionInfo} */ current = blockExpr;
   var /** @type {boolean} */ isOutermost = true;
 
@@ -93,6 +99,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
       return null;
     }
     blockNameSet[childName] = true;
+    chainOrder[chainOrder.length] = childName;
 
     // Non-outermost blocks must end with an unconditional terminator —
     // an unconditional Break (to a loop continue, outer exit, etc.), a
@@ -117,12 +124,50 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
         );
       if (binaryen.SwitchId === sole.id) {
         var /** @const {!Array<string>} */ names = /** @type {!Array<string>} */ (sole.names || []);
+        var /** @const {string} */ defaultName = /** @type {string} */ (sole.defaultName || '');
+
+        // Build the case-target set restricted to chain blocks. Targets
+        // outside the chain are allowed (they emit as `break <ext>`); both
+        // case names and the default name participate so a chain whose only
+        // in-chain target is the default still flattens correctly.
+        var /** @const {!Object<string, boolean>} */ caseTargetSet = /** @type {!Object<string, boolean>} */ (
+            Object.create(null)
+          );
+        var /** @type {boolean} */ hasInChainTarget = false;
         for (var /** @type {number} */ i = 0, /** @const {number} */ nameLen = names.length; i < nameLen; ++i) {
-          if (!(names[i] in blockNameSet)) {
-            return null;
+          if (names[i] in blockNameSet) {
+            caseTargetSet[names[i]] = true;
+            hasInChainTarget = true;
           }
         }
-        // Default target is allowed to be outside the chain (external exit).
+        if ('' !== defaultName && defaultName in blockNameSet) {
+          caseTargetSet[defaultName] = true;
+          hasInChainTarget = true;
+        }
+        if (!hasInChainTarget) {
+          // The br_table doesn't dispatch into the chain at all — nothing to
+          // flatten, leave it as a structured switch on the outside.
+          return null;
+        }
+
+        // The chain may legitimately carry one wrapper level above the
+        // shallowest case target — that wrapper's trailing children become
+        // the dispatch epilogue, which extractStructure already handles.
+        // More than one wrapper level introduces multi-level epilogues that
+        // cannot be represented inside a single flat switch without losing
+        // the wrapper trailings; reject those chains so they keep their
+        // nested-block emission.
+        var /** @type {number} */ shallowestCaseIdx = chainOrder.length;
+        for (var /** @type {number} */ ci = 0, /** @const {number} */ chainLen = chainOrder.length; ci < chainLen; ++ci) {
+          if (chainOrder[ci] in caseTargetSet) {
+            shallowestCaseIdx = ci;
+            break;
+          }
+        }
+        if (1 < shallowestCaseIdx) {
+          return null;
+        }
+
         return blockNameSet;
       }
     }

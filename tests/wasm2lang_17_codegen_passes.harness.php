@@ -419,6 +419,10 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
         $exports['exerciseSwitchNoLabel']($pair[0], $pair[1]);
     }
 
+    foreach ($data['external_case_target_pairs'] as $pair) {
+        $exports['exerciseExternalCaseTarget']($pair[0], $pair[1]);
+    }
+
     foreach ($data['fused_for_no_label_limits'] as $v) {
         $exports['exerciseFusedForNoLabel']($v);
     }
