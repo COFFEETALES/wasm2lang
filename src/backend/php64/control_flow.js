@@ -508,7 +508,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
 
     case binaryen.BlockId: {
-      var /** @const {?{s: string, c: number, prefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
+      var /** @const {?{s: string, c: number, w2lRootValueBlockPrefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
           /** @type {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} */ (state),
           nodeCtx,
           childResults

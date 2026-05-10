@@ -332,14 +332,15 @@ Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo = function (binaryen, exprP
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_ = function (binaryen, exprPtr, info) {
   var /** @const {number} */ id = info.id;
+  var /** @const {!Object<string, *>} */ map = /** @type {!Object<string, *>} */ (info);
   if (binaryen.MemoryFillId === id) {
-    /** @type {!Object<string, *>} */ (info)['dest'] = binaryen.MemoryFill.getDest(exprPtr);
-    /** @type {!Object<string, *>} */ (info)['value'] = binaryen.MemoryFill.getValue(exprPtr);
-    /** @type {!Object<string, *>} */ (info)['size'] = binaryen.MemoryFill.getSize(exprPtr);
+    map['dest'] = binaryen.MemoryFill.getDest(exprPtr);
+    map['value'] = binaryen.MemoryFill.getValue(exprPtr);
+    map['size'] = binaryen.MemoryFill.getSize(exprPtr);
   } else if (binaryen.MemoryCopyId === id) {
-    /** @type {!Object<string, *>} */ (info)['dest'] = binaryen.MemoryCopy.getDest(exprPtr);
-    /** @type {!Object<string, *>} */ (info)['source'] = binaryen.MemoryCopy.getSource(exprPtr);
-    /** @type {!Object<string, *>} */ (info)['size'] = binaryen.MemoryCopy.getSize(exprPtr);
+    map['dest'] = binaryen.MemoryCopy.getDest(exprPtr);
+    map['source'] = binaryen.MemoryCopy.getSource(exprPtr);
+    map['size'] = binaryen.MemoryCopy.getSize(exprPtr);
   }
 };
 

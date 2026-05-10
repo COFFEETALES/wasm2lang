@@ -7,6 +7,9 @@
 // Only used by backends that handle i64 natively (e.g. Java).
 // Reuses the same OP_* category constants and BinaryOpInfo typedef from
 // I32Coercion so that binary renderers share the same dispatch table shape.
+// The dispatch tables themselves are built from the shared
+// {@code I32Coercion.BINARY_OP_SPEC_} / {@code UNARY_OP_SPEC_*} specs by
+// resolving each entry against the {@code 'Int64'} binaryen op-constant suffix.
 // ---------------------------------------------------------------------------
 
 /**
@@ -26,78 +29,7 @@ Wasm2Lang.Backend.I64Coercion.binaryOpMap_ = null;
  */
 Wasm2Lang.Backend.I64Coercion.classifyBinaryOp = function (binaryen, op) {
   var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
-  if (!I.binaryOpMap_) {
-    var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-    I.binaryOpMap_ = C.buildBinaryOpMap([
-      [
-        C.OP_ARITHMETIC,
-        false,
-        false,
-        [
-          [binaryen.AddInt64, '+'],
-          [binaryen.SubInt64, '-']
-        ]
-      ],
-      [C.OP_MULTIPLY, false, false, [[binaryen.MulInt64, '*']]],
-      [
-        C.OP_DIVISION,
-        false,
-        false,
-        [
-          [binaryen.DivSInt64, '/'],
-          [binaryen.RemSInt64, '%']
-        ]
-      ],
-      [
-        C.OP_DIVISION,
-        true,
-        false,
-        [
-          [binaryen.DivUInt64, '/'],
-          [binaryen.RemUInt64, '%']
-        ]
-      ],
-      [
-        C.OP_BITWISE,
-        false,
-        false,
-        [
-          [binaryen.AndInt64, '&'],
-          [binaryen.OrInt64, '|'],
-          [binaryen.XorInt64, '^'],
-          [binaryen.ShlInt64, '<<'],
-          [binaryen.ShrSInt64, '>>']
-        ]
-      ],
-      [C.OP_BITWISE, true, false, [[binaryen.ShrUInt64, '>>>']]],
-      [C.OP_ROTATE, false, true, [[binaryen.RotLInt64, '']]],
-      [C.OP_ROTATE, false, false, [[binaryen.RotRInt64, '']]],
-      [
-        C.OP_COMPARISON,
-        false,
-        false,
-        [
-          [binaryen.EqInt64, '=='],
-          [binaryen.NeInt64, '!='],
-          [binaryen.LtSInt64, '<'],
-          [binaryen.LeSInt64, '<='],
-          [binaryen.GtSInt64, '>'],
-          [binaryen.GeSInt64, '>=']
-        ]
-      ],
-      [
-        C.OP_COMPARISON,
-        true,
-        false,
-        [
-          [binaryen.LtUInt64, '<'],
-          [binaryen.LeUInt64, '<='],
-          [binaryen.GtUInt64, '>'],
-          [binaryen.GeUInt64, '>=']
-        ]
-      ]
-    ]);
-  }
+  if (!I.binaryOpMap_) I.binaryOpMap_ = Wasm2Lang.Backend.I32Coercion.buildBinaryOpMapForWidth(binaryen, 'Int64');
   return I.binaryOpMap_[op] || null;
 };
 
@@ -112,6 +44,26 @@ Wasm2Lang.Backend.I64Coercion.classifyBinaryOp = function (binaryen, op) {
 /** @const {number} */ Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND8_S = 4;
 /** @const {number} */ Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND16_S = 5;
 /** @const {number} */ Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND32_S = 6;
+
+/**
+ * i64 unary spec.  Mirrors {@code I32Coercion.UNARY_OP_SPEC_I32_} with the
+ * additional {@code ExtendS32} entry that exists only for i64.
+ *
+ * @private
+ * @const {!Array<!Array<*>>}
+ */
+Wasm2Lang.Backend.I64Coercion.UNARY_OP_SPEC_I64_ = /** @return {!Array<!Array<*>>} */ (function () {
+  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
+  return [
+    ['EqZ', I.UNARY_EQZ],
+    ['Clz', I.UNARY_CLZ],
+    ['Ctz', I.UNARY_CTZ],
+    ['Popcnt', I.UNARY_POPCNT],
+    ['ExtendS8', I.UNARY_EXTEND8_S],
+    ['ExtendS16', I.UNARY_EXTEND16_S],
+    ['ExtendS32', I.UNARY_EXTEND32_S]
+  ];
+})();
 
 /**
  * Lazily-built map from binaryen i64 unary-op constants to UNARY_* categories.
@@ -130,19 +82,10 @@ Wasm2Lang.Backend.I64Coercion.unaryOpMap_ = null;
  */
 Wasm2Lang.Backend.I64Coercion.classifyUnaryOp = function (binaryen, op) {
   var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  if (!I.unaryOpMap_) {
-    I.unaryOpMap_ = /** @type {!Object<number, number>} */ (
-      C.buildKeyedTable([
-        [binaryen.EqZInt64, I.UNARY_EQZ],
-        [binaryen.ClzInt64, I.UNARY_CLZ],
-        [binaryen.CtzInt64, I.UNARY_CTZ],
-        [binaryen.PopcntInt64, I.UNARY_POPCNT],
-        [binaryen.ExtendS8Int64, I.UNARY_EXTEND8_S],
-        [binaryen.ExtendS16Int64, I.UNARY_EXTEND16_S],
-        [binaryen.ExtendS32Int64, I.UNARY_EXTEND32_S]
-      ])
-    );
-  }
-  return C.lookupCategoryOrMinusOne_(I.unaryOpMap_, op);
+  if (!I.unaryOpMap_)
+    I.unaryOpMap_ = Wasm2Lang.Backend.I32Coercion.buildUnaryOpMapForWidth(binaryen, I.UNARY_OP_SPEC_I64_, 'Int64');
+  // typeof guard is load-bearing: a valid UNARY_EQZ value of 0 would otherwise
+  // be misread as absent.
+  var /** @const {number|undefined} */ cat = I.unaryOpMap_[op];
+  return 'number' === typeof cat ? cat : -1;
 };

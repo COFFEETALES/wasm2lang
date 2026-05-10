@@ -42,6 +42,11 @@ const runTest = function (buff, out, exports, data) {
   for (const t of data.mixed_type_cases) {
     exports.exercisePrecisionAndReinterpret(t[0], Math.fround(t[1]), t[2]);
   }
+
+  // Sub-aligned i32 stores — regression for asm.js intish-arg coercion.
+  for (const p of data.subword_cases) {
+    exports.exerciseSubAlignedI32Stores(p[0], p[1]);
+  }
 };
 
 const dumpMemory = true;

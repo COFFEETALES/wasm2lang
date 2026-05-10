@@ -97,23 +97,34 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericUnaryOp_ = function (binary
     return 'Math.' + unaryMathName + '(' + valueExpr + ')';
   }
 
-  // Simple casts: convert_s_i32_to_f32 → (float)(expr), etc.
+  // Simple casts: convert_s_i32_to_f32 → (float)expr, etc.  Wrap only when
+  // the operand has lower precedence than the unary cast (additive, shift,
+  // bitwise, etc.) — primary expressions like method calls and parenthesized
+  // unsigned-byte loads stay bare.
   var /** @type {string|void} */ castOp = Wasm2Lang.Backend.JavaCodegen.CAST_UNARY_OPS_[name];
-  if (castOp) return castOp + '(' + valueExpr + ')';
+  if (castOp) {
+    var /** @const */ Pcast = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+    return castOp + Pcast.wrap_(valueExpr, Pcast.PREC_UNARY_, true);
+  }
 
-  // Unsigned integer conversions.
-  if ('convert_u_i32_to_f32' === name) return '(float)Integer.toUnsignedLong(' + valueExpr + ')';
-  if ('convert_u_i32_to_f64' === name) return '(double)Integer.toUnsignedLong(' + valueExpr + ')';
-  if ('extend_u_i32_to_i64' === name) return 'Integer.toUnsignedLong(' + valueExpr + ')';
+  // Unsigned integer conversions.  The unsigned narrow-load output already
+  // arrives parenthesized ({@code (this.R.get(i) & 0xFF)}); since the
+  // function-call arg position needs no extra grouping, strip the outer
+  // parens so the emission reads as
+  // {@code Integer.toUnsignedLong(this.R.get(i) & 0xFF)} not …LongLong((…)).
+  var /** @const */ Pun = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  if ('convert_u_i32_to_f32' === name) return '(float)Integer.toUnsignedLong(' + Pun.stripOuter(valueExpr) + ')';
+  if ('convert_u_i32_to_f64' === name) return '(double)Integer.toUnsignedLong(' + Pun.stripOuter(valueExpr) + ')';
+  if ('extend_u_i32_to_i64' === name) return 'Integer.toUnsignedLong(' + Pun.stripOuter(valueExpr) + ')';
 
   // Reinterpret ops.
   if ('reinterpret_f32_to_i32' === name) {
     inner = this.coerceToType_(binaryen, valueExpr, cat, info.operandType);
-    return 'Float.floatToRawIntBits(' + inner + ')';
+    return 'Float.floatToRawIntBits(' + Pun.stripOuter(inner) + ')';
   }
-  if ('reinterpret_i32_to_f32' === name) return 'Float.intBitsToFloat(' + valueExpr + ')';
-  if ('reinterpret_i64_to_f64' === name) return 'Double.longBitsToDouble(' + valueExpr + ')';
-  if ('reinterpret_f64_to_i64' === name) return 'Double.doubleToRawLongBits(' + valueExpr + ')';
+  if ('reinterpret_i32_to_f32' === name) return 'Float.intBitsToFloat(' + Pun.stripOuter(valueExpr) + ')';
+  if ('reinterpret_i64_to_f64' === name) return 'Double.longBitsToDouble(' + Pun.stripOuter(valueExpr) + ')';
+  if ('reinterpret_f64_to_i64' === name) return 'Double.doubleToRawLongBits(' + Pun.stripOuter(valueExpr) + ')';
 
   // Helper-delegated ops: mark helper, call with optional f32 coercion.
   if (Wasm2Lang.Backend.JavaCodegen.HELPER_UNARY_OPS_[name]) {
@@ -142,7 +153,12 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderNumericBinaryOp_ = function (binar
 
   var /** @const {string|void} */ binaryMathName = Wasm2Lang.Backend.JavaCodegen.MATH_BINARY_OPS_[info.opName];
   if (binaryMathName) {
-    if (isF32) return '(float)Math.' + binaryMathName + '((double)(' + L + '), (double)(' + R + '))';
+    if (isF32) {
+      var /** @const */ Pmb = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+      var /** @const {string} */ Ld = '(double)' + Pmb.wrap_(L, Pmb.PREC_UNARY_, true);
+      var /** @const {string} */ Rd = '(double)' + Pmb.wrap_(R, Pmb.PREC_UNARY_, true);
+      return '(float)Math.' + binaryMathName + '(' + Ld + ', ' + Rd + ')';
+    }
     return 'Math.' + binaryMathName + '(' + L + ', ' + R + ')';
   }
 

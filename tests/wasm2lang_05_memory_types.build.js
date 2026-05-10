@@ -951,6 +951,70 @@
         module.block(null, body)
       );
     }
+
+    // =================================================================
+    // exerciseSubAlignedI32Stores: i32.store with declared sub-natural
+    // alignment (align=1 or align=2 vs natural alignment of 4) routes
+    // through the $w2l_store_i32_a1 / $w2l_store_i32_a2 helpers in the
+    // asm.js backend.  The helper takes a typed int parameter (v|0),
+    // so an intish-typed RHS expression must be coerced at the call
+    // site — V8's asm.js validator emits "Bad function argument type"
+    // otherwise, falling back to plain JS execution and printing the
+    // warning to stderr.  Regression coverage for heap loads and
+    // arithmetic results, both of which are intish in the asm.js spec.
+    // Params: (a: i32, b: i32)
+    // =================================================================
+    {
+      const pB = () => module.local.get(1, binaryen.i32);
+      const scratch = () => module.local.get(2, binaryen.i32);
+
+      const body = [];
+      body.push(module.local.set(2, heapTop()));
+      body.push(advanceHeap(64));
+
+      // Seed scratch[0..15] with well-defined data for reloads.
+      body.push(module.i32.store(0, 4, scratch(), p0()));
+      body.push(module.i32.store(4, 4, scratch(), pB()));
+      body.push(module.i32.store(8, 4, scratch(), module.i32.add(p0(), pB())));
+      body.push(module.i32.store(12, 4, scratch(), module.i32.xor(p0(), pB())));
+
+      // --- Sub-aligned i32 store, intish RHS via heap load ---
+      // align=2 -> $w2l_store_i32_a2(ptr, v|0): RHS must be coerced.
+      body.push(module.i32.store(16, 2, scratch(), module.i32.load(0, 4, scratch())));
+      // align=1 -> $w2l_store_i32_a1(ptr, v|0): RHS must be coerced.
+      body.push(module.i32.store(20, 1, scratch(), module.i32.load(4, 4, scratch())));
+
+      // --- Sub-aligned i32 store, intish RHS via arithmetic ---
+      // i32.add / i32.sub produce intish per asm.js spec.
+      body.push(module.i32.store(24, 2, scratch(), module.i32.add(p0(), pB())));
+      body.push(module.i32.store(28, 1, scratch(), module.i32.sub(p0(), pB())));
+
+      // --- Sub-aligned i32 store, non-intish RHS (control case) ---
+      // i32.mul -> Math.imul -> signed; i32.and -> signed.  These do
+      // not trigger the bug — the coercion-skip optimization (only
+      // applied to direct HEAPxx[ix>>k] = v stores) must remain valid.
+      body.push(module.i32.store(32, 2, scratch(), module.i32.mul(p0(), pB())));
+      body.push(module.i32.store(36, 1, scratch(), module.i32.and(p0(), pB())));
+
+      // Reload every sub-aligned slot so the test runner CRC verifies
+      // each helper-routed store wrote the expected bytes.
+      body.push(storeI32(module.i32.load(16, 2, scratch())));
+      body.push(storeI32(module.i32.load(20, 1, scratch())));
+      body.push(storeI32(module.i32.load(24, 2, scratch())));
+      body.push(storeI32(module.i32.load(28, 1, scratch())));
+      body.push(storeI32(module.i32.load(32, 2, scratch())));
+      body.push(storeI32(module.i32.load(36, 1, scratch())));
+
+      body.push(module.return());
+
+      module.addFunction(
+        'exerciseSubAlignedI32Stores',
+        binaryen.createType([binaryen.i32, binaryen.i32]),
+        binaryen.none,
+        [binaryen.i32],
+        module.block(null, body)
+      );
+    }
   }
 
   module.addFunctionExport('exerciseMixedWidthLoads', 'exerciseMixedWidthLoads');
@@ -958,6 +1022,7 @@
   module.addFunctionExport('exerciseCrossTypePipeline', 'exerciseCrossTypePipeline');
   module.addFunctionExport('exerciseSubWordStoreReload', 'exerciseSubWordStoreReload');
   module.addFunctionExport('exercisePrecisionAndReinterpret', 'exercisePrecisionAndReinterpret');
+  module.addFunctionExport('exerciseSubAlignedI32Stores', 'exerciseSubAlignedI32Stores');
 
   common.finalizeAndOutput(module);
 

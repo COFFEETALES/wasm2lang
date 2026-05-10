@@ -68,62 +68,119 @@ Wasm2Lang.Backend.I32Coercion.BinaryOpInfo;
 Wasm2Lang.Backend.I32Coercion.binaryOpMap_ = null;
 
 /**
- * @private
- * @param {number} category
- * @param {string} operator
- * @param {boolean} unsigned
- * @param {boolean} rotateLeft
- * @return {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo}
- */
-Wasm2Lang.Backend.I32Coercion.createBinaryOpInfo_ = function (category, operator, unsigned, rotateLeft) {
-  return {
-    category: category,
-    opStr: operator,
-    unsigned: unsigned,
-    rotateLeft: rotateLeft
-  };
-};
-
-/**
- * @private
- * @param {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>} map
- * @param {number} category
- * @param {boolean} unsigned
- * @param {boolean} rotateLeft
- * @param {!Array<!Array<*>>} entries
- * @return {void}
- */
-Wasm2Lang.Backend.I32Coercion.registerBinaryOps_ = function (map, category, unsigned, rotateLeft, entries) {
-  for (var /** @type {number} */ i = 0, /** @const {number} */ entryCount = entries.length; i !== entryCount; ++i) {
-    var /** @const {!Array<*>} */ entry = entries[i];
-    var /** @const {number} */ op = /** @type {number} */ (entry[0]);
-    var /** @const {string} */ operator = /** @type {string} */ (entry[1]);
-    map[op] = Wasm2Lang.Backend.I32Coercion.createBinaryOpInfo_(category, operator, unsigned, rotateLeft);
-  }
-};
-
-/**
- * Builds a binary-op descriptor map from a list of
- * {@code [category, unsigned, rotateLeft, entries]} groups.  Shared by the
- * i32 and i64 classifiers since their dispatch tables have identical shape.
+ * Per-width binary-op spec, parameterized by the binaryen op-constant suffix
+ * ({@code 'Int32'} or {@code 'Int64'}).  Each tuple is
+ * {@code [category, unsigned, rotateLeft, [[binaryenOpName, operatorString], ...]]}.
+ * Shared by the i32 and i64 classifiers since their dispatch tables have
+ * identical shape; only the binaryen op-constant suffix differs.
  *
- * @param {!Array<!Array<*>>} groups
+ * @private
+ * @const {!Array<!Array<*>>}
+ */
+Wasm2Lang.Backend.I32Coercion.BINARY_OP_SPEC_ = /** @return {!Array<!Array<*>>} */ (function () {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  return [
+    [
+      C.OP_ARITHMETIC,
+      false,
+      false,
+      [
+        ['Add', '+'],
+        ['Sub', '-']
+      ]
+    ],
+    [C.OP_MULTIPLY, false, false, [['Mul', '*']]],
+    [
+      C.OP_DIVISION,
+      false,
+      false,
+      [
+        ['DivS', '/'],
+        ['RemS', '%']
+      ]
+    ],
+    [
+      C.OP_DIVISION,
+      true,
+      false,
+      [
+        ['DivU', '/'],
+        ['RemU', '%']
+      ]
+    ],
+    [
+      C.OP_BITWISE,
+      false,
+      false,
+      [
+        ['And', '&'],
+        ['Or', '|'],
+        ['Xor', '^'],
+        ['Shl', '<<'],
+        ['ShrS', '>>']
+      ]
+    ],
+    [C.OP_BITWISE, true, false, [['ShrU', '>>>']]],
+    [C.OP_ROTATE, false, true, [['RotL', '']]],
+    [C.OP_ROTATE, false, false, [['RotR', '']]],
+    [
+      C.OP_COMPARISON,
+      false,
+      false,
+      [
+        ['Eq', '=='],
+        ['Ne', '!='],
+        ['LtS', '<'],
+        ['LeS', '<='],
+        ['GtS', '>'],
+        ['GeS', '>=']
+      ]
+    ],
+    [
+      C.OP_COMPARISON,
+      true,
+      false,
+      [
+        ['LtU', '<'],
+        ['LeU', '<='],
+        ['GtU', '>'],
+        ['GeU', '>=']
+      ]
+    ]
+  ];
+})();
+
+/**
+ * Builds a binary-op descriptor map by resolving each spec entry's binaryen
+ * op-constant via {@code binaryen[name + suffix]}.  Used by the i32 and i64
+ * classifiers to share a single dispatch-table source (BINARY_OP_SPEC_).
+ *
+ * @param {!Binaryen} binaryen
+ * @param {string} suffix  Width suffix ({@code 'Int32'} or {@code 'Int64'}).
  * @return {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>}
  */
-Wasm2Lang.Backend.I32Coercion.buildBinaryOpMap = function (groups) {
+Wasm2Lang.Backend.I32Coercion.buildBinaryOpMapForWidth = function (binaryen, suffix) {
+  var /** @const {!Array<!Array<*>>} */ spec = Wasm2Lang.Backend.I32Coercion.BINARY_OP_SPEC_;
   var /** @const {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>} */
-    m = /** @type {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>} */ (Object.create(null));
-  for (var /** @type {number} */ i = 0, /** @const {number} */ n = groups.length; i !== n; ++i) {
-    var /** @const {!Array<*>} */ g = groups[i];
-    Wasm2Lang.Backend.I32Coercion.registerBinaryOps_(
-      m,
-      /** @type {number} */ (g[0]),
-      /** @type {boolean} */ (g[1]),
-      /** @type {boolean} */ (g[2]),
-      /** @type {!Array<!Array<*>>} */ (g[3])
-    );
+    map = /** @type {!Object<number, !Wasm2Lang.Backend.I32Coercion.BinaryOpInfo>} */ (Object.create(null));
+  for (var /** @type {number} */ gi = 0, /** @const {number} */ glen = spec.length; gi !== glen; ++gi) {
+    var /** @const {!Array<*>} */ group = spec[gi];
+    var /** @const {number} */ category = /** @type {number} */ (group[0]);
+    var /** @const {boolean} */ unsigned = /** @type {boolean} */ (group[1]);
+    var /** @const {boolean} */ rotateLeft = /** @type {boolean} */ (group[2]);
+    var /** @const {!Array<!Array<*>>} */ entries = /** @type {!Array<!Array<*>>} */ (group[3]);
+    for (var /** @type {number} */ ei = 0, /** @const {number} */ elen = entries.length; ei !== elen; ++ei) {
+      var /** @const {!Array<*>} */ entry = entries[ei];
+      var /** @const {number} */ op = /** @type {number} */ (binaryen[/** @type {string} */ (entry[0]) + suffix]);
+      map[op] = {
+        category: category,
+        opStr: /** @type {string} */ (entry[1]),
+        unsigned: unsigned,
+        rotateLeft: rotateLeft
+      };
+    }
   }
-  return m;
+  return map;
 };
 
 /**
@@ -135,77 +192,7 @@ Wasm2Lang.Backend.I32Coercion.buildBinaryOpMap = function (groups) {
  */
 Wasm2Lang.Backend.I32Coercion.classifyBinaryOp = function (binaryen, op) {
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  if (!C.binaryOpMap_) {
-    C.binaryOpMap_ = C.buildBinaryOpMap([
-      [
-        C.OP_ARITHMETIC,
-        false,
-        false,
-        [
-          [binaryen.AddInt32, '+'],
-          [binaryen.SubInt32, '-']
-        ]
-      ],
-      [C.OP_MULTIPLY, false, false, [[binaryen.MulInt32, '*']]],
-      [
-        C.OP_DIVISION,
-        false,
-        false,
-        [
-          [binaryen.DivSInt32, '/'],
-          [binaryen.RemSInt32, '%']
-        ]
-      ],
-      [
-        C.OP_DIVISION,
-        true,
-        false,
-        [
-          [binaryen.DivUInt32, '/'],
-          [binaryen.RemUInt32, '%']
-        ]
-      ],
-      [
-        C.OP_BITWISE,
-        false,
-        false,
-        [
-          [binaryen.AndInt32, '&'],
-          [binaryen.OrInt32, '|'],
-          [binaryen.XorInt32, '^'],
-          [binaryen.ShlInt32, '<<'],
-          [binaryen.ShrSInt32, '>>']
-        ]
-      ],
-      [C.OP_BITWISE, true, false, [[binaryen.ShrUInt32, '>>>']]],
-      [C.OP_ROTATE, false, true, [[binaryen.RotLInt32, '']]],
-      [C.OP_ROTATE, false, false, [[binaryen.RotRInt32, '']]],
-      [
-        C.OP_COMPARISON,
-        false,
-        false,
-        [
-          [binaryen.EqInt32, '=='],
-          [binaryen.NeInt32, '!='],
-          [binaryen.LtSInt32, '<'],
-          [binaryen.LeSInt32, '<='],
-          [binaryen.GtSInt32, '>'],
-          [binaryen.GeSInt32, '>=']
-        ]
-      ],
-      [
-        C.OP_COMPARISON,
-        true,
-        false,
-        [
-          [binaryen.LtUInt32, '<'],
-          [binaryen.LeUInt32, '<='],
-          [binaryen.GtUInt32, '>'],
-          [binaryen.GeUInt32, '>=']
-        ]
-      ]
-    ]);
-  }
+  if (!C.binaryOpMap_) C.binaryOpMap_ = C.buildBinaryOpMapForWidth(binaryen, 'Int32');
   return C.binaryOpMap_[op] || null;
 };
 
@@ -250,18 +237,42 @@ Wasm2Lang.Backend.I32Coercion.binaryResultType = function (info) {
 Wasm2Lang.Backend.I32Coercion.unaryOpMap_ = null;
 
 /**
- * Reads a numeric category from a keyed table, returning {@code -1} when the
- * key is absent.  Centralizes the {@code typeof === 'number'} guard shared by
- * the i32/i64 unary classifiers, which is load-bearing because a valid
- * {@code UNARY_EQZ} value of {@code 0} would otherwise be misread as absent.
+ * Per-width unary-op spec.  Each tuple is
+ * {@code [binaryenOpNamePrefix, UNARY_* category]}.  The {@code binaryen}
+ * lookup uses {@code prefix + suffix} where suffix is {@code 'Int32'} or
+ * {@code 'Int64'}.  i32 omits {@code ExtendS32} (no such i32 op).
  *
- * @param {!Object<number, number>} map
- * @param {number} key
- * @return {number}
+ * @private
+ * @const {!Array<!Array<*>>}
  */
-Wasm2Lang.Backend.I32Coercion.lookupCategoryOrMinusOne_ = function (map, key) {
-  var /** @const {number|undefined} */ cat = map[key];
-  return 'number' === typeof cat ? cat : -1;
+Wasm2Lang.Backend.I32Coercion.UNARY_OP_SPEC_I32_ = /** @return {!Array<!Array<*>>} */ (function () {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  return [
+    ['EqZ', C.UNARY_EQZ],
+    ['Clz', C.UNARY_CLZ],
+    ['Ctz', C.UNARY_CTZ],
+    ['Popcnt', C.UNARY_POPCNT],
+    ['ExtendS8', C.UNARY_EXTEND8_S],
+    ['ExtendS16', C.UNARY_EXTEND16_S]
+  ];
+})();
+
+/**
+ * Builds the unary-op category map by resolving each prefix against
+ * {@code binaryen[prefix + suffix]}.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {!Array<!Array<*>>} spec
+ * @param {string} suffix  Width suffix ({@code 'Int32'} or {@code 'Int64'}).
+ * @return {!Object<number, number>}
+ */
+Wasm2Lang.Backend.I32Coercion.buildUnaryOpMapForWidth = function (binaryen, spec, suffix) {
+  var /** @const {!Object<number, number>} */ map = {};
+  for (var /** @type {number} */ i = 0, /** @const {number} */ n = spec.length; i !== n; ++i) {
+    var /** @const {!Array<*>} */ entry = spec[i];
+    map[/** @type {number} */ (binaryen[/** @type {string} */ (entry[0]) + suffix])] = /** @type {number} */ (entry[1]);
+  }
+  return map;
 };
 
 /**
@@ -273,19 +284,11 @@ Wasm2Lang.Backend.I32Coercion.lookupCategoryOrMinusOne_ = function (map, key) {
  */
 Wasm2Lang.Backend.I32Coercion.classifyUnaryOp = function (binaryen, op) {
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  if (!C.unaryOpMap_) {
-    C.unaryOpMap_ = /** @type {!Object<number, number>} */ (
-      C.buildKeyedTable([
-        [binaryen.EqZInt32, C.UNARY_EQZ],
-        [binaryen.ClzInt32, C.UNARY_CLZ],
-        [binaryen.CtzInt32, C.UNARY_CTZ],
-        [binaryen.PopcntInt32, C.UNARY_POPCNT],
-        [binaryen.ExtendS8Int32, C.UNARY_EXTEND8_S],
-        [binaryen.ExtendS16Int32, C.UNARY_EXTEND16_S]
-      ])
-    );
-  }
-  return C.lookupCategoryOrMinusOne_(C.unaryOpMap_, op);
+  if (!C.unaryOpMap_) C.unaryOpMap_ = C.buildUnaryOpMapForWidth(binaryen, C.UNARY_OP_SPEC_I32_, 'Int32');
+  // typeof guard is load-bearing: a valid UNARY_EQZ value of 0 would otherwise
+  // be misread as absent.
+  var /** @const {number|undefined} */ cat = C.unaryOpMap_[op];
+  return 'number' === typeof cat ? cat : -1;
 };
 
 // ---------------------------------------------------------------------------

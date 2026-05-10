@@ -226,7 +226,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
 
     case binaryen.BlockId: {
-      var /** @const {?{s: string, c: number, prefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
+      var /** @const {?{s: string, c: number, w2lRootValueBlockPrefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
           state,
           nodeCtx,
           childResults

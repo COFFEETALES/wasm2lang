@@ -87,7 +87,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
     binaryen.none !== funcInfo.results &&
     0 !== funcInfo.results
   ) {
-    var /** @const {*} */ prefix = bodyResult['prefix'];
+    var /** @const {*} */ prefix = /** @type {{w2lRootValueBlockPrefix: *}} */ (bodyResult).w2lRootValueBlockPrefix;
     if ('string' === typeof prefix && '' !== prefix) {
       Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, /** @type {string} */ (prefix));
     }
@@ -1011,14 +1011,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
  * that isn't universally expressible across backends — binaryen:min is
  * expected to flatten them before codegen.
  *
- * Returns a {@code {s, c, prefix}} shape when applicable; {@code null}
+ * Returns a {@code {s, c, w2lRootValueBlockPrefix}} shape when applicable; {@code null}
  * otherwise.  Callers fall back to the standard block dispatch on {@code null}.
  *
  * @protected
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
- * @return {?{s: string, c: number, prefix: string}}
+ * @return {?{s: string, c: number, w2lRootValueBlockPrefix: string}}
  */
 Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, nodeCtx, childResults) {
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
@@ -1047,7 +1047,7 @@ Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, node
   return {
     's': tailInfo.expressionString,
     'c': tailInfo.expressionCategory,
-    'prefix': prefixLines.join('')
+    w2lRootValueBlockPrefix: prefixLines.join('')
   };
 };
 
@@ -1738,21 +1738,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderMemoryBulkOp_ = function (bina
   var /** @const {string} */ helperName =
       this.getRuntimeHelperPrefix_() + (binaryen.MemoryFillId === id ? 'memory_fill' : 'memory_copy');
   this.markHelper_(helperName);
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ a0 = getInfo(childResults, 0);
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ a1 = getInfo(childResults, 1);
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ a2 = getInfo(childResults, 2);
-  return (
-    A.pad_(indent) +
-    this.n_(helperName) +
-    '(' +
-    ('' !== bufferArg ? bufferArg + ', ' : '') +
-    this.coerceToType_(binaryen, a0.expressionString, a0.expressionCategory, binaryen.i32) +
-    ', ' +
-    this.coerceToType_(binaryen, a1.expressionString, a1.expressionCategory, binaryen.i32) +
-    ', ' +
-    this.coerceToType_(binaryen, a2.expressionString, a2.expressionCategory, binaryen.i32) +
-    ');\n'
-  );
+  var /** @const {!Array<string>} */ args = [];
+  if ('' !== bufferArg) args[args.length] = bufferArg;
+  for (var /** @type {number} */ ai = 0; ai < 3; ++ai) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ a = getInfo(childResults, ai);
+    args[args.length] = this.coerceToType_(binaryen, a.expressionString, a.expressionCategory, binaryen.i32);
+  }
+  return A.pad_(indent) + this.n_(helperName) + '(' + args.join(', ') + ');\n';
 };
 
 /**

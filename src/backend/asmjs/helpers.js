@@ -338,7 +338,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + l0 + ' = ' + l0 + '|0;\n' +
     pad2 + l1 + ' = ' + l1 + '|0;\n' +
     pad2 + nHEAP16 + '[' + l0 + ' >> 1] = ' + l1 + ';\n' +
-    pad2 + nHEAP16 + '[(' + l0 + ' + 2|0) >> 1] = ' + l1 + ' >> 16;\n' +
+    pad2 + nHEAP16 + '[' + l0 + ' + 2 >> 1] = ' + l1 + ' >> 16;\n' +
     pad1 + '}');
 
   // prettier-ignore
@@ -347,16 +347,16 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + l0 + ' = ' + l0 + '|0;\n' +
     pad2 + l1 + ' = ' + l1 + '|0;\n' +
     pad2 + nHEAPU8 + '[' + l0 + ' >> 0] = ' + l1 + ';\n' +
-    pad2 + nHEAPU8 + '[(' + l0 + ' + 1|0) >> 0] = ' + l1 + ' >> 8;\n' +
-    pad2 + nHEAPU8 + '[(' + l0 + ' + 2|0) >> 0] = ' + l1 + ' >> 16;\n' +
-    pad2 + nHEAPU8 + '[(' + l0 + ' + 3|0) >> 0] = ' + l1 + ' >>> 24;\n' +
+    pad2 + nHEAPU8 + '[' + l0 + ' + 1 >> 0] = ' + l1 + ' >> 8;\n' +
+    pad2 + nHEAPU8 + '[' + l0 + ' + 2 >> 0] = ' + l1 + ' >> 16;\n' +
+    pad2 + nHEAPU8 + '[' + l0 + ' + 3 >> 0] = ' + l1 + ' >>> 24;\n' +
     pad1 + '}');
 
   // prettier-ignore
   h('$w2l_load_i32_a2', ['HEAPU16', 'HEAP16'],
     pad1 + 'function ' + n('$w2l_load_i32_a2') + '(' + l0 + ') {\n' +
     pad2 + l0 + ' = ' + l0 + '|0;\n' +
-    pad2 + 'return ' + nHEAPU16 + '[' + l0 + ' >> 1] | (' + nHEAP16 + '[(' + l0 + ' + 2|0) >> 1] << 16) |0;\n' +
+    pad2 + 'return ' + nHEAPU16 + '[' + l0 + ' >> 1] | (' + nHEAP16 + '[' + l0 + ' + 2 >> 1] << 16) |0;\n' +
     pad1 + '}');
 
   // i16 store with 1-byte alignment: decompose into two HEAP8 stores.
@@ -366,7 +366,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + l0 + ' = ' + l0 + '|0;\n' +
     pad2 + l1 + ' = ' + l1 + '|0;\n' +
     pad2 + nHEAPU8 + '[' + l0 + ' >> 0] = ' + l1 + ';\n' +
-    pad2 + nHEAPU8 + '[(' + l0 + ' + 1|0) >> 0] = ' + l1 + ' >> 8;\n' +
+    pad2 + nHEAPU8 + '[' + l0 + ' + 1 >> 0] = ' + l1 + ' >> 8;\n' +
     pad1 + '}');
 
   // i16 load with 1-byte alignment: compose from two HEAP8 loads.
@@ -374,14 +374,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
   h('$w2l_load_i16_a1', ['HEAPU8'],
     pad1 + 'function ' + n('$w2l_load_i16_a1') + '(' + l0 + ') {\n' +
     pad2 + l0 + ' = ' + l0 + '|0;\n' +
-    pad2 + 'return ' + nHEAPU8 + '[' + l0 + ' >> 0] | (' + nHEAPU8 + '[(' + l0 + ' + 1|0) >> 0] << 8) |0;\n' +
+    pad2 + 'return ' + nHEAPU8 + '[' + l0 + ' >> 0] | (' + nHEAPU8 + '[' + l0 + ' + 1 >> 0] << 8) |0;\n' +
     pad1 + '}');
 
   // prettier-ignore
   h('$w2l_load_i32_a1', ['HEAPU8'],
     pad1 + 'function ' + n('$w2l_load_i32_a1') + '(' + l0 + ') {\n' +
     pad2 + l0 + ' = ' + l0 + '|0;\n' +
-    pad2 + 'return ' + nHEAPU8 + '[' + l0 + ' >> 0] | (' + nHEAPU8 + '[(' + l0 + ' + 1|0) >> 0] << 8) | (' + nHEAPU8 + '[(' + l0 + ' + 2|0) >> 0] << 16) | (' + nHEAPU8 + '[(' + l0 + ' + 3|0) >> 0] << 24) |0;\n' +
+    pad2 + 'return ' + nHEAPU8 + '[' + l0 + ' >> 0] | (' + nHEAPU8 + '[' + l0 + ' + 1 >> 0] << 8) | (' + nHEAPU8 + '[' + l0 + ' + 2 >> 0] << 16) | (' + nHEAPU8 + '[' + l0 + ' + 3 >> 0] << 24) |0;\n' +
     pad1 + '}');
 
   // prettier-ignore
@@ -457,7 +457,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + l1 + ' = ' + l1 + '|0;\n' +
     pad2 + l2 + ' = ' + l2 + '|0;\n' +
     pad2 + 'var ' + l3 + ' = 0;\n' +
-    pad2 + l3 + ' = (' + l0 + ' + ' + l2 + ')|0;\n' +
+    pad2 + l3 + ' = ' + l0 + ' + ' + l2 + '|0;\n' +
     pad2 + 'while ((' + l0 + '|0) < (' + l3 + '|0)) {\n' +
     pad3 + nHEAPU8 + '[' + l0 + ' >> 0] = ' + l1 + ';\n' +
     pad3 + l0 + ' = ' + l0 + ' + 1|0;\n' +
@@ -474,13 +474,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + 'if ((' + l0 + '|0) <= (' + l1 + '|0)) {\n' +
     pad3 + l3 + ' = 0;\n' +
     pad3 + 'while ((' + l3 + '|0) < (' + l2 + '|0)) {\n' +
-    pad4 + nHEAPU8 + '[(' + l0 + ' + ' + l3 + '|0) >> 0] = ' + nHEAPU8 + '[(' + l1 + ' + ' + l3 + '|0) >> 0]|0;\n' +
+    pad4 + nHEAPU8 + '[' + l0 + ' + ' + l3 + ' >> 0] = ' + nHEAPU8 + '[' + l1 + ' + ' + l3 + ' >> 0];\n' +
     pad4 + l3 + ' = ' + l3 + ' + 1|0;\n' +
     pad3 + '}\n' +
     pad2 + '} else {\n' +
-    pad3 + l3 + ' = (' + l2 + ' - 1)|0;\n' +
+    pad3 + l3 + ' = ' + l2 + ' - 1|0;\n' +
     pad3 + 'while ((' + l3 + '|0) >= 0) {\n' +
-    pad4 + nHEAPU8 + '[(' + l0 + ' + ' + l3 + '|0) >> 0] = ' + nHEAPU8 + '[(' + l1 + ' + ' + l3 + '|0) >> 0]|0;\n' +
+    pad4 + nHEAPU8 + '[' + l0 + ' + ' + l3 + ' >> 0] = ' + nHEAPU8 + '[' + l1 + ' + ' + l3 + ' >> 0];\n' +
     pad4 + l3 + ' = ' + l3 + ' - 1|0;\n' +
     pad3 + '}\n' +
     pad2 + '}\n' +

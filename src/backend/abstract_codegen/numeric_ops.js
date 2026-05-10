@@ -357,23 +357,16 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericBinaryOp_ = function (b
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderNumericUnaryOp_ = function (binaryen, info, valueExpr, opt_valueCat) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @type {string} */ helperName = this.getRuntimeHelperPrefix_() + info.opName;
-
-  if ('neg' === info.opName) {
+  var /** @const {string} */ opName = info.opName;
+  if ('neg' === opName) {
     return this.renderCoercionByType_(binaryen, P.renderPrefix('-', valueExpr), info.retType);
   }
-
-  if (
-    'abs' === info.opName ||
-    'ceil' === info.opName ||
-    'floor' === info.opName ||
-    'trunc' === info.opName ||
-    'nearest' === info.opName ||
-    'sqrt' === info.opName
-  ) {
+  // The math-builtin set (abs/ceil/floor/trunc/nearest/sqrt) is type-overloaded
+  // so the helper name carries the operand type as a suffix.
+  var /** @type {string} */ helperName = this.getRuntimeHelperPrefix_() + opName;
+  if (-1 !== '|abs|ceil|floor|trunc|nearest|sqrt|'.indexOf('|' + opName + '|')) {
     helperName += '_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, info.operandType);
   }
-
   return this.renderHelperCall_(binaryen, helperName, [valueExpr], info.retType);
 };
 

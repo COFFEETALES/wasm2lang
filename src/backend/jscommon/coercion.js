@@ -24,18 +24,15 @@
 Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_ = function (expr) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const {number} */ len = expr.length;
-  if (len >= 2 && '|' === expr.charAt(len - 2) && '0' === expr.charAt(len - 1)) {
-    return expr;
-  }
-  if (Wasm2Lang.Backend.I32Coercion.isConstant(expr)) {
-    return expr;
-  }
+  if (len >= 2 && '|' === expr.charAt(len - 2) && '0' === expr.charAt(len - 1)) return expr;
+  if (Wasm2Lang.Backend.I32Coercion.isConstant(expr)) return expr;
   // Expressions whose top-level operator is &, ^, or | are already signed
-  // in asm.js and do not need an extra |0 coercion.
+  // in asm.js and do not need an extra |0 coercion.  Signed shifts (<<, >>)
+  // also produce signed; the unsigned shift >>> produces unsigned and would
+  // be reinterpreted by |0, so it does not qualify.
   var /** @const {number} */ top = P.topLevel(expr);
-  if (top <= P.PREC_BIT_AND_ && top >= P.PREC_BIT_OR_) {
-    return expr;
-  }
+  if (top <= P.PREC_BIT_AND_ && top >= P.PREC_BIT_OR_) return expr;
+  if (top === P.PREC_SHIFT_ && !P.hasTopLevelToken(expr, '>>>')) return expr;
   return P.wrap_(expr, P.PREC_BIT_OR_, true) + '|0';
 };
 
@@ -45,9 +42,11 @@ Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_ = function (expr) {
  */
 Wasm2Lang.Backend.JsCommonCodegen.renderUnsignedCoercion_ = function (expr) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if (Wasm2Lang.Backend.I32Coercion.isConstant(expr) && '-' !== expr.charAt(0)) {
-    return expr;
-  }
+  if (Wasm2Lang.Backend.I32Coercion.isConstant(expr) && '-' !== expr.charAt(0)) return expr;
+  // The unsigned shift >>> already produces an unsigned i32; a second >>>0
+  // wrap is a no-op.  Signed shifts and bitwise &|^ produce signed values
+  // that need explicit reinterpretation, so they still get the >>>0.
+  if (P.topLevel(expr) === P.PREC_SHIFT_ && P.hasTopLevelToken(expr, '>>>')) return expr;
   return P.wrap_(expr, P.PREC_SHIFT_, true) + '>>>0';
 };
 
@@ -57,13 +56,8 @@ Wasm2Lang.Backend.JsCommonCodegen.renderUnsignedCoercion_ = function (expr) {
  */
 Wasm2Lang.Backend.JsCommonCodegen.renderDoubleCoercion_ = function (expr) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @const {string} */ trimmed = expr.replace(/^\s+|\s+$/g, '');
-  if (/^-?\d+(?:\.\d+)?$/.test(expr)) {
-    return -1 === expr.indexOf('.') ? expr + '.0' : expr;
-  }
-  if (/^[+-]/.test(trimmed)) {
-    return '+(' + expr + ')';
-  }
+  if (/^-?\d+(?:\.\d+)?$/.test(expr)) return -1 === expr.indexOf('.') ? expr + '.0' : expr;
+  if (/^[+-]/.test(expr.replace(/^\s+|\s+$/g, ''))) return '+(' + expr + ')';
   return '+' + P.wrap_(expr, P.PREC_UNARY_, false);
 };
 

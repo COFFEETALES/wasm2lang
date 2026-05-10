@@ -113,6 +113,31 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.prepareI32BinaryOperand_ = functio
 };
 
 /**
+ * Heap loads in plain JavaScript always produce values already inside int32
+ * range at runtime ({@code Int32Array}/{@code Int8Array}/{@code Uint8Array}/
+ * etc. all return JS Numbers that satisfy {@code v === (v|0)} for signed
+ * views and {@code v === (v|0) >>> 0} for unsigned views in the value range
+ * each view emits).  Marking the load result as {@code INTISH} would cause
+ * {@code prepareI32BinaryOperand_} to insert a defensive {@code |0} on every
+ * signed-comparison or division consumer — wasted bytes, since the runtime
+ * value never exceeds int32 range.  Stay at the pre-coerced default
+ * ({@code catForCoercedType_}) so consumers see SIGNED and skip the wrap.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} loadType
+ * @param {number} loadBytes
+ * @param {number} loadAlign
+ * @return {number}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.loadResultCat_ = function (binaryen, loadType, loadBytes, loadAlign) {
+  void loadBytes;
+  void loadAlign;
+  return Wasm2Lang.Backend.AbstractCodegen.catForCoercedType_(binaryen, loadType);
+};
+
+/**
  * Asm.js collapses comparison results to integer category because its type
  * system forces 0/1 integers at the op level.  JavaScript comparisons yield
  * boolean values, so the result category stays {@code CAT_BOOL_I32}; consumers

@@ -141,28 +141,19 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyMappedRenaming_ = function (resolveMarker,
 
   if (binaryen.SwitchId === id) {
     var /** @const {!Array<string>} */ names = /** @type {!Array<string>} */ ((expr.names || []).slice(0));
-    var /** @const {number} */ nameCount = names.length;
+    var /** @type {string} */ newDefault = /** @type {string} */ (expr.defaultName || '');
     var /** @type {boolean} */ hasChanges = false;
-    var /** @type {number} */ i = 0;
-
-    for (i = 0; i !== nameCount; ++i) {
-      var /** @const {?string} */ nameMarker = resolveMarker(names[i]);
-      if (nameMarker) {
-        names[i] = nameMarker + names[i];
+    // Walk arm labels and the default in one pass; '' default is left alone.
+    for (var /** @type {number} */ i = 0, /** @const {number} */ nameCount = names.length; i <= nameCount; ++i) {
+      var /** @const {string} */ rawName = i === nameCount ? newDefault : names[i];
+      if ('' === rawName) continue;
+      var /** @const {?string} */ marker = resolveMarker(rawName);
+      if (marker) {
+        if (i === nameCount) newDefault = marker + rawName;
+        else names[i] = marker + rawName;
         hasChanges = true;
       }
     }
-
-    var /** @const {string} */ defaultName = /** @type {string} */ (expr.defaultName || '');
-    var /** @type {string} */ newDefault = defaultName;
-    if ('' !== defaultName) {
-      var /** @const {?string} */ defMarker = resolveMarker(defaultName);
-      if (defMarker) {
-        newDefault = defMarker + defaultName;
-        hasChanges = true;
-      }
-    }
-
     if (hasChanges) {
       return {
         decisionAction: REPLACE_NODE,
@@ -526,23 +517,29 @@ Wasm2Lang.Wasm.Tree.CustomPasses.cmpInversionTable_ = null;
  * @return {!Object<number, !Array<string>>}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.buildCmpInversionTable_ = function (binaryen) {
+  // Each row is the width-independent shape:
+  //   [opNamePrefixA, opNamePrefixB, methodForA, methodForB]
+  // where opA's inverse is api[methodForA] and opB's inverse is api[methodForB].
   var /** @const {!Array<!Array<string>>} */ rows = [
-      ['EqInt32', 'NeInt32', 'i32', 'ne', 'eq'],
-      ['LtSInt32', 'GeSInt32', 'i32', 'ge_s', 'lt_s'],
-      ['GtSInt32', 'LeSInt32', 'i32', 'le_s', 'gt_s'],
-      ['LtUInt32', 'GeUInt32', 'i32', 'ge_u', 'lt_u'],
-      ['GtUInt32', 'LeUInt32', 'i32', 'le_u', 'gt_u'],
-      ['EqInt64', 'NeInt64', 'i64', 'ne', 'eq'],
-      ['LtSInt64', 'GeSInt64', 'i64', 'ge_s', 'lt_s'],
-      ['GtSInt64', 'LeSInt64', 'i64', 'le_s', 'gt_s'],
-      ['LtUInt64', 'GeUInt64', 'i64', 'ge_u', 'lt_u'],
-      ['GtUInt64', 'LeUInt64', 'i64', 'le_u', 'gt_u']
+      ['Eq', 'Ne', 'ne', 'eq'],
+      ['LtS', 'GeS', 'ge_s', 'lt_s'],
+      ['GtS', 'LeS', 'le_s', 'gt_s'],
+      ['LtU', 'GeU', 'ge_u', 'lt_u'],
+      ['GtU', 'LeU', 'le_u', 'gt_u']
+    ];
+  var /** @const {!Array<!Array<string>>} */ widths = [
+      ['Int32', 'i32'],
+      ['Int64', 'i64']
     ];
   var /** @const {!Object<number, !Array<string>>} */ t = /** @type {!Object<number, !Array<string>>} */ (Object.create(null));
-  for (var /** @type {number} */ i = 0, /** @const {number} */ rLen = rows.length; i < rLen; ++i) {
-    var /** @const {!Array<string>} */ r = rows[i];
-    t[binaryen[r[0]]] = [r[2], r[3]];
-    t[binaryen[r[1]]] = [r[2], r[4]];
+  for (var /** @type {number} */ wi = 0, /** @const {number} */ wLen = widths.length; wi < wLen; ++wi) {
+    var /** @const {string} */ suffix = widths[wi][0];
+    var /** @const {string} */ api = widths[wi][1];
+    for (var /** @type {number} */ i = 0, /** @const {number} */ rLen = rows.length; i < rLen; ++i) {
+      var /** @const {!Array<string>} */ r = rows[i];
+      t[binaryen[r[0] + suffix]] = [api, r[2]];
+      t[binaryen[r[1] + suffix]] = [api, r[3]];
+    }
   }
   return t;
 };

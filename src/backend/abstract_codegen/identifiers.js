@@ -37,10 +37,8 @@ Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_ = function (name) {
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.resolveReservedIdentifier_ = function (name, reservedWords, opt_caseInsensitive) {
-  var /** @type {string} */ check = opt_caseInsensitive ? name.toLowerCase() : name;
-  while (reservedWords[check]) {
+  while (reservedWords[opt_caseInsensitive ? name.toLowerCase() : name]) {
     name = name + '_';
-    check = opt_caseInsensitive ? name.toLowerCase() : name;
   }
   return name;
 };

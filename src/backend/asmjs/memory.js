@@ -28,7 +28,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLoad_ = function (binaryen, ptrEx
     return this.renderHelperCall_(
       binaryen,
       '$w2l_load_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, wasmType),
-      [ptrExpr],
+      [Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(ptrExpr)],
       wasmType
     );
   }
@@ -45,7 +45,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderLoad_ = function (binaryen, ptrEx
       wasmType
     );
   }
-  return this.renderCoercionByType_(binaryen, this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, isSigned), wasmType);
+  // Direct integer heap access: per asm.js spec, HEAPxx[index] is intish.
+  // Skip the |0 wrap that the validator does not require here — heap-store
+  // RHS, bitwise operands, and Math.imul args all accept intish directly.
+  // The LoadId case sets resultCat = INTISH so consumers that need int
+  // (arithmetic, comparison, return, function-call args) coerce themselves
+  // via prepareI32BinaryOperand_ / coerceAtBoundary_ / coerceToType_.
+  return this.renderHeapAccess_(binaryen, ptrExpr, wasmType, bytes, isSigned);
 };
 
 /**
@@ -75,11 +81,21 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
 ) {
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const {number} */ valueCat = void 0 !== opt_valueCat ? opt_valueCat : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
-  // asm.js heap stores accept intish for i32 — skip coercion when already intish.
-  var /** @const {string} */ coercedValue =
-      Wasm2Lang.Backend.I32Coercion.INTISH === valueCat && Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)
-        ? valueExpr
-        : this.coerceToType_(binaryen, valueExpr, valueCat, wasmType);
+  // Sub-naturally aligned int stores route through a helper whose value
+  // parameter is declared {@code v|0} (typed int), so an intish operand
+  // must be coerced before passing — V8's asm.js validator rejects the
+  // module otherwise with "Bad function argument type".  Direct heap stores
+  // (HEAPxx[ix>>k] = v) accept intish for i32 per spec, so the skip stays
+  // for that path only.
+  var /** @const {boolean} */ isIntHelperRouted =
+      !Wasm2Lang.Backend.ValueType.isFloat(binaryen, wasmType) && align < bytes && bytes > 1;
+  var /** @const {boolean} */ acceptsIntish =
+      !isIntHelperRouted &&
+      Wasm2Lang.Backend.I32Coercion.INTISH === valueCat &&
+      Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType);
+  var /** @const {string} */ coercedValue = acceptsIntish
+      ? valueExpr
+      : this.coerceToType_(binaryen, valueExpr, valueCat, wasmType);
   var /** @const {string} */ storeValue = P.stripForAssignment(coercedValue);
   if (Wasm2Lang.Backend.ValueType.isFloat(binaryen, wasmType)) {
     // Use direct HEAPF32/HEAPF64 when alignment is declared sufficient.
@@ -89,13 +105,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
     }
     var /** @const {string} */ storeName = '$w2l_store_' + Wasm2Lang.Backend.ValueType.typeName(binaryen, wasmType);
     this.markHelper_(storeName);
-    return this.n_(storeName) + '(' + ptrExpr + ', ' + storeValue + ');';
+    return (
+      this.n_(storeName) + '(' + Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(ptrExpr) + ', ' + storeValue + ');'
+    );
   }
   // Integer stores with sub-natural alignment: the asm.js typed-array shift
   // (>> 1 for HEAP16, >> 2 for HEAP32) truncates the address to an aligned
   // boundary, silently writing to a rounded-down offset.  Fall back to a
   // helper that decomposes into smaller-width stores.
-  if (align < bytes && bytes > 1) {
+  if (isIntHelperRouted) {
     var /** @const {string} */ intStoreName = '$w2l_store_i' + (bytes << 3) + '_a' + align;
     this.markHelper_(intStoreName);
     return (
@@ -127,9 +145,33 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHelperByteIndex_ = function (ptrE
 };
 
 /**
+ * Returns the LoadId/StoreId pointer expression: coerces an intish base to
+ * int when a non-zero offset is being added (asm.js validator rejects
+ * {@code intish + n}), then applies the offset via {@code renderPtrWithOffset_}.
+ *
+ * @protected
+ * @param {string} baseExpr
+ * @param {number} baseCat
+ * @param {number} offset
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCoercedPtrWithOffset_ = function (baseExpr, baseCat, offset) {
+  if (0 !== offset && Wasm2Lang.Backend.I32Coercion.INTISH === baseCat) {
+    baseExpr = Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(baseExpr);
+  }
+  return this.renderPtrWithOffset_(baseExpr, offset);
+};
+
+/**
  * Returns the pointer expression with an optional static byte offset applied.
- * When offset is zero the original expression is returned unchanged.  Asm.js
- * wraps the sum with {@code |0} so the validator sees a signed i32.
+ * When offset is zero the original expression is returned unchanged.  The
+ * sum is left intish — every consumer either feeds it into {@code >> shift}
+ * inside {@code renderHeapAccess_} (where the shift itself coerces intish to
+ * signed per asm.js) or routes it through a helper-call boundary that
+ * re-applies {@code renderSignedCoercion_} explicitly.  Skipping the |0 wrap
+ * here removes the redundant {@code (base + n|0) >> k} → {@code base + n >> k}.
+ * Callers must coerce {@code baseExpr} to int themselves when {@code offset}
+ * is non-zero, since {@code intish + n} is rejected by the asm.js validator.
  *
  * @protected
  * @param {string} baseExpr
@@ -140,9 +182,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderPtrWithOffset_ = function (baseEx
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (0 === offset) return baseExpr;
   if ('0' === baseExpr) return String(offset);
-  return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(
-    P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_)
-  );
+  return P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_);
 };
 
 /**

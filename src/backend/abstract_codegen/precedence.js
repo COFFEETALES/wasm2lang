@@ -24,6 +24,7 @@
  *   isUnaryPosition_: function(string, number): boolean,
  *   isFullyParenthesized: function(string): boolean,
  *   topLevel: function(string): number,
+ *   hasTopLevelToken: function(string, string): boolean,
  *   wrap_: function(string, number, boolean): string,
  *   renderPrefix: function(string, string): string,
  *   renderInfix: function(string, string, string, number, boolean=): string,
@@ -258,6 +259,69 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
     }
 
     return lowest;
+  },
+
+  /**
+   * Returns whether {@code expr} contains the substring {@code token} at
+   * depth 0 — outside any parentheses, brackets, or string literals.  Used
+   * by coercion helpers to distinguish shift-operator variants that share
+   * precedence ({@code <<}, {@code >>}, {@code >>>}) when deciding whether
+   * a redundant {@code |0} or {@code >>>0} can be elided.
+   *
+   * @param {string} expr
+   * @param {string} token
+   * @return {boolean}
+   */
+  hasTopLevelToken: function (expr, token) {
+    var /** @const {string} */ s = expr.replace(/^\s+|\s+$/g, '');
+    var /** @const {number} */ tokenLen = token.length;
+    if (0 === tokenLen) return false;
+    var /** @type {number} */ depthParen = 0;
+    var /** @type {number} */ depthBracket = 0;
+    var /** @type {boolean} */ inSingle = false;
+    var /** @type {boolean} */ inDouble = false;
+    var /** @type {boolean} */ escaped = false;
+    var /** @const {number} */ sLen = s.length;
+    for (var /** @type {number} */ i = 0; i < sLen; ++i) {
+      var /** @const {string} */ ch = s.charAt(i);
+      if (inSingle || inDouble) {
+        if (escaped) {
+          escaped = false;
+        } else if ('\\' === ch) {
+          escaped = true;
+        } else if (inSingle ? "'" === ch : '"' === ch) {
+          inSingle = inDouble = false;
+        }
+        continue;
+      }
+      if ("'" === ch) {
+        inSingle = true;
+        continue;
+      }
+      if ('"' === ch) {
+        inDouble = true;
+        continue;
+      }
+      if ('(' === ch) {
+        ++depthParen;
+        continue;
+      }
+      if (')' === ch) {
+        --depthParen;
+        continue;
+      }
+      if ('[' === ch) {
+        ++depthBracket;
+        continue;
+      }
+      if (']' === ch) {
+        --depthBracket;
+        continue;
+      }
+      if (0 !== depthParen || 0 !== depthBracket) continue;
+      if (i + tokenLen <= sLen && token === s.substr(i, tokenLen)) return true;
+    }
+    return false;
   },
 
   /**

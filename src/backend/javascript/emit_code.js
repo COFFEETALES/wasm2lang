@@ -24,6 +24,11 @@
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.getModuleFunctionBindingName_ = function () {
   return '';
 };
+// The remaining slots restore the JsCommonCodegen defaults that AsmjsCodegen
+// overrides — modern JS does not need use-asm, foreign-routed Math constants,
+// coerced exported-global getters, or raw-integer global initializers.  Each
+// assignment is written out long-hand so Closure Compiler can mangle both
+// sides of the property name with a single internal symbol.
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitUseAsmDirective_ =
   Wasm2Lang.Backend.JsCommonCodegen.prototype.emitUseAsmDirective_;
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.getHeapBindingTable_ =

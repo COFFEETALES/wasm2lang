@@ -56,6 +56,60 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.catForValueTypeRead_ = function (binary
 };
 
 /**
+ * Returns the result category for a heap load.  Asm.js direct integer loads
+ * come back as bare {@code HEAPxx[index]} which the spec types as
+ * {@code intish} — leave the {@code |0} for consumers that need int (the
+ * existing {@code prepareI32BinaryOperand_} / {@code coerceAtBoundary_}
+ * paths add it).  Sub-aligned helper loads route through
+ * {@code renderHelperCall_} which already wraps with the typed coercion;
+ * float loads come back through {@code renderCoercionByType_}; both stay at
+ * the pre-coerced default ({@code catForCoercedType_}).
+ *
+ * The JavaScript backend overrides this to keep the default (SIGNED) — JS
+ * heap views always produce a value already in int32 range at runtime, so
+ * marking the load as INTISH only causes the consumer-side hooks to insert
+ * a redundant {@code |0} that JS engines do not need for int32 fast-path.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} loadType
+ * @param {number} loadBytes
+ * @param {number} loadAlign
+ * @return {number}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.loadResultCat_ = function (binaryen, loadType, loadBytes, loadAlign) {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, loadType) && (1 === loadBytes || loadAlign >= loadBytes)) {
+    return C.INTISH;
+  }
+  return A.catForCoercedType_(binaryen, loadType);
+};
+
+/**
+ * Asm.js {@code if}/{@code while}/{@code do-while} conditions must be typed
+ * {@code int} per the validator — V8 rejects an intish-typed condition
+ * with "Unexpected type".  When the condition expression is intish (e.g., a
+ * direct heap load whose result we leave intish, or a raw arithmetic sum),
+ * apply the |0 coercion before wrapping in parens.
+ *
+ * @override
+ * @protected
+ * @param {string} expr
+ * @param {number=} opt_condCat
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.formatCondition_ = function (expr, opt_condCat) {
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @type {string} */ inner = expr;
+  if (C.INTISH === opt_condCat) {
+    inner = Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(inner);
+  }
+  return P.formatCondition(inner);
+};
+
+/**
  * @override
  * @protected
  * @param {string} condStr
@@ -259,12 +313,17 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitI32Unary_ = function (binaryen, una
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.i32BinaryResultCat_ = function (info) {
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  if (C.OP_COMPARISON === info.category) return C.INT;
-  if (C.OP_BITWISE === info.category && info.unsigned) return C.UNSIGNED;
-  if (C.OP_BITWISE === info.category) return C.SIGNED;
-  if (C.OP_MULTIPLY === info.category) return C.SIGNED;
-  if (C.OP_ROTATE === info.category) return C.SIGNED;
-  return C.INTISH;
+  switch (info.category) {
+    case C.OP_COMPARISON:
+      return C.INT;
+    case C.OP_BITWISE:
+      return info.unsigned ? C.UNSIGNED : C.SIGNED;
+    case C.OP_MULTIPLY:
+    case C.OP_ROTATE:
+      return C.SIGNED;
+    default:
+      return C.INTISH;
+  }
 };
 
 /** @override @protected @return {number} */
@@ -273,6 +332,17 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
 };
 
 /**
+ * Bitwise operators (|, &, ^, <<, >>, >>>) accept intish operands per the
+ * asm.js spec — the operator itself coerces to signed/unsigned, so wrapping
+ * an intish operand with |0 is redundant.  Arithmetic, multiply, division,
+ * rotate (helper call), and comparison consumers still require an int.
+ *
+ * Note: although the asm.js spec types {@code Math.imul(intish, intish):
+ * signed}, V8's asm.js validator emits "Bad function argument type" when an
+ * intish-typed expression is passed directly.  Keep the |0 coercion for
+ * OP_MULTIPLY operands to stay compatible with V8 (SpiderMonkey accepts
+ * either form).
+ *
  * @override
  * @protected
  * @param {string} operand
@@ -281,11 +351,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat, opt_opInfo) {
-  void opt_opInfo;
-  if (Wasm2Lang.Backend.I32Coercion.INTISH === cat) {
-    return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(operand);
-  }
-  return operand;
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  if (C.INTISH !== cat) return operand;
+  if (opt_opInfo && C.OP_BITWISE === opt_opInfo.category) return operand;
+  return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(operand);
 };
 
 // buildCoercedCallArgs_, buildCoercedCallIndirectArgs_, and

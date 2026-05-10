@@ -23,6 +23,9 @@
     for (java.util.List<Double> t : _mtc) {
         mod.exercisePrecisionAndReinterpret(t.get(0).intValue(), t.get(1).floatValue(), t.get(2));
     }
+    for (java.util.List<Double> p : w2lNested(_data, "subword_cases")) {
+        mod.exerciseSubAlignedI32Stores(p.get(0).intValue(), p.get(1).intValue());
+    }
 
     w2lDumpCRC(memBuffer);
 }

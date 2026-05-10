@@ -78,35 +78,22 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
 
     case binaryen.LoadId: {
       var /** @const {number} */ loadType = expr.type;
-      var /** @const {number} */ loadOffset = /** @type {number} */ (expr.offset);
-      // When a non-zero offset is present, the base+offset addition requires
-      // both operands to be int.  Intish bases (from arithmetic/div/rem) must
-      // be coerced to signed first.
-      var /** @type {string} */ loadBase = cr(0);
-      if (0 !== loadOffset && C.INTISH === cc(0)) {
-        loadBase = Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(loadBase);
-      }
-      var /** @const {string} */ loadPtr = this.renderPtrWithOffset_(loadBase, loadOffset);
       var /** @const {number} */ loadBytes = /** @type {number} */ (expr.bytes);
       // Use the direct C API to read alignment — getExpressionInfo can
       // return a stale/incorrect value for sub-naturally aligned loads.
       var /** @const {number} */ loadAlign = binaryen.Load.getAlign(nodeCtx.expressionPointer) || loadBytes;
+      var /** @const {string} */ loadPtr = this.renderCoercedPtrWithOffset_(cr(0), cc(0), /** @type {number} */ (expr.offset));
       result = this.renderLoad_(binaryen, loadPtr, loadType, loadBytes, !!expr.isSigned, loadAlign);
-      resultCat = A.catForCoercedType_(binaryen, loadType);
+      resultCat = this.loadResultCat_(binaryen, loadType, loadBytes, loadAlign);
       break;
     }
     case binaryen.StoreId: {
       var /** @const {number} */ storeType = /** @type {number} */ (expr.valueType) || binaryen.i32;
-      var /** @const {number} */ storeOffset = /** @type {number} */ (expr.offset);
-      var /** @type {string} */ storeBase = cr(0);
-      if (0 !== storeOffset && C.INTISH === cc(0)) {
-        storeBase = Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(storeBase);
-      }
-      var /** @const {string} */ storePtr = this.renderPtrWithOffset_(storeBase, storeOffset);
       var /** @const {number} */ storeBytes = /** @type {number} */ (expr.bytes);
       // Use the direct C API to read alignment — getExpressionInfo can
       // return a stale/incorrect value for sub-naturally aligned stores.
       var /** @const {number} */ storeAlign = binaryen.Store.getAlign(nodeCtx.expressionPointer) || storeBytes;
+      var /** @const {string} */ storePtr = this.renderCoercedPtrWithOffset_(cr(0), cc(0), /** @type {number} */ (expr.offset));
       result = pad(ind) + this.renderStore_(binaryen, storePtr, cr(1), storeType, storeBytes, storeAlign, cc(1)) + '\n';
       break;
     }
@@ -233,7 +220,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
 
     case binaryen.BlockId: {
-      var /** @const {?{s: string, c: number, prefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
+      var /** @const {?{s: string, c: number, w2lRootValueBlockPrefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
           state,
           nodeCtx,
           childResults

@@ -24,6 +24,9 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ($data['mixed_type_cases'] as $scenario) {
         $exports['exercisePrecisionAndReinterpret']($scenario[0], $scenario[1], $scenario[2]);
     }
+    foreach ($data['subword_cases'] as $scenario) {
+        $exports['exerciseSubAlignedI32Stores']($scenario[0], $scenario[1]);
+    }
 };
 
 $dumpMemory = true;
