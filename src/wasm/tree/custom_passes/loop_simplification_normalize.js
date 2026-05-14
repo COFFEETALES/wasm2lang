@@ -61,64 +61,18 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.invertCondition_ = Wasm2
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_;
 
 /**
- * Walks a subtree and returns true when {@code testFn} returns true for any
- * node.  {@code testFn} should return true/false to short-circuit or
- * {@code null} to let the walker recurse into children.
+ * Returns true when the subtree at {@code ptr} nests a breakable construct —
+ * an inner loop, a br_table, or a {@code w2l_switch$}-marked dispatch block.
+ * When one exists, breaks/continues targeting the enclosing loop are no
+ * longer at nesting depth 1 and the loop must keep its label.
  *
- * @private
- * @param {!Binaryen} binaryen
- * @param {number} ptr
- * @param {function(!BinaryenExpressionInfo, number): ?boolean} testFn
- * @return {boolean}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.walkSubtree_ = function (binaryen, ptr, testFn) {
-  if (!ptr) {
-    return false;
-  }
-  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
-    );
-  var /** @const {number} */ id = info.id;
-  var /** @const {?boolean} */ verdict = testFn(info, id);
-  if (null !== verdict) {
-    return verdict;
-  }
-  var /** @const {function(!Binaryen, number, function(!BinaryenExpressionInfo, number): ?boolean): boolean} */ walk =
-      Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.walkSubtree_;
-  if (binaryen.BlockId === id) {
-    var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
-    if (ch) {
-      for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
-        if (walk(binaryen, ch[ci], testFn)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-  if (binaryen.LoopId === id) {
-    return walk(binaryen, /** @type {number} */ (info.body || 0), testFn);
-  }
-  if (binaryen.IfId === id) {
-    return (
-      walk(binaryen, /** @type {number} */ (info.ifTrue || 0), testFn) ||
-      walk(binaryen, /** @type {number} */ (info.ifFalse || 0), testFn)
-    );
-  }
-  if (binaryen.DropId === id || binaryen.ReturnId === id || binaryen.LocalSetId === id || binaryen.GlobalSetId === id) {
-    return walk(binaryen, /** @type {number} */ (info.value || 0), testFn);
-  }
-  return false;
-};
-
-/**
  * @private
  * @param {!Binaryen} binaryen
  * @param {number} ptr
  * @return {boolean}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting_ = function (binaryen, ptr) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.walkSubtree_(
+  return Wasm2Lang.Wasm.Tree.CustomPasses.walkControlFlowSubtree_(
     binaryen,
     ptr,
     /** @param {!BinaryenExpressionInfo} info @param {number} id @return {?boolean} */
@@ -161,30 +115,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.hasInteriorLoopBackBranc
 };
 
 /**
+ * Returns true when the subtree at {@code ptr} contains a break/switch
+ * targeting {@code targetName}.  Identical to the shared
+ * {@code CustomPasses.hasReference}; aliased here for call-site brevity (same
+ * pattern as {@code invertCondition_} above).
+ *
  * @private
- * @param {!Binaryen} binaryen
- * @param {number} ptr
- * @param {string} targetName
- * @return {boolean}
+ * @const {function(!Binaryen, number, string): boolean}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_ = function (binaryen, ptr, targetName) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.walkSubtree_(
-    binaryen,
-    ptr,
-    /** @param {!BinaryenExpressionInfo} info @param {number} id @return {?boolean} */
-    function (info, id) {
-      if (binaryen.BreakId === id) return /** @type {?string} */ (info.name) === targetName;
-      if (binaryen.SwitchId === id) {
-        var /** @const {!Array<string>} */ sn = /** @type {!Array<string>} */ (info.names || []);
-        for (var /** @type {number} */ si = 0, /** @const {number} */ snLen = sn.length; si < snLen; ++si) {
-          if (sn[si] === targetName) return true;
-        }
-        return /** @type {string} */ (info.defaultName || '') === targetName;
-      }
-      return null;
-    }
-  );
-};
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_ =
+  Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
 
 /**
  * Per-variant info: [marker, loopKind, needsLabel].

@@ -45,23 +45,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHelperByteIndex_ = function 
 };
 
 /**
- * JavaScript typed-array indexing auto-coerces the index — no {@code |0}
- * is needed on the sum.  Keep the zero-offset fast path.
- *
- * @override
- * @protected
- * @param {string} baseExpr
- * @param {number} offset
- * @return {string}
- */
-Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderPtrWithOffset_ = function (baseExpr, offset) {
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if (0 === offset) return baseExpr;
-  if ('0' === baseExpr) return String(offset);
-  return P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_);
-};
-
-/**
  * Byte-width views ({@code HEAP8}/{@code HEAPU8}) need no {@code >> 0} in
  * plain JavaScript — the typed-array {@code ToIndex} conversion already
  * truncates the index.  Multi-byte views still need {@code >> 1/2/3} because

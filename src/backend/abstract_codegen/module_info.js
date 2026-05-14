@@ -440,6 +440,23 @@ Wasm2Lang.Backend.AbstractCodegen.ExportedFunctionInfo_;
 Wasm2Lang.Backend.AbstractCodegen.ExportedGlobalInfo_;
 
 /**
+ * Force-marks every exported global's {@code $g_}-prefixed binding key as
+ * used so its field / variable declaration is emitted even when no function
+ * body references it.  Shared by the Java and PHP module-shell emitters,
+ * whose exported-global accessors read the backing binding directly.
+ *
+ * @protected
+ * @param {!Object<string, boolean>} usedBindings
+ * @param {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedGlobalInfo_>} exportedGlobals
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.markExportedGlobalsUsed_ = function (usedBindings, exportedGlobals) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ n = exportedGlobals.length; i !== n; ++i) {
+    usedBindings['$g_' + this.safeName_(exportedGlobals[i].internalName)] = true;
+  }
+};
+
+/**
  * Signature information for a wasm function.
  *
  * @protected

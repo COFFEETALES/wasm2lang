@@ -8,6 +8,41 @@
 // ---------------------------------------------------------------------------
 
 /**
+ * Backend-internal expression category representing an {@code intish} result
+ * that originated from an {@code OP_ARITHMETIC} infix ({@code +} or
+ * {@code -}).  Distinct from the generic {@code I32Coercion.INTISH} used for
+ * loads, helper calls, and other producers that the asm.js spec requires to
+ * be coerced before any further arithmetic.
+ *
+ * SpiderMonkey's asm.js validator special-cases chained {@code +}/{@code -}:
+ * the result of {@code int op int} reads as int again when it feeds directly
+ * back into {@code +}/{@code -}, even though the spec types the result as
+ * {@code intish}.  Tracking this provenance lets us emit the simplified
+ * chain ({@code a+b+c|0}) for arithmetic-only inputs while still wrapping
+ * loads and division results with {@code |0} where SM rejects them.
+ *
+ * The constant is namespaced under {@code AsmjsCodegen} and uses a value
+ * outside the shared {@code I32Coercion}/{@code AbstractCodegen} cat space
+ * so it never collides with the cross-backend constants.
+ *
+ * @const {number}
+ * @private
+ */
+Wasm2Lang.Backend.AsmjsCodegen.INTISH_ARITH_ = 64;
+
+/**
+ * Returns true when {@code cat} is one of the asm.js intish categories
+ * (spec-strict {@code INTISH} or arithmetic-chain {@code INTISH_ARITH_}).
+ *
+ * @protected
+ * @param {number} cat
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.isIntishCat_ = function (cat) {
+  return Wasm2Lang.Backend.I32Coercion.INTISH === cat || Wasm2Lang.Backend.AsmjsCodegen.INTISH_ARITH_ === cat;
+};
+
+/**
  * asm.js requires explicit type annotations at call/return boundaries.
  *
  * @override
@@ -21,8 +56,9 @@
 Wasm2Lang.Backend.AsmjsCodegen.prototype.coerceAtBoundary_ = function (binaryen, expr, cat, wasmType) {
   // Skip coercion when the expression category already satisfies the target
   // asm.js type.  i32: fixnum/signed are valid return/arg types; INT (local.get,
-  // comparisons, eqz) and UNSIGNED (>>>) still need coercion.  f32/f64:
-  // already-typed expressions (Math_fround / +expr) don't need double wrapping.
+  // comparisons, eqz), UNSIGNED (>>>), and the intish flavors still need
+  // coercion.  f32/f64: already-typed expressions (Math_fround / +expr) don't
+  // need double wrapping.
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType) && (C.FIXNUM === cat || C.SIGNED === cat)) {
@@ -100,10 +136,9 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.loadResultCat_ = function (binaryen, lo
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.formatCondition_ = function (expr, opt_condCat) {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @type {string} */ inner = expr;
-  if (C.INTISH === opt_condCat) {
+  if (Wasm2Lang.Backend.AsmjsCodegen.isIntishCat_(/** @type {number} */ (opt_condCat))) {
     inner = Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(inner);
   }
   return P.formatCondition(inner);
@@ -320,7 +355,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.i32BinaryResultCat_ = function (info) {
       return info.unsigned ? C.UNSIGNED : C.SIGNED;
     case C.OP_MULTIPLY:
     case C.OP_ROTATE:
+    case C.OP_DIVISION:
+      // OP_DIVISION emits an outer |0 (see renderI32DivisionBinary_) so its
+      // result reads as signed for downstream chains.
       return C.SIGNED;
+    case C.OP_ARITHMETIC:
+      // INTISH_ARITH_ marks the result as the SpiderMonkey-lenient flavor of
+      // intish — chaining through another +/- skips the |0 coercion.
+      return Wasm2Lang.Backend.AsmjsCodegen.INTISH_ARITH_;
     default:
       return C.INTISH;
   }
@@ -332,16 +374,53 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
 };
 
 /**
- * Bitwise operators (|, &, ^, <<, >>, >>>) accept intish operands per the
- * asm.js spec — the operator itself coerces to signed/unsigned, so wrapping
- * an intish operand with |0 is redundant.  Arithmetic, multiply, division,
- * rotate (helper call), and comparison consumers still require an int.
+ * Renders an i32 {@code /} or {@code %} as the shared
+ * {@code (L|0) op (R|0)} infix wrapped in an outer {@code |0}.  The outer
+ * coercion is required so the result reads as {@code signed} in the asm.js
+ * type lattice — SpiderMonkey's validator rejects the bare division result
+ * as an operand to {@code +}, {@code -}, or comparison, even though the
+ * spec types {@code int / int} as {@code intish}.  Wrapping the quotient
+ * keeps single-pass chains like {@code (a-b) + (c/d)} valid.
  *
- * Note: although the asm.js spec types {@code Math.imul(intish, intish):
- * signed}, V8's asm.js validator emits "Bad function argument type" when an
- * intish-typed expression is passed directly.  Keep the |0 coercion for
- * OP_MULTIPLY operands to stay compatible with V8 (SpiderMonkey accepts
- * either form).
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.renderI32DivisionBinary_ = function (self, info, L, R) {
+  var /** @const {string} */ quotient = Wasm2Lang.Backend.JsCommonCodegen.renderDivisionBinary_(self, info, L, R);
+  return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(quotient);
+};
+
+/**
+ * Operators that tolerate {@code intish} operands without an intermediate
+ * {@code |0} coercion: any chain of {@code ((x op y|0) op z |0) ... |0} is
+ * strictly equivalent to {@code x op y op z ... |0} (modulo-2^32 closure of
+ * the operator) so the intermediate coercion is wasted bytes.
+ *
+ *   - {@code OP_BITWISE} (|, &, ^, <<, >>, >>>): the operator's internal
+ *     ToInt32/ToUint32 step coerces operands; spec types these as
+ *     {@code intish op intish : signed/unsigned}.
+ *   - {@code OP_ARITHMETIC} (+, -): JS Numbers stay exact for int32 sums up
+ *     to 2^53, so the trailing {@code |0} truncates the same int32 bit-
+ *     pattern whether or not intermediate {@code |0}s ran.  SpiderMonkey's
+ *     asm.js validator accepts {@code intish + intish}, {@code (a-b)+(c-d)},
+ *     and the full chained form; V8's asm.js validator also accepts both.
+ *
+ * Note on {@code OP_MULTIPLY}: although the asm.js spec types
+ * {@code Math.imul(intish, intish) : signed}, V8's asm.js validator emits
+ * "Invalid asm.js: Bad function argument type" when an intish-typed
+ * expression is passed directly as a {@code Math.imul} argument and falls
+ * back to plain JS execution.  Keep the {@code |0} coercion for
+ * {@code OP_MULTIPLY} operands so the validator stays happy on both engines
+ * (SpiderMonkey accepts either form).
+ *
+ * Division, comparison, and rotate-via-helper still require an {@code int}
+ * operand: division/comparison because SpiderMonkey's validator rejects
+ * intish there, and rotate because the runtime helper accepts a plain int
+ * argument and would interpret an int64-shaped value incorrectly.
  *
  * @override
  * @protected
@@ -352,8 +431,19 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat, opt_opInfo) {
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  if (C.INTISH !== cat) return operand;
-  if (opt_opInfo && C.OP_BITWISE === opt_opInfo.category) return operand;
+  var /** @const {boolean} */ isArith = Wasm2Lang.Backend.AsmjsCodegen.INTISH_ARITH_ === cat;
+  if (C.INTISH !== cat && !isArith) return operand;
+  if (opt_opInfo) {
+    var /** @const {number} */ opCat = opt_opInfo.category;
+    // Bitwise (|, &, ^, <<, >>, >>>) accepts any intish flavor — the operator
+    // does its own ToInt32/ToUint32.
+    if (C.OP_BITWISE === opCat) return operand;
+    // Arithmetic (+, -) accepts only the SM-lenient INTISH_ARITH_ flavor.
+    // Spec-strict INTISH (from loads, helper calls, etc.) must be coerced
+    // first because SpiderMonkey rejects {@code intish + int} when the
+    // intish was not itself produced by another +/-.
+    if (C.OP_ARITHMETIC === opCat && isArith) return operand;
+  }
   return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(operand);
 };
 

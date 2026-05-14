@@ -128,13 +128,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   this.usedBindings_ = null;
 
   // Force-mark exported globals as used so their field bindings are emitted.
-  for (
-    var /** @type {number} */ jegm = 0, /** @const {number} */ jegmLen = moduleInfo.expGlobals.length;
-    jegm !== jegmLen;
-    ++jegm
-  ) {
-    jub['$g_' + this.safeName_(moduleInfo.expGlobals[jegm].internalName)] = true;
-  }
+  this.markExportedGlobalsUsed_(jub, moduleInfo.expGlobals);
 
   for (var /** @type {number} */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
     outputParts[outputParts.length] = helperLines[hi];

@@ -75,6 +75,26 @@ Wasm2Lang.Backend.AbstractCodegen.renderI64HexLiteral_ = function (hi, lo, suffi
 };
 
 /**
+ * Renders a pointer expression with an optional static byte offset applied
+ * as a bare {@code base + offset} additive infix.  When {@code offset} is
+ * zero the base expression is returned unchanged; when the base is the
+ * literal {@code '0'} the offset alone is returned.  Shared verbatim by the
+ * asm.js, JavaScript, and Java backends — PHP overrides it on its prototype
+ * to wrap the sum in the {@code _w2l_i} truncation helper.
+ *
+ * @protected
+ * @param {string} baseExpr
+ * @param {number} offset
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_ = function (baseExpr, offset) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  if (0 === offset) return baseExpr;
+  if ('0' === baseExpr) return String(offset);
+  return P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_);
+};
+
+/**
  * Renders an i64 literal with a language-specific suffix and small-value
  * shortcuts (zero, small positive, small negative).  Falls back to a hex
  * encoding of the unsigned 64-bit pattern for the general case.
@@ -663,6 +683,12 @@ Wasm2Lang.Backend.AbstractCodegen.renderPlainBitwiseBinary_ = function (self, in
 /**
  * Shared plain additive binary renderer (used by Java i32+i64 unchanged).
  *
+ * The {@code +} parent permits an unwrapped right-side additive operand
+ * because left-associative reduction gives the same integer result
+ * ({@code a + (b op c) === a + b op c} for any integer {@code a}, {@code b},
+ * {@code c} and {@code op ∈ +/-}).  The {@code -} parent keeps the wrap so
+ * {@code a - (b + c)} doesn't degrade to the wrong {@code a - b + c}.
+ *
  * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
@@ -672,7 +698,7 @@ Wasm2Lang.Backend.AbstractCodegen.renderPlainBitwiseBinary_ = function (self, in
 Wasm2Lang.Backend.AbstractCodegen.renderPlainArithmeticBinary_ = function (self, info, L, R) {
   void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_);
+  return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_, '+' === info.opStr);
 };
 
 /**

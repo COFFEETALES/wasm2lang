@@ -82,7 +82,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     }
 
     case binaryen.LoadId: {
-      var /** @const {string} */ loadPtr = Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_(
+      var /** @const {string} */ loadPtr = Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(
           cr(0),
           /** @type {number} */ (expr.offset)
         );
@@ -93,7 +93,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     }
     case binaryen.StoreId: {
       var /** @const {number} */ storeType = /** @type {number} */ (expr.valueType) || binaryen.i32;
-      var /** @const {string} */ storePtr = Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_(
+      var /** @const {string} */ storePtr = Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(
           cr(0),
           /** @type {number} */ (expr.offset)
         );
@@ -226,11 +226,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
 
     case binaryen.BlockId: {
-      var /** @const {?{s: string, c: number, w2lRootValueBlockPrefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
-          state,
-          nodeCtx,
-          childResults
-        );
+      var /** @const {?{w2lExprStr: string, w2lExprCat: number, w2lRootValueBlockPrefix: string}} */ rootValueShape =
+          A.tryEmitRootValueBlock_(state, nodeCtx, childResults);
       if (rootValueShape) {
         return /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ ({decisionValue: rootValueShape});
       }
@@ -388,7 +385,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     }
     case binaryen.SIMDLoadId: {
       this.markBinding_('$v128');
-      var /** @const {string} */ slPtr = Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_(
+      var /** @const {string} */ slPtr = Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(
           cr(0),
           /** @type {number} */ (expr.offset)
         );
@@ -400,7 +397,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     case binaryen.SIMDLoadStoreLaneId: {
       this.markBinding_('$v128');
       var /** @const {number} */ lslOp = /** @type {number} */ (expr.op);
-      var /** @const {string} */ lslPtr = Wasm2Lang.Backend.JavaCodegen.renderPtrWithOffset_(
+      var /** @const {string} */ lslPtr = Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(
           cr(0),
           /** @type {number} */ (expr.offset)
         );

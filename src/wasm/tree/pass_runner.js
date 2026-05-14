@@ -28,14 +28,31 @@ Wasm2Lang.Wasm.Tree.PassRunner.Phase = {
 Wasm2Lang.Wasm.Tree.PassRunner.profileEnabled_ = null;
 
 /**
+ * Returns the global {@code process} object when it exists and is an object,
+ * or {@code null} otherwise.  Bracket access and runtime typeof guards keep
+ * Closure from needing a richer {@code process} extern to type-check the
+ * profiling probes below.
+ *
+ * @private
+ * @return {?Object<string, *>}
+ */
+Wasm2Lang.Wasm.Tree.PassRunner.getProcessObject_ = function () {
+  if ('undefined' === typeof process) {
+    return null;
+  }
+  var /** @const {*} */ proc = process;
+  return proc && 'object' === typeof proc ? /** @type {!Object<string, *>} */ (proc) : null;
+};
+
+/**
  * @return {boolean}
  */
 Wasm2Lang.Wasm.Tree.PassRunner.isProfileEnabled = function () {
   if (null === Wasm2Lang.Wasm.Tree.PassRunner.profileEnabled_) {
     var /** @type {boolean} */ enabled = false;
-    var /** @const {*} */ rawProcess = 'undefined' !== typeof process ? process : null;
-    if (rawProcess && 'object' === typeof rawProcess) {
-      var /** @const {*} */ env = /** @type {!Object<string, *>} */ (rawProcess)['env'];
+    var /** @const {?Object<string, *>} */ proc = Wasm2Lang.Wasm.Tree.PassRunner.getProcessObject_();
+    if (proc) {
+      var /** @const {*} */ env = proc['env'];
       if (env) {
         var /** @const {*} */ raw = /** @type {!Object<string, *>} */ (env)['WASM2LANG_PROFILE'];
         enabled = 'string' === typeof raw && '' !== raw && '0' !== raw && 'false' !== raw;
@@ -55,14 +72,11 @@ Wasm2Lang.Wasm.Tree.PassRunner.isProfileEnabled = function () {
  * @return {void}
  */
 Wasm2Lang.Wasm.Tree.PassRunner.writeProfileLine = function (line) {
-  if ('undefined' === typeof process) {
+  var /** @const {?Object<string, *>} */ proc = Wasm2Lang.Wasm.Tree.PassRunner.getProcessObject_();
+  if (!proc) {
     return;
   }
-  var /** @const {*} */ proc = process;
-  if (!proc || 'object' !== typeof proc) {
-    return;
-  }
-  var /** @const {*} */ stderr = /** @type {!Object<string, *>} */ (proc)['stderr'];
+  var /** @const {*} */ stderr = proc['stderr'];
   if (!stderr) {
     return;
   }

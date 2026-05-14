@@ -224,7 +224,5 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.createVisitor = fu
     /** @type {!Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.State_} */ ({
       funcMetadata: funcMetadata
     });
-  return /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-    leave: this.leave_.bind(this, state)
-  });
+  return Wasm2Lang.Wasm.Tree.CustomPasses.createLeaveVisitor(this, this.leave_, state);
 };

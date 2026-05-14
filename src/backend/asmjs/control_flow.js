@@ -220,11 +220,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
 
     case binaryen.BlockId: {
-      var /** @const {?{s: string, c: number, w2lRootValueBlockPrefix: string}} */ rootValueShape = A.tryEmitRootValueBlock_(
-          state,
-          nodeCtx,
-          childResults
-        );
+      var /** @const {?{w2lExprStr: string, w2lExprCat: number, w2lRootValueBlockPrefix: string}} */ rootValueShape =
+          A.tryEmitRootValueBlock_(state, nodeCtx, childResults);
       if (rootValueShape) {
         return /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ ({decisionValue: rootValueShape});
       }

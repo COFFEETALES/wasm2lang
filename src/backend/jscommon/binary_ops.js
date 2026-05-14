@@ -6,6 +6,17 @@
 // ---------------------------------------------------------------------------
 
 /**
+ * Renders an i32 additive infix.  When the parent operator is {@code +},
+ * the right operand can be left unparenthesized even if it is itself an
+ * additive expression — left-associative reduction makes
+ * {@code a + (b op c)} equivalent to {@code a + b op c} (verified across
+ * {@code +}/{@code +}, {@code +}/{@code -} pairings for any int32 inputs).
+ *
+ * The {@code -} parent keeps the default {@code allowRightEqual = false}
+ * because {@code a - (b + c) = a - b - c} would render incorrectly as
+ * {@code a - b + c} (different result) without the wrap, and
+ * {@code a - (b - c) = a - b + c} would render as {@code a - b - c}.
+ *
  * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
@@ -15,7 +26,7 @@
 Wasm2Lang.Backend.JsCommonCodegen.renderArithmeticBinary_ = function (self, info, L, R) {
   void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_);
+  return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_, '+' === info.opStr);
 };
 
 /**

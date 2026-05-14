@@ -55,6 +55,22 @@ Wasm2Lang.Wasm.Tree.CustomPasses.createEnterLeaveVisitor = function (target, ent
 };
 
 /**
+ * Creates a traversal visitor with only a leave callback, binding it to the
+ * pass instance and a per-function state object.
+ *
+ * @param {!Object} target
+ * @param {!Function} leaveFn
+ * @param {*} state
+ * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.createLeaveVisitor = function (target, leaveFn, state) {
+  // prettier-ignore
+  return /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
+    leave: leaveFn.bind(target, state)
+  });
+};
+
+/**
  * Returns true when {@code name} starts with any prefix in {@code prefixes}.
  * Centralizes the skip-guard used by normalization passes to leave blocks
  * carrying pass-specific markers (sw$/fused/rootsw) untouched.
@@ -418,8 +434,62 @@ Wasm2Lang.Wasm.Tree.CustomPasses.declareFunctionFieldAccessor_ = function (exter
 };
 
 // ---------------------------------------------------------------------------
-// Shared subtree reference checker
+// Shared control-flow subtree walker + reference checker
 // ---------------------------------------------------------------------------
+
+/**
+ * Walks a control-flow subtree and returns true when {@code testFn} returns
+ * true for any node.  {@code testFn} returns true/false to short-circuit the
+ * walk with that verdict, or {@code null} to let the walker recurse into the
+ * node's control-flow children — Block children, Loop body, both If arms, and
+ * the value slot of Drop/Return/LocalSet/GlobalSet.  This is the single shared
+ * structural walker behind the "does the subtree contain X" passes; callers
+ * supply only the per-node predicate.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} ptr
+ * @param {function(!BinaryenExpressionInfo, number): ?boolean} testFn
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.walkControlFlowSubtree_ = function (binaryen, ptr, testFn) {
+  if (!ptr) {
+    return false;
+  }
+  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
+      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
+    );
+  var /** @const {number} */ id = info.id;
+  var /** @const {?boolean} */ verdict = testFn(info, id);
+  if (null !== verdict) {
+    return verdict;
+  }
+  var /** @const {function(!Binaryen, number, function(!BinaryenExpressionInfo, number): ?boolean): boolean} */ walk =
+      Wasm2Lang.Wasm.Tree.CustomPasses.walkControlFlowSubtree_;
+  if (binaryen.BlockId === id) {
+    var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
+    if (ch) {
+      for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
+        if (walk(binaryen, ch[ci], testFn)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  if (binaryen.LoopId === id) {
+    return walk(binaryen, /** @type {number} */ (info.body || 0), testFn);
+  }
+  if (binaryen.IfId === id) {
+    return (
+      walk(binaryen, /** @type {number} */ (info.ifTrue || 0), testFn) ||
+      walk(binaryen, /** @type {number} */ (info.ifFalse || 0), testFn)
+    );
+  }
+  if (binaryen.DropId === id || binaryen.ReturnId === id || binaryen.LocalSetId === id || binaryen.GlobalSetId === id) {
+    return walk(binaryen, /** @type {number} */ (info.value || 0), testFn);
+  }
+  return false;
+};
 
 /**
  * Recursively checks whether any BreakId or SwitchId in the subtree
@@ -431,46 +501,23 @@ Wasm2Lang.Wasm.Tree.CustomPasses.declareFunctionFieldAccessor_ = function (exter
  * @return {boolean}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.hasReference = function (binaryen, ptr, targetName) {
-  if (!ptr) {
-    return false;
-  }
-  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
-    );
-  var /** @const {number} */ id = info.id;
-  if (binaryen.BreakId === id) {
-    return /** @type {?string} */ (info.name) === targetName;
-  }
-  if (binaryen.SwitchId === id) {
-    var /** @const {!Array<string>} */ sn = /** @type {!Array<string>} */ (info.names || []);
-    for (var /** @type {number} */ si = 0, /** @const {number} */ snLen = sn.length; si < snLen; ++si) {
-      if (sn[si] === targetName) return true;
-    }
-    return /** @type {string} */ (info.defaultName || '') === targetName;
-  }
-  var /** @const {function(!Binaryen, number, string): boolean} */ check = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
-  if (binaryen.BlockId === id) {
-    var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
-    if (ch) {
-      for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
-        if (check(binaryen, ch[ci], targetName)) return true;
+  return Wasm2Lang.Wasm.Tree.CustomPasses.walkControlFlowSubtree_(
+    binaryen,
+    ptr,
+    /** @param {!BinaryenExpressionInfo} info @param {number} id @return {?boolean} */ function (info, id) {
+      if (binaryen.BreakId === id) {
+        return /** @type {?string} */ (info.name) === targetName;
       }
+      if (binaryen.SwitchId === id) {
+        var /** @const {!Array<string>} */ sn = /** @type {!Array<string>} */ (info.names || []);
+        for (var /** @type {number} */ si = 0, /** @const {number} */ snLen = sn.length; si < snLen; ++si) {
+          if (sn[si] === targetName) return true;
+        }
+        return /** @type {string} */ (info.defaultName || '') === targetName;
+      }
+      return null;
     }
-    return false;
-  }
-  if (binaryen.LoopId === id) {
-    return check(binaryen, /** @type {number} */ (info.body || 0), targetName);
-  }
-  if (binaryen.IfId === id) {
-    return (
-      check(binaryen, /** @type {number} */ (info.ifTrue || 0), targetName) ||
-      check(binaryen, /** @type {number} */ (info.ifFalse || 0), targetName)
-    );
-  }
-  if (binaryen.DropId === id || binaryen.ReturnId === id || binaryen.LocalSetId === id || binaryen.GlobalSetId === id) {
-    return check(binaryen, /** @type {number} */ (info.value || 0), targetName);
-  }
-  return false;
+  );
 };
 
 // ---------------------------------------------------------------------------

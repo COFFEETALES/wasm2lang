@@ -5,6 +5,14 @@
 // ---------------------------------------------------------------------------
 
 /**
+ * PHP {@code int} is 64-bit, so {@code int32 + int32} (and longer additive
+ * chains) stay exact in the host integer space and only need a truncation to
+ * 32-bit when the value is observed.  Emit the bare infix and let
+ * {@code prepareI32BinaryOperand_} or the boundary coercion wrap the chain
+ * once at the end — that drops every intermediate {@code _w2l_i(...)} call
+ * from patterns like {@code _w2l_i(_w2l_i($a + $b) + $c)} which become
+ * {@code _w2l_i($a + $b + $c)}.
+ *
  * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
@@ -12,8 +20,11 @@
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.renderArithmeticBinary_ = function (self, info, L, R) {
+  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  return self.n_('_w2l_i') + '(' + P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_) + ')';
+  // `+` parent: right additive operand can stay unwrapped (associativity).
+  // `-` parent: must wrap so `a - (b + c)` doesn't degrade to `a - b + c`.
+  return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_, '+' === info.opStr);
 };
 
 /**

@@ -28,7 +28,22 @@ Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) 
 };
 
 /**
- * Reads the {@code 'c'} category field from a typed-expression object,
+ * Typed-expression object produced by sub-walks and {@code emitLeave_}
+ * callbacks: a rendered code string ({@code w2lExprStr}) plus its
+ * {@code CAT_*} expression category ({@code w2lExprCat}).  The field names
+ * are deliberately verbose and {@code w2l}-prefixed — and accessed only via
+ * unquoted dot notation — so Closure can mangle them (same convention as
+ * {@code SimplifiedLoopEmit_}).  Receivers typed {@code *} / {@code Object}
+ * cast to this typedef at the access site so the dot access satisfies
+ * strict-mode property checking.
+ *
+ * @protected
+ * @typedef {{w2lExprStr: string, w2lExprCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.TypedExpr_;
+
+/**
+ * Reads the {@code w2lExprCat} category field from a typed-expression object,
  * returning {@code CAT_VOID} when the field is missing or non-numeric.
  * Centralizes the category-extraction guard used by return/sub-walk/child
  * helpers — load-bearing because a valid {@code FIXNUM} value of {@code 0}
@@ -39,7 +54,7 @@ Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) 
  * @return {number}
  */
 Wasm2Lang.Backend.AbstractCodegen.categoryOf_ = function (typedExpr) {
-  var /** @const {*} */ c = typedExpr['c'];
+  var /** @const {*} */ c = /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (typedExpr).w2lExprCat;
   return 'number' === typeof c ? /** @type {number} */ (c) : Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
 };
 
@@ -57,7 +72,8 @@ Wasm2Lang.Backend.AbstractCodegen.categoryOf_ = function (typedExpr) {
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderImplicitReturn_ = function (binaryen, bodyResult, resultType) {
-  var /** @const {string} */ implicitExpr = /** @type {string} */ (bodyResult['s']);
+  var /** @const {string} */ implicitExpr = /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult)
+      .w2lExprStr;
   var /** @const {number} */ implicitCat = Wasm2Lang.Backend.AbstractCodegen.categoryOf_(bodyResult);
   return this.coerceAtBoundary_(binaryen, implicitExpr, implicitCat, resultType);
 };
@@ -83,7 +99,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
   if (
     bodyResult &&
     'string' !== typeof bodyResult &&
-    'string' === typeof bodyResult['s'] &&
+    'string' === typeof (/** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprStr) &&
     binaryen.none !== funcInfo.results &&
     0 !== funcInfo.results
   ) {
@@ -141,10 +157,12 @@ Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, 
       expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
     };
   }
-  if (value && 'string' === typeof value['s']) {
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ typedValue =
+      /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (value);
+  if (value && 'string' === typeof typedValue.w2lExprStr) {
     return {
       hasExpression: true,
-      expressionString: /** @type {string} */ (value['s']),
+      expressionString: typedValue.w2lExprStr,
       expressionCategory: Wasm2Lang.Backend.AbstractCodegen.categoryOf_(value)
     };
   }
@@ -1011,14 +1029,15 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
  * that isn't universally expressible across backends — binaryen:min is
  * expected to flatten them before codegen.
  *
- * Returns a {@code {s, c, w2lRootValueBlockPrefix}} shape when applicable; {@code null}
- * otherwise.  Callers fall back to the standard block dispatch on {@code null}.
+ * Returns a {@code {w2lExprStr, w2lExprCat, w2lRootValueBlockPrefix}} shape when
+ * applicable; {@code null} otherwise.  Callers fall back to the standard block
+ * dispatch on {@code null}.
  *
  * @protected
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
- * @return {?{s: string, c: number, w2lRootValueBlockPrefix: string}}
+ * @return {?{w2lExprStr: string, w2lExprCat: number, w2lRootValueBlockPrefix: string}}
  */
 Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, nodeCtx, childResults) {
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
@@ -1045,8 +1064,8 @@ Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, node
     );
   if (A.CAT_VOID === tailInfo.expressionCategory) return null;
   return {
-    's': tailInfo.expressionString,
-    'c': tailInfo.expressionCategory,
+    w2lExprStr: tailInfo.expressionString,
+    w2lExprCat: tailInfo.expressionCategory,
     w2lRootValueBlockPrefix: prefixLines.join('')
   };
 };
@@ -1223,12 +1242,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.computeSimplifiedLoopBodyAndConditio
     if (binaryen.IfId === bodyInfo.id) {
       bodyCode = this.emitWhileLoopBody_(state, binaryen, wm, fi, vis, bodyInfo, loopName, innerInd, 0);
       // while-if variant: If condition IS the continuation condition.
-      var /** @const {{s: string, c: number}} */ wrc = A.subWalkExpressionWithCategory_(
+      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ wrc = A.subWalkExpressionWithCategory_(
           state,
           /** @type {number} */ (bodyInfo.condition || 0)
         );
-      condStr = wrc.s;
-      condCat = wrc.c;
+      condStr = wrc.w2lExprStr;
+      condCat = wrc.w2lExprCat;
     } else {
       // while-block variant: only the FIRST exit guard becomes the while
       // condition.  Any consecutive br_if exits that follow stay in the body
@@ -1249,9 +1268,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.computeSimplifiedLoopBodyAndConditio
           wm,
           /** @type {number} */ (guardInfo.condition || 0)
         );
-      var /** @const {{s: string, c: number}} */ ic = A.subWalkExpressionWithCategory_(state, combinedPtr);
-      condStr = ic.s;
-      condCat = ic.c;
+      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ ic = A.subWalkExpressionWithCategory_(
+          state,
+          combinedPtr
+        );
+      condStr = ic.w2lExprStr;
+      condCat = ic.w2lExprCat;
     }
   } else if ('dowhile' === loopKind) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_} */ dwResult = this.emitDoWhileLoopBody_(
@@ -1392,14 +1414,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
 
   // Bare br_if variant: body is a direct br_if, empty body.
   if (binaryen.BreakId === bodyInfo.id) {
-    var /** @const {{s: string, c: number}} */ bareCond = A.subWalkExpressionWithCategory_(
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ bareCond = A.subWalkExpressionWithCategory_(
         state,
         /** @type {number} */ (bodyInfo.condition || 0)
       );
     return /** @type {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_} */ ({
       w2lLoopBody: '',
-      w2lLoopCondStr: bareCond.s,
-      w2lLoopCondCat: bareCond.c
+      w2lLoopCondStr: bareCond.w2lExprStr,
+      w2lLoopCondCat: bareCond.w2lExprCat
     });
   }
 
@@ -1439,12 +1461,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDoWhileLoopBody_ = function (
     var /** @const {!BinaryenExpressionInfo} */ condBrInfo = /** @type {!BinaryenExpressionInfo} */ (
         Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ch[condChildIdx])
       );
-    var /** @const {{s: string, c: number}} */ cr = A.subWalkExpressionWithCategory_(
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ cr = A.subWalkExpressionWithCategory_(
         state,
         /** @type {number} */ (condBrInfo.condition || 0)
       );
-    condStr = cr.s;
-    condCat = cr.c;
+    condStr = cr.w2lExprStr;
+    condCat = cr.w2lExprCat;
   }
 
   return /** @type {!Wasm2Lang.Backend.AbstractCodegen.SimplifiedLoopEmit_} */ ({
@@ -1536,7 +1558,7 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_ = function (wasmModule, bin
 
 /**
  * Extracts the code string from a sub-walk result (which may be a plain string
- * or a typed expression object {@code {s, c}}).
+ * or a typed expression object {@code {w2lExprStr, w2lExprCat}}).
  *
  * @protected
  * @param {*} result
@@ -1547,7 +1569,7 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkString_ = function (result) {
     return result;
   }
   if (result && 'object' === typeof result) {
-    var /** @const {*} */ s = result['s'];
+    var /** @const {*} */ s = /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (result).w2lExprStr;
     if ('string' === typeof s) {
       return /** @type {string} */ (s);
     }
@@ -1561,7 +1583,7 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkString_ = function (result) {
  * @protected
  * @param {{wasmModule: !BinaryenModule, binaryen: !Binaryen, functionInfo: !BinaryenFunctionInfo, visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor}} state
  * @param {number} conditionPtr
- * @return {{s: string, c: number}}
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_}
  */
 Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_ = function (state, conditionPtr) {
   var /** @const {*} */ raw = Wasm2Lang.Backend.AbstractCodegen.subWalkExpression_(
@@ -1572,10 +1594,12 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_ = function (sta
       conditionPtr
     );
   var /** @const {number} */ voidCat = Wasm2Lang.Backend.AbstractCodegen.CAT_VOID;
-  if (raw && 'string' === typeof raw['s']) {
-    return {s: /** @type {string} */ (raw['s']), c: Wasm2Lang.Backend.AbstractCodegen.categoryOf_(raw)};
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ typedRaw =
+      /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (raw);
+  if (raw && 'string' === typeof typedRaw.w2lExprStr) {
+    return {w2lExprStr: typedRaw.w2lExprStr, w2lExprCat: Wasm2Lang.Backend.AbstractCodegen.categoryOf_(raw)};
   }
-  return {s: 'string' === typeof raw ? /** @type {string} */ (raw) : '', c: voidCat};
+  return {w2lExprStr: 'string' === typeof raw ? /** @type {string} */ (raw) : '', w2lExprCat: voidCat};
 };
 
 /**
@@ -1588,7 +1612,7 @@ Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_ = function (sta
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionString_ = function (state, conditionPtr) {
-  return Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_(state, conditionPtr).s;
+  return Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_(state, conditionPtr).w2lExprStr;
 };
 
 /**
@@ -1712,7 +1736,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLocalSet_ = function (
  */
 Wasm2Lang.Backend.AbstractCodegen.buildLeaveResult_ = function (result, resultCat) {
   if (resultCat !== Wasm2Lang.Backend.AbstractCodegen.CAT_VOID) {
-    return {decisionValue: {'s': result, 'c': resultCat}};
+    return {decisionValue: {w2lExprStr: result, w2lExprCat: resultCat}};
   }
   return {decisionValue: result};
 };

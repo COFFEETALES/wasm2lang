@@ -69,13 +69,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   this.usedBindings_ = null;
 
   // Force-mark exported globals as used so their bindings are emitted.
-  for (
-    var /** @type {number} */ pegm = 0, /** @const {number} */ pegmLen = moduleInfo.expGlobals.length;
-    pegm !== pegmLen;
-    ++pegm
-  ) {
-    usedB['$g_' + this.safeName_(moduleInfo.expGlobals[pegm].internalName)] = true;
-  }
+  this.markExportedGlobalsUsed_(usedB, moduleInfo.expGlobals);
 
   // Helper emission — core unconditional + opcode-specific gated on usedHelpers_.
   var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(0, 0, 0, 0);

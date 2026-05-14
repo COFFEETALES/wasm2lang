@@ -154,6 +154,11 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.i32BinaryResultCat_ = function (in
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   if (C.OP_COMPARISON === info.category) return Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32;
   if (C.OP_DIVISION === info.category) return C.SIGNED;
+  // OP_ARITHMETIC uses the cross-backend INTISH cat here rather than the
+  // asm.js-specific INTISH_ARITH_ flavor: JS's prepareI32BinaryOperand_ only
+  // checks for plain INTISH, and there is no asm.js validator to satisfy,
+  // so the simpler propagation is enough.
+  if (C.OP_ARITHMETIC === info.category) return C.INTISH;
   return Wasm2Lang.Backend.AsmjsCodegen.prototype.i32BinaryResultCat_.call(this, info);
 };
 

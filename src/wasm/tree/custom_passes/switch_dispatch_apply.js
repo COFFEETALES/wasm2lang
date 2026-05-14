@@ -597,8 +597,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
     );
   var /** @const {string} */ rsBlockName = /** @type {string} */ (outerInfo.name);
 
-  // chain[i] = {name: blockName, childPtrs: Array<number>}
-  var /** @const {!Array<!Object>} */ chain = [];
+  // chain[i] = {blockName: string, childPtrs: !Array<number>}
+  var /** @const {!Array<{blockName: string, childPtrs: !Array<number>}>} */ chain = [];
   var /** @type {!BinaryenExpressionInfo} */ curInfo = outerInfo;
   var /** @type {number} */ loopPtr = 0;
   var /** @type {string} */ loopName = '';
@@ -606,7 +606,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
   for (;;) {
     var /** @const {string} */ curName = /** @type {string} */ (curInfo.name);
     var /** @const {!Array<number>} */ curChildPtrs = /** @type {!Array<number>} */ (curInfo.children || []);
-    chain[chain.length] = {'n': curName, 'c': curChildPtrs};
+    chain[chain.length] = {blockName: curName, childPtrs: curChildPtrs};
 
     if (0 === curChildPtrs.length) {
       break;
@@ -633,7 +633,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
     // first = Loop, second = Unreachable if present.
     var /** @const {!Array<number>} */ fusedCh = /** @type {!Array<number>} */ (fcInfo.children || []);
     var /** @const {boolean} */ isFusionCandidate = fusedCh.length >= 1 && fusedCh.length <= 2;
-    if (isFusionCandidate && fusedCh.length >= 1) {
+    if (isFusionCandidate) {
       var /** @const {!BinaryenExpressionInfo} */ fusedChild = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
           binaryen,
           fusedCh[0]
@@ -645,7 +645,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
       ) {
         // Add fused block to the chain so that br targets inside the flat
         // switch are intercepted by the root-switch exit map.
-        chain[chain.length] = {'n': fcName, 'c': fusedCh};
+        chain[chain.length] = {blockName: fcName, childPtrs: fusedCh};
         loopPtr = fusedCh[0];
         loopName = /** @type {string} */ (fusedChild.name);
         break;
@@ -664,12 +664,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
     );
 
   for (var /** @type {number} */ j = 1, /** @const {number} */ chainLen = chain.length; j < chainLen; ++j) {
-    var /** @const {string} */ targetName = /** @type {string} */ (chain[j]['n']);
+    var /** @const {string} */ targetName = chain[j].blockName;
     var /** @const {!Array<number>} */ exitPtrs = [];
     var /** @type {boolean} */ hitTerminal = false;
 
     for (var /** @type {number} */ k = j - 1; 0 <= k && !hitTerminal; --k) {
-      var /** @const {!Array<number>} */ levelPtrs = /** @type {!Array<number>} */ (chain[k]['c']);
+      var /** @const {!Array<number>} */ levelPtrs = chain[k].childPtrs;
       for (var /** @type {number} */ p = 1, /** @const {number} */ ptrLen = levelPtrs.length; p < ptrLen; ++p) {
         exitPtrs[exitPtrs.length] = levelPtrs[p];
         var /** @const {number} */ ptrId = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, levelPtrs[p]).id;
@@ -880,9 +880,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
     }
   }
 
-  var /** @const {{s: string, c: number}} */ condResult = A.subWalkExpressionWithCategory_(state, info.conditionPtr);
-  var /** @type {string} */ condInput = condResult.s;
-  if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === condResult.c) {
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ condResult = A.subWalkExpressionWithCategory_(
+      state,
+      info.conditionPtr
+    );
+  var /** @type {string} */ condInput = condResult.w2lExprStr;
+  if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === condResult.w2lExprCat) {
     condInput = codegen.renderNumericComparisonResult_(condInput);
   }
   var /** @const {string} */ condStr = codegen.coerceSwitchCondition_(condInput);

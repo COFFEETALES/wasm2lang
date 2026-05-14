@@ -91,7 +91,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderStore_ = function (
       !Wasm2Lang.Backend.ValueType.isFloat(binaryen, wasmType) && align < bytes && bytes > 1;
   var /** @const {boolean} */ acceptsIntish =
       !isIntHelperRouted &&
-      Wasm2Lang.Backend.I32Coercion.INTISH === valueCat &&
+      Wasm2Lang.Backend.AsmjsCodegen.isIntishCat_(valueCat) &&
       Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType);
   var /** @const {string} */ coercedValue = acceptsIntish
       ? valueExpr
@@ -147,7 +147,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHelperByteIndex_ = function (ptrE
 /**
  * Returns the LoadId/StoreId pointer expression: coerces an intish base to
  * int when a non-zero offset is being added (asm.js validator rejects
- * {@code intish + n}), then applies the offset via {@code renderPtrWithOffset_}.
+ * {@code intish + n}), then applies the offset as a bare additive infix via
+ * the shared {@code AbstractCodegen.renderPtrWithOffset_}.
+ *
+ * The sum is intentionally left intish — every consumer either feeds it into
+ * {@code >> shift} inside {@code renderHeapAccess_} (where the shift itself
+ * coerces intish to signed per asm.js) or routes it through a helper-call
+ * boundary that re-applies {@code renderSignedCoercion_} explicitly.  Skipping
+ * the |0 wrap here removes the redundant
+ * {@code (base + n|0) >> k} → {@code base + n >> k}.
  *
  * @protected
  * @param {string} baseExpr
@@ -156,33 +164,10 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHelperByteIndex_ = function (ptrE
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.renderCoercedPtrWithOffset_ = function (baseExpr, baseCat, offset) {
-  if (0 !== offset && Wasm2Lang.Backend.I32Coercion.INTISH === baseCat) {
+  if (0 !== offset && Wasm2Lang.Backend.AsmjsCodegen.isIntishCat_(baseCat)) {
     baseExpr = Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(baseExpr);
   }
-  return this.renderPtrWithOffset_(baseExpr, offset);
-};
-
-/**
- * Returns the pointer expression with an optional static byte offset applied.
- * When offset is zero the original expression is returned unchanged.  The
- * sum is left intish — every consumer either feeds it into {@code >> shift}
- * inside {@code renderHeapAccess_} (where the shift itself coerces intish to
- * signed per asm.js) or routes it through a helper-call boundary that
- * re-applies {@code renderSignedCoercion_} explicitly.  Skipping the |0 wrap
- * here removes the redundant {@code (base + n|0) >> k} → {@code base + n >> k}.
- * Callers must coerce {@code baseExpr} to int themselves when {@code offset}
- * is non-zero, since {@code intish + n} is rejected by the asm.js validator.
- *
- * @protected
- * @param {string} baseExpr
- * @param {number} offset
- * @return {string}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.renderPtrWithOffset_ = function (baseExpr, offset) {
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if (0 === offset) return baseExpr;
-  if ('0' === baseExpr) return String(offset);
-  return P.renderInfix(baseExpr, '+', String(offset), P.PREC_ADDITIVE_);
+  return Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(baseExpr, offset);
 };
 
 /**

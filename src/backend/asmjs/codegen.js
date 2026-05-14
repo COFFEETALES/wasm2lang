@@ -7,6 +7,15 @@
 Wasm2Lang.Backend.AsmjsCodegen = function () {
   Wasm2Lang.Backend.JsCommonCodegen.call(this);
   this.reservedWords_ = Wasm2Lang.Backend.AsmjsCodegen.RESERVED_;
+  Wasm2Lang.Backend.AbstractCodegen.installBinaryRenderers_(
+    this.binaryRenderers_,
+    null,
+    null,
+    Wasm2Lang.Backend.AsmjsCodegen.renderI32DivisionBinary_,
+    null,
+    null,
+    null
+  );
 };
 
 Wasm2Lang.Backend.AsmjsCodegen.prototype = Object.create(Wasm2Lang.Backend.JsCommonCodegen.prototype);

@@ -198,7 +198,5 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.createVisitor =
     /** @type {!Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.State_} */ ({
       funcMetadata: funcMetadata
     });
-  return /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-    leave: this.leave_.bind(this, state)
-  });
+  return Wasm2Lang.Wasm.Tree.CustomPasses.createLeaveVisitor(this, this.leave_, state);
 };
