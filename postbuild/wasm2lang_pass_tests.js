@@ -319,38 +319,6 @@ var redundantBlockRemoval = new PassFamily('redundant-block-removal', 'redundant
 // Family: const-condition-folding
 // ---------------------------------------------------------------------------
 
-var constConditionFolding = new PassFamily('const-condition-folding', 'const_condition_folding.wast', function (result) {
-  assertHasKey(result, 'eqzZero', '$eqzZero must exist');
-  assertEqual(result['eqzZero']['constConditionFolding']['eqzConst'], 1, '$eqzZero eqzConst count');
-
-  assertHasKey(result, 'eqzNonZero', '$eqzNonZero must exist');
-  assertEqual(result['eqzNonZero']['constConditionFolding']['eqzConst'], 1, '$eqzNonZero eqzConst count');
-
-  assertHasKey(result, 'eqzZeroI64', '$eqzZeroI64 must exist');
-  assertEqual(result['eqzZeroI64']['constConditionFolding']['eqzConst'], 1, '$eqzZeroI64 eqzConst count');
-
-  assertHasKey(result, 'eqzMulti', '$eqzMulti must exist');
-  assertEqual(result['eqzMulti']['constConditionFolding']['eqzConst'], 2, '$eqzMulti eqzConst count');
-
-  assertHasKey(result, 'brIfNever', '$brIfNever must exist');
-  assertEqual(result['brIfNever']['constConditionFolding']['brIfNever'], 1, '$brIfNever brIfNever count');
-
-  assertHasKey(result, 'brIfAlways', '$brIfAlways must exist');
-  assertEqual(result['brIfAlways']['constConditionFolding']['brIfAlways'], 1, '$brIfAlways brIfAlways count');
-
-  assertHasKey(result, 'selectZero', '$selectZero must exist');
-  assertEqual(result['selectZero']['constConditionFolding']['selectFold'], 1, '$selectZero selectFold count');
-
-  assertHasKey(result, 'selectOne', '$selectOne must exist');
-  assertEqual(result['selectOne']['constConditionFolding']['selectFold'], 1, '$selectOne selectFold count');
-
-  // Call side effect blocks select folding.
-  assertMetadataNull(result, 'selectBlocked', 'constConditionFolding');
-
-  // No constants on a condition anywhere → metric absent entirely.
-  assertMetadataNull(result, 'noFold', 'constConditionFolding');
-});
-
 // ---------------------------------------------------------------------------
 // Emission families
 //
@@ -360,11 +328,12 @@ var constConditionFolding = new PassFamily('const-condition-folding', 'const_con
 // metadata would not surface.
 // ---------------------------------------------------------------------------
 
-function EmissionFamily(name, fixturePath, languageOut, assertions) {
+function EmissionFamily(name, fixturePath, languageOut, assertions, opt_normalizeWasm) {
   this.name = name;
   this.fixturePath = fixturePath;
   this.languageOut = languageOut;
   this.assertions = assertions;
+  this.normalizeWasm = opt_normalizeWasm || ['binaryen:max', 'wasm2lang:codegen'];
 }
 
 // Regression: `i32.eqz(i32.or(cmp, cmp))` compound negation.  Binaryen:max
@@ -419,11 +388,47 @@ var families = [
   loopSimplification,
   ifElseRecovery,
   blockGuardElision,
-  redundantBlockRemoval,
-  constConditionFolding
+  redundantBlockRemoval
 ];
 
-var emissionFamilies = [eqzOrCompoundNegation];
+// Regression: kernel must refresh `nodeCtx.expression` before invoking
+// a leave callback, so a pass that inspects `expr.children` sees the
+// post-walk child slots (any REPLACE_NODE from a child's own leave was
+// applied via the kernel's setter call).  The fixture stacks two nested
+// block-guard-elision candidates: the outer block's first child is the
+// inner block.  With a stale snapshot, BlockGuardElisionPass on the
+// outer block constructs its new wrapper using the *original* inner
+// block pointer — preserving the inner's `(br_if $inner cond)` pattern
+// in emitted JS as `$block: { if (!cond) break $block; ... }`.  The
+// regression manifests as the inner block label surviving emission.
+// binaryen:max would peephole the nested-guard pattern away before our
+// passes see it, masking the kernel bug.  This family runs with
+// binaryen:none so the kernel walker is exercised directly.
+var kernelLeaveFreshness = new EmissionFamily(
+  'kernel-leave-freshness',
+  'kernel_leave_freshness.wast',
+  'javascript',
+  function (code) {
+    // Stale-kernel signature: a labeled block whose body is a single
+    // negated-condition break to itself.  A correct kernel emits two
+    // clean `if (cond) { body }` constructs and never introduces a
+    // labeled block here.
+    var labeledBreakWrap = /\$\w+\s*:\s*\{\s*if\s*\(!/;
+    assert(
+      !labeledBreakWrap.test(code),
+      'kernel leave callback read stale child slots — inner BGE transformation lost\n' + code
+    );
+    // Sanity: both clean `if ($r) {` arms must appear.
+    var cleanIfArms = (code.match(/if\s*\(\$\w+\)\s*\{/g) || []).length;
+    assert(
+      cleanIfArms >= 2,
+      'expected two clean `if (cond) { ... }` arms after both BGE transformations; saw ' + cleanIfArms + '\n' + code
+    );
+  },
+  ['binaryen:none', 'wasm2lang:codegen']
+);
+
+var emissionFamilies = [eqzOrCompoundNegation, kernelLeaveFreshness];
 
 loadBinaryen().then(function (binaryen) {
   var fixtureDir = path.resolve(__dirname, 'fixtures');
@@ -453,7 +458,7 @@ loadBinaryen().then(function (binaryen) {
       try {
         var emit = wasm2lang['transpile'](binaryen, {
           'inputData': wastSrc,
-          'normalizeWasm': ['binaryen:max', 'wasm2lang:codegen'],
+          'normalizeWasm': ef.normalizeWasm,
           'languageOut': ef.languageOut,
           'emitCode': 'module'
         });

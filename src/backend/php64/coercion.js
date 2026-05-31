@@ -1,47 +1,104 @@
 'use strict';
 
 /**
+ * Wraps {@code expr} in a 32-bit unsigned mask.  When the input is a numeric
+ * literal we constant-fold the mask away — emitting {@code (7 & 0xFFFFFFFF)}
+ * costs 16 characters per site where {@code 7} would do.  Negative literals
+ * fold to their two's-complement {@code uint32} representation so the
+ * downstream unsigned-arithmetic semantics stay identical.
+ *
  * @param {string} expr
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.renderMask32_ = function (expr) {
+  if (Wasm2Lang.Backend.I32Coercion.isConstant(expr)) {
+    var /** @const {number} */ n = Number(expr);
+    if (n >= 0 && n <= 0xffffffff) return expr;
+    if (n >= -0x80000000 && n < 0) return String(n + 0x100000000);
+  }
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   return P.renderInfix(expr, '&', '0xFFFFFFFF', P.PREC_BIT_AND_, true);
 };
 
 /**
+ * Wraps {@code expr} in a {@code & 31} shift-count mask.  Same constant-fold
+ * pattern as {@code renderMask32_}: literals already in {@code [0, 31]} pass
+ * through; values outside that range fold to their masked value (negative
+ * literals via two's-complement-low-5-bits).
+ *
  * @param {string} expr
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.renderShiftMask_ = function (expr) {
+  if (Wasm2Lang.Backend.I32Coercion.isConstant(expr)) {
+    return String(Number(expr) & 31);
+  }
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   return P.renderInfix(expr, '&', '31', P.PREC_BIT_AND_, true);
 };
 
 /**
+ * Helpers whose return value is statically guaranteed to lie within the i32
+ * signed range, so wrapping a single call to one of them in {@code _w2l_i}
+ * is a tautological no-op.  Used by {@code wrapI32_} to skip the redundant
+ * outer wrap when its input is exactly one such call.
+ *
+ *   - {@code _w2l_i}: by definition truncates to i32 signed.
+ *   - {@code _w2l_clz}, {@code _w2l_ctz}, {@code _w2l_popcnt}: return [0, 32].
+ *   - {@code _w2l_extend8_s} / {@code _w2l_extend16_s}: clamp to signed
+ *     [-128, 127] / [-32768, 32767].
+ *   - {@code _w2l_imul}: wraps its product through {@code _w2l_i} internally.
+ *   - {@code _w2l_trunc_*_f32/f64_to_i32}: range-checked before returning.
+ *   - {@code _w2l_trunc_sat_*_f32/f64_to_i32}: clamped to i32.
+ *   - {@code _w2l_reinterpret_f32_to_i32}: wraps through {@code _w2l_i}
+ *     internally.
+ *
+ * @const {!Array<string>}
+ * @private
+ */
+Wasm2Lang.Backend.Php64Codegen.I32_CLEAN_HELPERS_ = [
+  '_w2l_i',
+  '_w2l_clz',
+  '_w2l_ctz',
+  '_w2l_popcnt',
+  '_w2l_extend8_s',
+  '_w2l_extend16_s',
+  '_w2l_imul',
+  '_w2l_trunc_s_f32_to_i32',
+  '_w2l_trunc_u_f32_to_i32',
+  '_w2l_trunc_s_f64_to_i32',
+  '_w2l_trunc_u_f64_to_i32',
+  '_w2l_trunc_sat_s_f32_to_i32',
+  '_w2l_trunc_sat_u_f32_to_i32',
+  '_w2l_trunc_sat_s_f64_to_i32',
+  '_w2l_trunc_sat_u_f64_to_i32',
+  '_w2l_reinterpret_f32_to_i32'
+];
+
+/**
  * Wraps an expression string with the i32 coercion helper unless it is a
- * numeric constant that already fits in the i32 range.
+ * numeric constant that already fits in the i32 range, or a single call to
+ * a helper whose return is statically guaranteed to be in i32 signed range
+ * (see {@code I32_CLEAN_HELPERS_}).
  *
  * @param {string} expr
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.wrapI32_ = function (expr) {
   if (Wasm2Lang.Backend.I32Coercion.isConstant(expr)) return expr;
-  var /** @const {string} */ helperName = this.n_('_w2l_i');
-  var /** @const {string} */ prefix = helperName + '(';
-  // Avoid double-wrapping: if the expression is already a helper call,
-  // it is already i32-truncated.
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const {number} */ len = expr.length;
-  var /** @const {number} */ prefixLen = prefix.length;
-  if (
-    len > prefixLen &&
-    prefix === expr.slice(0, prefixLen) &&
-    ')' === expr.charAt(len - 1) &&
-    Wasm2Lang.Backend.AbstractCodegen.Precedence_.isFullyParenthesized(expr.slice(prefixLen - 1))
-  ) {
-    return expr;
+  if (')' === expr.charAt(len - 1)) {
+    var /** @const {!Array<string>} */ clean = Wasm2Lang.Backend.Php64Codegen.I32_CLEAN_HELPERS_;
+    for (var /** @type {number} */ i = 0, /** @const {number} */ cLen = clean.length; i !== cLen; ++i) {
+      var /** @const {string} */ candidatePrefix = this.n_(clean[i]) + '(';
+      var /** @const {number} */ cpLen = candidatePrefix.length;
+      if (len > cpLen && candidatePrefix === expr.slice(0, cpLen) && P.isFullyParenthesized(expr.slice(cpLen - 1))) {
+        return expr;
+      }
+    }
   }
-  return prefix + Wasm2Lang.Backend.AbstractCodegen.Precedence_.stripOuter(expr) + ')';
+  return this.n_('_w2l_i') + '(' + P.stripOuter(expr) + ')';
 };
 
 /**
@@ -290,8 +347,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitI32Unary_ = function (binaryen, una
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (C.UNARY_EQZ === unaryCategory) {
+    // PHP's logical NOT on an integer operand returns {@code true} for zero
+    // and {@code false} otherwise — same bool result as {@code 0 === v} but
+    // fewer characters.  The boolean propagates unchanged because
+    // {@code coerceBooleanOperand_} is a no-op here.
     return {
-      emittedString: P.renderInfix('0', '===', operandExpr, P.PREC_EQUALITY_),
+      emittedString: P.renderPrefix('!', operandExpr),
       resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32
     };
   }

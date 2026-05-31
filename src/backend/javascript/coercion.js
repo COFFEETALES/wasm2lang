@@ -47,11 +47,13 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.coerceSwitchCondition_ = function 
  * its comparison operators already produce {@code 0}/{@code 1} integers;
  * JavaScript comparisons instead yield booleans.  For switch dispatch the
  * boolean has to be materialized into an integer (switch case matching is
- * strict {@code ===} and {@code true !== 1}), so override back to the
- * base-class {@code (cond ? 1 : 0)} materializer.  Arithmetic/bitwise/
- * boundary-coercion call sites route through {@code coerceBooleanOperand_}
- * instead, which JS no-ops since JS auto-coerces booleans in those
- * contexts via {@code ToNumber}/{@code ToInt32}.
+ * strict {@code ===} and {@code true !== 1}).  Use unary {@code +} —
+ * {@code +true === 1}, {@code +false === 0}, and the operator's high
+ * precedence keeps the parenthesized form ({@code +(x < y)}) tighter than
+ * a {@code ? 1 : 0} ternary suffix.  Arithmetic/bitwise/boundary-coercion
+ * call sites route through {@code coerceBooleanOperand_} instead, which JS
+ * no-ops since JS auto-coerces booleans in those contexts via
+ * {@code ToNumber}/{@code ToInt32}.
  *
  * @override
  * @protected
@@ -59,7 +61,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.coerceSwitchCondition_ = function 
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderNumericComparisonResult_ = function (conditionExpr) {
-  return conditionExpr + ' ? 1 : 0';
+  return '+(' + conditionExpr + ')';
 };
 
 /**

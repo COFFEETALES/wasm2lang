@@ -43,8 +43,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
 
   // Pre-resolve mangled names used across multiple helpers.
   var /** @const */ self = this;
-  /** @param {string} s @return {string} */
-  var n = function (s) {
+  var n = /** @param {string} s @return {string} */ function (s) {
     return self.n_(s);
   };
   var /** @const {string} */ l0 = this.localN_(0);
@@ -61,13 +60,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
   var /** @const {string} */ nMathFloor = n('Math_floor');
   var /** @const {string} */ nMathClz32 = n('Math_clz32');
 
-  /**
-   * Conditionally emit a helper via the shared emit-or-collect funnel.
-   * @param {string} name
-   * @param {!Array<string>} bindings
-   * @param {string} body
-   */
-  var h = function (name, bindings, body) {
+  // Conditionally emit a helper via the shared emit-or-collect funnel.
+  var h = /** @param {string} name @param {!Array<string>} bindings @param {string} body */ function (name, bindings, body) {
     self.emitOrCollectHelper_(lines, name, bindings, body);
   };
 

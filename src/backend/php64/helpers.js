@@ -71,14 +71,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitHelpers_ = function (
 
   var /** @const {!Array<string>} */ lines = [];
   var /** @const */ self = this;
-  /** @param {string} s @return {string} */
-  var n = function (s) {
+  var n = /** @param {string} s @return {string} */ function (s) {
     return self.n_(s);
   };
   var /** @const {string} */ nI = n('_w2l_i');
   var /** @const {string} */ nF32 = n('_w2l_f32');
-  /** @param {string} name @param {string} body */
-  var h = function (name, body) {
+  var h = /** @param {string} name @param {string} body */ function (name, body) {
     self.emitOrCollectHelper_(lines, name, null, 'function ' + n(name) + body);
   };
 

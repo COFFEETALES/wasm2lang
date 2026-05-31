@@ -898,10 +898,14 @@ BinaryenI32Api.prototype.gt_u = function (l, r) {};
 BinaryenI32Api.prototype.ge_u = function (l, r) {};
 /** @param {number} l @param {number} r @return {number} */
 BinaryenI32Api.prototype.and = function (l, r) {};
+/** @param {number} l @param {number} r @return {number} */
+BinaryenI32Api.prototype.add = function (l, r) {};
 /** @param {number} v @return {number} */
 BinaryenI32Api.prototype.eqz = function (v) {};
 /** @param {number} value @return {number} */
 BinaryenI32Api.prototype.const = function (value) {};
+/** @param {number} offset @param {number} align @param {number} ptr @param {number} value @return {number} */
+BinaryenI32Api.prototype.store = function (offset, align, ptr, value) {};
 
 /** @type {!BinaryenI32Api} */
 BinaryenModule.prototype.i32;
@@ -936,9 +940,43 @@ BinaryenI64Api.prototype.le_u = function (l, r) {};
 BinaryenI64Api.prototype.gt_u = function (l, r) {};
 /** @param {number} l @param {number} r @return {number} */
 BinaryenI64Api.prototype.ge_u = function (l, r) {};
+/** @param {number} v @return {number} */
+BinaryenI64Api.prototype.eqz = function (v) {};
+/** @param {number} offset @param {number} align @param {number} ptr @param {number} value @return {number} */
+BinaryenI64Api.prototype.store = function (offset, align, ptr, value) {};
 
 /** @type {!BinaryenI64Api} */
 BinaryenModule.prototype.i64;
+
+// ---------------------------------------------------------------------------
+// BinaryenModule f32 / f64 expression-builder sub-APIs (module.f32.* / .f64.*)
+// Only the store builder is declared here — extend the interfaces when other
+// f32/f64 builders are needed by Closure-compiled code.
+// ---------------------------------------------------------------------------
+
+/** @interface @const */ var BinaryenF32Api = function () {};
+/** @param {number} offset @param {number} align @param {number} ptr @param {number} value @return {number} */
+BinaryenF32Api.prototype.store = function (offset, align, ptr, value) {};
+/** @type {!BinaryenF32Api} */
+BinaryenModule.prototype.f32;
+
+/** @interface @const */ var BinaryenF64Api = function () {};
+/** @param {number} offset @param {number} align @param {number} ptr @param {number} value @return {number} */
+BinaryenF64Api.prototype.store = function (offset, align, ptr, value) {};
+/** @type {!BinaryenF64Api} */
+BinaryenModule.prototype.f64;
+
+// ---------------------------------------------------------------------------
+// BinaryenModule global expression-builder sub-API (module.global.*)
+// ---------------------------------------------------------------------------
+
+/** @interface @const */ var BinaryenGlobalApi = function () {};
+/** @param {string} name @param {number} type @return {number} */
+BinaryenGlobalApi.prototype.get = function (name, type) {};
+/** @param {string} name @param {number} value @return {number} */
+BinaryenGlobalApi.prototype.set = function (name, value) {};
+/** @type {!BinaryenGlobalApi} */
+BinaryenModule.prototype.global;
 
 // ---------------------------------------------------------------------------
 // Binaryen expression-mutation sub-APIs

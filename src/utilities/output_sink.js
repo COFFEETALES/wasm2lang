@@ -199,40 +199,9 @@ Wasm2Lang.OutputSink.scanChunks_ = function (chunks, onChunk, onAsync) {
 };
 
 // ---------------------------------------------------------------------------
-// Chunk utilities.
-// ---------------------------------------------------------------------------
-
-/**
- * Given an array of string parts, returns a new array with {@code '\\n'}
- * separators interleaved between each element — the chunked equivalent of
- * {@code parts.join('\\n')}.
- *
- * @param {!Array<string>} parts
- * @return {!Array<!Wasm2Lang.OutputSink.ChunkEntry>}
- */
-Wasm2Lang.OutputSink.interleaveNewlines = function (parts) {
-  /** @type {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */
-  var result = [];
-  for (var /** @type {number} */ i = 0, /** @const {number} */ len = parts.length; i !== len; ++i) {
-    if (i > 0) {
-      result[result.length] = '\n';
-    }
-    result[result.length] = parts[i];
-  }
-  return result;
-};
-
-// ---------------------------------------------------------------------------
 // Sink factories.
 // ---------------------------------------------------------------------------
 
-/**
- * Creates a write function that sends resolved chunks to the standard
- * output stream.  On Node.js this writes directly to {@code process.stdout};
- * in a browser environment it falls back to {@code console.log}.
- *
- * @return {!Wasm2Lang.OutputSink.WriteFn}
- */
 /**
  * Creates a write function that writes resolved chunks to a file.
  * The file is truncated on creation; subsequent chunks are appended.

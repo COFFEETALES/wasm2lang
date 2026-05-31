@@ -131,8 +131,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
 
   var /** @const {!Array<string>} */ bindingLines = [];
   var /** @const */ self = this;
-  /** @param {string} name @param {string} initExpr @return {void} */
-  var pushBinding = function (name, initExpr) {
+  var pushBinding = /** @param {string} name @param {string} initExpr */ function (name, initExpr) {
     if (ub[name]) bindingLines[bindingLines.length] = pad1 + 'var ' + self.n_(name) + ' = ' + initExpr + ';';
   };
 

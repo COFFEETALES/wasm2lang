@@ -284,8 +284,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @type {number} */ resultCat = A.CAT_VOID;
   var /** @const */ self = this;
-  /** @param {number} tempIndex @return {string} */
-  var inlineTemp = function (tempIndex) {
+  var inlineTemp = /** @param {number} tempIndex @return {string} */ function (tempIndex) {
     return self.localN_(state.inlineTempOffset + tempIndex);
   };
 
@@ -458,7 +457,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ ciRetType = expr.type;
       var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
       var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
-      var /** @const {string} */ ciCallExpr = this.phpVar_('ftable') + '[' + ciIndexExpr + '](' + ciArgs.join(', ') + ')';
+      var /** @const {string} */ ciCallExpr = ftableVar + '[' + ciIndexExpr + '](' + ciArgs.join(', ') + ')';
       if (binaryen.none === ciRetType || 0 === ciRetType) {
         result = pad(ind) + ciCallExpr + ';\n';
       } else {

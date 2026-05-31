@@ -61,18 +61,13 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function (
   var /** @const {string} */ l2 = this.localN_(2);
   var /** @const {string} */ l3 = this.localN_(3);
   var /** @const */ self = this;
-  /** @param {string} s @return {string} */
-  var n = function (s) {
+  var n = /** @param {string} s @return {string} */ function (s) {
     return self.n_(s);
   };
 
-  /**
-   * Conditionally emit a helper via the shared emit-or-collect funnel.  Java
-   * does not track per-helper bindings, so {@code null} is passed.
-   * @param {string} name
-   * @param {string} body
-   */
-  var h = function (name, body) {
+  // Conditionally emit a helper via the shared emit-or-collect funnel.  Java
+  // does not track per-helper bindings, so {@code null} is passed.
+  var h = /** @param {string} name @param {string} body */ function (name, body) {
     self.emitOrCollectHelper_(lines, name, null, body);
   };
 

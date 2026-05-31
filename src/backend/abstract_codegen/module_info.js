@@ -672,8 +672,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.buildSignatureKey_ = function (binaryen, paramTypes, retType) {
-  /** @param {number} t @return {string} */
-  var c = function (t) {
+  var c = /** @param {number} t @return {string} */ function (t) {
     return binaryen.f32 === t ? 'f' : binaryen.f64 === t ? 'd' : binaryen.i64 === t ? 'l' : 'i';
   };
   var /** @type {string} */ key = '';

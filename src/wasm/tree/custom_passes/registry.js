@@ -21,8 +21,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses = function (options) {
   var /** @const {!Array<string>} */ disabled = options.disabledPasses || [];
   var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ all = [
       new Wasm2Lang.Wasm.Tree.CustomPasses.LocalUsageAnalysisPass(),
-      new Wasm2Lang.Wasm.Tree.CustomPasses.ConstConditionFoldingPass(),
-      new Wasm2Lang.Wasm.Tree.CustomPasses.DropConstElisionPass(),
       new Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass(),
       new Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass(),
       new Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass(),

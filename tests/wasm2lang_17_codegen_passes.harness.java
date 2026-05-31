@@ -509,10 +509,6 @@ int w2lCountSimplifiedWhile(String body) {
         mod.exerciseRootValueBlock(v.intValue());
     }
 
-    for (Double v : w2lFlat(_data, "const_condition_fold_values")) {
-        mod.exerciseConstConditionFold(v.intValue());
-    }
-
     for (Double v : w2lFlat(_data, "direct_labeled_if_values")) {
         mod.exerciseDirectLabeledIf(v.intValue());
     }
@@ -527,6 +523,10 @@ int w2lCountSimplifiedWhile(String body) {
 
     for (Double v : w2lFlat(_data, "eqz_or_version_gate_values")) {
         mod.exerciseEqzOrVersionGate(v.intValue());
+    }
+
+    for (Double v : w2lFlat(_data, "eqz_negate_numeric_comparison_values")) {
+        mod.exerciseEqzNegateNumericComparison(v.intValue());
     }
 
     w2lDumpCRC(memBuffer);

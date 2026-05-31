@@ -88,8 +88,6 @@
       {'sourcePath': 'src/utilities/output_sink.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/local_usage_analysis_pass.js'},
-      {'sourcePath': 'src/wasm/tree/custom_passes/const_condition_folding_pass.js'},
-      {'sourcePath': 'src/wasm/tree/custom_passes/drop_const_elision_pass.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/local_init_folding_normalize.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/local_init_folding_apply.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/switch_dispatch_normalize.js'},

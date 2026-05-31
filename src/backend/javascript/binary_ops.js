@@ -144,8 +144,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI64MultiplyBinary_ = function (self, i
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64DivisionBinary_ = function (self, info, L, R) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ M = Wasm2Lang.Backend.JavaScriptCodegen;
-  /** @param {string} expr @return {string} */
-  var asUint = function (expr) {
+  var asUint = /** @param {string} expr @return {string} */ function (expr) {
     return M.asUint64_(self, expr);
   };
   return M.wrapI64_(self, A.renderUnsignedAwareInfix_(info, L, R, asUint, A.Precedence_.PREC_MULTIPLICATIVE_));
@@ -196,8 +195,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI64RotateBinary_ = function (self, inf
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64ComparisonBinary_ = function (self, info, L, R) {
-  /** @param {string} expr @return {string} */
-  var asUint = function (expr) {
+  var asUint = /** @param {string} expr @return {string} */ function (expr) {
     return Wasm2Lang.Backend.JavaScriptCodegen.asUint64_(self, expr);
   };
   return Wasm2Lang.Backend.AbstractCodegen.renderComparisonInfix_(info, L, R, asUint);

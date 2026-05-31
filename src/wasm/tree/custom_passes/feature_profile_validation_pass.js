@@ -67,9 +67,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.validate
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.FeatureProfileValidationPass.prototype.enter_ = function (funcMetadata, nodeCtx) {
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression =
-    /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (nodeCtx.expression);
+  var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression = nodeCtx.expression;
 
   if (Wasm2Lang.Wasm.Tree.NodeSchema.supportsExpressionId(expression.id)) {
     return null;

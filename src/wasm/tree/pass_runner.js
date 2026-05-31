@@ -95,7 +95,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.writeProfileLine = function (line) {
  *   3. If the body root was replaced, propagate via binaryen.Function.setBody.
  *   4. Call pass.onFunctionLeave (if defined).
  * Child-level replacements are applied automatically by TraversalKernel via
- * applyChildReplacement_.
+ * the per-edge NodeSchema setter.
  *
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Wasm.Tree.PassList} passes

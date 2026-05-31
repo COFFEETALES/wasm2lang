@@ -149,10 +149,6 @@ const runTest = function (buff, out, exports, data) {
     exports.exerciseRootValueBlock(v);
   }
 
-  for (const v of data.const_condition_fold_values) {
-    exports.exerciseConstConditionFold(v);
-  }
-
   for (const v of data.direct_labeled_if_values) {
     exports.exerciseDirectLabeledIf(v);
   }
@@ -167,6 +163,10 @@ const runTest = function (buff, out, exports, data) {
 
   for (const v of data.eqz_or_version_gate_values) {
     exports.exerciseEqzOrVersionGate(v);
+  }
+
+  for (const v of data.eqz_negate_numeric_comparison_values) {
+    exports.exerciseEqzNegateNumericComparison(v);
   }
 };
 
@@ -468,6 +468,27 @@ const validateCode = function (code, testName) {
     // -- guard elision (IR restructuring; baseline skips it) --
     b = bodyOf('guardElisionProduct');
     check('guardElisionProduct', b && !/\w+\s*:\s*\{/.test(b), 'expected guard elision (no labeled block)');
+
+    // -- eqz-negate-comparison: (eqz cmp) folds at IR level to the negated
+    // comparison, so the emitted body must contain the inverted relational
+    // operators directly — `>=` from `eqz(lt_s)` and `!=` from `eqz(eq)` —
+    // with no `!` prefix on the comparison expression.  Scoped to _nomangle
+    // for identifier stability.
+    if (testName.endsWith('_nomangle')) {
+      b = bodyOf('eqzNegateNumericComparison');
+      if (b) {
+        check('eqzNegateNumericComparison', />=/.test(b), 'expected `>=` infix from negated lt_s');
+        check('eqzNegateNumericComparison', /!=/.test(b), 'expected `!=` infix from negated eq');
+        check(
+          'eqzNegateNumericComparison',
+          !/!\s*\(/.test(b) && !/!\s*\$/.test(b),
+          'expected no `!` prefix (negation must be at IR level, not source level)'
+        );
+      } else {
+        check('eqzNegateNumericComparison', false, 'function body not found');
+      }
+    }
+
   }
 
   // -- local init folding (requires pass metadata; only active under

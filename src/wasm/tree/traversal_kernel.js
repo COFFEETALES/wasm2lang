@@ -219,9 +219,20 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
       }
     }
 
-    // Restore nodeContext after children — recursive walkInner calls
-    // will have mutated it, so reset the fields for the leave callback.
+    // Re-fetch the expression info so the leave callback sees fresh
+    // child-pointer slots: a child whose own leave returned REPLACE_NODE
+    // was rewritten in the binaryen heap via the setter above, but the
+    // cached `expression` snapshot still carries the pre-walk child list.
+    // Without the refresh, the leave callback inspects stale child
+    // pointers and silently misses transformations that just happened —
+    // e.g. BlockGuardElisionPass on an outer block whose first child is
+    // itself an inner BGE-elided block.  Postbuild family
+    // `kernel-leave-freshness` covers this directly.
     nodeCtxBuf.parentExpression = parentExpression;
+    expression = safeGetInfo(binaryen, currentExprPtr);
+    if (binaryen.MemoryFillId === expression.id || binaryen.MemoryCopyId === expression.id) {
+      augmentInfo(binaryen, currentExprPtr, expression);
+    }
     nodeCtxBuf.expression = expression;
     nodeCtxBuf.expressionPointer = currentExprPtr;
 
@@ -254,28 +265,6 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
   };
 
   return walkInner(null, exprPtr);
-};
-
-/**
- * Applies a child-pointer replacement directly into the parent expression in
- * the wasm IR.  The setter function is carried on the ChildEdge tuple (index
- * [4]) from the NodeSchema EdgeSpec, so no parallel dispatch table is needed.
- *
- * Setter signature: (parentPtr, listIndex, newChildPtr).  For SINGLE edges
- * the listIndex parameter is ignored inside the setter.
- *
- * @private
- * @param {number} parentExprPtr
- * @param {!Wasm2Lang.Wasm.Tree.ChildEdge} edge
- * @param {number} newChildPtr
- * @return {void}
- */
-Wasm2Lang.Wasm.Tree.TraversalKernel.applyChildReplacement_ = function (parentExprPtr, edge, newChildPtr) {
-  var /** @const {number} */ edgeIndex = /** @type {number} */ (edge[1]);
-  var /** @const {function(number, number, number): void} */ setter = /** @type {function(number, number, number): void} */ (
-      edge[4]
-    );
-  setter(parentExprPtr, edgeIndex, newChildPtr);
 };
 
 /**

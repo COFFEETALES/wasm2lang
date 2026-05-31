@@ -19,8 +19,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
   // {@code coerceToType_} so already-compatible categories skip the wrap;
   // otherwise fall back to type-based coercion (the safe-but-unconditional
   // {@code renderCoercionByType_}).
-  /** @param {number} wasmType @return {string} */
-  var coerceOperand = function (wasmType) {
+  var coerceOperand = /** @param {number} wasmType @return {string} */ function (wasmType) {
     return null != opt_valueCat
       ? self.coerceToType_(binaryen, valueExpr, /** @type {number} */ (opt_valueCat), wasmType)
       : self.renderCoercionByType_(binaryen, valueExpr, wasmType);
@@ -72,8 +71,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericUnaryOp_ = function (binar
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderNumericBinaryOp_ = function (binaryen, info, L, R, opt_catL, opt_catR) {
   var /** @const */ self = this;
-  /** @param {string} expr @param {number=} cat @return {string} */
-  var coerce = function (expr, cat) {
+  var coerce = /** @param {string} expr @param {number=} cat @return {string} */ function (expr, cat) {
     return null != cat
       ? self.coerceToType_(binaryen, expr, /** @type {number} */ (cat), info.retType)
       : self.renderCoercionByType_(binaryen, expr, info.retType);

@@ -257,10 +257,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
   // prettier-ignore
   var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
-  // prettier-ignore
-  var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
-    Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,nodeCtx.expressionPointer)
-  );
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
 
   if (binaryen.BlockId !== expr.id) {
     return null;

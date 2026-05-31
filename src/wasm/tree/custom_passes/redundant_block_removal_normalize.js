@@ -41,9 +41,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass.State_;
 Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass.prototype.leave_ = function (state, nodeCtx) {
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
   var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
-  var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, nodeCtx.expressionPointer)
-    );
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
 
   if (binaryen.BlockId !== expr.id) {
     return null;

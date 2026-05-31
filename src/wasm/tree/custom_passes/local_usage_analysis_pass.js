@@ -25,9 +25,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalUsageAnalysisPass = function () {
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LocalUsageAnalysisPass.prototype.enter_ = function (localGetCounts, nodeCtx) {
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression =
-    /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (nodeCtx.expression);
+  var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression = nodeCtx.expression;
 
   if (binaryen.LocalGetId !== expression.id) {
     return null;

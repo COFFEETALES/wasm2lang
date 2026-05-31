@@ -59,8 +59,6 @@ Wasm2Lang.Wasm.Tree.BlockGuardElisionPlan;
  *   passFuncPtr: (number|void),
  *   passTreeModule: (!BinaryenModule|void),
  *   bodyReplaced: (boolean|void),
- *   dropConstEliminations: (number|void),
- *   constConditionFolds: (!Object<string, number>|void),
  *   localGetCounts: (!Object<string, number>|void),
  *   localInitOverrides: (!Object<string, *>|void),
  *   _localInitZeroFoldSet: (!Object<number, boolean>|void),

@@ -479,10 +479,6 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
         $exports['exerciseRootValueBlock']($v);
     }
 
-    foreach ($data['const_condition_fold_values'] as $v) {
-        $exports['exerciseConstConditionFold']($v);
-    }
-
     foreach ($data['direct_labeled_if_values'] as $v) {
         $exports['exerciseDirectLabeledIf']($v);
     }
@@ -497,6 +493,10 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
 
     foreach ($data['eqz_or_version_gate_values'] as $v) {
         $exports['exerciseEqzOrVersionGate']($v);
+    }
+
+    foreach ($data['eqz_negate_numeric_comparison_values'] as $v) {
+        $exports['exerciseEqzNegateNumericComparison']($v);
     }
 };
 

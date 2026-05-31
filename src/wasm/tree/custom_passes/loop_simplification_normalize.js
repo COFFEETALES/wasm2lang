@@ -426,9 +426,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.leave_ = function (state, nodeCtx) {
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
   var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
-  var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, nodeCtx.expressionPointer)
-    );
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {number} */ id = expr.id;
 
   if (binaryen.BlockId === id && /** @type {?string} */ (expr.name)) {
