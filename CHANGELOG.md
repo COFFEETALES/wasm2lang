@@ -2,6 +2,7 @@
 
 Each release has its own file under [`changelog/`](changelog/).
 
+- [v2026.06.113](changelog/v2026.06.113.md) — anchor-backed `w2l_codegen_meta` round-tripping, asm.js intish coercion-noise reduction, `br_table` external-case flattening, mangler usage-discovery, binaryen v130, kernel leave-freshness fix
 - [v2026.04.112](changelog/v2026.04.112.md) — JS backend `emitMetadata` no-memory crash fix, README rewrite
 - [v2026.04.111](changelog/v2026.04.111.md) — constant-condition folding, pass profiling, helper auto-discovery, JS BigInt/Number mangler routing, native `memory.fill`/`copy`/`grow`, baseline test variant
 - [v2026.04.110](changelog/v2026.04.110.md) — JavaScript backend, `--pre-normalized` two-step codegen, `w2l_codegen_meta` section, three new codegen-prep passes
