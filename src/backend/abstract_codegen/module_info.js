@@ -185,12 +185,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.resolveHeapSize_ = function (wasmMod
  * @return {!Wasm2Lang.Backend.AbstractCodegen.StaticMemoryInfo_}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.collectStaticMemory_ = function (wasmModule) {
-  var /** @const {number} */ numSegments = wasmModule.getNumMemorySegments();
+  var /** @const {number} */ numSegments = wasmModule.getNumDataSegments();
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.StaticMemorySegment_>} */ segments = [];
 
   for (var /** @type {number} */ i = 0; i !== numSegments; ++i) {
     var /** @const {number} */ segPtr = wasmModule.getDataSegmentByIndex(i);
-    var /** @const {!BinaryenMemorySegmentInfo} */ segInfo = wasmModule.getMemorySegmentInfo(segPtr);
+    var /** @const {!BinaryenDataSegmentInfo} */ segInfo = wasmModule.getDataSegmentInfo(segPtr);
     if (segInfo.passive) {
       continue;
     }

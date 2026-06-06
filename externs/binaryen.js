@@ -380,13 +380,13 @@ BinaryenModule.prototype.getExportByIndex = function (index) {};
 /**
  * @return {number}
  */
-BinaryenModule.prototype.getNumMemorySegments = function () {};
+BinaryenModule.prototype.getNumDataSegments = function () {};
 
 /**
- * @param {number} segmentPointer
- * @return {!BinaryenMemorySegmentInfo}
+ * @param {number} dataSegmentRef
+ * @return {!BinaryenDataSegmentInfo}
  */
-BinaryenModule.prototype.getMemorySegmentInfo = function (segmentPointer) {};
+BinaryenModule.prototype.getDataSegmentInfo = function (dataSegmentRef) {};
 
 /**
  * @return {!BinaryenMemoryInfo}
@@ -692,12 +692,13 @@ var BinaryenExportInfo;
 
 /**
  * @typedef {{
+ *   name: string,
  *   offset: number,
  *   data: !ArrayBuffer,
  *   passive: boolean
  * }}
  */
-var BinaryenMemorySegmentInfo;
+var BinaryenDataSegmentInfo;
 
 /**
  * @typedef {{
