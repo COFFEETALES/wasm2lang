@@ -124,24 +124,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     outputParts[outputParts.length] = functionParts[fp];
   }
 
-  // Function table population.
-  if (moduleInfo.flatTableEntries.length > 0) {
-    var /** @const {!Array<string>} */ ftEntries = [];
-    for (
-      var /** @type {number} */ fte = 0, /** @const {number} */ fteLen = moduleInfo.flatTableEntries.length;
-      fte !== fteLen;
-      ++fte
-    ) {
-      var /** @const {string|null} */ fteName = moduleInfo.flatTableEntries[fte];
-      if (null === fteName) {
-        ftEntries[ftEntries.length] = 'null';
-      } else {
-        ftEntries[ftEntries.length] = this.phpVar_(this.safeName_(fteName));
-      }
-    }
-    outputParts[outputParts.length] = pad1 + this.phpVar_('ftable') + ' = [' + ftEntries.join(', ') + '];';
-  }
-
   // Exported global accessor closures.
   for (var /** @type {number} */ peg = 0, /** @const {number} */ pegLen = moduleInfo.expGlobals.length; peg !== pegLen; ++peg) {
     var /** @const {string} */ pegVar = this.phpVar_('$g_' + this.safeName_(moduleInfo.expGlobals[peg].internalName));
@@ -163,6 +145,26 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
         pegSetterParam +
         '; };';
     }
+  }
+
+  // Function table population — emitted last so it sits directly above the
+  // return array. The closures captured &$ftable by reference, so reassigning
+  // the populated array here updates what they see regardless of position.
+  if (moduleInfo.flatTableEntries.length > 0) {
+    var /** @const {!Array<string>} */ ftEntries = [];
+    for (
+      var /** @type {number} */ fte = 0, /** @const {number} */ fteLen = moduleInfo.flatTableEntries.length;
+      fte !== fteLen;
+      ++fte
+    ) {
+      var /** @const {string|null} */ fteName = moduleInfo.flatTableEntries[fte];
+      if (null === fteName) {
+        ftEntries[ftEntries.length] = 'null';
+      } else {
+        ftEntries[ftEntries.length] = this.phpVar_(this.safeName_(fteName));
+      }
+    }
+    outputParts[outputParts.length] = pad1 + this.phpVar_('ftable') + ' = [' + ftEntries.join(', ') + '];';
   }
 
   // Return array.

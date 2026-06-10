@@ -227,21 +227,6 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
       '}';
   }
 
-  for (var /** @type {number} */ ftv = 0; ftv !== ftLen; ++ftv) {
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc2 =
-        moduleInfo.functionTables[ftKeys[ftv]];
-    var /** @const {string} */ ftSigKey2 = ftDesc2.signatureKey;
-    var /** @const {string} */ ftTableName = this.n_('$ftable_' + ftSigKey2);
-    var /** @const {!Array<string>} */ tableEntryNames = [];
-    var /** @const {number} */ teLen = ftDesc2.tableEntries.length;
-    for (var /** @type {number} */ te = 0; te !== teLen; ++te) {
-      var /** @const {string|null} */ funcName = ftDesc2.tableEntries[te].boundName;
-      tableEntryNames[tableEntryNames.length] =
-        null === funcName ? this.n_('$ftable_' + ftSigKey2 + '_stub') : this.n_(this.safeName_(funcName));
-    }
-    outputParts[outputParts.length] = pad1 + 'var ' + ftTableName + ' = [' + tableEntryNames.join(', ') + '];';
-  }
-
   for (var /** @type {number} */ eg = 0; eg !== expGlobalCount; ++eg) {
     var /** @const {string} */ egVarName = this.n_('$g_' + this.safeName_(moduleInfo.expGlobals[eg].internalName));
     var /** @const {string} */ egGetterName = this.n_('$get_' + this.safeName_(moduleInfo.expGlobals[eg].exportName));
@@ -278,6 +263,26 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
         pad1 +
         '}';
     }
+  }
+
+  // Function-table array declarations are emitted last so they sit directly
+  // above the return object. Function declarations (bodies, table stubs,
+  // exported-global accessors) hoist, so modern JS is unaffected by the
+  // position; asm.js requires its tables after every function definition and
+  // immediately before the export statement, which this ordering satisfies.
+  for (var /** @type {number} */ ftv = 0; ftv !== ftLen; ++ftv) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc2 =
+        moduleInfo.functionTables[ftKeys[ftv]];
+    var /** @const {string} */ ftSigKey2 = ftDesc2.signatureKey;
+    var /** @const {string} */ ftTableName = this.n_('$ftable_' + ftSigKey2);
+    var /** @const {!Array<string>} */ tableEntryNames = [];
+    var /** @const {number} */ teLen = ftDesc2.tableEntries.length;
+    for (var /** @type {number} */ te = 0; te !== teLen; ++te) {
+      var /** @const {string|null} */ funcName = ftDesc2.tableEntries[te].boundName;
+      tableEntryNames[tableEntryNames.length] =
+        null === funcName ? this.n_('$ftable_' + ftSigKey2 + '_stub') : this.n_(this.safeName_(funcName));
+    }
+    outputParts[outputParts.length] = pad1 + 'var ' + ftTableName + ' = [' + tableEntryNames.join(', ') + '];';
   }
 
   var /** @const {!Array<string>} */ returnEntries = [];
