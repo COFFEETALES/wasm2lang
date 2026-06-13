@@ -261,6 +261,24 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.markAndRenderLabeledJump_ = function
 };
 
 /**
+ * Marks a label as used and renders the labeled jump WITHOUT the
+ * label-elision check — for call sites where the label is structurally
+ * required even when the target carries a label-elided prefix (e.g. breaks
+ * redirected through block-loop fusion onto an elided loop name).
+ * C# overrides this to emit a {@code goto} to its keyword-specific label.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {string} keyword  {@code 'break'} or {@code 'continue'}.
+ * @param {string} resolvedName
+ * @return {string}  Statement string ending in {@code ';\n'}.
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderRequiredLabeledJump_ = function (state, keyword, resolvedName) {
+  state.usedLabels[resolvedName] = true;
+  return keyword + ' ' + this.labelN_(state.labelMap, resolvedName) + ';\n';
+};
+
+/**
  * Sanitises a raw binaryen name for the target language, applying
  * optional pre-sanitize regex, invalid-character replacement, leading-digit
  * guard, and reserved-word resolution.  Behavior is configured via instance

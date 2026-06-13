@@ -868,8 +868,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
   ) {
     brStmt = brKeyword + ';\n';
   } else {
-    state.usedLabels[brActual] = true;
-    brStmt = brKeyword + ' ' + this.labelN_(state.labelMap, brActual) + ';\n';
+    brStmt = this.renderRequiredLabeledJump_(state, brKeyword, brActual);
   }
   return {
     emittedString: this.emitConditionalStatement_(indent, brCondPtr, condExpr, brStmt, opt_condCat),

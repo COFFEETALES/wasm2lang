@@ -23,6 +23,7 @@
 --js=src/backend/abstract_codegen/**.js
 --js=src/backend/jscommon/**.js
 --js=src/backend/asmjs/**.js
+--js=src/backend/csharp/**.js
 --js=src/backend/javascript/**.js
 --js=src/backend/java/**.js
 --js=src/backend/php64/**.js

@@ -27,7 +27,7 @@
 
 `wasm2lang` turns a WebAssembly module into **native source code** that each
 host toolchain can compile, inline, and optimize directly -- asm.js, JavaScript,
-PHP, or Java. No interpreter. No runtime bridge. No WASM engine embedded at runtime.
+PHP, Java, or C#. No interpreter. No runtime bridge. No WASM engine embedded at runtime.
 
 Write portable logic once, compile to `.wasm`, and deploy it anywhere, even
 into environments that refuse to load WebAssembly modules -- shared PHP hosting,
@@ -43,7 +43,8 @@ npx @coffeetales.net/wasm2lang                                                  
 ```
 
 That prints a Java class with an `add` method. Swap `java` for `asmjs`,
-`javascript`, or `php64` and you get the same logic in the target language.
+`javascript`, `php64`, or `csharp` and you get the same logic in the target
+language.
 
 Install once for repeated use:
 
@@ -57,20 +58,21 @@ npm install @coffeetales.net/wasm2lang
   servers. Plugin hosts. Ecosystems where "add a WASM runtime" is not an option.
 - **Skip the JIT-over-JIT tax.** Emitted code is compiled by HotSpot, OPcache,
   or V8 directly -- no opaque runtime sits between the engine and your logic.
-- **One logic base, four ecosystems.** Fix the bug in one `.wasm`, re-emit to
+- **One logic base, five ecosystems.** Fix the bug in one `.wasm`, re-emit to
   every target. Stop drift. Stop duplication.
 
 ## Backends
 
-| Backend        | `--language-out` | What you get                                                          |
-|----------------|------------------|-----------------------------------------------------------------------|
-| **asm.js**     | `ASMJS`          | Closest semantic match to WASM; V8 AOT-compiles via `"use asm"`.      |
-| **JavaScript** | `JAVASCRIPT`     | Native BigInt i64, typed-array memory, resizable `ArrayBuffer`.       |
-| **PHP**        | `PHP64`          | Pure PHP closures. Runs on shared hosting with zero extensions.       |
-| **Java**       | `JAVA`           | Native `long` i64, `ByteBuffer` heap, `IntVector` SIMD128 via Panama. |
+| Backend        | `--language-out` | What you get                                                                                     |
+|----------------|------------------|--------------------------------------------------------------------------------------------------|
+| **asm.js**     | `ASMJS`          | Closest semantic match to WASM; V8 AOT-compiles via `"use asm"`.                                 |
+| **JavaScript** | `JAVASCRIPT`     | Native BigInt i64, typed-array memory, resizable `ArrayBuffer`.                                  |
+| **PHP**        | `PHP64`          | Pure PHP closures. Runs on shared hosting with zero extensions.                                  |
+| **Java**       | `JAVA`           | Native `long` i64, `ByteBuffer` heap, `IntVector` SIMD128 via Panama.                            |
+| **C#**         | `CSHARP`         | Native `long` i64, `byte[]` heap with little-endian `BinaryPrimitives`, `Func`/`Action` imports. |
 
 Every backend is validated against the original `.wasm` on every commit:
-**17 test families × 5 build variants × 4 runtimes**, all producing
+**17 test families × 5 build variants × 5 runtimes**, all producing
 byte-identical stdout and matching CRC32 memory snapshots.
 
 ## Features
@@ -101,7 +103,7 @@ wasm2lang [options]
 |------------------------------|----------------------------------------------------------------------------------------------|
 | `--input-file <path>`        | `.wasm` binary or `.wast`/`.wat` text. Use `wast:-` for stdin.                               |
 | `--input-data <wast>`        | Inline WebAssembly text -- no file needed.                                                   |
-| `--language-out <lang>`      | `ASMJS` (default), `JAVASCRIPT`, `PHP64`, `JAVA`.                                            |
+| `--language-out <lang>`      | `ASMJS` (default), `JAVASCRIPT`, `PHP64`, `JAVA`, `CSHARP`.                                  |
 | `--normalize-wasm <bundles>` | Comma list of `binaryen:none\|min\|max` and/or `wasm2lang:codegen`. Default: `binaryen:min`. |
 | `--emit-code [name]`         | Emit the generated source; the name becomes the output symbol.                               |
 | `--emit-metadata [name]`     | Emit static memory initialization.                                                           |
@@ -119,12 +121,13 @@ Each backend sizes its heap from the module's declared `memory.initial`
 (pages × 64 KiB). Override with a `--define` when you need extra room for
 runtime allocations beyond the static segments.
 
-| Define            | Backend    |
-| ----------------- | ---------- |
-| `ASMJS_HEAP_SIZE` | asm.js     |
-| `JS_HEAP_SIZE`    | JavaScript |
-| `PHP64_HEAP_SIZE` | PHP        |
-| `JAVA_HEAP_SIZE`  | Java       |
+| Define             | Backend    |
+| ------------------ | ---------- |
+| `ASMJS_HEAP_SIZE`  | asm.js     |
+| `JS_HEAP_SIZE`     | JavaScript |
+| `PHP64_HEAP_SIZE`  | PHP        |
+| `JAVA_HEAP_SIZE`   | Java       |
+| `CSHARP_HEAP_SIZE` | C#         |
 
 If the module declares no memory, the heap falls back to 65536 bytes (one page).
 
@@ -150,14 +153,14 @@ heap ready for HotSpot.
 
 ```bash
 # Normalize + freeze pass analysis into the .wasm custom section:
-wasm2lang --input-file module.wasm                  \
+wasm2lang --input-file module.wasm                        \
           --normalize-wasm binaryen:min,wasm2lang:codegen \
           --emit-web-assembly > normalized.wasm
 
 # Later -- possibly on a different machine -- emit any target:
-wasm2lang --input-file normalized.wasm \
-          --pre-normalized             \
-          --language-out PHP64         \
+wasm2lang --input-file normalized.wasm                    \
+          --pre-normalized                                \
+          --language-out PHP64                            \
           --emit-code
 ```
 
@@ -189,6 +192,7 @@ semantically natural target for WASM transpilation -- close to a round-trip.
 export SPIDERMONKEY_JS=/path/to/js
 export PHP_CLI=/path/to/php
 export JSHELL_CLI=/path/to/jshell
+export PWSH_CLI=/path/to/pwsh
 
 mkdir test_artifacts && cd test_artifacts
 ../scripts/wasm2lang_build_tests.sh
@@ -196,9 +200,10 @@ mkdir test_artifacts && cd test_artifacts
 ```
 
 Every test is built in five variants (`baseline`, `codegen`, `nomangle`,
-`nopre`, `prenorm`), run through V8, SpiderMonkey, PHP CLI, and jshell, and
-compared against V8's execution of the original `.wasm` -- byte-identical
-stdout and matching CRC32 memory snapshots required to pass.
+`nopre`, `prenorm`), run through V8, SpiderMonkey, PHP CLI, jshell, and
+pwsh (Add-Type C#), and compared against V8's execution of the original
+`.wasm` -- byte-identical stdout and matching CRC32 memory snapshots required
+to pass.
 
 Set `WASM2LANG_PROFILE=1` on any invocation to get per-pass wall-clock
 timings on stderr.

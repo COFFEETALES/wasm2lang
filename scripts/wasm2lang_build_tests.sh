@@ -27,7 +27,7 @@ if [ ${#0} -ne ${#prefix} ]; then
     fi
 
     # Emit WASM in binary ($1='') or text ($1='text') form, with extension $2.
-    # Optional $3 = target language id (ASMJS|JAVASCRIPT|PHP64|JAVA): when set,
+    # Optional $3 = target language id (ASMJS|JAVASCRIPT|PHP64|JAVA|CSHARP): when set,
     # uses $wasm_normalize_per_lang and writes to ${artifact_base}.$3.$2 with
     # --language-out so language-dependent binaryen passes (optimize-for-js,
     # avoid-reinterprets, i64 lowering — see Backend.isJsTarget /
@@ -55,9 +55,9 @@ if [ ${#0} -ne ${#prefix} ]; then
     }
 
     # Emit code for one language, skipping if not in $build_languages.
-    #   $1 language-out id    (ASMJS|JAVASCRIPT|PHP64|JAVA)
-    #   $2 output extension   (asm.js|js|php|java)
-    #   $3 heap-size define   (ASMJS_HEAP_SIZE|JS_HEAP_SIZE|PHP64_HEAP_SIZE|JAVA_HEAP_SIZE)
+    #   $1 language-out id    (ASMJS|JAVASCRIPT|PHP64|JAVA|CSHARP)
+    #   $2 output extension   (asm.js|js|php|java|cs)
+    #   $3 heap-size define   (ASMJS_HEAP_SIZE|JS_HEAP_SIZE|PHP64_HEAP_SIZE|JAVA_HEAP_SIZE|CSHARP_HEAP_SIZE)
     # %LANG% in $codegen_input is substituted with $1, so a variant whose .wasm
     # is per-language (e.g. prenorm_max) can point at its target's .wasm.
     emit_language_code() {
@@ -87,11 +87,13 @@ if [ ${#0} -ne ${#prefix} ]; then
       ./wasm2lang_*_runner.js           \
       ./wasm2lang_*_runner.jsh          \
       ./wasm2lang_*_runner.php          \
+      ./wasm2lang_*_runner.ps1          \
       ./wasm2lang_run_tests.sh
 
     cp '../scripts/wasm2lang_run_tests.sh' .
     cp '../scripts/wasm2lang_java_runner.jsh' .
     cp '../scripts/wasm2lang_php_runner.php' .
+    cp '../scripts/wasm2lang_csharp_runner.ps1' .
     cp '../scripts/wasm2lang_wasm_asmjs_runner.js' .
 
     for file in '../tests/wasm2lang_'*'.build.js'; do
@@ -115,7 +117,7 @@ if [ ${#0} -ne ${#prefix} ]; then
       if [ -f "../tests/${testbase}.build.languages" ]; then
         build_languages="$(cat "../tests/${testbase}.build.languages")"
       else
-        build_languages="ASMJS JAVASCRIPT PHP64 JAVA"
+        build_languages="ASMJS JAVASCRIPT PHP64 JAVA CSHARP"
       fi
 
       # Read variant list from .build.normalize (one suffix per line) or
@@ -222,7 +224,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         emit_wasm_form 'text' wast
 
         if [ -n "$wasm_normalize_per_lang" ]; then
-          for lang in ASMJS JAVASCRIPT PHP64 JAVA; do
+          for lang in ASMJS JAVASCRIPT PHP64 JAVA CSHARP; do
             case " $build_languages " in
               *" $lang "*) emit_wasm_form '' wasm "$lang" ;;
             esac
@@ -233,6 +235,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         emit_language_code JAVASCRIPT js     JS_HEAP_SIZE
         emit_language_code PHP64      php    PHP64_HEAP_SIZE
         emit_language_code JAVA       java   JAVA_HEAP_SIZE
+        emit_language_code CSHARP     cs     CSHARP_HEAP_SIZE
       done <<EOF
 $variant_list
 EOF
@@ -261,7 +264,7 @@ EOF
         testbase_only="${codegen_name%_${codegen_suffix}}"
         prenorm_name="${testbase_only}_${prenorm_suffix}"
         [ -d "./${prenorm_name}" ] || continue
-        for ext in asm.js js php java; do
+        for ext in asm.js js php java cs; do
           f1="${codegen_dir}/${codegen_name}.${ext}"
           f2="./${prenorm_name}/${prenorm_name}.${ext}"
           [ -f "$f1" ] && [ -f "$f2" ] || continue

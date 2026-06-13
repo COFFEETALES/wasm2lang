@@ -137,6 +137,17 @@ if [ ${#0} -ne ${#prefix} ]; then
         tee "${filebase}".jshell.out
       fi
 
+      if [ -f "${filebase}".cs ] && [ -f "${filebase}".harness.cs ] && [ -x "${PWSH_CLI}" ]; then
+        echo -e "\033[0;33mRunning C# test...\033[0m"
+        "$PWSH_CLI"                             \
+          -NoProfile                            \
+          -File "./wasm2lang_csharp_runner.ps1" \
+          -TestName "$filebase"                 \
+        |                                       \
+        tee "${filebase}".csharp.out
+        dos2unix "${filebase}".csharp.out
+      fi
+
       echo ''
       compare_to_wasm_out "${filebase}".v8.asmjs.out
       [ -s "${filebase}".v8.asmjs.stderr ] && tmpretcode=1
@@ -146,6 +157,7 @@ if [ ${#0} -ne ${#prefix} ]; then
       compare_to_wasm_out "${filebase}".sm.javascript.out
       compare_to_wasm_out "${filebase}".php.out
       compare_to_wasm_out "${filebase}".jshell.out
+      compare_to_wasm_out "${filebase}".csharp.out
 
       # When this is the codegen baseline variant, compare its V8 WASM
       # output against every sibling variant's output. All variants derive

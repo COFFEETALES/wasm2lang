@@ -56,6 +56,7 @@
     ];
     var backendFilesById = {
       'asmjs': sharedBackendFiles,
+      'csharp': ['binary_ops.js'].concat(sharedBackendFiles),
       'java': ['binary_ops.js'].concat(sharedBackendFiles),
       'php64': ['binary_ops.js'].concat(sharedBackendFiles),
       'javascript': [
@@ -70,7 +71,7 @@
         'numeric_ops.js'
       ]
     };
-    var backendIds = ['asmjs', 'java', 'javascript', 'php64'];
+    var backendIds = ['asmjs', 'csharp', 'java', 'javascript', 'php64'];
     for (var bi = 0; bi < backendIds.length; ++bi) {
       moduleSpecs[moduleSpecs.length] = {'sourcePath': 'src/backend/' + backendIds[bi] + '/codegen.js'};
     }

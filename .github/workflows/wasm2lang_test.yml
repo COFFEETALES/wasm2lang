@@ -21,7 +21,9 @@ jobs:
             'mozjs~140'      \
             'nodejs~24'      \
             openjdk21        \
-            php84-cli
+            php84-cli        \
+            powershell       \
+            dos2unix
 
       - name: '🧩 Run tests'
         working-directory: test_artifacts
@@ -31,4 +33,5 @@ jobs:
           SPIDERMONKEY_JS=/usr/bin/js140                                          \
           PHP_CLI=/usr/bin/php                                                    \
           JSHELL_CLI=/usr/bin/jshell                                              \
+          PWSH_CLI="$(command -v pwsh)"                                           \
           ./wasm2lang_run_tests.sh
