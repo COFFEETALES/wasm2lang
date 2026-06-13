@@ -709,12 +709,16 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
       /** @type {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>} */ (Object.create(null));
   var /** @type {!Array<string|null>} */ flatEntries = [];
 
+  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {number} */ numSegments = wasmModule.getNumElementSegments();
   if (0 === numSegments) {
+    // No element segments, but the module may still contain a call_indirect
+    // (e.g. an empty/size-1 table whose only indirect call is statically
+    // guarded). Synthesize trap-stub tables so those call sites validate.
+    this.ensureCallIndirectStubTables_(wasmModule, binaryen, tables);
     return {tables: tables, flatEntries: flatEntries};
   }
 
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {number} */ segPtr = wasmModule.getElementSegmentByIndex(0);
   var /** @const {!BinaryenElementSegmentInfo} */ segInfo = binaryen.getElementSegmentInfo(segPtr);
   var /** @const {!Array<string>} */ data = segInfo.data;
@@ -793,5 +797,65 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
     };
   }
 
+  // A call_indirect can reference a signature that no element-segment entry
+  // supplies; cover those before returning so every call site has a table.
+  this.ensureCallIndirectStubTables_(wasmModule, binaryen, tables);
+
   return {tables: tables, flatEntries: flatEntries};
+};
+
+/**
+ * Ensures every {@code call_indirect} signature reachable in the module has a
+ * function-table descriptor, even when no element segment supplies a function
+ * of that signature.
+ *
+ * LLVM / wasm-ld can emit a {@code call_indirect} against an empty (null-only)
+ * table when the sole reachable indirect call is statically guarded (e.g. an
+ * always-null callback pointer): the table is declared {@code (table 1 1
+ * funcref)} with no {@code (elem)} entry for that signature.  The backend call
+ * site still emits {@code $ftable_<sig>[(idx) & mask](...)}, so the matching
+ * {@code var $ftable_<sig> = [...]} declaration must exist or the asm.js
+ * validator rejects the module ("function-pointer table ... wasn't defined").
+ *
+ * A missing signature is given a single-slot, stub-only table (size 1, mask 0,
+ * {@code stubNeeded} = true).  The shared emitter then renders the trap stub
+ * and the {@code [stub]} table; calling through it matches wasm semantics —
+ * the call traps / is never reached.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>} tables
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.ensureCallIndirectStubTables_ = function (wasmModule, binaryen, tables) {
+  var /** @const {function(!Wasm2Lang.Wasm.Tree.TraversalNodeContext): (string|undefined)} */ visit = function (nodeCtx) {
+    var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+    if (binaryen.CallIndirectId !== expr.id) return undefined;
+    var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(/** @type {number} */ (expr.params));
+    var /** @const {number} */ retType = expr.type;
+    var /** @const {string} */ sigKey = Wasm2Lang.Backend.AbstractCodegen.buildSignatureKey_(binaryen, paramTypes, retType);
+    if (tables[sigKey]) return undefined;
+    tables[sigKey] = {
+      signatureKey: sigKey,
+      signatureParams: paramTypes,
+      signatureReturnType: retType,
+      tableEntries: [{boundName: null}],
+      tableMask: 0,
+      stubNeeded: true
+    };
+    return undefined;
+  };
+
+  var /** @const {number} */ numFuncs = wasmModule.getNumFunctions();
+  for (var /** @type {number} */ f = 0; f !== numFuncs; ++f) {
+    var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(wasmModule.getFunctionByIndex(f));
+    if ('' !== funcInfo.base || 0 === funcInfo.body) continue;
+    Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
+      binaryen,
+      wasmModule,
+      /** @type {number} */ (funcInfo.body),
+      visit
+    );
+  }
 };
