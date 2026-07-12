@@ -71,6 +71,35 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function (
     self.emitOrCollectHelper_(lines, name, null, body);
   };
 
+  // Java evaluates call arguments left-to-right, so these helpers preserve
+  // wasm select's eager true/false/condition operand order.
+  // prettier-ignore
+  h('$w2l_select_i32',
+    pad1 + 'static int ' + n('$w2l_select_i32') + '(int ' + l0 + ', int ' + l1 + ', int ' + l2 + ') {\n' +
+    pad2 + 'return ' + l2 + ' != 0 ? ' + l0 + ' : ' + l1 + ';\n' +
+    pad1 + '}');
+  // prettier-ignore
+  h('$w2l_select_i64',
+    pad1 + 'static long ' + n('$w2l_select_i64') + '(long ' + l0 + ', long ' + l1 + ', int ' + l2 + ') {\n' +
+    pad2 + 'return ' + l2 + ' != 0 ? ' + l0 + ' : ' + l1 + ';\n' +
+    pad1 + '}');
+  // prettier-ignore
+  h('$w2l_select_f32',
+    pad1 + 'static float ' + n('$w2l_select_f32') + '(float ' + l0 + ', float ' + l1 + ', int ' + l2 + ') {\n' +
+    pad2 + 'return ' + l2 + ' != 0 ? ' + l0 + ' : ' + l1 + ';\n' +
+    pad1 + '}');
+  // prettier-ignore
+  h('$w2l_select_f64',
+    pad1 + 'static double ' + n('$w2l_select_f64') + '(double ' + l0 + ', double ' + l1 + ', int ' + l2 + ') {\n' +
+    pad2 + 'return ' + l2 + ' != 0 ? ' + l0 + ' : ' + l1 + ';\n' +
+    pad1 + '}');
+  // prettier-ignore
+  h('$w2l_select_v128',
+    pad1 + 'static IntVector ' + n('$w2l_select_v128') +
+      '(IntVector ' + l0 + ', IntVector ' + l1 + ', int ' + l2 + ') {\n' +
+    pad2 + 'return ' + l2 + ' != 0 ? ' + l0 + ' : ' + l1 + ';\n' +
+    pad1 + '}');
+
   // prettier-ignore
   h('$w2l_trunc_f64',
     pad1 + 'static double ' + n('$w2l_trunc_f64') + '(double ' + l0 + ') {\n' +

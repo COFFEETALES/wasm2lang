@@ -14,6 +14,7 @@ public static class W2lHarness {
     mod.alignHeapTop();
     mod.exerciseBulkMemory(mod.getHeapTop());
     mod.exerciseMemoryGrow();
+    mod.exerciseBulkControlFlow();
 
     foreach (var p in W2l.Nested("bulk_params")) {
       mod.exerciseBulkFillVerify(mod.getHeapTop(), (int)p[0], (int)p[1]);

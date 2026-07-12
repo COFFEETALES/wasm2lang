@@ -40,6 +40,17 @@
     for (int[] scenario : new int[][] {{10, 0}, {30, 0}, {1, 0}, {0, 5}, {-10, 2}, {60, 2}, {5, -1}}) {
         mod.exerciseSwitchConditionalEscape(scenario[0], scenario[1]);
     }
+    mod.exerciseSelectTerminalEvaluation();
+    boolean selectTrapped = false;
+    try {
+        mod.selectTrap();
+    } catch (ArithmeticException error) {
+        selectTrapped = true;
+    }
+    if (!selectTrapped) {
+        throw new IllegalStateException("select(unreachable, value) did not trap");
+    }
+    System.out.print("select trap\n");
 
     w2lDumpCRC(memBuffer);
 }

@@ -3,7 +3,7 @@
 (async function () {
   const common = require('./build_common');
   const binaryen = await common.loadBinaryen();
-  const {module, heapTop, advanceHeap, storeI32} = common.createTestModule(binaryen, {
+  const {module, heapTop, advanceHeap, storeI32, storeF32, storeF64Safe} = common.createTestModule(binaryen, {
     memoryPages: 8,
     heapBase: 1024
   });
@@ -11,6 +11,9 @@
   // ---------- Type signatures for call_indirect ----------
   var sig_ii_i = binaryen.createType([binaryen.i32, binaryen.i32]);
   var sig_i_i = binaryen.createType([binaryen.i32]);
+  var sig_f_i = binaryen.createType([binaryen.f32]);
+  var sig_i_f = binaryen.createType([binaryen.i32]);
+  var sig_i_d = binaryen.createType([binaryen.i32]);
   var sig_dd_i = binaryen.createType([binaryen.f64, binaryen.f64]);
   var sig_iii_i = binaryen.createType([binaryen.i32, binaryen.i32, binaryen.i32]);
 
@@ -72,6 +75,14 @@
   // Index 12: count leading zeros
   module.addFunction('clzI32', sig_i_i, binaryen.i32, [], module.i32.clz(L(0)));
 
+  // Index 18: truncate an f32 argument to i32.
+  module.addFunction('f32ToI32', sig_f_i, binaryen.i32, [], module.i32.trunc_s.f32(module.local.get(0, binaryen.f32)));
+
+  // Index 19/20: return f32/f64 to exercise ordered wrappers whose result is
+  // not i32.
+  module.addFunction('i32ToF32', sig_i_f, binaryen.f32, [], module.f32.convert_s.i32(L(0)));
+  module.addFunction('i32ToF64', sig_i_d, binaryen.f64, [], module.f64.convert_s.i32(L(0)));
+
   // ======================================================================
   // Table functions: (f64, f64) -> i32
   // ======================================================================
@@ -103,13 +114,16 @@
   );
 
   // ======================================================================
-  // Function table — 18 entries (pads to 32, exercises padding logic)
+  // Function table — 21 entries (pads to 32, exercises padding logic)
   // ======================================================================
   // Indices by signature:
   //   ii_i : 0, 1, 3, 4, 7, 8, 11, 13, 14, 15
   //   i_i  : 2, 5, 9, 12
   //   dd_i : 6, 10
   //   iii_i: 16, 17
+  //   f_i:   18
+  //   i_f:   19
+  //   i_d:   20
 
   var tableFunctionNames = [
     'addI32', //       0  ii_i
@@ -129,7 +143,10 @@
     'subI32', //      14  ii_i  (alias of 1)
     'returnConst0', //15  ii_i
     'selectAB', //    16  iii_i
-    'combineBits' //  17  iii_i
+    'combineBits', //  17  iii_i
+    'f32ToI32', //     18  f_i
+    'i32ToF32', //     19  i_f
+    'i32ToF64' //      20  i_d
   ];
 
   module.addTable('functionTable', tableFunctionNames.length, 0xffffffff);
@@ -322,6 +339,160 @@
 
   module.addFunction('exerciseDynamicIndex', sig_iii_i, binaryen.none, [], module.block(null, diBody));
   module.addFunctionExport('exerciseDynamicIndex', 'exerciseDynamicIndex');
+
+  // A call_indirect evaluates its operands before the table index.  A return
+  // in the first argument therefore prevents an observable index expression
+  // from running; target-language call syntax would otherwise reverse this.
+  module.addGlobal('callIndirectTerminalTrace', binaryen.i32, true, C(0));
+  module.addFunction(
+    'markCallIndirectIndex',
+    binaryen.none,
+    binaryen.i32,
+    [],
+    module.block(null, [module.global.set('callIndirectTerminalTrace', C(1)), module.return(C(2))])
+  );
+  module.addFunction(
+    'callIndirectTerminalArgument',
+    binaryen.none,
+    binaryen.i32,
+    [],
+    ci(module.call('markCallIndirectIndex', [], binaryen.i32), [module.return(C(5))], sig_i_i)
+  );
+  module.addFunction(
+    'exerciseCallIndirectTerminalOrder',
+    binaryen.none,
+    binaryen.none,
+    [],
+    module.block(null, [
+      module.global.set('callIndirectTerminalTrace', C(0)),
+      storeI32(module.call('callIndirectTerminalArgument', [], binaryen.i32)),
+      storeI32(module.global.get('callIndirectTerminalTrace', binaryen.i32)),
+      module.return()
+    ])
+  );
+  module.addFunctionExport('exerciseCallIndirectTerminalOrder', 'exerciseCallIndirectTerminalOrder');
+
+  // Normal (non-terminal) ordered call_indirect gates.  Wasm evaluates all
+  // arguments left-to-right before evaluating the table index.  Dispatch
+  // wrappers are required only for these effectful/aliasing sites; the many
+  // pure calls above retain their direct-table fast path.
+  module.addGlobal('callIndirectOrderTrace', binaryen.i32, true, C(0));
+  module.addGlobal('callIndirectAliasIndex', binaryen.i32, true, C(2));
+  var appendCallIndirectTrace = function (tag) {
+    return module.global.set(
+      'callIndirectOrderTrace',
+      module.i32.add(module.i32.mul(module.global.get('callIndirectOrderTrace', binaryen.i32), C(10)), tag)
+    );
+  };
+  module.addFunction(
+    'markCallIndirectI32',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [],
+    module.block(null, [appendCallIndirectTrace(L(0)), module.return(L(1))])
+  );
+  module.addFunction(
+    'markCallIndirectF32',
+    binaryen.createType([binaryen.i32, binaryen.f32]),
+    binaryen.f32,
+    [],
+    module.block(null, [appendCallIndirectTrace(L(0)), module.return(module.local.get(1, binaryen.f32))])
+  );
+  module.addFunction(
+    'markCallIndirectF64',
+    binaryen.createType([binaryen.i32, binaryen.f64]),
+    binaryen.f64,
+    [],
+    module.block(null, [appendCallIndirectTrace(L(0)), module.return(module.local.get(1, binaryen.f64))])
+  );
+  module.addFunction(
+    'markCallIndirectAliasArgument',
+    binaryen.none,
+    binaryen.i32,
+    [],
+    module.block(null, [module.global.set('callIndirectAliasIndex', C(2)), module.return(C(33))])
+  );
+  module.addFunction(
+    'exerciseCallIndirectOrderedEffects',
+    binaryen.none,
+    binaryen.none,
+    [],
+    module.block(null, [
+      // i32 argument, i32 result: trace 1 (argument), then 2 (index).
+      module.global.set('callIndirectOrderTrace', C(0)),
+      storeI32(
+        ci(
+          module.call('markCallIndirectI32', [C(2), C(2)], binaryen.i32),
+          [module.call('markCallIndirectI32', [C(1), C(41)], binaryen.i32)],
+          sig_i_i
+        )
+      ),
+      storeI32(module.global.get('callIndirectOrderTrace', binaryen.i32)),
+
+      // Two f64 arguments, i32 result: trace 3, 4, then index tag 5.
+      module.global.set('callIndirectOrderTrace', C(0)),
+      storeI32(
+        ci(
+          module.call('markCallIndirectI32', [C(5), C(6)], binaryen.i32),
+          [
+            module.call('markCallIndirectF64', [C(3), module.f64.const(1.5)], binaryen.f64),
+            module.call('markCallIndirectF64', [C(4), module.f64.const(2.5)], binaryen.f64)
+          ],
+          sig_dd_i
+        )
+      ),
+      storeI32(module.global.get('callIndirectOrderTrace', binaryen.i32)),
+
+      // f32 argument and i32 result.
+      module.global.set('callIndirectOrderTrace', C(0)),
+      storeI32(
+        ci(
+          module.call('markCallIndirectI32', [C(7), C(18)], binaryen.i32),
+          [module.call('markCallIndirectF32', [C(6), module.f32.const(7.75)], binaryen.f32)],
+          sig_f_i
+        )
+      ),
+      storeI32(module.global.get('callIndirectOrderTrace', binaryen.i32)),
+
+      // f32 and f64 results exercise typed dispatcher return boundaries.
+      module.global.set('callIndirectOrderTrace', C(0)),
+      storeF32(
+        module.call_indirect(
+          'functionTable',
+          module.call('markCallIndirectI32', [C(9), C(19)], binaryen.i32),
+          [module.call('markCallIndirectI32', [C(8), C(6)], binaryen.i32)],
+          sig_i_f,
+          binaryen.f32
+        )
+      ),
+      storeI32(module.global.get('callIndirectOrderTrace', binaryen.i32)),
+      module.global.set('callIndirectOrderTrace', C(0)),
+      storeF64Safe(
+        module.call_indirect(
+          'functionTable',
+          module.call('markCallIndirectI32', [C(2), C(20)], binaryen.i32),
+          [module.call('markCallIndirectI32', [C(1), C(9)], binaryen.i32)],
+          sig_i_d,
+          binaryen.f64
+        )
+      ),
+      storeI32(module.global.get('callIndirectOrderTrace', binaryen.i32)),
+
+      // Alias gate: the argument writes the global read by the index.  Wasm
+      // must dispatch identity(33) at slot 2, not negate(-33) at stale slot 5.
+      module.global.set('callIndirectAliasIndex', C(5)),
+      storeI32(
+        ci(
+          module.global.get('callIndirectAliasIndex', binaryen.i32),
+          [module.call('markCallIndirectAliasArgument', [], binaryen.i32)],
+          sig_i_i
+        )
+      ),
+      storeI32(module.global.get('callIndirectAliasIndex', binaryen.i32)),
+      module.return()
+    ])
+  );
+  module.addFunctionExport('exerciseCallIndirectOrderedEffects', 'exerciseCallIndirectOrderedEffects');
 
   // ======================================================================
   // Shared data generation

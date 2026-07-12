@@ -7,6 +7,16 @@
 
 public static class W2lHarness {
   public static void Run() {
+    if (W2l.TestName.EndsWith("_nomangle")) {
+      string code = W2l.ReadSource();
+      if (!code.Contains("this._ftable_ii_i[0](")) {
+        throw new System.InvalidOperationException("pure call_indirect no longer uses the direct table fast path");
+      }
+      if (!code.Contains("this._w2l_call_indirect_i_i(markCallIndirectI32(")) {
+        throw new System.InvalidOperationException("effectful call_indirect does not use the ordered dispatcher");
+      }
+    }
+
     var foreign = new System.Collections.Generic.Dictionary<string, object>();
     var memBuffer = WasmMemBuffer.memBuffer();
 
@@ -40,6 +50,9 @@ public static class W2lHarness {
     foreach (var d in W2l.Nested("dynamic_dispatch")) {
       mod.exerciseDynamicIndex((int)d[0], (int)d[1], (int)d[2]);
     }
+
+    mod.exerciseCallIndirectTerminalOrder();
+    mod.exerciseCallIndirectOrderedEffects();
 
     W2l.DumpCRC(memBuffer);
   }

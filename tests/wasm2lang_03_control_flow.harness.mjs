@@ -108,6 +108,18 @@ const runTest = function (buff, out, exports, data) {
     ],
     (startAccumulator, startState) => exports.exerciseSwitchConditionalEscape(startAccumulator, startState)
   );
+
+  exports.exerciseSelectTerminalEvaluation();
+  let selectTrapped = false;
+  try {
+    exports.selectTrap();
+  } catch (error) {
+    selectTrapped = true;
+  }
+  if (!selectTrapped) {
+    throw new Error('select(unreachable, value) did not trap');
+  }
+  out('select trap\n');
 };
 
 const dumpMemory = true;

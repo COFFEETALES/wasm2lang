@@ -75,7 +75,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
   // before the chain as long as they don't reference blockName.
   // -----------------------------------------------------------------------
   var /** @const {number} */ childCount = children.length;
-  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
+  var /** @const {function(!Binaryen, !BinaryenModule, number, string): boolean} */ hasRefFn =
+      Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
   var /** @type {number} */ chainStart = 0;
 
   for (var /** @type {number} */ si = 0; si < childCount; ++si) {
@@ -87,7 +88,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
       break;
     }
     // Pre-chain child must not reference blockName.
-    if (hasRefFn(binaryen, children[si], blockName)) {
+    if (hasRefFn(binaryen, module, children[si], blockName)) {
       return null;
     }
   }
@@ -144,13 +145,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
   var /** @type {boolean} */ hasRef = false;
 
   for (var /** @type {number} */ ri = 0; ri < chainLength && !hasRef; ++ri) {
-    if (hasRefFn(binaryen, conditions[ri], blockName)) {
+    if (hasRefFn(binaryen, module, conditions[ri], blockName)) {
       hasRef = true;
       break;
     }
     var /** @const {!Array<number>} */ body = strippedBodies[ri];
     for (var /** @type {number} */ rj = 0, /** @const {number} */ bodyLen = body.length; rj < bodyLen; ++rj) {
-      if (hasRefFn(binaryen, body[rj], blockName)) {
+      if (hasRefFn(binaryen, module, body[rj], blockName)) {
         hasRef = true;
         break;
       }
@@ -158,7 +159,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.IfElseRecoveryPass.prototype.leave_ = function 
   }
   if (!hasRef) {
     for (var /** @type {number} */ rk = chainStart + chainLength; rk < childCount; ++rk) {
-      if (hasRefFn(binaryen, children[rk], blockName)) {
+      if (hasRefFn(binaryen, module, children[rk], blockName)) {
         hasRef = true;
         break;
       }

@@ -440,6 +440,149 @@
   module.addGlobal('counter', binaryen.i32, /* mutable */ true, module.i32.const(0));
   module.addGlobalExport('counter', 'counter');
 
+  // Select is eager in wasm: true, false, then condition.  Target-language
+  // ternaries are condition-first and lazy, so use observable operands to
+  // keep that evaluation contract covered across every backend.
+  module.addGlobal('selectTrace', binaryen.i32, /* mutable */ true, module.i32.const(0));
+  module.addFunction(
+    'markSelectOperand',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [],
+    module.block(null, [
+      module.global.set(
+        'selectTrace',
+        module.i32.add(
+          module.i32.mul(module.global.get('selectTrace', binaryen.i32), module.i32.const(10)),
+          module.local.get(0, binaryen.i32)
+        )
+      ),
+      module.return(module.local.get(1, binaryen.i32))
+    ])
+  );
+  module.addFunction(
+    'markSelectF32Operand',
+    binaryen.createType([binaryen.i32, binaryen.f32]),
+    binaryen.f32,
+    [],
+    module.block(null, [
+      module.global.set(
+        'selectTrace',
+        module.i32.add(
+          module.i32.mul(module.global.get('selectTrace', binaryen.i32), module.i32.const(10)),
+          module.local.get(0, binaryen.i32)
+        )
+      ),
+      module.return(module.local.get(1, binaryen.f32))
+    ])
+  );
+  module.addFunction(
+    'markSelectF64Operand',
+    binaryen.createType([binaryen.i32, binaryen.f64]),
+    binaryen.f64,
+    [],
+    module.block(null, [
+      module.global.set(
+        'selectTrace',
+        module.i32.add(
+          module.i32.mul(module.global.get('selectTrace', binaryen.i32), module.i32.const(10)),
+          module.local.get(0, binaryen.i32)
+        )
+      ),
+      module.return(module.local.get(1, binaryen.f64))
+    ])
+  );
+  module.addFunction(
+    'mutateSelectMemory',
+    binaryen.none,
+    binaryen.i32,
+    [],
+    module.block(null, [
+      module.i32.store16(0, 2, module.i32.const(512), module.i32.const(77)),
+      module.return(module.i32.const(1))
+    ])
+  );
+  module.addFunction(
+    'exerciseSelectEvaluation',
+    binaryen.none,
+    binaryen.none,
+    [],
+    module.block(null, [
+      // Both value calls must run before the condition call: result=111,
+      // trace=123.  A target-language ternary would produce trace=31.
+      module.global.set('selectTrace', module.i32.const(0)),
+      storeI32(
+        module.select(
+          module.call('markSelectOperand', [module.i32.const(3), module.i32.const(1)], binaryen.i32),
+          module.call('markSelectOperand', [module.i32.const(1), module.i32.const(111)], binaryen.i32),
+          module.call('markSelectOperand', [module.i32.const(2), module.i32.const(222)], binaryen.i32)
+        )
+      ),
+      storeI32(module.global.get('selectTrace', binaryen.i32)),
+
+      // Dropping a select result must not discard the observable evaluation
+      // of either arm or the condition.  Java and C# need a legal statement
+      // wrapper here because a conditional value is not an expression
+      // statement in those languages.
+      module.global.set('selectTrace', module.i32.const(0)),
+      module.drop(
+        module.select(
+          module.call('markSelectOperand', [module.i32.const(3), module.i32.const(1)], binaryen.i32),
+          module.call('markSelectOperand', [module.i32.const(1), module.i32.const(111)], binaryen.i32),
+          module.call('markSelectOperand', [module.i32.const(2), module.i32.const(222)], binaryen.i32)
+        )
+      ),
+      storeI32(module.global.get('selectTrace', binaryen.i32)),
+
+      // Repeat with a false condition: result=222, but both arms still run
+      // and retain the same 123 trace.
+      module.global.set('selectTrace', module.i32.const(0)),
+      storeI32(
+        module.select(
+          module.call('markSelectOperand', [module.i32.const(3), module.i32.const(0)], binaryen.i32),
+          module.call('markSelectOperand', [module.i32.const(1), module.i32.const(111)], binaryen.i32),
+          module.call('markSelectOperand', [module.i32.const(2), module.i32.const(222)], binaryen.i32)
+        )
+      ),
+      storeI32(module.global.get('selectTrace', binaryen.i32)),
+
+      // Exact aliasing regression: the selected load must happen before the
+      // condition call overwrites its address (50, not 77).
+      module.i32.store16(0, 2, module.i32.const(512), module.i32.const(50)),
+      storeI32(
+        module.select(
+          module.call('mutateSelectMemory', [], binaryen.i32),
+          module.i32.load16_u(0, 2, module.i32.const(512)),
+          module.i32.const(-1)
+        )
+      ),
+
+      // Exercise every scalar select helper signature.  Each must retain
+      // result=first arm and trace=123.
+      module.global.set('selectTrace', module.i32.const(0)),
+      storeF32(
+        module.select(
+          module.call('markSelectOperand', [module.i32.const(3), module.i32.const(1)], binaryen.i32),
+          module.call('markSelectF32Operand', [module.i32.const(1), module.f32.const(1.25)], binaryen.f32),
+          module.call('markSelectF32Operand', [module.i32.const(2), module.f32.const(2.5)], binaryen.f32)
+        )
+      ),
+      storeI32(module.global.get('selectTrace', binaryen.i32)),
+
+      module.global.set('selectTrace', module.i32.const(0)),
+      storeF64Safe(
+        module.select(
+          module.call('markSelectOperand', [module.i32.const(3), module.i32.const(1)], binaryen.i32),
+          module.call('markSelectF64Operand', [module.i32.const(1), module.f64.const(1.25)], binaryen.f64),
+          module.call('markSelectF64Operand', [module.i32.const(2), module.f64.const(2.5)], binaryen.f64)
+        )
+      ),
+      storeI32(module.global.get('selectTrace', binaryen.i32)),
+
+      module.return()
+    ])
+  );
+
   // exerciseGlobalExports: sets the exported global, reads it back,
   // stores intermediate values to memory for CRC verification.
   module.addFunction(
@@ -511,6 +654,7 @@
   module.addFunctionExport('exerciseOverflowOps', 'exerciseOverflowOps');
   module.addFunctionExport('exerciseEdgeCases', 'exerciseEdgeCases');
   module.addFunctionExport('exerciseGlobalExports', 'exerciseGlobalExports');
+  module.addFunctionExport('exerciseSelectEvaluation', 'exerciseSelectEvaluation');
   module.addFunctionExport('exerciseTruncConvert', 'exerciseTruncConvert');
 
   common.finalizeAndOutput(module);

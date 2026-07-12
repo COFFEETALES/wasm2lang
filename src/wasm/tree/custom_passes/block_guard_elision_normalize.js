@@ -73,7 +73,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
   }
 
   var /** @const {number} */ childCount = children.length;
-  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
+  var /** @const {function(!Binaryen, !BinaryenModule, number, string): boolean} */ hasRefFn =
+      Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
 
   // -----------------------------------------------------------------------
   // Find the first direct-child br_if targeting this block.
@@ -112,7 +113,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
   // sole exit path).
   // -----------------------------------------------------------------------
   for (var /** @type {number} */ pi = 0; pi < guardIdx; ++pi) {
-    if (hasRefFn(binaryen, children[pi], blockName)) {
+    if (hasRefFn(binaryen, module, children[pi], blockName)) {
       return null;
     }
   }
@@ -121,12 +122,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
   // Check for remaining references to blockName in condition and body.
   // -----------------------------------------------------------------------
   var /** @type {boolean} */ hasRef = false;
-  if (hasRefFn(binaryen, condPtr, blockName)) {
+  if (hasRefFn(binaryen, module, condPtr, blockName)) {
     hasRef = true;
   }
   if (!hasRef) {
     for (var /** @type {number} */ ri = guardIdx + 1; ri < childCount; ++ri) {
-      if (hasRefFn(binaryen, children[ri], blockName)) {
+      if (hasRefFn(binaryen, module, children[ri], blockName)) {
         hasRef = true;
         break;
       }

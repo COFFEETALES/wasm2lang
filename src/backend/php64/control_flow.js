@@ -212,6 +212,21 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitSimplifiedLoopFromIR_ = function (s
 };
 
 /**
+ * PHP branch depths are numeric, so removing any intervening wrapper while a
+ * live target remains would invalidate an already-rendered {@code break N}.
+ *
+ * @override
+ * @protected
+ * @param {string} blockName
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} childControl
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.canElideBlockWrapper_ = function (blockName, childControl) {
+  void blockName;
+  return 0 === childControl.branchTargets.length;
+};
+
+/**
  * PHP labeled-block override: wraps named blocks in {@code do { } while (false)}
  * instead of labeled blocks, since PHP uses numeric break/continue depths.
  *
@@ -240,8 +255,13 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, no
       isFused = true;
     }
   }
-  var /** @const {number} */ childInd = blockName && !isFused ? ind + 1 : ind;
-  var /** @const {number} */ emitCount = A.reachableBlockChildCount_(state.binaryen, expr);
+  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(state.binaryen, expr, childResults);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(
+      childResults,
+      emitCount
+    );
+  var /** @const {boolean} */ needsWrapper = !!blockName && !this.canElideBlockWrapper_(blockName, childControl);
+  var /** @const {number} */ childInd = needsWrapper && !isFused ? ind + 1 : ind;
   var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
   if (isFused) return blockBody;
   if (blockName) {
@@ -258,6 +278,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, no
           'Use binaryen:min normalization to flatten value-typed blocks before codegen.'
       );
     }
+    if (!needsWrapper) return blockBody;
     return pad(ind) + 'do {\n' + blockBody + pad(ind) + '} while (false);\n';
   }
   return blockBody;
@@ -283,6 +304,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @type {number} */ resultCat = A.CAT_VOID;
+  var /** @type {boolean} */ resultTerminalOverride = false;
+  var /** @type {boolean} */ resultTerminalOverrideIsAuthoritative = false;
   var /** @const */ self = this;
   var inlineTemp = /** @param {number} tempIndex @return {string} */ function (tempIndex) {
     return self.localN_(state.inlineTempOffset + tempIndex);
@@ -292,8 +315,38 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
   var /** @const {function(number): string} */ cr = acc.cr;
   var /** @const {function(number): number} */ cc = acc.cc;
 
-  var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
-  if (common) return A.buildLeaveResult_(common.emittedString, common.resultCat);
+  var /** @const {?Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ terminal = this.propagateTerminalChild_(
+      binaryen,
+      expr,
+      id,
+      childResults,
+      state.wasmModule,
+      ind
+    );
+  if (terminal) return {decisionValue: terminal};
+
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(childResults);
+  var /** @type {boolean} */ resultMayExitFunction = childControl.mayExitFunction;
+  var /** @type {!Array<string>} */ resultBranchTargets = childControl.branchTargets;
+
+  var /** @const */ common = this.emitLeaveCommonCase_(
+      binaryen,
+      expr,
+      id,
+      ind,
+      childResults,
+      state.wasmModule,
+      state.functionInfo
+    );
+  if (common) {
+    return A.buildLeaveResult_(
+      common.emittedString,
+      common.resultCat,
+      !!common.isTerminal,
+      resultMayExitFunction || !!common.mayExitFunction,
+      resultBranchTargets
+    );
+  }
 
   switch (id) {
     case binaryen.GlobalGetId: {
@@ -453,11 +506,21 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.CallIndirectId: {
       var /** @const {string} */ ftableVar = this.phpVar_('ftable');
-      state.usedCaptures[ftableVar] = true;
       var /** @const {number} */ ciRetType = expr.type;
+      var /** @const {!Array<number>} */ ciParamTypes = binaryen.expandType(/** @type {number} */ (expr.params));
+      var /** @const {string} */ ciSigKey = A.buildSignatureKey_(binaryen, ciParamTypes, ciRetType);
       var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
       var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
-      var /** @const {string} */ ciCallExpr = ftableVar + '[' + ciIndexExpr + '](' + ciArgs.join(', ') + ')';
+      var /** @type {string} */ ciCallExpr;
+      if (this.callIndirectNeedsOrderedEvaluation_(binaryen, expr, state.wasmModule)) {
+        var /** @const {string} */ ciWrapperVar = this.phpVar_(this.getOrderedCallIndirectWrapperName_(ciSigKey));
+        state.usedCaptures[ciWrapperVar] = true;
+        ciArgs[ciArgs.length] = ciIndexExpr;
+        ciCallExpr = ciWrapperVar + '(' + ciArgs.join(', ') + ')';
+      } else {
+        state.usedCaptures[ftableVar] = true;
+        ciCallExpr = ftableVar + '[' + ciIndexExpr + '](' + ciArgs.join(', ') + ')';
+      }
       if (binaryen.none === ciRetType || 0 === ciRetType) {
         result = pad(ind) + ciCallExpr + ';\n';
       } else {
@@ -468,18 +531,35 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     }
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = expr.type;
-      var /** @const */ selP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-      result = this.renderCoercionByType_(
-        binaryen,
-        '(' +
-          selP.wrap_(cr(0), selP.PREC_CONDITIONAL_, false) +
-          ' ? ' +
-          cr(1) +
-          ' : ' +
-          selP.wrap_(cr(2), selP.PREC_CONDITIONAL_, false) +
-          ')',
-        selectType
-      );
+      if (this.selectNeedsEagerEvaluation_(binaryen, expr, state.wasmModule)) {
+        var /** @const {string} */ phpSelectHelper = this.getEagerSelectHelperName_(binaryen, selectType);
+        this.markHelper_(phpSelectHelper);
+        result = this.renderCoercionByType_(
+          binaryen,
+          this.n_(phpSelectHelper) +
+            '(' +
+            this.coerceToType_(binaryen, cr(1), cc(1), selectType) +
+            ', ' +
+            this.coerceToType_(binaryen, cr(2), cc(2), selectType) +
+            ', ' +
+            this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) +
+            ')',
+          selectType
+        );
+      } else {
+        var /** @const */ selP = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+        result = this.renderCoercionByType_(
+          binaryen,
+          '(' +
+            selP.wrap_(cr(0), selP.PREC_CONDITIONAL_, false) +
+            ' ? ' +
+            cr(1) +
+            ' : ' +
+            selP.wrap_(cr(2), selP.PREC_CONDITIONAL_, false) +
+            ')',
+          selectType
+        );
+      }
       resultCat = A.catForCoercedType_(binaryen, selectType);
       break;
     }
@@ -521,6 +601,15 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
         nodeCtx,
         childResults
       );
+      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ blockControl = A.summarizeBlockControl_(
+          binaryen,
+          expr,
+          childResults
+        );
+      resultTerminalOverride = blockControl.isTerminal;
+      resultTerminalOverrideIsAuthoritative = true;
+      resultMayExitFunction = blockControl.mayExitFunction;
+      resultBranchTargets = blockControl.branchTargets;
       break;
     }
     case binaryen.LoopId: {
@@ -534,6 +623,15 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       } else {
         result = this.emitRawInfiniteLoop_(ind, '', cr(0), true);
       }
+      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ loopControl = A.summarizeLoopControl_(
+          binaryen,
+          expr,
+          childResults
+        );
+      resultTerminalOverride = loopControl.isTerminal;
+      resultTerminalOverrideIsAuthoritative = true;
+      resultMayExitFunction = loopControl.mayExitFunction;
+      resultBranchTargets = loopControl.branchTargets;
       break;
     }
 
@@ -567,6 +665,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
     case binaryen.BreakId: {
       var /** @const {string} */ brName = /** @type {string} */ (expr.name);
       var /** @const {number} */ brCondPtr = /** @type {number} */ (expr.condition);
+      A.appendUniqueBranchTargets_(resultBranchTargets, [brName]);
       // Root-switch exit interception.
       if (state.rootSwitchExitMap) {
         if (brName in state.rootSwitchExitMap) {
@@ -636,6 +735,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       }
       switchLines[switchLines.length] = pad(ind) + '}\n';
       result = switchLines.join('');
+      A.appendUniqueBranchTargets_(resultBranchTargets, switchNames);
+      if ('' !== switchDefault) A.appendUniqueBranchTargets_(resultBranchTargets, [switchDefault]);
       break;
     }
     default:
@@ -643,7 +744,23 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
   }
 
-  return A.buildLeaveResult_(result, resultCat);
+  return A.buildLeaveResult_(
+    result,
+    resultCat,
+    resultTerminalOverrideIsAuthoritative ? resultTerminalOverride : binaryen.unreachable === expr.type,
+    resultMayExitFunction,
+    resultBranchTargets
+  );
+};
+
+/**
+ * @override
+ * @protected
+ * @param {number} indent
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.renderUnreachableStatement_ = function (indent) {
+  return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + 'throw new \\RuntimeException();\n';
 };
 
 /**
@@ -887,7 +1004,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
     var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ phpMetaLoop = this.getLoopPlan_(state.functionInfo.name, loopName);
     if (phpMetaLoop) phpLoopKind = phpMetaLoop.simplifiedLoopKind;
     if (!phpLoopKind && this.useSimplifications_) {
-      phpLoopKind = this.detectLoopKindFromIR_(binaryen, expr, phpEnclosingFused);
+      phpLoopKind = this.detectLoopKindFromIR_(binaryen, state.wasmModule, expr, phpEnclosingFused);
     }
     if (phpLoopKind) {
       state.pendingLoopKind = phpLoopKind;

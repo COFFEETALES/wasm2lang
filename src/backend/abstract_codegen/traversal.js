@@ -32,17 +32,55 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.walkAndAppendBody_ = function (
   emitState,
   padStr
 ) {
+  this.prepareControlFlowSummary_(wasmModule, binaryen);
+
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ self = this;
   var /** @type {number} */ nodeCount = 0;
   var /** @const {!Object<number, boolean>} */ seenIds =
       this.diagnosticSeenIds_ || /** @type {!Object<number, boolean>} */ (Object.create(null));
+  var /** @const {!Object<string, boolean>} */ skippedPointers = Object.create(null);
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor =
     /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
-      enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) { ++nodeCount; seenIds[nc.expression.id] = true; return self.emitEnter_(emitState, nc); },
+      enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) {
+        ++nodeCount;
+        seenIds[nc.expression.id] = true;
+        var /** @const {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ decision = self.emitEnter_(emitState, nc);
+        if (
+          decision &&
+          Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE === decision.decisionAction
+        ) {
+          skippedPointers[String(nc.expressionPointer)] = true;
+        }
+        return decision;
+      },
       leave: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} cr @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc, cr) {
+        var /** @type {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} */ effectiveChildResults = cr || [];
+        var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression = nc.expression;
+        var /** @const {string} */ pointerKey = String(nc.expressionPointer);
+        var /** @const {boolean} */ wasSkipped = !!skippedPointers[pointerKey];
+        if (wasSkipped) delete skippedPointers[pointerKey];
+        if (wasSkipped && (binaryen.BlockId === expression.id || binaryen.LoopId === expression.id)) {
+          if (0 !== effectiveChildResults.length) {
+            throw new Error('Wasm2Lang codegen: SKIP_SUBTREE unexpectedly produced child results.');
+          }
+          var /** @const {?Wasm2Lang.Wasm.Tree.ControlFlowSummary} */ skippedSummary =
+              self.getControlFlowSummary_(funcInfo.name, nc.expressionPointer);
+          if (!skippedSummary) {
+            throw new Error(
+              'Wasm2Lang codegen: missing control summary for skipped expression ' +
+                nc.expressionPointer +
+                ' in function "' +
+                funcInfo.name +
+                '".'
+            );
+          }
+          effectiveChildResults = [];
+          /** @type {!Wasm2Lang.Wasm.Tree.SkippedControlSummaryCarrier} */ (effectiveChildResults).w2lSkippedControlSummary =
+            skippedSummary;
+        }
         self.adjustLeaveIndent_(emitState, nc);
-        return self.emitLeave_(emitState, nc, cr || []);
+        return self.emitLeave_(emitState, nc, effectiveChildResults);
       }
     });
   emitState.visitor = visitor;

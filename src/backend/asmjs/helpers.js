@@ -105,6 +105,36 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + 'return ' + l1 + '|0;\n' +
     pad1 + '}');
 
+  // Wasm select evaluates true, false, then condition eagerly.  Passing the
+  // three operands to these helpers in that order preserves the wasm
+  // evaluation contract when an operand has observable effects.
+  // prettier-ignore
+  h('$w2l_select_i32', [],
+    pad1 + 'function ' + n('$w2l_select_i32') + '(' + l0 + ', ' + l1 + ', ' + l2 + ') {\n' +
+    pad2 + l0 + ' = ' + l0 + '|0;\n' +
+    pad2 + l1 + ' = ' + l1 + '|0;\n' +
+    pad2 + l2 + ' = ' + l2 + '|0;\n' +
+    pad2 + 'return (' + l2 + ' ? ' + l0 + ' : ' + l1 + ')|0;\n' +
+    pad1 + '}');
+
+  // prettier-ignore
+  h('$w2l_select_f32', ['Math_fround'],
+    pad1 + 'function ' + n('$w2l_select_f32') + '(' + l0 + ', ' + l1 + ', ' + l2 + ') {\n' +
+    pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');\n' +
+    pad2 + l1 + ' = ' + nMathFround + '(' + l1 + ');\n' +
+    pad2 + l2 + ' = ' + l2 + '|0;\n' +
+    pad2 + 'return ' + nMathFround + '(' + l2 + ' ? ' + l0 + ' : ' + l1 + ');\n' +
+    pad1 + '}');
+
+  // prettier-ignore
+  h('$w2l_select_f64', [],
+    pad1 + 'function ' + n('$w2l_select_f64') + '(' + l0 + ', ' + l1 + ', ' + l2 + ') {\n' +
+    pad2 + l0 + ' = +' + l0 + ';\n' +
+    pad2 + l1 + ' = +' + l1 + ';\n' +
+    pad2 + l2 + ' = ' + l2 + '|0;\n' +
+    pad2 + 'return +(' + l2 + ' ? ' + l0 + ' : ' + l1 + ');\n' +
+    pad1 + '}');
+
   // prettier-ignore
   h('$w2l_rotl', [],
     pad1 + 'function ' + n('$w2l_rotl') + '(' + l0 + ', ' + l1 + ') {\n' +

@@ -54,6 +54,35 @@ Wasm2Lang.Wasm.Tree.IfElseRecoveryPlan;
 Wasm2Lang.Wasm.Tree.BlockGuardElisionPlan;
 
 /**
+ * Semantic control outcome for one Binaryen expression. The summary records
+ * whether normal completion is impossible, whether execution may leave the
+ * function, and which enclosing labels may receive a branch.
+ *
+ * @typedef {{
+ *   isTerminal: boolean,
+ *   mayExitFunction: boolean,
+ *   branchTargets: !Array<string>
+ * }}
+ */
+Wasm2Lang.Wasm.Tree.ControlFlowSummary;
+
+/** @typedef {!Object<string, !Wasm2Lang.Wasm.Tree.ControlFlowSummary>} */
+Wasm2Lang.Wasm.Tree.FunctionControlFlowSummaryIndex;
+
+/** @typedef {!Object<string, !Wasm2Lang.Wasm.Tree.FunctionControlFlowSummaryIndex>} */
+Wasm2Lang.Wasm.Tree.ControlFlowSummaryIndex;
+
+/**
+ * Side channel attached to a fresh empty child-result array when codegen has
+ * deliberately skipped a block or loop subtree.
+ *
+ * @typedef {{
+ *   w2lSkippedControlSummary: (!Wasm2Lang.Wasm.Tree.ControlFlowSummary|undefined)
+ * }}
+ */
+Wasm2Lang.Wasm.Tree.SkippedControlSummaryCarrier;
+
+/**
  * @typedef {{
  *   passFuncName: (string|void),
  *   passFuncPtr: (number|void),

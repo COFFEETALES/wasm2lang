@@ -4,6 +4,7 @@
     mod.alignHeapTop();
     mod.exerciseBulkMemory(mod.getHeapTop());
     mod.exerciseMemoryGrow();
+    mod.exerciseBulkControlFlow();
 
     java.util.Map<String, Object> _data = w2lLoadSharedData(System.getProperty("w2l.testname", ""));
 

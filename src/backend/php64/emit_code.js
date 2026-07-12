@@ -20,6 +20,17 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   for (var /** @type {number} */ fn = 0, /** @const {number} */ fnCount = moduleInfo.functions.length; fn !== fnCount; ++fn) {
     internalFuncNames[internalFuncNames.length] = this.safeName_(moduleInfo.functions[fn].name);
   }
+  var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
+  for (var /** @type {number} */ ocn = 0; ocn !== ftKeys.length; ++ocn) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ocnDesc =
+        moduleInfo.functionTables[ftKeys[ocn]];
+    if (!ocnDesc.orderedCallNeeded) continue;
+    var /** @const {string} */ ocnName = this.getOrderedCallIndirectWrapperName_(ocnDesc.signatureKey);
+    // Treat dispatchers like internal closure variables so emitted wasm
+    // functions capture them by reference through the existing use-clause
+    // machinery.
+    internalFuncNames[internalFuncNames.length] = ocnName;
+  }
 
   // Resolve stdlib imports.
   var /** @const */ stdlibBindings = Wasm2Lang.Backend.AbstractCodegen.resolveStdlibBindings_(
@@ -63,6 +74,29 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
       phpStdlibNames,
       phpStdlibGlobals
     );
+  }
+  var /** @const {!Array<string>} */ orderedCallWrapperParts = [];
+  for (var /** @type {number} */ ocw = 0; ocw !== ftKeys.length; ++ocw) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ocwDesc =
+        moduleInfo.functionTables[ftKeys[ocw]];
+    if (!ocwDesc.orderedCallNeeded) continue;
+    var /** @const {number} */ ocwParamCount = ocwDesc.signatureParams.length;
+    var /** @const {!Array<string>} */ ocwParams = this.buildParamNameList_(ocwParamCount + 1);
+    var /** @const {!Array<string>} */ ocwCallArgs = ocwParams.slice(0, ocwParamCount);
+    var /** @const {string} */ ocwCall =
+        this.phpVar_('ftable') + '[' + ocwParams[ocwParamCount] + '](' + ocwCallArgs.join(', ') + ')';
+    var /** @const {boolean} */ ocwHasReturn =
+        binaryen.none !== ocwDesc.signatureReturnType && 0 !== ocwDesc.signatureReturnType;
+    orderedCallWrapperParts[orderedCallWrapperParts.length] =
+      Wasm2Lang.Backend.AbstractCodegen.pad_(1) +
+      this.phpVar_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
+      ' = function(' +
+      ocwParams.join(', ') +
+      ') use (&' +
+      this.phpVar_('ftable') +
+      ') { ' +
+      (ocwHasReturn ? 'return ' + this.renderCoercionByType_(binaryen, ocwCall, ocwDesc.signatureReturnType) : ocwCall) +
+      '; };';
   }
   this.castNames_ = null;
   var /** @const {!Object<string, boolean>} */ usedB = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
@@ -117,6 +151,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   // Function table forward declaration.
   if (moduleInfo.flatTableEntries.length > 0) {
     outputParts[outputParts.length] = pad1 + this.phpVar_('ftable') + ' = [];';
+  }
+
+  for (var /** @type {number} */ ocp = 0; ocp !== orderedCallWrapperParts.length; ++ocp) {
+    outputParts[outputParts.length] = orderedCallWrapperParts[ocp];
   }
 
   // Append function bodies.

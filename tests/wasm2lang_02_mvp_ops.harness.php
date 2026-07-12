@@ -21,6 +21,7 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
 
     $exports['exerciseOverflowOps']();
     $exports['exerciseEdgeCases']();
+    $exports['exerciseSelectEvaluation']();
 
     // Exported mutable global: exercise via getter/setter and function.
     $exports['counter$set'](42);

@@ -31,6 +31,23 @@
 Wasm2Lang.Backend.JavaCodegen.EmitState_;
 
 /**
+ * Java supports eager v128 selects through its IntVector helper.
+ *
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} valueType
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaCodegen.prototype.getEagerSelectHelperName_ = function (binaryen, valueType) {
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, valueType)) {
+    this.markBinding_('$v128');
+    return this.getRuntimeHelperPrefix_() + 'select_v128';
+  }
+  return Wasm2Lang.Backend.AbstractCodegen.prototype.getEagerSelectHelperName_.call(this, binaryen, valueType);
+};
+
+/**
  * @param {!Wasm2Lang.Backend.JavaCodegen.EmitState_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
@@ -46,6 +63,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @type {number} */ resultCat = A.CAT_VOID;
+  var /** @type {boolean} */ resultTerminalOverride = false;
+  var /** @type {boolean} */ resultTerminalOverrideIsAuthoritative = false;
 
   // Reset terminal flag for all non-Block expressions (Block propagates from
   // its last child).  Terminal handlers (Return, unconditional Break, Switch
@@ -59,10 +78,41 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
   var /** @const {function(number): string} */ cr = acc.cr;
   var /** @const {function(number): number} */ cc = acc.cc;
 
-  var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
+  var /** @const {?Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ terminal = this.propagateTerminalChild_(
+      binaryen,
+      expr,
+      id,
+      childResults,
+      state.wasmModule,
+      ind
+    );
+  if (terminal) {
+    state.lastExprIsTerminal = true;
+    return {decisionValue: terminal};
+  }
+
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(childResults);
+  var /** @type {boolean} */ resultMayExitFunction = childControl.mayExitFunction;
+  var /** @type {!Array<string>} */ resultBranchTargets = childControl.branchTargets;
+
+  var /** @const */ common = this.emitLeaveCommonCase_(
+      binaryen,
+      expr,
+      id,
+      ind,
+      childResults,
+      state.wasmModule,
+      state.functionInfo
+    );
   if (common) {
-    if (binaryen.ReturnId === id) state.lastExprIsTerminal = true;
-    return A.buildLeaveResult_(common.emittedString, common.resultCat);
+    if (common.isTerminal) state.lastExprIsTerminal = true;
+    return A.buildLeaveResult_(
+      common.emittedString,
+      common.resultCat,
+      !!common.isTerminal,
+      resultMayExitFunction || !!common.mayExitFunction,
+      resultBranchTargets
+    );
   }
 
   switch (id) {
@@ -187,7 +237,13 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
       var /** @const {string} */ ciTableName = this.n_('$ftable_' + ciSigKey);
       var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
-      var /** @const {string} */ ciCallExpr = 'this.' + ciTableName + '[' + ciIndexExpr + '].call(' + ciArgs.join(', ') + ')';
+      var /** @type {string} */ ciCallExpr;
+      if (this.callIndirectNeedsOrderedEvaluation_(binaryen, expr, state.wasmModule)) {
+        ciArgs[ciArgs.length] = ciIndexExpr;
+        ciCallExpr = 'this.' + this.n_(this.getOrderedCallIndirectWrapperName_(ciSigKey)) + '(' + ciArgs.join(', ') + ')';
+      } else {
+        ciCallExpr = 'this.' + ciTableName + '[' + ciIndexExpr + '].call(' + ciArgs.join(', ') + ')';
+      }
       if (binaryen.none === ciRetType || 0 === ciRetType) {
         result = pad(ind) + ciCallExpr + ';\n';
       } else {
@@ -198,14 +254,28 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
     }
     case binaryen.SelectId: {
       var /** @const {number} */ selectType = expr.type;
-      var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-      var /** @type {string} */ selCondStr;
-      if (A.CAT_BOOL_I32 === cc(0)) {
-        selCondStr = Ps.wrap_(cr(0), Ps.PREC_CONDITIONAL_, false);
+      if (this.selectNeedsEagerEvaluation_(binaryen, expr, state.wasmModule)) {
+        var /** @const {string} */ javaSelectHelper = this.getEagerSelectHelperName_(binaryen, selectType);
+        this.markHelper_(javaSelectHelper);
+        result =
+          this.n_(javaSelectHelper) +
+          '(' +
+          this.coerceToType_(binaryen, cr(1), cc(1), selectType) +
+          ', ' +
+          this.coerceToType_(binaryen, cr(2), cc(2), selectType) +
+          ', ' +
+          this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) +
+          ')';
       } else {
-        selCondStr = Ps.renderInfix(cr(0), '!=', '0', Ps.PREC_EQUALITY_);
+        var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+        var /** @type {string} */ selCondStr;
+        if (A.CAT_BOOL_I32 === cc(0)) {
+          selCondStr = Ps.wrap_(cr(0), Ps.PREC_CONDITIONAL_, false);
+        } else {
+          selCondStr = Ps.renderInfix(cr(0), '!=', '0', Ps.PREC_EQUALITY_);
+        }
+        result = '(' + selCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')';
       }
-      result = '(' + selCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')';
       resultCat = A.catForCoercedType_(binaryen, selectType);
       break;
     }
@@ -232,6 +302,15 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
         return /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ ({decisionValue: rootValueShape});
       }
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
+      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ blockControl = A.summarizeBlockControl_(
+          binaryen,
+          expr,
+          childResults
+        );
+      resultTerminalOverride = blockControl.isTerminal;
+      resultTerminalOverrideIsAuthoritative = true;
+      resultMayExitFunction = blockControl.mayExitFunction;
+      resultBranchTargets = blockControl.branchTargets;
       break;
     }
     case binaryen.LoopId: {
@@ -257,11 +336,21 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
             binaryen,
             /** @type {number} */ (expr.body)
           );
-        var /** @const {boolean} */ needsTrailingBreak = binaryen.unreachable !== loopBodyInfo.type;
+        var /** @const {boolean} */ needsTrailingBreak =
+            binaryen.unreachable !== loopBodyInfo.type && !A.getChildResultInfo_(childResults, 0).isTerminal;
         var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
         result = this.emitRawInfiniteLoop_(ind, rawLabel, cr(0), needsTrailingBreak);
       }
       --state.breakableStack.length;
+      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ loopControl = A.summarizeLoopControl_(
+          binaryen,
+          expr,
+          childResults
+        );
+      resultTerminalOverride = loopControl.isTerminal;
+      resultTerminalOverrideIsAuthoritative = true;
+      resultMayExitFunction = loopControl.mayExitFunction;
+      resultBranchTargets = loopControl.branchTargets;
       break;
     }
     case binaryen.IfId: {
@@ -290,10 +379,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
     }
     case binaryen.BreakId: {
+      var /** @const {string} */ brName = /** @type {string} */ (expr.name);
       var /** @const */ brResult = this.emitBreakStatement_(
           state,
           ind,
-          /** @type {string} */ (expr.name),
+          brName,
           /** @type {number} */ (expr.condition),
           cr(0),
           cc(0)
@@ -302,19 +392,17 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       if (brResult.isTerminal) {
         state.lastExprIsTerminal = true;
       }
+      A.appendUniqueBranchTargets_(resultBranchTargets, [brName]);
       break;
     }
     case binaryen.SwitchId: {
-      var /** @const */ swResult = this.emitSwitchStatement_(
-          state,
-          ind,
-          cr(0),
-          /** @type {!Array<string>} */ (expr.names || []),
-          /** @type {string} */ (expr.defaultName || ''),
-          cc(0)
-        );
+      var /** @const {!Array<string>} */ swNames = /** @type {!Array<string>} */ (expr.names || []);
+      var /** @const {string} */ swDefault = /** @type {string} */ (expr.defaultName || '');
+      var /** @const */ swResult = this.emitSwitchStatement_(state, ind, cr(0), swNames, swDefault, cc(0));
       result = swResult.emittedString;
       state.lastExprIsTerminal = swResult.hasDefault;
+      A.appendUniqueBranchTargets_(resultBranchTargets, swNames);
+      if ('' !== swDefault) A.appendUniqueBranchTargets_(resultBranchTargets, [swDefault]);
       break;
     }
     case binaryen.SIMDExtractId: {
@@ -421,7 +509,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       break;
   }
 
-  return A.buildLeaveResult_(result, resultCat);
+  var /** @const {boolean} */ resultIsTerminal = resultTerminalOverrideIsAuthoritative
+      ? resultTerminalOverride
+      : binaryen.unreachable === expr.type;
+  if (resultIsTerminal) state.lastExprIsTerminal = true;
+  return A.buildLeaveResult_(result, resultCat, resultIsTerminal, resultMayExitFunction, resultBranchTargets);
 };
 
 /**
@@ -439,6 +531,16 @@ Wasm2Lang.Backend.JavaCodegen.prototype.shouldEmitDropChild_ = function (binarye
   if (!dropValuePtr) return false;
   var /** @const {number} */ childId = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, dropValuePtr).id;
   return binaryen.CallId === childId || binaryen.CallIndirectId === childId;
+};
+
+/**
+ * @override
+ * @protected
+ * @param {number} indent
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaCodegen.prototype.renderUnreachableStatement_ = function (indent) {
+  return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + 'throw new ArithmeticException();\n';
 };
 
 /**

@@ -434,77 +434,60 @@ Wasm2Lang.Wasm.Tree.CustomPasses.declareFunctionFieldAccessor_ = function (exter
 };
 
 // ---------------------------------------------------------------------------
-// Shared control-flow subtree walker + reference checker
+// Shared expression-subtree predicate + reference checker
 // ---------------------------------------------------------------------------
 
 /**
- * Walks a control-flow subtree and returns true when {@code testFn} returns
- * true for any node.  {@code testFn} returns true/false to short-circuit the
- * walk with that verdict, or {@code null} to let the walker recurse into the
- * node's control-flow children — Block children, Loop body, both If arms, and
- * the value slot of Drop/Return/LocalSet/GlobalSet.  This is the single shared
- * structural walker behind the "does the subtree contain X" passes; callers
- * supply only the per-node predicate.
+ * Returns true when {@code testFn} matches any expression in a subtree.
+ * Traversal goes exclusively through the shared kernel, so every registered
+ * NodeSchema edge is covered.  Once a match is found, later sibling roots are
+ * still entered because the kernel has no global abort action, but each of
+ * their subtrees is pruned immediately.
  *
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {number} ptr
- * @param {function(!BinaryenExpressionInfo, number): ?boolean} testFn
+ * @param {function(!BinaryenExpressionInfo, number): boolean} testFn
  * @return {boolean}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.walkControlFlowSubtree_ = function (binaryen, ptr, testFn) {
-  if (!ptr) {
-    return false;
-  }
-  var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (
-      Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr)
-    );
-  var /** @const {number} */ id = info.id;
-  var /** @const {?boolean} */ verdict = testFn(info, id);
-  if (null !== verdict) {
-    return verdict;
-  }
-  var /** @const {function(!Binaryen, number, function(!BinaryenExpressionInfo, number): ?boolean): boolean} */ walk =
-      Wasm2Lang.Wasm.Tree.CustomPasses.walkControlFlowSubtree_;
-  if (binaryen.BlockId === id) {
-    var /** @const {!Array<number>|undefined} */ ch = /** @type {!Array<number>|undefined} */ (info.children);
-    if (ch) {
-      for (var /** @type {number} */ ci = 0, /** @const {number} */ cLen = ch.length; ci < cLen; ++ci) {
-        if (walk(binaryen, ch[ci], testFn)) {
-          return true;
-        }
+Wasm2Lang.Wasm.Tree.CustomPasses.containsExpression_ = function (binaryen, wasmModule, ptr, testFn) {
+  if (!ptr) return false;
+
+  var /** @type {boolean} */ found = false;
+  var /** @const {string} */ SKIP = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE;
+  Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
+    binaryen,
+    wasmModule,
+    ptr,
+    /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx @return {(string|undefined)} */ function (nodeCtx) {
+      if (found) return SKIP;
+      var /** @const {!BinaryenExpressionInfo} */ info = nodeCtx.expression;
+      if (testFn(info, info.id)) {
+        found = true;
+        return SKIP;
       }
+      return undefined;
     }
-    return false;
-  }
-  if (binaryen.LoopId === id) {
-    return walk(binaryen, /** @type {number} */ (info.body || 0), testFn);
-  }
-  if (binaryen.IfId === id) {
-    return (
-      walk(binaryen, /** @type {number} */ (info.ifTrue || 0), testFn) ||
-      walk(binaryen, /** @type {number} */ (info.ifFalse || 0), testFn)
-    );
-  }
-  if (binaryen.DropId === id || binaryen.ReturnId === id || binaryen.LocalSetId === id || binaryen.GlobalSetId === id) {
-    return walk(binaryen, /** @type {number} */ (info.value || 0), testFn);
-  }
-  return false;
+  );
+  return found;
 };
 
 /**
- * Recursively checks whether any BreakId or SwitchId in the subtree
- * targets the given label name.  Shared across multiple passes.
+ * Checks whether any BreakId or SwitchId in the subtree targets the given
+ * label name.  Shared across multiple passes.
  *
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {number} ptr
  * @param {string} targetName
  * @return {boolean}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.hasReference = function (binaryen, ptr, targetName) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.walkControlFlowSubtree_(
+Wasm2Lang.Wasm.Tree.CustomPasses.hasReference = function (binaryen, wasmModule, ptr, targetName) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.containsExpression_(
     binaryen,
+    wasmModule,
     ptr,
-    /** @param {!BinaryenExpressionInfo} info @param {number} id @return {?boolean} */ function (info, id) {
+    /** @param {!BinaryenExpressionInfo} info @param {number} id @return {boolean} */ function (info, id) {
       if (binaryen.BreakId === id) {
         return /** @type {?string} */ (info.name) === targetName;
       }
@@ -515,7 +498,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.hasReference = function (binaryen, ptr, targetN
         }
         return /** @type {string} */ (info.defaultName || '') === targetName;
       }
-      return null;
+      return false;
     }
   );
 };

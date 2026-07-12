@@ -613,6 +613,202 @@
         module.return()
       ])
     );
+
+    // -----------------------------------------------------------------
+    // select terminal operands: wasm evaluates true, false, condition.
+    // A return, branch or trap in any reached operand transfers control
+    // immediately; it must never be embedded in a target helper call.
+    // -----------------------------------------------------------------
+    module.setFeatures(module.getFeatures() | binaryen.Features.MutableGlobals);
+    module.addGlobal('selectControlTrace', binaryen.i32, true, module.i32.const(0));
+    module.addFunction(
+      'markSelectControl',
+      binaryen.createType([binaryen.i32, binaryen.i32]),
+      binaryen.i32,
+      [],
+      module.block(null, [
+        module.global.set(
+          'selectControlTrace',
+          module.i32.add(
+            module.i32.mul(module.global.get('selectControlTrace', binaryen.i32), module.i32.const(10)),
+            module.local.get(0, binaryen.i32)
+          )
+        ),
+        module.return(module.local.get(1, binaryen.i32))
+      ])
+    );
+    module.addFunction(
+      'selectReturnTrue',
+      binaryen.none,
+      binaryen.i32,
+      [],
+      module.select(module.i32.const(0), module.return(module.i32.const(5)), module.i32.const(7))
+    );
+    module.addFunction(
+      'selectReturnFalse',
+      binaryen.none,
+      binaryen.i32,
+      [],
+      module.select(
+        module.i32.const(0),
+        module.call('markSelectControl', [module.i32.const(1), module.i32.const(11)], binaryen.i32),
+        module.return(module.i32.const(6))
+      )
+    );
+    module.addFunction(
+      'selectReturnCondition',
+      binaryen.none,
+      binaryen.i32,
+      [],
+      module.select(
+        module.return(module.i32.const(7)),
+        module.call('markSelectControl', [module.i32.const(1), module.i32.const(11)], binaryen.i32),
+        module.call('markSelectControl', [module.i32.const(2), module.i32.const(22)], binaryen.i32)
+      )
+    );
+    module.addFunction(
+      'selectNestedReturn',
+      binaryen.none,
+      binaryen.i32,
+      [],
+      module.i32.add(
+        module.select(module.i32.const(0), module.return(module.i32.const(8)), module.i32.const(7)),
+        module.call('markSelectControl', [module.i32.const(9), module.i32.const(1)], binaryen.i32)
+      )
+    );
+    module.addFunction(
+      'branchValueReturn',
+      binaryen.none,
+      binaryen.i32,
+      [],
+      module.block(null, [
+        module.block('branchValueExit', [
+          module.break(
+            'branchValueExit',
+            module.call('markSelectControl', [module.i32.const(9), module.i32.const(1)], binaryen.i32),
+            module.return(module.i32.const(9))
+          )
+        ]),
+        module.return(module.i32.const(99))
+      ])
+    );
+    module.addFunction(
+      'switchValueReturn',
+      binaryen.none,
+      binaryen.i32,
+      [],
+      module.block(null, [
+        module.block('switchValueExit', [
+          module.switch(
+            ['switchValueExit'],
+            'switchValueExit',
+            module.call('markSelectControl', [module.i32.const(9), module.i32.const(0)], binaryen.i32),
+            module.return(module.i32.const(10))
+          )
+        ]),
+        module.return(module.i32.const(100))
+      ])
+    );
+    module.addFunction(
+      'blockEscapeGuard',
+      binaryen.createType([binaryen.i32]),
+      binaryen.i32,
+      [],
+      module.block(null, [
+        module.block('blockEscapeGuardExit', [
+          module.break('blockEscapeGuardExit', module.local.get(0, binaryen.i32)),
+          module.return(module.i32.const(9))
+        ]),
+        module.return(module.i32.const(7))
+      ])
+    );
+    module.addFunction(
+      'nestedBlockEscapeGuard',
+      binaryen.createType([binaryen.i32]),
+      binaryen.i32,
+      [],
+      module.block(null, [
+        module.block('nestedBlockEscapeOuter', [
+          module.block('nestedBlockEscapeInner', [
+            module.break('nestedBlockEscapeOuter', module.local.get(0, binaryen.i32)),
+            module.return(module.i32.const(9))
+          ])
+        ]),
+        module.return(module.i32.const(7))
+      ])
+    );
+    module.addFunction(
+      'deadSelectBranchAfterReturn',
+      binaryen.createType([binaryen.i32]),
+      binaryen.i32,
+      [],
+      module.block(null, [
+        module.block('deadSelectBranchOuter', [
+          module.drop(
+            module.select(
+              module.local.get(0, binaryen.i32),
+              module.return(module.i32.const(9)),
+              module.break('deadSelectBranchOuter')
+            )
+          )
+        ]),
+        module.return(module.i32.const(7))
+      ])
+    );
+    module.addFunction(
+      'exerciseSelectBranch',
+      binaryen.none,
+      binaryen.none,
+      [],
+      module.block(null, [
+        module.block('selectBranchExit', [
+          module.drop(module.select(module.i32.const(0), module.break('selectBranchExit'), module.i32.const(7)))
+        ]),
+        storeI32(module.i32.const(44)),
+        module.return()
+      ])
+    );
+    module.addFunction(
+      'exerciseSelectTerminalEvaluation',
+      binaryen.none,
+      binaryen.none,
+      [],
+      module.block(null, [
+        module.global.set('selectControlTrace', module.i32.const(0)),
+        storeI32(module.call('selectReturnTrue', [], binaryen.i32)),
+        storeI32(module.global.get('selectControlTrace', binaryen.i32)),
+        module.global.set('selectControlTrace', module.i32.const(0)),
+        storeI32(module.call('selectReturnFalse', [], binaryen.i32)),
+        storeI32(module.global.get('selectControlTrace', binaryen.i32)),
+        module.global.set('selectControlTrace', module.i32.const(0)),
+        storeI32(module.call('selectReturnCondition', [], binaryen.i32)),
+        storeI32(module.global.get('selectControlTrace', binaryen.i32)),
+        module.global.set('selectControlTrace', module.i32.const(0)),
+        storeI32(module.call('selectNestedReturn', [], binaryen.i32)),
+        storeI32(module.global.get('selectControlTrace', binaryen.i32)),
+        module.global.set('selectControlTrace', module.i32.const(0)),
+        storeI32(module.call('branchValueReturn', [], binaryen.i32)),
+        storeI32(module.global.get('selectControlTrace', binaryen.i32)),
+        module.global.set('selectControlTrace', module.i32.const(0)),
+        storeI32(module.call('switchValueReturn', [], binaryen.i32)),
+        storeI32(module.global.get('selectControlTrace', binaryen.i32)),
+        storeI32(module.call('blockEscapeGuard', [module.i32.const(0)], binaryen.i32)),
+        storeI32(module.call('blockEscapeGuard', [module.i32.const(1)], binaryen.i32)),
+        storeI32(module.call('nestedBlockEscapeGuard', [module.i32.const(0)], binaryen.i32)),
+        storeI32(module.call('nestedBlockEscapeGuard', [module.i32.const(1)], binaryen.i32)),
+        storeI32(module.call('deadSelectBranchAfterReturn', [module.i32.const(0)], binaryen.i32)),
+        storeI32(module.call('deadSelectBranchAfterReturn', [module.i32.const(1)], binaryen.i32)),
+        module.call('exerciseSelectBranch', [], binaryen.none),
+        module.return()
+      ])
+    );
+    module.addFunction(
+      'selectTrap',
+      binaryen.none,
+      binaryen.i32,
+      [],
+      module.select(module.i32.const(0), module.unreachable(), module.i32.const(7))
+    );
   }
 
   // Exports
@@ -628,6 +824,8 @@
   module.addFunctionExport('exerciseSwitchDefaultInternal', 'exerciseSwitchDefaultInternal');
   module.addFunctionExport('exerciseMultiExitSwitchLoop', 'exerciseMultiExitSwitchLoop');
   module.addFunctionExport('exerciseSwitchConditionalEscape', 'exerciseSwitchConditionalEscape');
+  module.addFunctionExport('exerciseSelectTerminalEvaluation', 'exerciseSelectTerminalEvaluation');
+  module.addFunctionExport('selectTrap', 'selectTrap');
 
   common.finalizeAndOutput(module);
 

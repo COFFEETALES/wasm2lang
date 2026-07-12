@@ -38,7 +38,13 @@ Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) 
  * strict-mode property checking.
  *
  * @protected
- * @typedef {{w2lExprStr: string, w2lExprCat: number}}
+ * @typedef {{
+ *   w2lExprStr: string,
+ *   w2lExprCat: number,
+ *   w2lExprTerminal: (boolean|undefined),
+ *   w2lExprMayExitFunction: (boolean|undefined),
+ *   w2lExprBranchTargets: (!Array<string>|undefined)
+ * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.TypedExpr_;
 
@@ -99,6 +105,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
   if (
     bodyResult &&
     'string' !== typeof bodyResult &&
+    true === /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprTerminal
+  ) {
+    var /** @const {number} */ terminalBeforeLen = parts.length;
+    Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(
+      parts,
+      /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprStr
+    );
+    return parts.length > terminalBeforeLen && /^\s*return\b/.test(parts[parts.length - 1]);
+  }
+  if (
+    bodyResult &&
+    'string' !== typeof bodyResult &&
     'string' === typeof (/** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprStr) &&
     binaryen.none !== funcInfo.results &&
     0 !== funcInfo.results
@@ -109,6 +127,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
     }
     parts[parts.length] = padStr + 'return ' + this.renderImplicitReturn_(binaryen, bodyResult, funcInfo.results) + ';';
     return true;
+  }
+  if (
+    bodyResult &&
+    'string' !== typeof bodyResult &&
+    'string' === typeof (/** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprStr)
+  ) {
+    var /** @const {number} */ typedBeforeLen = parts.length;
+    Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(
+      parts,
+      /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprStr
+    );
+    return parts.length > typedBeforeLen && /^\s*return\b/.test(parts[parts.length - 1]);
   }
   var /** @const {number} */ beforeLen = parts.length;
   Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, bodyResult);
@@ -123,16 +153,25 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
  * @typedef {{
  *   hasExpression: boolean,
  *   expressionString: string,
- *   expressionCategory: number
+ *   expressionCategory: number,
+ *   isTerminal: boolean,
+ *   mayExitFunction: boolean,
+ *   branchTargets: !Array<string>
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_;
+
+/** @const {!Array<string>} */
+Wasm2Lang.Backend.AbstractCodegen.EMPTY_BRANCH_TARGETS_ = [];
 
 /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */
 Wasm2Lang.Backend.AbstractCodegen.EMPTY_CHILD_RESULT_ = {
   hasExpression: false,
   expressionString: '0',
-  expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+  expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID,
+  isTerminal: false,
+  mayExitFunction: false,
+  branchTargets: Wasm2Lang.Backend.AbstractCodegen.EMPTY_BRANCH_TARGETS_
 };
 
 /**
@@ -154,7 +193,10 @@ Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, 
     return {
       hasExpression: true,
       expressionString: value,
-      expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID
+      expressionCategory: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID,
+      isTerminal: false,
+      mayExitFunction: false,
+      branchTargets: Wasm2Lang.Backend.AbstractCodegen.EMPTY_BRANCH_TARGETS_
     };
   }
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ typedValue =
@@ -163,11 +205,80 @@ Wasm2Lang.Backend.AbstractCodegen.getChildResultInfo_ = function (childResults, 
     return {
       hasExpression: true,
       expressionString: typedValue.w2lExprStr,
-      expressionCategory: Wasm2Lang.Backend.AbstractCodegen.categoryOf_(value)
+      expressionCategory: Wasm2Lang.Backend.AbstractCodegen.categoryOf_(value),
+      isTerminal: true === typedValue.w2lExprTerminal,
+      mayExitFunction: true === typedValue.w2lExprMayExitFunction,
+      branchTargets: Array.isArray(typedValue.w2lExprBranchTargets)
+        ? typedValue.w2lExprBranchTargets
+        : Wasm2Lang.Backend.AbstractCodegen.EMPTY_BRANCH_TARGETS_
     };
   }
 
   return Wasm2Lang.Backend.AbstractCodegen.EMPTY_CHILD_RESULT_;
+};
+
+/** @protected @typedef {!Wasm2Lang.Wasm.Tree.ControlFlowSummary} */
+Wasm2Lang.Backend.AbstractCodegen.ControlSummary_;
+
+/**
+ * Appends unique branch targets from {@code source} to {@code destination}.
+ * Control summaries are tiny and short-lived, so a linear scan keeps the
+ * representation compact and Closure-friendly without maps or sentinels.
+ *
+ * @protected
+ * @param {!Array<string>} destination
+ * @param {!Array<string>} source
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.appendUniqueBranchTargets_ = function (destination, source) {
+  Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.appendUniqueBranchTargets(destination, source);
+};
+
+/**
+ * @protected
+ * @param {!Array<string>} targets
+ * @param {string} name
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.hasBranchTarget_ = function (targets, name) {
+  return Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.hasBranchTarget(targets, name);
+};
+
+/**
+ * Merges the possible non-local control transfers of child results.  This
+ * summary is carried even by non-terminal expressions: a conditional branch
+ * may bypass a later terminal child when a containing block is assembled.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {number=} opt_count
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_}
+ */
+Wasm2Lang.Backend.AbstractCodegen.mergeChildControl_ = function (childResults, opt_count) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {number} */ count = void 0 === opt_count ? childResults.length : /** @type {number} */ (opt_count);
+  var /** @type {boolean} */ mayExitFunction = false;
+  var /** @const {!Array<string>} */ targets = [];
+  for (var /** @type {number} */ i = 0; i !== count; ++i) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ child = A.getChildResultInfo_(childResults, i);
+    mayExitFunction = mayExitFunction || child.mayExitFunction;
+    A.appendUniqueBranchTargets_(targets, child.branchTargets);
+  }
+  return {isTerminal: false, mayExitFunction: mayExitFunction, branchTargets: targets};
+};
+
+/**
+ * Returns the precomputed semantic summary attached by the shared codegen
+ * traversal when enter returned SKIP_SUBTREE for a block or loop.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {?Wasm2Lang.Wasm.Tree.ControlFlowSummary}
+ */
+Wasm2Lang.Backend.AbstractCodegen.getSkippedControlSummary_ = function (childResults) {
+  var /** @const {!Wasm2Lang.Wasm.Tree.SkippedControlSummaryCarrier} */ carrier =
+      /** @type {!Wasm2Lang.Wasm.Tree.SkippedControlSummaryCarrier} */ (childResults);
+  return carrier.w2lSkippedControlSummary || null;
 };
 
 /**
@@ -279,16 +390,18 @@ Wasm2Lang.Backend.AbstractCodegen.isBreakTo_ = function (binaryen, info, targetN
  *
  * @protected
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {!Array<number>} children
  * @param {number} start  inclusive
  * @param {number} end  exclusive
  * @param {string} loopName
  * @return {boolean}
  */
-Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_ = function (binaryen, children, start, end, loopName) {
-  var /** @const {function(!Binaryen, number, string): boolean} */ check = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
+Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_ = function (binaryen, wasmModule, children, start, end, loopName) {
+  var /** @const {function(!Binaryen, !BinaryenModule, number, string): boolean} */ check =
+      Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
   for (var /** @type {number} */ i = start; i < end; ++i) {
-    if (check(binaryen, children[i], loopName)) return true;
+    if (check(binaryen, wasmModule, children[i], loopName)) return true;
   }
   return false;
 };
@@ -474,13 +587,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.canDirectLabelNamedBlock_ = function
  *
  * @protected
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {!BinaryenExpressionInfo} expr  The loop expression.
  * @param {string} enclosingFusedBlock  Name of the enclosing fused block
  *     (from IR-detected or metadata-detected block-loop fusion), or empty
  *     string if none.
  * @return {?string}  'while', 'dowhile', 'for', or null.
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (binaryen, expr, enclosingFusedBlock) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (binaryen, wasmModule, expr, enclosingFusedBlock) {
   var /** @const */ NS = Wasm2Lang.Wasm.Tree.NodeSchema;
   var /** @const {number} */ bodyPtr = /** @type {number} */ (expr.body);
   if (!bodyPtr) return null;
@@ -531,7 +645,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (bi
 
     // Do-while variant B: last child is conditional br_if targeting loop.
     if (lastName === loopName && 0 !== lastCond && len > 1) {
-      if (!Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_(binaryen, children, 0, len - 1, loopName)) {
+      if (!Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_(binaryen, wasmModule, children, 0, len - 1, loopName)) {
         return 'dowhile';
       }
     }
@@ -541,7 +655,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (bi
     if (lastName !== loopName && 0 === lastCond && len >= 2) {
       var /** @const {!BinaryenExpressionInfo} */ prevInfo = NS.safeGetExpressionInfo(binaryen, children[len - 2]);
       if (Wasm2Lang.Backend.AbstractCodegen.isBreakTo_(binaryen, prevInfo, loopName, true) && len > 2) {
-        if (!Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_(binaryen, children, 0, len - 2, loopName)) {
+        if (
+          !Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_(binaryen, wasmModule, children, 0, len - 2, loopName)
+        ) {
           return 'dowhile';
         }
       }
@@ -652,7 +768,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
     var /** @const {?Wasm2Lang.Wasm.Tree.LoopPlan} */ metaLoopPlan = this.getLoopPlan_(state.functionInfo.name, loopName);
     if (metaLoopPlan) loopKind = metaLoopPlan.simplifiedLoopKind;
     if (!loopKind && this.useSimplifications_) {
-      loopKind = this.detectLoopKindFromIR_(binaryen, expr, enclosingFusedBlock);
+      loopKind = this.detectLoopKindFromIR_(binaryen, state.wasmModule, expr, enclosingFusedBlock);
     }
     if (loopKind) {
       state.pendingLoopKind = loopKind;
@@ -756,6 +872,100 @@ Wasm2Lang.Backend.AbstractCodegen.reachableBlockChildCount_ = function (binaryen
     }
   }
   return children.length;
+};
+
+/**
+ * Extends the IR-only reachability bound with terminal information discovered
+ * while rendering child expressions.  Binaryen may keep a parent statement
+ * typed {@code none} when an eager operand returns or traps (for example the
+ * value of a br_if); later block children are nevertheless unreachable.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} blockExpr
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.effectiveReachableBlockChildCount_ = function (binaryen, blockExpr, childResults) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {number} */ irCount = A.reachableBlockChildCount_(binaryen, blockExpr);
+  for (var /** @type {number} */ i = 0; i !== irCount; ++i) {
+    if (A.getChildResultInfo_(childResults, i).isTerminal) {
+      return i + 1;
+    }
+  }
+  return irCount;
+};
+
+/**
+ * Summarizes control transfers produced by a rendered wasm block.  Child
+ * summaries retain branch targets until the block that owns a target consumes
+ * it.  Consuming a block target creates a normal fallthrough path, while
+ * targets for outer scopes remain terminal and continue upward.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} blockExpr
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_}
+ */
+Wasm2Lang.Backend.AbstractCodegen.summarizeBlockControl_ = function (binaryen, blockExpr, childResults) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {?Wasm2Lang.Wasm.Tree.ControlFlowSummary} */ skippedSummary = A.getSkippedControlSummary_(childResults);
+  if (skippedSummary) return skippedSummary;
+  if (0 === childResults.length && 0 !== /** @type {!Array<number>} */ (blockExpr.children || []).length) {
+    throw new Error('Wasm2Lang codegen: skipped block has no precomputed control summary.');
+  }
+  var /** @const {number} */ count = A.effectiveReachableBlockChildCount_(binaryen, blockExpr, childResults);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ summary = A.mergeChildControl_(childResults, count);
+  summary.isTerminal = 0 !== count && A.getChildResultInfo_(childResults, count - 1).isTerminal;
+
+  var /** @const {?string} */ blockName = /** @type {?string} */ (blockExpr.name);
+  if (blockName) {
+    var /** @const {!Array<string>} */ remainingTargets = [];
+    var /** @type {boolean} */ captured = false;
+    for (var /** @type {number} */ i = 0; i !== summary.branchTargets.length; ++i) {
+      if (summary.branchTargets[i] === blockName) {
+        captured = true;
+      } else {
+        remainingTargets[remainingTargets.length] = summary.branchTargets[i];
+      }
+    }
+    summary.branchTargets = remainingTargets;
+    if (captured) summary.isTerminal = false;
+  }
+  return summary;
+};
+
+/**
+ * Summarizes a loop body while consuming self-branches as re-iterations.
+ * Unlike a block target, a loop self-target does not create fallthrough, so a
+ * terminal body remains terminal after the target is removed.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} loopExpr
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_}
+ */
+Wasm2Lang.Backend.AbstractCodegen.summarizeLoopControl_ = function (binaryen, loopExpr, childResults) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {?Wasm2Lang.Wasm.Tree.ControlFlowSummary} */ skippedSummary = A.getSkippedControlSummary_(childResults);
+  if (skippedSummary) return skippedSummary;
+  if (0 === childResults.length && 0 !== /** @type {number} */ (loopExpr.body || 0)) {
+    throw new Error('Wasm2Lang codegen: skipped loop has no precomputed control summary.');
+  }
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ body = A.getChildResultInfo_(childResults, 0);
+  var /** @const {!Array<string>} */ remainingTargets = [];
+  var /** @const {string} */ loopName = /** @type {string} */ (loopExpr.name || '');
+  for (var /** @type {number} */ i = 0; i !== body.branchTargets.length; ++i) {
+    if (body.branchTargets[i] !== loopName) remainingTargets[remainingTargets.length] = body.branchTargets[i];
+  }
+  return {
+    isTerminal: body.isTerminal,
+    mayExitFunction: body.mayExitFunction,
+    branchTargets: remainingTargets
+  };
 };
 
 /**
@@ -962,6 +1172,22 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state
 };
 
 /**
+ * Returns whether a named block wrapper can be omitted after rendered control
+ * summaries prove that no live branch targets that block.  Labeled-break
+ * backends can retain branches to outer labels without the intermediate
+ * wrapper.  PHP overrides because its numeric {@code break N} depths depend on
+ * every intervening wrapper remaining present.
+ *
+ * @protected
+ * @param {string} blockName
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} childControl
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.canElideBlockWrapper_ = function (blockName, childControl) {
+  return !Wasm2Lang.Backend.AbstractCodegen.hasBranchTarget_(childControl.branchTargets, blockName);
+};
+
+/**
  * Emits a BlockId node body for labeled-break backends (asm.js, Java).
  * Handles fused blocks, direct-labeled single statements, and child
  * assembly.  PHP overrides to use {@code do { } while (false)} wrapping
@@ -984,9 +1210,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
   // drift after binary round-trip; fusedBlockToLoop is set only when the
   // block-loop fusion actually occurred in emitEnter_.
   var /** @const {boolean} */ isFused = !!blockName && !!state.fusedBlockToLoop[blockName];
-  var /** @const {boolean} */ canDirectLabel = !!blockName && this.canDirectLabelNamedBlock_(state.binaryen, expr);
-  var /** @const {number} */ childInd = blockName && !isFused && !canDirectLabel ? ind + 1 : ind;
-  var /** @const {number} */ emitCount = A.reachableBlockChildCount_(state.binaryen, expr);
+  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(state.binaryen, expr, childResults);
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(
+      childResults,
+      emitCount
+    );
+  var /** @const {boolean} */ needsWrapper = !!blockName && !this.canElideBlockWrapper_(blockName, childControl);
+  var /** @const {boolean} */ canDirectLabel = needsWrapper && this.canDirectLabelNamedBlock_(state.binaryen, expr);
+  var /** @const {number} */ childInd = needsWrapper && !isFused && !canDirectLabel ? ind + 1 : ind;
   var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
   if (isFused) {
     return blockBody;
@@ -1005,6 +1236,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
           'Use binaryen:min normalization to flatten value-typed blocks before codegen.'
       );
     }
+    if (!needsWrapper) return blockBody;
     var /** @const {string} */ labelHead = this.labelN_(state.labelMap, blockName) + ': ';
     if (canDirectLabel) {
       // Child statement was emitted at the same indent as this block, so
@@ -1047,7 +1279,7 @@ Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, node
   var /** @const {number} */ blockType = /** @type {number} */ (expr.type);
   if (binaryen.none === blockType || 0 === blockType || binaryen.unreachable === blockType) return null;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const {number} */ emitCount = A.reachableBlockChildCount_(binaryen, expr);
+  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(binaryen, expr, childResults);
   if (emitCount < 1) return null;
   var /** @const */ pad = A.pad_;
   var /** @const {number} */ childInd = state.indent;
@@ -1687,6 +1919,191 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitIfStatement_ = function (
 };
 
 /**
+ * Returns whether a wasm {@code select} must be lowered through an eager
+ * helper call instead of a target-language conditional expression.
+ *
+ * Wasm evaluates {@code ifTrue}, {@code ifFalse}, then {@code condition}, in
+ * that order, and evaluates both value operands.  JavaScript/Java/PHP
+ * conditionals evaluate the condition first and only one arm.  A conditional
+ * is therefore valid only when skipping/reordering the value operands cannot
+ * be observed.  Binaryen's effect summary keeps this decision conservative
+ * without penalising the common local/constant-only select.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} selectExpr
+ * @param {!BinaryenModule} wasmModule
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.selectNeedsEagerEvaluation_ = function (binaryen, selectExpr, wasmModule) {
+  var /** @const {!BinaryenSideEffects} */ S = binaryen.SideEffects;
+  var /** @const {number} */ trueEffects = binaryen.getSideEffects(/** @type {number} */ (selectExpr.ifTrue), wasmModule);
+  var /** @const {number} */ falseEffects = binaryen.getSideEffects(/** @type {number} */ (selectExpr.ifFalse), wasmModule);
+  var /** @const {number} */ conditionEffects = binaryen.getSideEffects(
+      /** @type {number} */ (selectExpr.condition),
+      wasmModule
+    );
+  var /** @const {number} */ armEffects = trueEffects | falseEffects;
+  var /** @const {number} */ readOnlyMask = S.ReadsLocal | S.ReadsGlobal | S.ReadsMemory | S.ReadsTable | S.TrapsNeverHappen;
+  var /** @const {number} */ observableMask = S.Any & ~readOnlyMask;
+
+  // Either arm may be skipped by a conditional expression.  Calls, writes,
+  // branches, atomics and implicit traps therefore require eager lowering.
+  if (0 !== (armEffects & observableMask)) {
+    return true;
+  }
+
+  // A condition-side mutation/call may change a value that wasm reads in an
+  // arm before evaluating the condition.  Alias conservatively across all
+  // local/global/memory/table reads.
+  return 0 !== (conditionEffects & observableMask) && 0 !== (armEffects & readOnlyMask);
+};
+
+/**
+ * Resolves the typed helper used for eager select evaluation.  Scalar
+ * backends share this default; Java overrides it to accept {@code v128}.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} valueType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getEagerSelectHelperName_ = function (binaryen, valueType) {
+  var /** @const {string} */ typeName = Wasm2Lang.Backend.ValueType.typeName(binaryen, valueType);
+  if ('i32' !== typeName && 'i64' !== typeName && 'f32' !== typeName && 'f64' !== typeName) {
+    throw new Error('Wasm2Lang codegen: effectful ' + typeName + ' select is unsupported by this backend.');
+  }
+  return this.getRuntimeHelperPrefix_() + 'select_' + typeName;
+};
+
+/**
+ * Returns true when evaluating an expression solely for its effects cannot
+ * be elided.  Read-only local/global/memory/table traffic is discardable;
+ * calls, writes, atomics and implicit traps are observable.
+ *
+ * @private
+ * @param {!Binaryen} binaryen
+ * @param {number} expressionPointer
+ * @param {!BinaryenModule} wasmModule
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.expressionNeedsDiscardEvaluation_ = function (binaryen, expressionPointer, wasmModule) {
+  var /** @const {!BinaryenSideEffects} */ S = binaryen.SideEffects;
+  var /** @const {number} */ readOnlyMask = S.ReadsLocal | S.ReadsGlobal | S.ReadsMemory | S.ReadsTable | S.TrapsNeverHappen;
+  return 0 !== (binaryen.getSideEffects(expressionPointer, wasmModule) & (S.Any & ~readOnlyMask));
+};
+
+/**
+ * Emits one value expression for effects only.  Reusing the eager-select
+ * helper keeps the statement valid in asm.js and Java, whose grammars do not
+ * accept every arbitrary value expression as a statement.
+ *
+ * @private
+ * @param {!Binaryen} binaryen
+ * @param {number} expressionPointer
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} childInfo
+ * @param {number} indent
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderDiscardedValue_ = function (binaryen, expressionPointer, childInfo, indent) {
+  var /** @const {number} */ valueType = binaryen.getExpressionType(expressionPointer);
+  var /** @const {string} */ helperName = this.getEagerSelectHelperName_(binaryen, valueType);
+  var /** @const {string} */ valueExpr = this.coerceAtBoundary_(
+      binaryen,
+      childInfo.expressionString,
+      childInfo.expressionCategory,
+      valueType
+    );
+  var /** @const {string} */ helperCall = this.renderHelperCall_(
+      binaryen,
+      helperName,
+      [valueExpr, this.renderLocalInit_(binaryen, valueType), '1'],
+      valueType
+    );
+  return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + helperCall + ';\n';
+};
+
+/**
+ * Propagates a terminal child ({@code return}, unconditional branch,
+ * {@code unreachable}, or a terminal composite) through a value expression.
+ * Earlier operands are evaluated for observable effects in wasm order; later
+ * operands are unreachable and omitted.  Select is special because Binaryen
+ * stores its children as condition/true/false while wasm evaluates
+ * true/false/condition.
+ *
+ * Control constructs that own lazy or statement children keep their normal
+ * emitters.  For {@code if}, only a terminal condition propagates; terminal
+ * arms remain inside the emitted target-language branches.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} expression
+ * @param {number} expressionId
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {!BinaryenModule} wasmModule
+ * @param {number} indent
+ * @return {?Wasm2Lang.Backend.AbstractCodegen.TypedExpr_}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.propagateTerminalChild_ = function (
+  binaryen,
+  expression,
+  expressionId,
+  childResults,
+  wasmModule,
+  indent
+) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  if (binaryen.BlockId === expressionId || binaryen.LoopId === expressionId) {
+    return null;
+  }
+  var /** @const {!Array<!Array<number>>} */ ordered = Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.evaluationOrder(
+      binaryen,
+      /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (expression)
+    );
+
+  var /** @type {number} */ terminalAt = -1;
+  for (var /** @type {number} */ oi = 0, /** @const {number} */ orderedCount = ordered.length; oi !== orderedCount; ++oi) {
+    if (A.getChildResultInfo_(childResults, ordered[oi][1]).isTerminal) {
+      terminalAt = oi;
+      break;
+    }
+  }
+  if (0 > terminalAt) {
+    return null;
+  }
+
+  var /** @type {string} */ code = '';
+  var /** @type {boolean} */ mayExitFunction = false;
+  var /** @const {!Array<string>} */ branchTargets = [];
+  for (var /** @type {number} */ pi = 0; pi < terminalAt; ++pi) {
+    var /** @const {number} */ priorPtr = ordered[pi][0];
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ priorInfo = A.getChildResultInfo_(
+        childResults,
+        ordered[pi][1]
+      );
+    mayExitFunction = mayExitFunction || priorInfo.mayExitFunction;
+    A.appendUniqueBranchTargets_(branchTargets, priorInfo.branchTargets);
+    if (A.expressionNeedsDiscardEvaluation_(binaryen, priorPtr, wasmModule)) {
+      code += this.renderDiscardedValue_(binaryen, priorPtr, priorInfo, indent);
+    }
+  }
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ terminalChild = A.getChildResultInfo_(
+      childResults,
+      ordered[terminalAt][1]
+    );
+  code += terminalChild.expressionString;
+  mayExitFunction = mayExitFunction || terminalChild.mayExitFunction;
+  A.appendUniqueBranchTargets_(branchTargets, terminalChild.branchTargets);
+  return {
+    w2lExprStr: code,
+    w2lExprCat: A.CAT_VOID,
+    w2lExprTerminal: true,
+    w2lExprMayExitFunction: mayExitFunction,
+    w2lExprBranchTargets: branchTargets
+  };
+};
+
+/**
  * Emits a local.set or local.tee expression.  Shared across all backends —
  * name formatting dispatches through localN_; coercion through coerceToType_.
  *
@@ -1731,11 +2148,30 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLocalSet_ = function (
  * @protected
  * @param {string} result
  * @param {number} resultCat
+ * @param {boolean=} opt_terminal
+ * @param {boolean=} opt_mayExitFunction
+ * @param {!Array<string>=} opt_branchTargets
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
-Wasm2Lang.Backend.AbstractCodegen.buildLeaveResult_ = function (result, resultCat) {
-  if (resultCat !== Wasm2Lang.Backend.AbstractCodegen.CAT_VOID) {
-    return {decisionValue: {w2lExprStr: result, w2lExprCat: resultCat}};
+Wasm2Lang.Backend.AbstractCodegen.buildLeaveResult_ = function (
+  result,
+  resultCat,
+  opt_terminal,
+  opt_mayExitFunction,
+  opt_branchTargets
+) {
+  var /** @const {!Array<string>} */ branchTargets =
+      opt_branchTargets || Wasm2Lang.Backend.AbstractCodegen.EMPTY_BRANCH_TARGETS_;
+  if (resultCat !== Wasm2Lang.Backend.AbstractCodegen.CAT_VOID || opt_terminal || opt_mayExitFunction || branchTargets.length) {
+    return {
+      decisionValue: {
+        w2lExprStr: result,
+        w2lExprCat: resultCat,
+        w2lExprTerminal: !!opt_terminal,
+        w2lExprMayExitFunction: !!opt_mayExitFunction,
+        w2lExprBranchTargets: branchTargets
+      }
+    };
   }
   return {decisionValue: result};
 };
@@ -1781,8 +2217,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderMemoryBulkOp_ = function (bina
  * @param {number} id
  * @param {number} indent
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {!BinaryenModule} wasmModule
  * @param {!BinaryenFunctionInfo} functionInfo
- * @return {?{emittedString: string, resultCat: number}}
+ * @return {?{
+ *   emittedString: string,
+ *   resultCat: number,
+ *   isTerminal: (boolean|undefined),
+ *   mayExitFunction: (boolean|undefined)
+ * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
   binaryen,
@@ -1790,6 +2232,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
   id,
   indent,
   childResults,
+  wasmModule,
   functionInfo
 ) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
@@ -1863,19 +2306,36 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
     } else {
       retStr = A.pad_(indent) + 'return;\n';
     }
-    return {emittedString: retStr, resultCat: A.CAT_VOID};
+    return {
+      emittedString: retStr,
+      resultCat: A.CAT_VOID,
+      isTerminal: true,
+      mayExitFunction: true
+    };
   }
   if (binaryen.NopId === id) {
     return {emittedString: '', resultCat: A.CAT_VOID};
   }
   if (binaryen.UnreachableId === id) {
-    return {emittedString: this.renderUnreachableStatement_(indent), resultCat: A.CAT_VOID};
+    return {
+      emittedString: this.renderUnreachableStatement_(indent),
+      resultCat: A.CAT_VOID,
+      isTerminal: true,
+      mayExitFunction: true
+    };
   }
   if (binaryen.DropId === id) {
-    if (!this.shouldEmitDropChild_(binaryen, /** @type {number} */ (expr.value))) {
+    var /** @const {number} */ dropValuePtr = /** @type {number} */ (expr.value);
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ dropOp = getInfo(childResults, 0);
+    if (!this.shouldEmitDropChild_(binaryen, dropValuePtr)) {
+      if (A.expressionNeedsDiscardEvaluation_(binaryen, dropValuePtr, wasmModule)) {
+        return {
+          emittedString: this.renderDiscardedValue_(binaryen, dropValuePtr, dropOp, indent),
+          resultCat: A.CAT_VOID
+        };
+      }
       return {emittedString: '', resultCat: A.CAT_VOID};
     }
-    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ dropOp = getInfo(childResults, 0);
     return {emittedString: A.pad_(indent) + dropOp.expressionString + ';\n', resultCat: A.CAT_VOID};
   }
   return null;

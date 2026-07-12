@@ -22,6 +22,56 @@
     return Array.from(new Uint8Array(buf));
   }
 
+  // Effectful v128 select: Java supports v128 values as IntVector, so keep
+  // the eager true/false/condition ordering covered for that value type too.
+  module.addGlobal('simdSelectTrace', binaryen.i32, true, module.i32.const(0));
+  const appendSIMDSelectTrace = tag =>
+    module.global.set(
+      'simdSelectTrace',
+      module.i32.add(module.i32.mul(module.global.get('simdSelectTrace', binaryen.i32), module.i32.const(10)), tag)
+    );
+  module.addFunction(
+    'markSIMDSelectVector',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.v128,
+    [],
+    module.block(null, [
+      appendSIMDSelectTrace(module.local.get(0, binaryen.i32)),
+      module.return(module.i32x4.splat(module.local.get(1, binaryen.i32)))
+    ])
+  );
+  module.addFunction(
+    'markSIMDSelectCondition',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [],
+    module.block(null, [
+      appendSIMDSelectTrace(module.local.get(0, binaryen.i32)),
+      module.return(module.local.get(1, binaryen.i32))
+    ])
+  );
+  module.addFunction(
+    'exerciseSIMDSelectEvaluation',
+    binaryen.none,
+    binaryen.none,
+    [],
+    module.block(null, [
+      module.global.set('simdSelectTrace', module.i32.const(0)),
+      storeI32(
+        module.i32x4.extract_lane(
+          module.select(
+            module.call('markSIMDSelectCondition', [module.i32.const(3), module.i32.const(1)], binaryen.i32),
+            module.call('markSIMDSelectVector', [module.i32.const(1), module.i32.const(111)], binaryen.v128),
+            module.call('markSIMDSelectVector', [module.i32.const(2), module.i32.const(222)], binaryen.v128)
+          ),
+          0
+        )
+      ),
+      storeI32(module.global.get('simdSelectTrace', binaryen.i32)),
+      module.return()
+    ])
+  );
+
   // =================================================================
   // exerciseSIMDLanes: splat, replace_lane, extract_lane, v128.const.
   // Params: (a: i32, b: i32, c: i32, d: i32)
@@ -434,6 +484,7 @@
   module.addFunctionExport('exerciseSIMDShuffle', 'exerciseSIMDShuffle');
   module.addFunctionExport('exerciseSIMDMemory', 'exerciseSIMDMemory');
   module.addFunctionExport('exerciseSIMDEdgeCases', 'exerciseSIMDEdgeCases');
+  module.addFunctionExport('exerciseSIMDSelectEvaluation', 'exerciseSIMDSelectEvaluation');
 
   common.finalizeAndOutput(module);
 

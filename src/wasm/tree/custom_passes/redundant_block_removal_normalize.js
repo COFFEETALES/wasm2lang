@@ -65,11 +65,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RedundantBlockRemovalPass.prototype.leave_ = fu
   // -----------------------------------------------------------------------
   // Check whether blockName is referenced anywhere in the children.
   // -----------------------------------------------------------------------
-  var /** @const {function(!Binaryen, number, string): boolean} */ hasRefFn = Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
+  var /** @const {function(!Binaryen, !BinaryenModule, number, string): boolean} */ hasRefFn =
+      Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
   var /** @const {number} */ childCount = children.length;
 
   for (var /** @type {number} */ i = 0; i < childCount; ++i) {
-    if (hasRefFn(binaryen, children[i], blockName)) {
+    if (hasRefFn(binaryen, module, children[i], blockName)) {
       return null; // Label is still referenced — keep the block.
     }
   }

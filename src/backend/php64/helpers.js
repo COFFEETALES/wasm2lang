@@ -88,6 +88,13 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitHelpers_ = function (
     lines[lines.length] = 'function ' + nF32 + "($v): float { return unpack('g', pack('g', (float)$v))[1]; }";
   }
 
+  // The emitted runtimes evaluate function arguments in source order; pass
+  // true, false, then condition to retain wasm select's eager ordering.
+  h('_w2l_select_i32', '(int $t, int $f, int $c): int { return 0 !== $c ? $t : $f; }');
+  h('_w2l_select_i64', '(int $t, int $f, int $c): int { return 0 !== $c ? $t : $f; }');
+  h('_w2l_select_f32', '(float $t, float $f, int $c): float { return ' + nF32 + '(0 !== $c ? $t : $f); }');
+  h('_w2l_select_f64', '(float $t, float $f, int $c): float { return 0 !== $c ? $t : $f; }');
+
   // Opcode-specific helpers (only when referenced).
   h('_w2l_extend8_s', '(int $v): int { $v &= 0xFF; return $v >= 0x80 ? $v - 0x100 : $v; }');
   h('_w2l_extend16_s', '(int $v): int { $v &= 0xFFFF; return $v >= 0x8000 ? $v - 0x10000 : $v; }');

@@ -103,9 +103,62 @@
     ])
   );
 
+  // Branches hidden in bulk-memory operands must survive both normalization
+  // reference scans and simplified-loop control summarization.  Each branch
+  // exits its enclosing block before the operation executes, allowing the
+  // post-loop return value to be stored by the exported driver.
+  module.addFunction(
+    'memoryFillLoopEscapeGuard',
+    binaryen.none,
+    binaryen.i32,
+    [],
+    module.block(null, [
+      module.block('memoryFillLoopExit', [
+        module.loop(
+          'memoryFillLoopIteration',
+          module.block(null, [
+            module.memory.fill(module.break('memoryFillLoopExit'), i32(0), i32(0)),
+            module.break('memoryFillLoopIteration')
+          ])
+        )
+      ]),
+      module.return(i32(7))
+    ])
+  );
+  module.addFunction(
+    'memoryCopyLoopEscapeGuard',
+    binaryen.none,
+    binaryen.i32,
+    [],
+    module.block(null, [
+      module.block('memoryCopyLoopExit', [
+        module.loop(
+          'memoryCopyLoopIteration',
+          module.block(null, [
+            module.memory.copy(i32(0), module.break('memoryCopyLoopExit'), i32(0)),
+            module.break('memoryCopyLoopIteration')
+          ])
+        )
+      ]),
+      module.return(i32(8))
+    ])
+  );
+  module.addFunction(
+    'exerciseBulkControlFlow',
+    binaryen.none,
+    binaryen.none,
+    [],
+    module.block(null, [
+      storeI32(module.call('memoryFillLoopEscapeGuard', [], binaryen.i32)),
+      storeI32(module.call('memoryCopyLoopEscapeGuard', [], binaryen.i32)),
+      module.return()
+    ])
+  );
+
   module.addFunctionExport('exerciseBulkMemory', 'exerciseBulkMemory');
   module.addFunctionExport('exerciseMemoryGrow', 'exerciseMemoryGrow');
   module.addFunctionExport('exerciseBulkFillVerify', 'exerciseBulkFillVerify');
+  module.addFunctionExport('exerciseBulkControlFlow', 'exerciseBulkControlFlow');
 
   common.finalizeAndOutput(module);
 

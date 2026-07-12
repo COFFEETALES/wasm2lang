@@ -53,13 +53,45 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @type {number} */ resultCat = A.CAT_VOID;
+  var /** @type {boolean} */ resultTerminalOverride = false;
+  var /** @type {boolean} */ resultTerminalOverrideIsAuthoritative = false;
 
   var /** @const */ acc = A.makeChildAccessors_(childResults);
   var /** @const {function(number): string} */ cr = acc.cr;
   var /** @const {function(number): number} */ cc = acc.cc;
 
-  var /** @const */ common = this.emitLeaveCommonCase_(binaryen, expr, id, ind, childResults, state.functionInfo);
-  if (common) return A.buildLeaveResult_(common.emittedString, common.resultCat);
+  var /** @const {?Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ terminal = this.propagateTerminalChild_(
+      binaryen,
+      expr,
+      id,
+      childResults,
+      state.wasmModule,
+      ind
+    );
+  if (terminal) return {decisionValue: terminal};
+
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(childResults);
+  var /** @type {boolean} */ resultMayExitFunction = childControl.mayExitFunction;
+  var /** @type {!Array<string>} */ resultBranchTargets = childControl.branchTargets;
+
+  var /** @const */ common = this.emitLeaveCommonCase_(
+      binaryen,
+      expr,
+      id,
+      ind,
+      childResults,
+      state.wasmModule,
+      state.functionInfo
+    );
+  if (common) {
+    return A.buildLeaveResult_(
+      common.emittedString,
+      common.resultCat,
+      !!common.isTerminal,
+      resultMayExitFunction || !!common.mayExitFunction,
+      resultBranchTargets
+    );
+  }
 
   switch (id) {
     case binaryen.GlobalGetId: {
@@ -183,9 +215,19 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
       var /** @const {number} */ ciMask = ciDesc ? ciDesc.tableMask : 0;
       var /** @const {string} */ ciTableName = this.n_('$ftable_' + ciSigKey);
-      // asm.js requires the table index to be exactly (expr) & mask form.
-      // Use the raw expression without |0 coercion since & mask serves as int coercion.
-      var /** @const {string} */ ciCallExpr = ciTableName + '[(' + cr(0) + ') & ' + ciMask + '](' + ciArgs.join(', ') + ')';
+      var /** @type {string} */ ciCallExpr;
+      if (this.callIndirectNeedsOrderedEvaluation_(binaryen, expr, state.wasmModule)) {
+        // Target-language member-call syntax evaluates the table index before
+        // its arguments.  Pass the index last to a typed dispatcher so wasm's
+        // operand-left-to-right, then-index order is retained.
+        ciArgs[ciArgs.length] = this.coerceAtBoundary_(binaryen, cr(0), cc(0), binaryen.i32);
+        ciCallExpr = this.n_(this.getOrderedCallIndirectWrapperName_(ciSigKey)) + '(' + ciArgs.join(', ') + ')';
+      } else {
+        // asm.js requires the table index to be exactly (expr) & mask form.
+        // Use the raw expression without |0 coercion since & mask serves as
+        // int coercion.
+        ciCallExpr = ciTableName + '[(' + cr(0) + ') & ' + ciMask + '](' + ciArgs.join(', ') + ')';
+      }
       if (binaryen.none === ciRetType || 0 === ciRetType) {
         result = pad(ind) + ciCallExpr + ';\n';
       } else {
@@ -198,9 +240,22 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {number} */ selectType = expr.type;
       var /** @const {string} */ selectTrue = this.coerceAtBoundary_(binaryen, cr(1), cc(1), selectType);
       var /** @const {string} */ selectFalse = this.coerceAtBoundary_(binaryen, cr(2), cc(2), selectType);
-      result = '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ' ? ' + selectTrue + ' : ' + selectFalse + ')';
-      // Ternary produces INT for i32 (not SIGNED) — return/call sites will add |0.
-      resultCat = this.catForValueTypeRead_(binaryen, selectType);
+      var /** @const {string} */ selectCondition = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
+      if (this.selectNeedsEagerEvaluation_(binaryen, expr, state.wasmModule)) {
+        var /** @const {string} */ selectHelper = this.getEagerSelectHelperName_(binaryen, selectType);
+        this.markHelper_(selectHelper);
+        result = this.coerceCallResult_(
+          binaryen,
+          this.n_(selectHelper) + '(' + selectTrue + ', ' + selectFalse + ', ' + selectCondition + ')',
+          selectType,
+          false
+        );
+        resultCat = A.catForCoercedType_(binaryen, selectType);
+      } else {
+        result = '(' + selectCondition + ' ? ' + selectTrue + ' : ' + selectFalse + ')';
+        // Ternary produces INT for i32 (not SIGNED) — return/call sites add |0.
+        resultCat = this.catForValueTypeRead_(binaryen, selectType);
+      }
       break;
     }
     case binaryen.MemorySizeId:
@@ -226,6 +281,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         return /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ ({decisionValue: rootValueShape});
       }
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
+      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ blockControl = A.summarizeBlockControl_(
+          binaryen,
+          expr,
+          childResults
+        );
+      resultTerminalOverride = blockControl.isTerminal;
+      resultTerminalOverrideIsAuthoritative = true;
+      resultMayExitFunction = blockControl.mayExitFunction;
+      resultBranchTargets = blockControl.branchTargets;
       break;
     }
     case binaryen.LoopId: {
@@ -242,6 +306,15 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         result = this.emitRawInfiniteLoop_(ind, rawLabel, cr(0), true);
       }
       --state.breakableStack.length;
+      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ loopControl = A.summarizeLoopControl_(
+          binaryen,
+          expr,
+          childResults
+        );
+      resultTerminalOverride = loopControl.isTerminal;
+      resultTerminalOverrideIsAuthoritative = true;
+      resultMayExitFunction = loopControl.mayExitFunction;
+      resultBranchTargets = loopControl.branchTargets;
       break;
     }
     case binaryen.IfId: {
@@ -266,30 +339,36 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     case binaryen.BreakId: {
+      var /** @const {string} */ breakName = /** @type {string} */ (expr.name);
       result = this.emitBreakStatement_(
         state,
         ind,
-        /** @type {string} */ (expr.name),
+        breakName,
         /** @type {number} */ (expr.condition),
         cr(0),
         cc(0)
       ).emittedString;
+      A.appendUniqueBranchTargets_(resultBranchTargets, [breakName]);
       break;
     }
-    case binaryen.SwitchId:
-      result = this.emitSwitchStatement_(
-        state,
-        ind,
-        cr(0),
-        /** @type {!Array<string>} */ (expr.names || []),
-        /** @type {string} */ (expr.defaultName || ''),
-        cc(0)
-      ).emittedString;
+    case binaryen.SwitchId: {
+      var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (expr.names || []);
+      var /** @const {string} */ switchDefault = /** @type {string} */ (expr.defaultName || '');
+      result = this.emitSwitchStatement_(state, ind, cr(0), switchNames, switchDefault, cc(0)).emittedString;
+      A.appendUniqueBranchTargets_(resultBranchTargets, switchNames);
+      if ('' !== switchDefault) A.appendUniqueBranchTargets_(resultBranchTargets, [switchDefault]);
       break;
+    }
     default:
       result = '/* unknown expr id=' + id + ' */';
       break;
   }
 
-  return A.buildLeaveResult_(result, resultCat);
+  return A.buildLeaveResult_(
+    result,
+    resultCat,
+    resultTerminalOverrideIsAuthoritative ? resultTerminalOverride : binaryen.unreachable === expr.type,
+    resultMayExitFunction,
+    resultBranchTargets
+  );
 };

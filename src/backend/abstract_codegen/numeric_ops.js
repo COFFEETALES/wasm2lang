@@ -242,6 +242,56 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallIndirectArgs_ = func
 };
 
 /**
+ * Returns whether a call_indirect needs an evaluation-order barrier.
+ *
+ * Wasm evaluates every operand from left to right and only then evaluates
+ * the table index.  Native target syntax (`table[index](args)`) evaluates
+ * the index first.  The direct form remains valid when that reordering is
+ * unobservable: reads may commute with reads, and moving a constant across
+ * an effect changes no state.  A barrier is required when an observable
+ * index can precede a meaningful operand, or when an observable operand can
+ * precede a state read performed by the index.  Calls, writes, branches,
+ * atomics and implicit traps are treated conservatively as observable.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} expr
+ * @param {!BinaryenModule} wasmModule
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.callIndirectNeedsOrderedEvaluation_ = function (binaryen, expr, wasmModule) {
+  var /** @const {!BinaryenSideEffects} */ S = binaryen.SideEffects;
+  var /** @const {number} */ readOnlyMask = S.ReadsLocal | S.ReadsGlobal | S.ReadsMemory | S.ReadsTable | S.TrapsNeverHappen;
+  var /** @const {number} */ observableMask = S.Any & ~readOnlyMask;
+  var /** @type {number} */ operandEffects = 0;
+  var /** @const {!Array<number>} */ operands = /** @type {!Array<number>} */ (expr.operands || []);
+  for (var /** @type {number} */ i = 0; i !== operands.length; ++i) {
+    operandEffects |= binaryen.getSideEffects(operands[i], wasmModule);
+  }
+  var /** @const {number} */ targetEffects = binaryen.getSideEffects(/** @type {number} */ (expr.target), wasmModule);
+  var /** @const {number} */ operandMeaningful = operandEffects & (readOnlyMask | observableMask);
+  var /** @const {number} */ targetReads = targetEffects & readOnlyMask;
+  return (
+    (0 !== (targetEffects & observableMask) && 0 !== operandMeaningful) ||
+    (0 !== (operandEffects & observableMask) && 0 !== targetReads)
+  );
+};
+
+/**
+ * Returns the module-scope dispatcher name used when a call_indirect needs
+ * its operands evaluated before its index.  The prefix is backend-specific
+ * (`$w2l_` for JS/Java, `_w2l_` for PHP) while the signature suffix keeps
+ * wrappers typed and shared by all ordered sites of the same signature.
+ *
+ * @protected
+ * @param {string} signatureKey
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getOrderedCallIndirectWrapperName_ = function (signatureKey) {
+  return this.getRuntimeHelperPrefix_() + 'call_indirect_' + signatureKey;
+};
+
+/**
  * Backend hook turning a relational-condition expression into an i32 result.
  *
  * @protected

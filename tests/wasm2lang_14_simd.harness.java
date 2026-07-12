@@ -30,6 +30,7 @@
     }
 
     mod.exerciseSIMDEdgeCases();
+    mod.exerciseSIMDSelectEvaluation();
 
     w2lDumpCRC(memBuffer);
 }

@@ -36,6 +36,8 @@ const runTest = function (buff, out, exports, data) {
   }
 
   exports.exerciseI64EdgeCases();
+  exports.exerciseI64SelectEvaluation();
+  exports.exerciseI64CallIndirectEvaluation();
 };
 
 const dumpMemory = true;

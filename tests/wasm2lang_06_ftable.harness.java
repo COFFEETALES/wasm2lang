@@ -28,6 +28,8 @@
     for (java.util.List<Double> d : w2lNested(_data, "dynamic_dispatch")) {
         mod.exerciseDynamicIndex(d.get(0).intValue(), d.get(1).intValue(), d.get(2).intValue());
     }
+    mod.exerciseCallIndirectTerminalOrder();
+    mod.exerciseCallIndirectOrderedEffects();
 
     w2lDumpCRC(memBuffer);
 }

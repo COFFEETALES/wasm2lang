@@ -30,6 +30,8 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ($data['dynamic_dispatch'] as $d) {
         $exports['exerciseDynamicIndex']($d[0], $d[1], $d[2]);
     }
+    $exports['exerciseCallIndirectTerminalOrder']();
+    $exports['exerciseCallIndirectOrderedEffects']();
 };
 
 $dumpMemory = true;

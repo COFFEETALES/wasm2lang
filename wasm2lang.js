@@ -110,6 +110,7 @@
       {'sourcePath': 'src/wasm/tree/node_schema.js'},
       {'sourcePath': 'src/wasm/tree/pass_runner.js'},
       {'sourcePath': 'src/wasm/tree/traversal_kernel.js'},
+      {'sourcePath': 'src/wasm/tree/control_flow_summary_analysis.js'},
 
       {'sourcePath': 'src/wasm/wasm_normalization.js'},
       {'sourcePath': 'src/1-processor.js'},

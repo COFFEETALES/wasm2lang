@@ -155,6 +155,14 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
   h('$w2l_bigint_asintn', [], pad1 + 'var ' + nBigIntAsIntN + ' = BigInt.asIntN;');
   h('$w2l_bigint_asuintn', [], pad1 + 'var ' + nBigIntAsUintN + ' = BigInt.asUintN;');
 
+  // i32/f32/f64 select helpers come from the asm.js parent.  Modern
+  // JavaScript additionally keeps i64 as BigInt instead of lowering it.
+  // prettier-ignore
+  h('$w2l_select_i64', [],
+    pad1 + 'function ' + n('$w2l_select_i64') + '(' + l0 + ', ' + l1 + ', ' + l2 + ') {\n' +
+    pad2 + 'return ' + l2 + ' ? ' + l0 + ' : ' + l1 + ';\n' +
+    pad1 + '}');
+
   // prettier-ignore
   hCond(memFillUsed, ['HEAPU8'],
     pad1 + 'function ' + n('$w2l_memory_fill') + '(' + l0 + ', ' + l1 + ', ' + l2 + ') {\n' +

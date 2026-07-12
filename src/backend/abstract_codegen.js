@@ -175,6 +175,17 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
   this.passRunResultIndex_ = null;
 
   /**
+   * Transient semantic control summaries for the Binaryen module currently
+   * being emitted. Kept outside PassMetadata so it can never enter serialized
+   * normalization metadata.
+   * @protected @type {?Wasm2Lang.Wasm.Tree.ControlFlowSummaryIndex}
+   */
+  this.controlFlowSummaryIndex_ = null;
+
+  /** @protected @type {?BinaryenModule} */
+  this.controlFlowSummaryModule_ = null;
+
+  /**
    * Active local-init overrides for the current function.  When non-null,
    * the first local.set for each index present in the map is suppressed
    * (its value is already folded into the var declaration).

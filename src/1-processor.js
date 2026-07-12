@@ -269,6 +269,7 @@ Wasm2Lang.Processor.transpile_ = function (options) {
   // and a no-op when no anchors exist.
   if ('string' === typeof options.emitCode) {
     Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll(wasmModule, Wasm2Lang.Processor.getBinaryen());
+    codegen.prepareControlFlowSummary_(wasmModule, Wasm2Lang.Processor.getBinaryen());
   }
 
   if (options.mangler) {

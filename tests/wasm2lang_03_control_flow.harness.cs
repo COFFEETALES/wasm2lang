@@ -73,6 +73,18 @@ public static class W2lHarness {
       mod.exerciseSwitchConditionalEscape(scenario[0], scenario[1]);
     }
 
+    mod.exerciseSelectTerminalEvaluation();
+    bool selectTrapped = false;
+    try {
+      mod.selectTrap();
+    } catch (System.InvalidOperationException) {
+      selectTrapped = true;
+    }
+    if (!selectTrapped) {
+      throw new System.InvalidOperationException("select(unreachable, value) did not trap");
+    }
+    System.Console.Write("select trap\n");
+
     W2l.DumpCRC(memBuffer);
   }
 }

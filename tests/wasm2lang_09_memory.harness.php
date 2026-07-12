@@ -10,6 +10,7 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     $exports['alignHeapTop']();
     $exports['exerciseBulkMemory']($exports['getHeapTop']());
     $exports['exerciseMemoryGrow']();
+    $exports['exerciseBulkControlFlow']();
 
     foreach ($data['bulk_params'] as $p) {
         $exports['exerciseBulkFillVerify']($exports['getHeapTop'](), $p[0], $p[1]);

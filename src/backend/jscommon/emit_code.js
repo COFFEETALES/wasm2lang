@@ -100,6 +100,49 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     );
   }
 
+  // Ordered call_indirect dispatchers.  A dispatcher receives the wasm
+  // operands first and the table index last, so native left-to-right direct
+  // call evaluation supplies the order that member-call syntax cannot.
+  // One typed wrapper is shared by every effectful site of a signature;
+  // pure/read-only sites retain the direct table-call fast path.
+  var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
+  var /** @const {number} */ ftLen = ftKeys.length;
+  var /** @const {!Array<string>} */ orderedCallWrapperParts = [];
+  for (var /** @type {number} */ ocw = 0; ocw !== ftLen; ++ocw) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ocwDesc =
+        moduleInfo.functionTables[ftKeys[ocw]];
+    if (!ocwDesc.orderedCallNeeded) continue;
+    var /** @const {number} */ ocwParamCount = ocwDesc.signatureParams.length;
+    var /** @const {!Array<string>} */ ocwParams = this.buildParamNameList_(ocwParamCount + 1);
+    var /** @const {!Array<number>} */ ocwTypes = ocwDesc.signatureParams.slice();
+    ocwTypes[ocwTypes.length] = binaryen.i32;
+    var /** @const {!Array<string>} */ ocwAnnotations = [];
+    this.emitParameterAnnotations_(ocwAnnotations, binaryen, ocwTypes, ocwTypes.length, pad2);
+    var /** @const {!Array<string>} */ ocwCallArgs = [];
+    for (var /** @type {number} */ oca = 0; oca !== ocwParamCount; ++oca) {
+      ocwCallArgs[ocwCallArgs.length] = this.renderCoercionByType_(binaryen, ocwParams[oca], ocwDesc.signatureParams[oca]);
+    }
+    var /** @const {string} */ ocwTable = this.n_('$ftable_' + ocwDesc.signatureKey);
+    var /** @const {string} */ ocwCall =
+        ocwTable + '[(' + ocwParams[ocwParamCount] + ') & ' + ocwDesc.tableMask + '](' + ocwCallArgs.join(', ') + ')';
+    var /** @const {boolean} */ ocwHasReturn =
+        binaryen.none !== ocwDesc.signatureReturnType && 0 !== ocwDesc.signatureReturnType;
+    orderedCallWrapperParts[orderedCallWrapperParts.length] =
+      pad1 +
+      'function ' +
+      this.n_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
+      '(' +
+      ocwParams.join(', ') +
+      ') {\n' +
+      ocwAnnotations.join('\n') +
+      (ocwAnnotations.length ? '\n' : '') +
+      pad2 +
+      (ocwHasReturn ? 'return ' + this.renderCoercionByType_(binaryen, ocwCall, ocwDesc.signatureReturnType) : ocwCall) +
+      ';\n' +
+      pad1 +
+      '}';
+  }
+
   var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(
       scratchByteOffset,
       scratchWordIndex,
@@ -193,9 +236,9 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   for (var /** @type {number} */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
     outputParts[outputParts.length] = functionParts[fi];
   }
-
-  var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
-  var /** @const {number} */ ftLen = ftKeys.length;
+  for (var /** @type {number} */ owp = 0; owp !== orderedCallWrapperParts.length; ++owp) {
+    outputParts[outputParts.length] = orderedCallWrapperParts[owp];
+  }
   for (var /** @type {number} */ fti = 0; fti !== ftLen; ++fti) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc =
         moduleInfo.functionTables[ftKeys[fti]];

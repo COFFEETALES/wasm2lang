@@ -42,6 +42,17 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ([[10, 0], [30, 0], [1, 0], [0, 5], [-10, 2], [60, 2], [5, -1]] as $scenario) {
         $exports['exerciseSwitchConditionalEscape']($scenario[0], $scenario[1]);
     }
+    $exports['exerciseSelectTerminalEvaluation']();
+    $selectTrapped = false;
+    try {
+        $exports['selectTrap']();
+    } catch (\Throwable $error) {
+        $selectTrapped = true;
+    }
+    if (!$selectTrapped) {
+        throw new \RuntimeException('select(unreachable, value) did not trap');
+    }
+    $out("select trap\n");
 };
 
 $dumpMemory = true;

@@ -27,6 +27,7 @@ public static class W2lHarness {
 
     mod.exerciseOverflowOps();
     mod.exerciseEdgeCases();
+    mod.exerciseSelectEvaluation();
 
     // Exported mutable global: exercise via getter/setter and function.
     mod.counter_set(42);

@@ -623,6 +623,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
       keys[keys.length] = '$ftable_' + fbSigKey;
       keys[keys.length] = '$ftable_' + fbSigKey + '_stub';
       keys[keys.length] = '$ftsig_' + fbSigKey;
+      if (moduleInfo.functionTables[fbSigKey].orderedCallNeeded) {
+        keys[keys.length] = this.getOrderedCallIndirectWrapperName_(fbSigKey);
+      }
     }
   }
 
@@ -643,6 +646,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
     }
     if (numLabels > maxLocals) {
       maxLocals = numLabels;
+    }
+  }
+  for (var /** @type {number} */ ftl = 0; ftl !== ftBindingKeys.length; ++ftl) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ localFt =
+        moduleInfo.functionTables[ftBindingKeys[ftl]];
+    if (localFt.orderedCallNeeded && localFt.signatureParams.length + 1 > maxLocals) {
+      maxLocals = localFt.signatureParams.length + 1;
     }
   }
 

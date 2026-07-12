@@ -68,18 +68,20 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.State_;
  *
  * @private
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {number} ptr
  * @return {boolean}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting_ = function (binaryen, ptr) {
-  return Wasm2Lang.Wasm.Tree.CustomPasses.walkControlFlowSubtree_(
+Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting_ = function (binaryen, wasmModule, ptr) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.containsExpression_(
     binaryen,
+    wasmModule,
     ptr,
-    /** @param {!BinaryenExpressionInfo} info @param {number} id @return {?boolean} */
+    /** @param {!BinaryenExpressionInfo} info @param {number} id @return {boolean} */
     function (info, id) {
       if (binaryen.LoopId === id || binaryen.SwitchId === id) return true;
       if (binaryen.BlockId === id && info.name && 0 === /** @type {string} */ (info.name).indexOf('w2l_switch$')) return true;
-      return null;
+      return false;
     }
   );
 };
@@ -93,6 +95,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting
  *
  * @private
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {!Array<number>} children
  * @param {number} start  inclusive
  * @param {number} end  exclusive
@@ -101,15 +104,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsBreakableNesting
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.hasInteriorLoopBackBranch_ = function (
   binaryen,
+  wasmModule,
   children,
   start,
   end,
   loopName
 ) {
-  var /** @const {function(!Binaryen, number, string): boolean} */ check =
+  var /** @const {function(!Binaryen, !BinaryenModule, number, string): boolean} */ check =
       Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_;
   for (var /** @type {number} */ i = start; i < end; ++i) {
-    if (check(binaryen, children[i], loopName)) return true;
+    if (check(binaryen, wasmModule, children[i], loopName)) return true;
   }
   return false;
 };
@@ -121,7 +125,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.hasInteriorLoopBackBranc
  * pattern as {@code invertCondition_} above).
  *
  * @private
- * @const {function(!Binaryen, number, string): boolean}
+ * @const {function(!Binaryen, !BinaryenModule, number, string): boolean}
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_ =
   Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
@@ -177,6 +181,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.storePlan_ = function (s
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = function (state, nodeCtx) {
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
+  var /** @const {!BinaryenModule} */ module = nodeCtx.treeModule;
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {number} */ id = expr.id;
 
@@ -248,6 +253,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
                 if (
                   Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.containsTargetingBranch_(
                     binaryen,
+                    module,
                     thenCh[lwii],
                     loopName
                   )
@@ -285,7 +291,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
   var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass;
 
   // Check whether the body contains nested breakable constructs.
-  var /** @const {boolean} */ needsLabel = S.containsBreakableNesting_(binaryen, bodyPtr);
+  var /** @const {boolean} */ needsLabel = S.containsBreakableNesting_(binaryen, module, bodyPtr);
 
   if (binaryen.BreakId === lastId) {
     var /** @const {?string} */ lastName = /** @type {?string} */ (lastInfo.name);
@@ -300,7 +306,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
     // when cond is false.  Fall through to LC (for-loop) classification
     // or raw emission instead.
     if (lastName === loopName && 0 !== lastCond && len > 1) {
-      if (!S.hasInteriorLoopBackBranch_(binaryen, children, 0, len - 1, loopName)) {
+      if (!S.hasInteriorLoopBackBranch_(binaryen, module, children, 0, len - 1, loopName)) {
         state.simplifiedLoops[loopName] = needsLabel ? 'ldb' : 'leb';
         return null;
       }
@@ -319,7 +325,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
         0 !== /** @type {number} */ (prevInfo.condition || 0) &&
         len > 2
       ) {
-        if (!S.hasInteriorLoopBackBranch_(binaryen, children, 0, len - 2, loopName)) {
+        if (!S.hasInteriorLoopBackBranch_(binaryen, module, children, 0, len - 2, loopName)) {
           state.simplifiedLoops[loopName] = needsLabel ? 'lda' : 'lea';
           return null;
         }
@@ -328,7 +334,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
       // Terminal-exit: unconditional break to outer, body has continue paths.
       var /** @type {boolean} */ hasInternalContinue = false;
       for (var /** @type {number} */ ti = 0; ti < len - 1; ++ti) {
-        if (S.containsTargetingBranch_(binaryen, children[ti], loopName)) {
+        if (S.containsTargetingBranch_(binaryen, module, children[ti], loopName)) {
           hasInternalContinue = true;
           break;
         }
@@ -379,7 +385,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
           // Body starts after the first guard and ends before self-continue.
           var /** @type {boolean} */ whileNeedsLabel = false;
           for (var /** @type {number} */ wi = 1; wi < len - 1; ++wi) {
-            if (S.containsTargetingBranch_(binaryen, children[wi], loopName)) {
+            if (S.containsTargetingBranch_(binaryen, module, children[wi], loopName)) {
               whileNeedsLabel = true;
               break;
             }

@@ -485,7 +485,8 @@ Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_;
  *   signatureReturnType: number,
  *   tableEntries: !Array<!Wasm2Lang.Backend.AbstractCodegen.FunctionTableEntry_>,
  *   tableMask: number,
- *   stubNeeded: boolean
+ *   stubNeeded: boolean,
+ *   orderedCallNeeded: boolean
  * }}
  */
 Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_;
@@ -793,7 +794,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
       signatureReturnType: sg.retType,
       tableEntries: sg.slots,
       tableMask: size - 1,
-      stubNeeded: hasNulls
+      stubNeeded: hasNulls,
+      orderedCallNeeded: false
     };
   }
 
@@ -829,33 +831,34 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
  * @return {void}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.ensureCallIndirectStubTables_ = function (wasmModule, binaryen, tables) {
+  var /** @const */ self = this;
   var /** @const {function(!Wasm2Lang.Wasm.Tree.TraversalNodeContext): (string|undefined)} */ visit = function (nodeCtx) {
-    var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
-    if (binaryen.CallIndirectId !== expr.id) return undefined;
-    var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(/** @type {number} */ (expr.params));
-    var /** @const {number} */ retType = expr.type;
-    var /** @const {string} */ sigKey = Wasm2Lang.Backend.AbstractCodegen.buildSignatureKey_(binaryen, paramTypes, retType);
-    if (tables[sigKey]) return undefined;
-    tables[sigKey] = {
-      signatureKey: sigKey,
-      signatureParams: paramTypes,
-      signatureReturnType: retType,
-      tableEntries: [{boundName: null}],
-      tableMask: 0,
-      stubNeeded: true
+      var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+      if (binaryen.CallIndirectId !== expr.id) return undefined;
+      var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(/** @type {number} */ (expr.params));
+      var /** @const {number} */ retType = expr.type;
+      var /** @const {string} */ sigKey = Wasm2Lang.Backend.AbstractCodegen.buildSignatureKey_(binaryen, paramTypes, retType);
+      if (!tables[sigKey]) {
+        tables[sigKey] = {
+          signatureKey: sigKey,
+          signatureParams: paramTypes,
+          signatureReturnType: retType,
+          tableEntries: [{boundName: null}],
+          tableMask: 0,
+          stubNeeded: true,
+          orderedCallNeeded: false
+        };
+      }
+      if (self.callIndirectNeedsOrderedEvaluation_(binaryen, expr, wasmModule)) {
+        tables[sigKey].orderedCallNeeded = true;
+      }
+      return undefined;
     };
-    return undefined;
-  };
 
   var /** @const {number} */ numFuncs = wasmModule.getNumFunctions();
   for (var /** @type {number} */ f = 0; f !== numFuncs; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(wasmModule.getFunctionByIndex(f));
     if ('' !== funcInfo.base || 0 === funcInfo.body) continue;
-    Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
-      binaryen,
-      wasmModule,
-      /** @type {number} */ (funcInfo.body),
-      visit
-    );
+    Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(binaryen, wasmModule, /** @type {number} */ (funcInfo.body), visit);
   }
 };

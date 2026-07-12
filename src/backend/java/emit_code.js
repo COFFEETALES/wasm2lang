@@ -120,6 +120,46 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     );
   }
 
+  var /** @const {!Array<string>} */ orderedCallWrapperParts = [];
+  for (var /** @type {number} */ ocw = 0; ocw !== ftLen; ++ocw) {
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ocwDesc =
+        moduleInfo.functionTables[ftKeys[ocw]];
+    if (!ocwDesc.orderedCallNeeded) continue;
+    var /** @const {number} */ ocwParamCount = ocwDesc.signatureParams.length;
+    var /** @const {!Array<string>} */ ocwParams = [];
+    var /** @const {!Array<string>} */ ocwCallArgs = [];
+    for (var /** @type {number} */ ocp = 0; ocp !== ocwParamCount; ++ocp) {
+      var /** @const {string} */ ocpName = this.localN_(ocp);
+      ocwParams[ocwParams.length] =
+        Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, ocwDesc.signatureParams[ocp]) + ' ' + ocpName;
+      ocwCallArgs[ocwCallArgs.length] = ocpName;
+    }
+    var /** @const {string} */ ocwIndex = this.localN_(ocwParamCount);
+    ocwParams[ocwParams.length] = 'int ' + ocwIndex;
+    var /** @const {string} */ ocwReturnType = Wasm2Lang.Backend.JavaCodegen.javaTypeName_(
+        binaryen,
+        ocwDesc.signatureReturnType
+      );
+    var /** @const {boolean} */ ocwHasReturn =
+        binaryen.none !== ocwDesc.signatureReturnType && 0 !== ocwDesc.signatureReturnType;
+    var /** @const {string} */ ocwCall =
+        'this.' + this.n_('$ftable_' + ocwDesc.signatureKey) + '[' + ocwIndex + '].call(' + ocwCallArgs.join(', ') + ')';
+    orderedCallWrapperParts[orderedCallWrapperParts.length] =
+      pad1 +
+      ocwReturnType +
+      ' ' +
+      this.n_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
+      '(' +
+      ocwParams.join(', ') +
+      ') {\n' +
+      pad2 +
+      (ocwHasReturn ? 'return ' : '') +
+      ocwCall +
+      ';\n' +
+      pad1 +
+      '}';
+  }
+
   // Helper methods (only those referenced by function bodies).
   var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(0, 0, 0, 0);
   this.usedHelpers_ = null;
@@ -223,6 +263,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Append function bodies.
   for (var /** @type {number} */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
     outputParts[outputParts.length] = functionParts[fi];
+  }
+  for (var /** @type {number} */ owp = 0; owp !== orderedCallWrapperParts.length; ++owp) {
+    outputParts[outputParts.length] = orderedCallWrapperParts[owp];
   }
 
   // Exported global accessor methods.

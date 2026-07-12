@@ -17,6 +17,7 @@ const runTest = function (buff, out, exports, data) {
 
   exports.exerciseOverflowOps();
   exports.exerciseEdgeCases();
+  exports.exerciseSelectEvaluation();
 
   // Exported mutable global: exercise via getter/setter and function.
   // Native WASM: WebAssembly.Global object; asm.js: getter/setter functions.

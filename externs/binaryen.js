@@ -95,6 +95,41 @@ Binaryen.prototype.getExpressionType = function (exprPtr) {};
 Binaryen.prototype.getExpressionInfo = function (exprPtr) {};
 
 /**
+ * @param {number} exprPtr
+ * @param {!BinaryenModule} wasmModule
+ * @return {number}
+ */
+Binaryen.prototype.getSideEffects = function (exprPtr, wasmModule) {};
+
+/**
+ * @record
+ */
+var BinaryenSideEffects = function () {};
+
+/** @type {number} */ BinaryenSideEffects.prototype.None;
+/** @type {number} */ BinaryenSideEffects.prototype.Branches;
+/** @type {number} */ BinaryenSideEffects.prototype.Calls;
+/** @type {number} */ BinaryenSideEffects.prototype.ReadsLocal;
+/** @type {number} */ BinaryenSideEffects.prototype.WritesLocal;
+/** @type {number} */ BinaryenSideEffects.prototype.ReadsGlobal;
+/** @type {number} */ BinaryenSideEffects.prototype.WritesGlobal;
+/** @type {number} */ BinaryenSideEffects.prototype.ReadsMemory;
+/** @type {number} */ BinaryenSideEffects.prototype.WritesMemory;
+/** @type {number} */ BinaryenSideEffects.prototype.ReadsTable;
+/** @type {number} */ BinaryenSideEffects.prototype.WritesTable;
+/** @type {number} */ BinaryenSideEffects.prototype.ImplicitTrap;
+/** @type {number} */ BinaryenSideEffects.prototype.IsAtomic;
+/** @type {number} */ BinaryenSideEffects.prototype.Throws;
+/** @type {number} */ BinaryenSideEffects.prototype.DanglingPop;
+/** @type {number} */ BinaryenSideEffects.prototype.TrapsNeverHappen;
+/** @type {number} */ BinaryenSideEffects.prototype.Any;
+
+/**
+ * @type {!BinaryenSideEffects}
+ */
+Binaryen.prototype.SideEffects;
+
+/**
  * @param {number} funcPtr
  * @param {number} type
  * @return {number}

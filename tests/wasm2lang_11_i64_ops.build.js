@@ -12,6 +12,114 @@
 
   module.setFeatures(binaryen.Features.MVP | binaryen.Features.NontrappingFPToInt | binaryen.Features.SignExt);
 
+  // Effectful i64 select: true, false, then condition must all execute in
+  // wasm order.  This covers the native-i64 JavaScript and Java helpers.
+  module.addGlobal('i64SelectTrace', binaryen.i32, true, module.i32.const(0));
+  const appendI64SelectTrace = tag =>
+    module.global.set(
+      'i64SelectTrace',
+      module.i32.add(module.i32.mul(module.global.get('i64SelectTrace', binaryen.i32), module.i32.const(10)), tag)
+    );
+  module.addFunction(
+    'markI64SelectValue',
+    binaryen.createType([binaryen.i32, binaryen.i64]),
+    binaryen.i64,
+    [],
+    module.block(null, [
+      appendI64SelectTrace(module.local.get(0, binaryen.i32)),
+      module.return(module.local.get(1, binaryen.i64))
+    ])
+  );
+  module.addFunction(
+    'markI64SelectCondition',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [],
+    module.block(null, [
+      appendI64SelectTrace(module.local.get(0, binaryen.i32)),
+      module.return(module.local.get(1, binaryen.i32))
+    ])
+  );
+  module.addFunction(
+    'exerciseI64SelectEvaluation',
+    binaryen.none,
+    binaryen.none,
+    [],
+    module.block(null, [
+      module.global.set('i64SelectTrace', module.i32.const(0)),
+      storeI64(
+        module.select(
+          module.call('markI64SelectCondition', [module.i32.const(3), module.i32.const(1)], binaryen.i32),
+          module.call('markI64SelectValue', [module.i32.const(1), module.i64.const(i64c(111, 0))], binaryen.i64),
+          module.call('markI64SelectValue', [module.i32.const(2), module.i64.const(i64c(222, 0))], binaryen.i64)
+        )
+      ),
+      storeI32(module.global.get('i64SelectTrace', binaryen.i32)),
+      module.return()
+    ])
+  );
+
+  // Native-i64 call_indirect barrier (JavaScript BigInt + Java long).  The
+  // i64 argument must execute before the effectful table index, yielding
+  // trace 12 and preserving the exact 64-bit payload through the typed
+  // per-signature dispatcher.
+  const sigI64I64 = binaryen.createType([binaryen.i64]);
+  module.addFunction('identityI64Indirect', sigI64I64, binaryen.i64, [], module.local.get(0, binaryen.i64));
+  module.addTable('i64FunctionTable', 1, 1);
+  module.addActiveElementSegment('i64FunctionTable', 'i64FunctionTableInit', ['identityI64Indirect'], module.i32.const(0));
+  module.addGlobal('i64CallIndirectTrace', binaryen.i32, true, module.i32.const(0));
+  const appendI64CallTrace = tag =>
+    module.global.set(
+      'i64CallIndirectTrace',
+      module.i32.add(module.i32.mul(module.global.get('i64CallIndirectTrace', binaryen.i32), module.i32.const(10)), tag)
+    );
+  module.addFunction(
+    'markI64CallArgument',
+    binaryen.createType([binaryen.i32, binaryen.i64]),
+    binaryen.i64,
+    [],
+    module.block(null, [
+      appendI64CallTrace(module.local.get(0, binaryen.i32)),
+      module.return(module.local.get(1, binaryen.i64))
+    ])
+  );
+  module.addFunction(
+    'markI64CallIndex',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [],
+    module.block(null, [
+      appendI64CallTrace(module.local.get(0, binaryen.i32)),
+      module.return(module.local.get(1, binaryen.i32))
+    ])
+  );
+  module.addFunction(
+    'exerciseI64CallIndirectEvaluation',
+    binaryen.none,
+    binaryen.none,
+    [],
+    module.block(null, [
+      module.global.set('i64CallIndirectTrace', module.i32.const(0)),
+      storeI64(
+        module.call_indirect(
+          'i64FunctionTable',
+          module.call('markI64CallIndex', [module.i32.const(2), module.i32.const(0)], binaryen.i32),
+          [
+            module.call(
+              'markI64CallArgument',
+              [module.i32.const(1), module.i64.const(i64c(0x89abcdef | 0, 0x1234567))],
+              binaryen.i64
+            )
+          ],
+          sigI64I64,
+          binaryen.i64
+        )
+      ),
+      storeI32(module.global.get('i64CallIndirectTrace', binaryen.i32)),
+      module.return()
+    ])
+  );
+
   // =================================================================
   // exerciseI64Arithmetic: i64 add, sub, mul, div, rem with signed
   // and unsigned variants. Params are i32, extended internally.
@@ -501,6 +609,8 @@
   module.addFunctionExport('exerciseI64Conversions', 'exerciseI64Conversions');
   module.addFunctionExport('exerciseI64EdgeCases', 'exerciseI64EdgeCases');
   module.addFunctionExport('exerciseI64TruncConvert', 'exerciseI64TruncConvert');
+  module.addFunctionExport('exerciseI64SelectEvaluation', 'exerciseI64SelectEvaluation');
+  module.addFunctionExport('exerciseI64CallIndirectEvaluation', 'exerciseI64CallIndirectEvaluation');
 
   common.finalizeAndOutput(module);
 

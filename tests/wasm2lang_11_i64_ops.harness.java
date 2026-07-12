@@ -36,6 +36,8 @@
     }
 
     mod.exerciseI64EdgeCases();
+    mod.exerciseI64SelectEvaluation();
+    mod.exerciseI64CallIndirectEvaluation();
 
     w2lDumpCRC(memBuffer);
 }

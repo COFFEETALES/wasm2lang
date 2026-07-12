@@ -26,6 +26,46 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.setPassRunResult_ = function (result
 };
 
 /**
+ * Runs the transient semantic control-flow analysis exactly once for a module
+ * before emission. The pass owns its result instead of writing PassMetadata,
+ * so the index cannot leak into w2l_codegen_meta serialization.
+ *
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.prepareControlFlowSummary_ = function (wasmModule, binaryen) {
+  // Raw/baseline emission never returns SKIP_SUBTREE, so its normal codegen
+  // child results already carry every summary needed by the parent. Avoid an
+  // analysis pass entirely on that fast path.
+  if (!this.useSimplifications_) return;
+  if (this.controlFlowSummaryModule_ === wasmModule && this.controlFlowSummaryIndex_) return;
+
+  var /** @const {!Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis} */ analysis =
+      new Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis();
+  Wasm2Lang.Wasm.Tree.PassRunner.runOnModule(wasmModule, [analysis], binaryen);
+  this.controlFlowSummaryIndex_ = analysis.getIndex();
+  this.controlFlowSummaryModule_ = wasmModule;
+};
+
+/**
+ * Looks up the semantic control summary for one expression in the active
+ * module. Pointer keys are nested under function names so the index remains
+ * correct even if a Binaryen implementation reuses pointer values.
+ *
+ * @protected
+ * @param {string} functionName
+ * @param {number} expressionPointer
+ * @return {?Wasm2Lang.Wasm.Tree.ControlFlowSummary}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getControlFlowSummary_ = function (functionName, expressionPointer) {
+  var /** @const {?Wasm2Lang.Wasm.Tree.ControlFlowSummaryIndex} */ index = this.controlFlowSummaryIndex_;
+  if (!index) return null;
+  var /** @const {(!Wasm2Lang.Wasm.Tree.FunctionControlFlowSummaryIndex|undefined)} */ functionIndex = index[functionName];
+  return functionIndex ? functionIndex[String(expressionPointer)] || null : null;
+};
+
+/**
  * Enables control-flow simplifications (flat switch, loop simplification,
  * block-loop fusion) during code emission.  Called from the processor when
  * {@code --pre-normalized} is active.

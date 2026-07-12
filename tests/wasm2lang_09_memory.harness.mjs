@@ -6,6 +6,7 @@ const runTest = function (buff, out, exports, data) {
   exports.alignHeapTop();
   exports.exerciseBulkMemory(exports.getHeapTop());
   exports.exerciseMemoryGrow();
+  exports.exerciseBulkControlFlow();
 
   for (const p of data.bulk_params) {
     exports.exerciseBulkFillVerify(exports.getHeapTop(), p[0], p[1]);
