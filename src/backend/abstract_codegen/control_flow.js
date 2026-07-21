@@ -875,6 +875,93 @@ Wasm2Lang.Backend.AbstractCodegen.reachableBlockChildCount_ = function (binaryen
 };
 
 /**
+ * Classifies a loop body's trailing unconditional back-edge. Returns 1 when
+ * the back-edge is unavoidable, 0 when a branch to an enclosing tail block
+ * can bypass it, and -1 when the loop has no recognized trailing back-edge.
+ *
+ * A tail back-edge nested in a named block is not unavoidable when any path
+ * can branch to that block's end. This distinction is required for Clang's
+ * common validation loops, where an error branch skips the tail back-edge and
+ * deliberately falls through after the loop.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
+ * @param {number} loopPtr
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.classifyLoopBackEdge_ = function (binaryen, wasmModule, loopPtr) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {!BinaryenExpressionInfo} */ loopInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+      binaryen,
+      loopPtr
+    );
+  if (binaryen.LoopId !== loopInfo.id || !loopInfo.name || !loopInfo.body) return -1;
+
+  var /** @type {!BinaryenExpressionInfo} */ tailInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+      binaryen,
+      /** @type {number} */ (loopInfo.body)
+    );
+  var /** @type {boolean} */ canBypass = false;
+  while (binaryen.BlockId === tailInfo.id) {
+    var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (tailInfo.children || []);
+    var /** @const {number} */ count = A.reachableBlockChildCount_(binaryen, tailInfo);
+    if (0 === count) return -1;
+    var /** @const {string} */ blockName = /** @type {string} */ (tailInfo.name || '');
+    if (blockName) {
+      for (var /** @type {number} */ bi = 0; bi !== count; ++bi) {
+        if (Wasm2Lang.Wasm.Tree.CustomPasses.hasReference(binaryen, wasmModule, children[bi], blockName)) {
+          canBypass = true;
+          break;
+        }
+      }
+    }
+    tailInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, children[count - 1]);
+  }
+  var /** @const {boolean} */ hasBackEdge =
+      binaryen.BreakId === tailInfo.id &&
+      tailInfo.name === loopInfo.name &&
+      0 === /** @type {number} */ (tailInfo.condition || 0);
+  return hasBackEdge ? (canBypass ? 0 : 1) : -1;
+};
+
+/**
+ * Returns whether a loop body ends in an unavoidable unconditional branch
+ * back to that loop.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
+ * @param {number} loopPtr
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.loopHasUnconditionalBackEdge_ = function (binaryen, wasmModule, loopPtr) {
+  return 1 === Wasm2Lang.Backend.AbstractCodegen.classifyLoopBackEdge_(binaryen, wasmModule, loopPtr);
+};
+
+/**
+ * Returns whether a rendered child is terminal, including the conservative
+ * structural fallback for a raw loop whose terminal bit was lost across a
+ * normalized binary round-trip.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {number} childIndex
+ * @param {number} childPtr
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.childIsTerminal_ = function (binaryen, wasmModule, childResults, childIndex, childPtr) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const {number} */ loopBackEdge = A.classifyLoopBackEdge_(binaryen, wasmModule, childPtr);
+  // A bypassable tail back-edge proves that the loop can complete normally,
+  // overriding stale terminal metadata reconstructed from normalized bytes.
+  if (0 === loopBackEdge) return false;
+  return A.getChildResultInfo_(childResults, childIndex).isTerminal || 1 === loopBackEdge;
+};
+
+/**
  * Extends the IR-only reachability bound with terminal information discovered
  * while rendering child expressions.  Binaryen may keep a parent statement
  * typed {@code none} when an eager operand returns or traps (for example the
@@ -882,19 +969,36 @@ Wasm2Lang.Backend.AbstractCodegen.reachableBlockChildCount_ = function (binaryen
  *
  * @protected
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {!BinaryenExpressionInfo} blockExpr
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
  * @return {number}
  */
-Wasm2Lang.Backend.AbstractCodegen.effectiveReachableBlockChildCount_ = function (binaryen, blockExpr, childResults) {
+Wasm2Lang.Backend.AbstractCodegen.effectiveReachableBlockChildCount_ = function (
+  binaryen,
+  wasmModule,
+  blockExpr,
+  childResults
+) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const {number} */ irCount = A.reachableBlockChildCount_(binaryen, blockExpr);
-  for (var /** @type {number} */ i = 0; i !== irCount; ++i) {
-    if (A.getChildResultInfo_(childResults, i).isTerminal) {
+  var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (blockExpr.children || []);
+  for (var /** @type {number} */ i = 0; i !== children.length; ++i) {
+    if (A.childIsTerminal_(binaryen, wasmModule, childResults, i, children[i])) {
       return i + 1;
     }
+    // A missing traversal result cannot safely override Binaryen's static
+    // unreachable type. Rendered loop/block results can: normalization may
+    // retain a stale unreachable type even though a captured branch creates
+    // normal fallthrough, and childIsTerminal_ has already classified that
+    // control flow above.
+    var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ child = A.getChildResultInfo_(childResults, i);
+    var /** @const {!BinaryenExpressionInfo} */ childExpr = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+        binaryen,
+        children[i]
+      );
+    if (!child.hasExpression && binaryen.unreachable === childExpr.type) return i + 1;
   }
-  return irCount;
+  return children.length;
 };
 
 /**
@@ -905,20 +1009,22 @@ Wasm2Lang.Backend.AbstractCodegen.effectiveReachableBlockChildCount_ = function 
  *
  * @protected
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {!BinaryenExpressionInfo} blockExpr
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
  * @return {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_}
  */
-Wasm2Lang.Backend.AbstractCodegen.summarizeBlockControl_ = function (binaryen, blockExpr, childResults) {
+Wasm2Lang.Backend.AbstractCodegen.summarizeBlockControl_ = function (binaryen, wasmModule, blockExpr, childResults) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const {?Wasm2Lang.Wasm.Tree.ControlFlowSummary} */ skippedSummary = A.getSkippedControlSummary_(childResults);
   if (skippedSummary) return skippedSummary;
   if (0 === childResults.length && 0 !== /** @type {!Array<number>} */ (blockExpr.children || []).length) {
     throw new Error('Wasm2Lang codegen: skipped block has no precomputed control summary.');
   }
-  var /** @const {number} */ count = A.effectiveReachableBlockChildCount_(binaryen, blockExpr, childResults);
+  var /** @const {number} */ count = A.effectiveReachableBlockChildCount_(binaryen, wasmModule, blockExpr, childResults);
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ summary = A.mergeChildControl_(childResults, count);
-  summary.isTerminal = 0 !== count && A.getChildResultInfo_(childResults, count - 1).isTerminal;
+  var /** @const {!Array<number>} */ children = /** @type {!Array<number>} */ (blockExpr.children || []);
+  summary.isTerminal = 0 !== count && A.childIsTerminal_(binaryen, wasmModule, childResults, count - 1, children[count - 1]);
 
   var /** @const {?string} */ blockName = /** @type {?string} */ (blockExpr.name);
   if (blockName) {
@@ -1210,7 +1316,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
   // drift after binary round-trip; fusedBlockToLoop is set only when the
   // block-loop fusion actually occurred in emitEnter_.
   var /** @const {boolean} */ isFused = !!blockName && !!state.fusedBlockToLoop[blockName];
-  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(state.binaryen, expr, childResults);
+  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(
+      state.binaryen,
+      state.wasmModule,
+      expr,
+      childResults
+    );
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(
       childResults,
       emitCount
@@ -1279,7 +1390,7 @@ Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, node
   var /** @const {number} */ blockType = /** @type {number} */ (expr.type);
   if (binaryen.none === blockType || 0 === blockType || binaryen.unreachable === blockType) return null;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(binaryen, expr, childResults);
+  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(binaryen, state.wasmModule, expr, childResults);
   if (emitCount < 1) return null;
   var /** @const */ pad = A.pad_;
   var /** @const {number} */ childInd = state.indent;
@@ -1880,10 +1991,13 @@ Wasm2Lang.Backend.AbstractCodegen.appendSubWalkedLines_ = function (
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const {string} */ padStr = A.pad_(indent);
   for (var /** @type {number} */ i = startIdx; i < endIdx; ++i) {
-    var /** @const {string} */ code = A.subWalkString_(A.subWalkExpression_(wasmModule, binaryen, funcInfo, visitor, ptrs[i]));
+    var /** @const {*} */ walked = A.subWalkExpression_(wasmModule, binaryen, funcInfo, visitor, ptrs[i]);
+    var /** @const {string} */ code = A.subWalkString_(walked);
     if ('' !== code) {
       lines[lines.length] = -1 === code.indexOf('\n') ? padStr + code + ';\n' : code;
     }
+    var /** @const {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} */ singleResult = [walked];
+    if (A.childIsTerminal_(binaryen, wasmModule, singleResult, 0, ptrs[i])) break;
   }
 };
 
@@ -2063,7 +2177,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.propagateTerminalChild_ = function (
 
   var /** @type {number} */ terminalAt = -1;
   for (var /** @type {number} */ oi = 0, /** @const {number} */ orderedCount = ordered.length; oi !== orderedCount; ++oi) {
-    if (A.getChildResultInfo_(childResults, ordered[oi][1]).isTerminal) {
+    if (A.childIsTerminal_(binaryen, wasmModule, childResults, ordered[oi][1], ordered[oi][0])) {
       terminalAt = oi;
       break;
     }

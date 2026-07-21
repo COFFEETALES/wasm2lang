@@ -368,6 +368,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
         var /** @const {?string} */ exitTarget = /** @type {?string} */ (firstInfo.name);
         var /** @const {number} */ bsLen = state.enclosingBlockStack.length;
         var /** @const {string} */ FUSED_MARKER = Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER;
+        var /** @const {*} */ fusedPlansRef = state.funcMetadata.fusedBlocks;
+        var /** @const {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ exitFusionPlan =
+            exitTarget && fusedPlansRef
+              ? /** @type {?Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (
+                  /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (fusedPlansRef)[exitTarget] || null
+                )
+              : null;
         if (
           binaryen.BreakId === firstInfo.id &&
           0 !== /** @type {number} */ (firstInfo.condition || 0) &&
@@ -375,7 +382,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
           bsLen > 0 &&
           state.enclosingBlockStack[bsLen - 1] === exitTarget &&
           exitTarget !== null &&
-          0 === /** @type {string} */ (exitTarget).indexOf(FUSED_MARKER)
+          0 === /** @type {string} */ (exitTarget).indexOf(FUSED_MARKER) &&
+          !!exitFusionPlan &&
+          'a' === exitFusionPlan.fusionVariant
         ) {
           // Only the first exit guard folds into the while condition.
           // Any consecutive br_if exits that follow stay in the body (see

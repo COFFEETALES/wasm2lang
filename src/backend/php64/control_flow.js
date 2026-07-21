@@ -255,7 +255,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, no
       isFused = true;
     }
   }
-  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(state.binaryen, expr, childResults);
+  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(
+      state.binaryen,
+      state.wasmModule,
+      expr,
+      childResults
+    );
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(
       childResults,
       emitCount
@@ -603,6 +608,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       );
       var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ blockControl = A.summarizeBlockControl_(
           binaryen,
+          state.wasmModule,
           expr,
           childResults
         );

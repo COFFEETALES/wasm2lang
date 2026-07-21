@@ -152,7 +152,12 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitLabeledBlock_ = function (state, n
   var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
   var /** @const {number} */ ind = state.indent;
   var /** @const {boolean} */ isFused = !!blockName && !!state.fusedBlockToLoop[blockName];
-  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(state.binaryen, expr, childResults);
+  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(
+      state.binaryen,
+      state.wasmModule,
+      expr,
+      childResults
+    );
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(
       childResults,
       emitCount
@@ -510,6 +515,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitLeave_ = function (state, nodeCtx,
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
       var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ blockControl = A.summarizeBlockControl_(
           binaryen,
+          state.wasmModule,
           expr,
           childResults
         );

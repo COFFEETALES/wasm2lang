@@ -269,12 +269,14 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       } else {
         var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         var /** @type {string} */ selCondStr;
+        var /** @const {string} */ selTrueStr = this.coerceToType_(binaryen, cr(1), cc(1), selectType);
+        var /** @const {string} */ selFalseStr = this.coerceToType_(binaryen, cr(2), cc(2), selectType);
         if (A.CAT_BOOL_I32 === cc(0)) {
           selCondStr = Ps.wrap_(cr(0), Ps.PREC_CONDITIONAL_, false);
         } else {
           selCondStr = Ps.renderInfix(cr(0), '!=', '0', Ps.PREC_EQUALITY_);
         }
-        result = '(' + selCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')';
+        result = '(' + selCondStr + ' ? ' + selTrueStr + ' : ' + selFalseStr + ')';
       }
       resultCat = A.catForCoercedType_(binaryen, selectType);
       break;
@@ -304,6 +306,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
       var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ blockControl = A.summarizeBlockControl_(
           binaryen,
+          state.wasmModule,
           expr,
           childResults
         );
@@ -358,12 +361,14 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       if (binaryen.none !== ifType && binaryen.unreachable !== ifType && 0 !== ifType) {
         var /** @const */ IfPs = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
         var /** @type {string} */ ifCondStr;
+        var /** @const {string} */ ifTrueStr = this.coerceToType_(binaryen, cr(1), cc(1), ifType);
+        var /** @const {string} */ ifFalseStr = this.coerceToType_(binaryen, cr(2), cc(2), ifType);
         if (A.CAT_BOOL_I32 === cc(0)) {
           ifCondStr = IfPs.wrap_(cr(0), IfPs.PREC_CONDITIONAL_, false);
         } else {
           ifCondStr = IfPs.renderInfix(cr(0), '!=', '0', IfPs.PREC_EQUALITY_);
         }
-        result = '(' + ifCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')';
+        result = '(' + ifCondStr + ' ? ' + ifTrueStr + ' : ' + ifFalseStr + ')';
         resultCat = A.catForCoercedType_(binaryen, ifType);
       } else {
         result = this.emitIfStatement_(

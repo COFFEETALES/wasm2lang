@@ -283,6 +283,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       result = this.emitBlockDispatch_(state, nodeCtx, childResults);
       var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ blockControl = A.summarizeBlockControl_(
           binaryen,
+          state.wasmModule,
           expr,
           childResults
         );
