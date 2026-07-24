@@ -373,6 +373,37 @@
   }
 
   // =================================================================
+  // Raw v128 memory operations used to verify byte-exact copy semantics,
+  // unaligned access, bounds traps, and non-array Java ByteBuffers.
+  // =================================================================
+  module.addFunction(
+    'copySIMD16',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.none,
+    [],
+    module.v128.store(0, 1, module.local.get(1, binaryen.i32), module.v128.load(0, 1, module.local.get(0, binaryen.i32)))
+  );
+  module.addFunction(
+    'readSIMDLane0',
+    binaryen.i32,
+    binaryen.i32,
+    [],
+    module.i32x4.extract_lane(module.v128.load(0, 1, module.local.get(0, binaryen.i32)), 0)
+  );
+  module.addFunction(
+    'storeSIMDPattern',
+    binaryen.i32,
+    binaryen.none,
+    [],
+    module.v128.store(
+      0,
+      1,
+      module.local.get(0, binaryen.i32),
+      module.v128.const(i32x4Bytes(0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c))
+    )
+  );
+
+  // =================================================================
   // exerciseSIMDEdgeCases: constant-driven edge cases.
   // =================================================================
   {
@@ -483,6 +514,9 @@
   module.addFunctionExport('exerciseSIMDCompare', 'exerciseSIMDCompare');
   module.addFunctionExport('exerciseSIMDShuffle', 'exerciseSIMDShuffle');
   module.addFunctionExport('exerciseSIMDMemory', 'exerciseSIMDMemory');
+  module.addFunctionExport('copySIMD16', 'copySIMD16');
+  module.addFunctionExport('readSIMDLane0', 'readSIMDLane0');
+  module.addFunctionExport('storeSIMDPattern', 'storeSIMDPattern');
   module.addFunctionExport('exerciseSIMDEdgeCases', 'exerciseSIMDEdgeCases');
   module.addFunctionExport('exerciseSIMDSelectEvaluation', 'exerciseSIMDSelectEvaluation');
 

@@ -31,6 +31,17 @@
 Wasm2Lang.Backend.JavaCodegen.EmitState_;
 
 /**
+ * Java-only metadata carried by a direct v128.load child. It lets a containing
+ * v128.store preserve both pointer expressions while emitting one allocation-
+ * free copy helper instead of passing an IntVector across helper boundaries.
+ *
+ * @typedef {{
+ *   w2lJavaV128LoadPtr: (string|undefined)
+ * }}
+ */
+Wasm2Lang.Backend.JavaCodegen.V128LoadExpr_;
+
+/**
  * Java supports eager v128 selects through its IntVector helper.
  *
  * @override
@@ -65,6 +76,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
   var /** @type {number} */ resultCat = A.CAT_VOID;
   var /** @type {boolean} */ resultTerminalOverride = false;
   var /** @type {boolean} */ resultTerminalOverrideIsAuthoritative = false;
+  var /** @type {string} */ v128LoadPtr = '';
 
   // Reset terminal flag for all non-Block expressions (Block propagates from
   // its last child).  Terminal handlers (Return, unconditional Break, Switch
@@ -139,6 +151,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {number} */ loadType = expr.type;
       result = this.renderLoad_(binaryen, loadPtr, loadType, /** @type {number} */ (expr.bytes), !!expr.isSigned);
       resultCat = A.catForCoercedType_(binaryen, loadType);
+      if (Wasm2Lang.Backend.ValueType.isV128(binaryen, loadType)) {
+        v128LoadPtr = loadPtr;
+      }
       break;
     }
     case binaryen.StoreId: {
@@ -147,8 +162,27 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
           cr(0),
           /** @type {number} */ (expr.offset)
         );
-      result =
-        pad(ind) + this.renderStore_(binaryen, storePtr, cr(1), storeType, /** @type {number} */ (expr.bytes), cc(1)) + '\n';
+      var /** @type {string} */ copySourcePtr = '';
+      var /** @const {*} */ rawStoreValue = childResults.length > 1 ? childResults[1] : null;
+      if (rawStoreValue && 'string' !== typeof rawStoreValue) {
+        var /** @const {*} */ directLoadPtr = /** @type {!Wasm2Lang.Backend.JavaCodegen.V128LoadExpr_} */ (rawStoreValue)
+            .w2lJavaV128LoadPtr;
+        if ('string' === typeof directLoadPtr) {
+          copySourcePtr = /** @type {string} */ (directLoadPtr);
+        }
+      }
+      if (
+        '' !== copySourcePtr &&
+        16 === /** @type {number} */ (expr.bytes) &&
+        Wasm2Lang.Backend.ValueType.isV128(binaryen, storeType)
+      ) {
+        this.markHelper_('$w2l_v128_copy');
+        result =
+          pad(ind) + this.n_('$w2l_v128_copy') + '(this.' + this.n_('buffer') + ', ' + storePtr + ', ' + copySourcePtr + ');\n';
+      } else {
+        result =
+          pad(ind) + this.renderStore_(binaryen, storePtr, cr(1), storeType, /** @type {number} */ (expr.bytes), cc(1)) + '\n';
+      }
       break;
     }
     case binaryen.GlobalSetId: {
@@ -518,7 +552,17 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       ? resultTerminalOverride
       : binaryen.unreachable === expr.type;
   if (resultIsTerminal) state.lastExprIsTerminal = true;
-  return A.buildLeaveResult_(result, resultCat, resultIsTerminal, resultMayExitFunction, resultBranchTargets);
+  var /** @const {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ leaveResult = A.buildLeaveResult_(
+      result,
+      resultCat,
+      resultIsTerminal,
+      resultMayExitFunction,
+      resultBranchTargets
+    );
+  if ('' !== v128LoadPtr && leaveResult && leaveResult.decisionValue && 'string' !== typeof leaveResult.decisionValue) {
+    /** @type {!Wasm2Lang.Backend.JavaCodegen.V128LoadExpr_} */ (leaveResult.decisionValue).w2lJavaV128LoadPtr = v128LoadPtr;
+  }
+  return leaveResult;
 };
 
 /**

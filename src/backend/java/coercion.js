@@ -89,7 +89,11 @@ Wasm2Lang.Backend.JavaCodegen.renderV128Const_ = function (value) {
     lanes[i] =
       (bytes[off] & 0xff) | ((bytes[off + 1] & 0xff) << 8) | ((bytes[off + 2] & 0xff) << 16) | (bytes[off + 3] << 24) | 0;
   }
-  return 'IntVector.fromArray(IntVector.SPECIES_128, new int[]{' + lanes.join(', ') + '}, 0)';
+  var /** @type {string} */ result = 'IntVector.broadcast(IntVector.SPECIES_128, ' + lanes[0] + ')';
+  for (i = 1; i < 4; ++i) {
+    result += '.withLane(' + i + ', ' + lanes[i] + ')';
+  }
+  return result;
 };
 
 /**

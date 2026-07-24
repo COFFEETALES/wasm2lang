@@ -56,6 +56,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function (
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const {string} */ pad1 = pad(1);
   var /** @const {string} */ pad2 = pad(2);
+  var /** @const {string} */ pad3 = pad(3);
   var /** @const {string} */ l0 = this.localN_(0);
   var /** @const {string} */ l1 = this.localN_(1);
   var /** @const {string} */ l2 = this.localN_(2);
@@ -65,10 +66,15 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function (
     return self.n_(s);
   };
 
-  // Conditionally emit a helper via the shared emit-or-collect funnel.  Java
-  // does not track per-helper bindings, so {@code null} is passed.
+  // Conditionally emit a helper via the shared emit-or-collect funnel.
+  // v128 helpers also own the Vector API import dependency so modules whose
+  // only SIMD instructions are ordinary v128.load/store still compile.
   var h = /** @param {string} name @param {string} body */ function (name, body) {
-    self.emitOrCollectHelper_(lines, name, null, body);
+    var /** @const {?Array<string>} */ bindings =
+        '$w2l_select_v128' === name || '$w2l_v128_load' === name || '$w2l_v128_store' === name || '$w2l_v128_copy' === name
+          ? ['$v128']
+          : null;
+    self.emitOrCollectHelper_(lines, name, bindings, body);
   };
 
   // Java evaluates call arguments left-to-right, so these helpers preserve
@@ -246,21 +252,57 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitHelpers_ = function (
   // prettier-ignore
   h('$w2l_v128_load',
     pad1 + 'static IntVector ' + n('$w2l_v128_load') + '(java.nio.ByteBuffer ' + l0 + ', int ' + l1 + ') {\n' +
-    pad2 + 'return IntVector.fromArray(IntVector.SPECIES_128, new int[]{' +
-      l0 + '.getInt(' + l1 + '), ' +
-      l0 + '.getInt(' + l1 + ' + 4), ' +
-      l0 + '.getInt(' + l1 + ' + 8), ' +
-      l0 + '.getInt(' + l1 + ' + 12)}, 0);\n' +
+    pad2 + 'if (' + l1 + ' < 0 || ' + l1 + ' > ' + l0 + '.limit() - 16) throw new IndexOutOfBoundsException();\n' +
+    pad2 + 'if (java.nio.ByteOrder.nativeOrder() == java.nio.ByteOrder.LITTLE_ENDIAN && ' + l0 + '.hasArray()) {\n' +
+    pad3 + 'return ByteVector.fromArray(ByteVector.SPECIES_128, ' +
+      l0 + '.array(), ' + l0 + '.arrayOffset() + ' + l1 + ').reinterpretAsInts();\n' +
+    pad2 + '}\n' +
+    pad2 + 'boolean ' + l2 + ' = ' + l0 + '.order() == java.nio.ByteOrder.BIG_ENDIAN;\n' +
+    pad2 + 'return IntVector.zero(IntVector.SPECIES_128)' +
+      '.withLane(0, ' + l2 + ' ? Integer.reverseBytes(' + l0 + '.getInt(' + l1 + ')) : ' + l0 + '.getInt(' + l1 + '))' +
+      '.withLane(1, ' + l2 + ' ? Integer.reverseBytes(' + l0 + '.getInt(' + l1 + ' + 4)) : ' + l0 + '.getInt(' + l1 + ' + 4))' +
+      '.withLane(2, ' + l2 + ' ? Integer.reverseBytes(' + l0 + '.getInt(' + l1 + ' + 8)) : ' + l0 + '.getInt(' + l1 + ' + 8))' +
+      '.withLane(3, ' + l2 + ' ? Integer.reverseBytes(' + l0 + '.getInt(' + l1 + ' + 12)) : ' + l0 + '.getInt(' + l1 + ' + 12));\n' +
     pad1 + '}');
 
   // prettier-ignore
   h('$w2l_v128_store',
     pad1 + 'static void ' + n('$w2l_v128_store') +
       '(java.nio.ByteBuffer ' + l0 + ', int ' + l1 + ', IntVector ' + l2 + ') {\n' +
-    pad2 + l0 + '.putInt(' + l1 + ', ' + l2 + '.lane(0));\n' +
-    pad2 + l0 + '.putInt(' + l1 + ' + 4, ' + l2 + '.lane(1));\n' +
-    pad2 + l0 + '.putInt(' + l1 + ' + 8, ' + l2 + '.lane(2));\n' +
-    pad2 + l0 + '.putInt(' + l1 + ' + 12, ' + l2 + '.lane(3));\n' +
+    pad2 + 'if (' + l1 + ' < 0 || ' + l1 + ' > ' + l0 + '.limit() - 16) throw new IndexOutOfBoundsException();\n' +
+    pad2 + 'if (' + l0 + '.isReadOnly()) throw new java.nio.ReadOnlyBufferException();\n' +
+    pad2 + 'if (java.nio.ByteOrder.nativeOrder() == java.nio.ByteOrder.LITTLE_ENDIAN && ' + l0 + '.hasArray()) {\n' +
+    pad3 + l2 + '.reinterpretAsBytes().intoArray(' +
+      l0 + '.array(), ' + l0 + '.arrayOffset() + ' + l1 + ');\n' +
+    pad3 + 'return;\n' +
+    pad2 + '}\n' +
+    pad2 + 'boolean ' + l3 + ' = ' + l0 + '.order() == java.nio.ByteOrder.BIG_ENDIAN;\n' +
+    pad2 + l0 + '.putInt(' + l1 + ', ' + l3 + ' ? Integer.reverseBytes(' + l2 + '.lane(0)) : ' + l2 + '.lane(0));\n' +
+    pad2 + l0 + '.putInt(' + l1 + ' + 4, ' + l3 + ' ? Integer.reverseBytes(' + l2 + '.lane(1)) : ' + l2 + '.lane(1));\n' +
+    pad2 + l0 + '.putInt(' + l1 + ' + 8, ' + l3 + ' ? Integer.reverseBytes(' + l2 + '.lane(2)) : ' + l2 + '.lane(2));\n' +
+    pad2 + l0 + '.putInt(' + l1 + ' + 12, ' + l3 + ' ? Integer.reverseBytes(' + l2 + '.lane(3)) : ' + l2 + '.lane(3));\n' +
+    pad1 + '}');
+
+  // A direct v128.store(v128.load(...)) keeps the vector inside one helper.
+  // This is both the exact wasm evaluation unit and the boundary HotSpot needs
+  // to scalar-replace the temporary ByteVector in the heap-buffer fast path.
+  // prettier-ignore
+  h('$w2l_v128_copy',
+    pad1 + 'static void ' + n('$w2l_v128_copy') +
+      '(java.nio.ByteBuffer ' + l0 + ', int ' + l1 + ', int ' + l2 + ') {\n' +
+    pad2 + 'if (' + l2 + ' < 0 || ' + l2 + ' > ' + l0 + '.limit() - 16) throw new IndexOutOfBoundsException();\n' +
+    pad2 + 'if (' + l1 + ' < 0 || ' + l1 + ' > ' + l0 + '.limit() - 16) throw new IndexOutOfBoundsException();\n' +
+    pad2 + 'if (' + l0 + '.isReadOnly()) throw new java.nio.ReadOnlyBufferException();\n' +
+    pad2 + 'if (java.nio.ByteOrder.nativeOrder() == java.nio.ByteOrder.LITTLE_ENDIAN && ' + l0 + '.hasArray()) {\n' +
+    pad3 + 'ByteVector.fromArray(ByteVector.SPECIES_128, ' +
+      l0 + '.array(), ' + l0 + '.arrayOffset() + ' + l2 + ').intoArray(' +
+      l0 + '.array(), ' + l0 + '.arrayOffset() + ' + l1 + ');\n' +
+    pad3 + 'return;\n' +
+    pad2 + '}\n' +
+    pad2 + 'long ' + l3 + ' = ' + l0 + '.getLong(' + l2 + ');\n' +
+    pad2 + 'long ' + n('$t') + ' = ' + l0 + '.getLong(' + l2 + ' + 8);\n' +
+    pad2 + l0 + '.putLong(' + l1 + ', ' + l3 + ');\n' +
+    pad2 + l0 + '.putLong(' + l1 + ' + 8, ' + n('$t') + ');\n' +
     pad1 + '}');
 
   // f32→f64 delegation stubs: all follow the same cast-and-delegate pattern.

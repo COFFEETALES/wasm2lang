@@ -68,7 +68,7 @@ npm install @coffeetales.net/wasm2lang
 | **asm.js**     | `ASMJS`          | Closest semantic match to WASM; V8 AOT-compiles via `"use asm"`.                                 |
 | **JavaScript** | `JAVASCRIPT`     | Native BigInt i64, typed-array memory, resizable `ArrayBuffer`.                                  |
 | **PHP**        | `PHP64`          | Pure PHP closures. Runs on shared hosting with zero extensions.                                  |
-| **Java**       | `JAVA`           | Native `long` i64, `ByteBuffer` heap, `IntVector` SIMD128 via Panama.                            |
+| **Java**       | `JAVA`           | Native `long` i64, `ByteBuffer` heap, JDK 21 incubator `IntVector` SIMD128.                      |
 | **C#**         | `CSHARP`         | Native `long` i64, `byte[]` heap with little-endian `BinaryPrimitives`, `Func`/`Action` imports. |
 
 Every backend is validated against the original `.wasm` on every commit:
@@ -91,6 +91,12 @@ byte-identical stdout and matching CRC32 memory snapshots.
   (`i32_to_f32`, `f64_to_i32`, ...) lower to native type casts.
 - **Spec-compliant trapping** -- NaN and out-of-range inputs trap instead of
   silently producing wrong results.
+- **Bounded Java v128 memory** -- standalone values use JDK 21 `IntVector`;
+  direct `v128.store(v128.load(...))` expressions fuse into one prevalidated
+  helper whose heap path keeps a `ByteVector` local and whose non-array path
+  reads both halves before writing. Helpers construct no arrays, read-only and
+  out-of-bounds stores trap before changing memory, and hot-copy allocation is
+  measured separately after warmup.
 - **Exported mutable globals** -- getter/setter accessors on every backend.
 
 ## CLI essentials
