@@ -245,24 +245,36 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + 'return ' + nMathFround + '(' + l1 + ' + 1.0);\n' +
     pad1 + '}');
 
-  var /** @const {string} */ nTrap = n('$w2l_trap');
   var /** @const {string} */ nTruncF64 = n('$w2l_trunc_f64');
+
+  // Trap emitter for helper bodies.  Under --trap-sites each call allocates its
+  // own site id, so the host can tell WHICH of a helper's three range checks
+  // fired; without the flag it renders the historical bare `$w2l_trap();`.
+  // Evaluated while the body string is concatenated, hence in textual order.
+  var trap = /** @param {number} ind @param {number} kind @param {string} helperName @return {string} */ function (
+    ind,
+    kind,
+    helperName
+  ) {
+    return self.renderHelperTrapCall_(ind, kind, helperName);
+  };
+  var /** @const {number} */ TRUNC = Wasm2Lang.Backend.TrapKind.TRUNC_F2I_RANGE;
 
   // prettier-ignore
   h('$w2l_trunc_s_f64_to_i32', ['$w2l_trap'],
     pad1 + 'function ' + n('$w2l_trunc_s_f64_to_i32') + '(' + l0 + ') {\n' +
     pad2 + l0 + ' = +' + l0 + ';\n' +
     pad2 + 'if (' + l0 + ' != ' + l0 + ') {\n' +
-    pad3 + nTrap + '();\n' +
+    trap(3, TRUNC, '$w2l_trunc_s_f64_to_i32') +
     pad3 + 'return 0;\n' +
     pad2 + '}\n' +
     pad2 + l0 + ' = +' + nTruncF64 + '(' + l0 + ');\n' +
     pad2 + 'if (' + l0 + ' >= 2147483648.0) {\n' +
-    pad3 + nTrap + '();\n' +
+    trap(3, TRUNC, '$w2l_trunc_s_f64_to_i32') +
     pad3 + 'return 0;\n' +
     pad2 + '}\n' +
     pad2 + 'if (' + l0 + ' < -2147483648.0) {\n' +
-    pad3 + nTrap + '();\n' +
+    trap(3, TRUNC, '$w2l_trunc_s_f64_to_i32') +
     pad3 + 'return 0;\n' +
     pad2 + '}\n' +
     pad2 + 'return ~~' + l0 + '|0;\n' +
@@ -280,16 +292,16 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad1 + 'function ' + n('$w2l_trunc_u_f64_to_i32') + '(' + l0 + ') {\n' +
     pad2 + l0 + ' = +' + l0 + ';\n' +
     pad2 + 'if (' + l0 + ' != ' + l0 + ') {\n' +
-    pad3 + nTrap + '();\n' +
+    trap(3, TRUNC, '$w2l_trunc_u_f64_to_i32') +
     pad3 + 'return 0;\n' +
     pad2 + '}\n' +
     pad2 + l0 + ' = +' + nTruncF64 + '(' + l0 + ');\n' +
     pad2 + 'if (' + l0 + ' >= 4294967296.0) {\n' +
-    pad3 + nTrap + '();\n' +
+    trap(3, TRUNC, '$w2l_trunc_u_f64_to_i32') +
     pad3 + 'return 0;\n' +
     pad2 + '}\n' +
     pad2 + 'if (' + l0 + ' < 0.0) {\n' +
-    pad3 + nTrap + '();\n' +
+    trap(3, TRUNC, '$w2l_trunc_u_f64_to_i32') +
     pad3 + 'return 0;\n' +
     pad2 + '}\n' +
     pad2 + 'if (' + l0 + ' >= 2147483648.0) {\n' +
@@ -304,6 +316,88 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');\n' +
     pad2 + 'return ' + n('$w2l_trunc_u_f64_to_i32') + '(+' + l0 + ')|0;\n' +
     pad1 + '}');
+
+  // -------------------------------------------------------------------------
+  // Checked integer division (--trap-sites only).
+  //
+  // Plain output renders div/rem as the bare infix `(a|0) / (b|0)`, which in
+  // JS makes `x / 0` evaluate to Infinity and `Infinity|0` to 0.  wasm requires
+  // a trap; the emitted code instead returns a fabricated zero and the caller
+  // keeps running on corrupt state — the exact silent failure this feature
+  // exists to expose, and it cannot be told apart from a legitimate 0.
+  // `div_s(INT_MIN, -1)` is the same story: wasm traps, JS yields INT_MIN.
+  //
+  // These helpers are registered ONLY under the flag.  That is load-bearing:
+  // `getAllHelperNames_` sorts the roster to assign mangler slots, so a helper
+  // that merely EXISTS would shift every later name and break the
+  // byte-identical guarantee on the backends that have no usage filter.
+  // -------------------------------------------------------------------------
+  if (this.trapSitesEnabled_) {
+    var K = Wasm2Lang.Backend.TrapKind;
+
+    /**
+     * @param {string} helperName
+     * @param {number} zeroKind
+     * @param {string} coerce  Operand coercion: '|0' signed, '>>>0' unsigned.
+     * @param {string} op
+     * @param {boolean} guardOverflow
+     * @return {void}
+     */
+    var divHelper = function (helperName, zeroKind, coerce, op, guardOverflow) {
+      var /** @type {string} */ body =
+          pad1 +
+          'function ' +
+          n(helperName) +
+          '(' +
+          l0 +
+          ', ' +
+          l1 +
+          ') {\n' +
+          pad2 +
+          l0 +
+          ' = ' +
+          l0 +
+          '|0;\n' +
+          pad2 +
+          l1 +
+          ' = ' +
+          l1 +
+          '|0;\n' +
+          pad2 +
+          'if ((' +
+          l1 +
+          '|0) == 0) {\n' +
+          trap(3, zeroKind, helperName) +
+          pad2 +
+          '}\n';
+      if (guardOverflow) {
+        // INT_MIN / -1 is the one non-zero divisor with no representable
+        // quotient.  Split into two ifs so each condition stays a plain asm.js
+        // int comparison rather than a logical-and chain.
+        body +=
+          pad2 +
+          'if ((' +
+          l0 +
+          '|0) == -2147483648) {\n' +
+          pad3 +
+          'if ((' +
+          l1 +
+          '|0) == -1) {\n' +
+          trap(4, K.DIV_S_OVERFLOW, helperName) +
+          pad3 +
+          '}\n' +
+          pad2 +
+          '}\n';
+      }
+      body += pad2 + 'return ((' + l0 + coerce + ') ' + op + ' (' + l1 + coerce + '))|0;\n' + pad1 + '}';
+      h(helperName, ['$w2l_trap'], body);
+    };
+
+    divHelper('$w2l_div_s_i32', K.DIV_S_ZERO, '|0', '/', true);
+    divHelper('$w2l_div_u_i32', K.DIV_U_ZERO, '>>>0', '/', false);
+    divHelper('$w2l_rem_s_i32', K.REM_S_ZERO, '|0', '%', false);
+    divHelper('$w2l_rem_u_i32', K.REM_U_ZERO, '>>>0', '%', false);
+  }
 
   // prettier-ignore
   h('$w2l_trunc_sat_s_f32_to_i32', ['Math_fround'],

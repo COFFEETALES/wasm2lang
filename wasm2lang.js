@@ -15,6 +15,7 @@
 
     var moduleSpecs = [
       {'sourcePath': 'src/0-header.js', 'exportName': 'Wasm2Lang'},
+      {'sourcePath': 'src/backend/trap_kinds.js'},
       {'sourcePath': 'src/backend/abstract_codegen.js'},
       {'sourcePath': 'src/backend/abstract_codegen/pass_state.js'},
       {'sourcePath': 'src/backend/abstract_codegen/module_info.js'},

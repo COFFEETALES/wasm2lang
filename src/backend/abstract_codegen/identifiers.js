@@ -517,6 +517,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.runUsageDiscovery_ = function (wasmM
  * @return {!Promise<void>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (wasmModule, options) {
+  // getAllHelperNames_ below re-runs emitHelpers_ in collect mode, and the
+  // trap-instrumentation helpers only register themselves when the flag is on.
+  // Pin the flag here so the roster this function registers matches the roster
+  // the real emit will produce — a mismatch would either leak an unregistered
+  // name into mangled output or shift every later helper's encoder slot.
+  this.trapSitesEnabled_ = !!options.trapSites;
   this.mangler_ = new Wasm2Lang.Backend.IdentifierMangler(/** @type {string} */ (options.mangler), options.languageOut);
 
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_} */ moduleInfo =

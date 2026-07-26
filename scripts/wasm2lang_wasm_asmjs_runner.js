@@ -103,8 +103,18 @@ const wasm = !!obj['wasm'];
     }
 
     const foreign = harness.moduleImports || {};
-    foreign.__wasm2lang_trap = function () {
-      throw new Error('wasm trap: integer overflow');
+    // Accepts both shapes: the plain build calls this with no arguments, a
+    // --trap-sites build calls it as (kind, siteId).  The message must NOT
+    // claim a specific cause when none was passed — the historical
+    // 'integer overflow' text was a guess that was wrong for most traps.
+    foreign.__wasm2lang_trap = function (kind, siteId) {
+      const described = undefined === kind ? 'wasm trap' : 'wasm trap kind=' + (kind | 0) + ' site=' + (siteId | 0);
+      const error = new Error(described);
+      if (undefined !== kind) {
+        error.w2lKind = kind | 0;
+        error.w2lSiteId = siteId | 0;
+      }
+      throw error;
     };
     // binaryen's optimize-for-js / avoid-reinterprets passes (active under
     // binaryen:max for asmjs/javascript) replace reinterpret instructions

@@ -69,6 +69,13 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitHelpers_ = function (
     self.emitOrCollectHelper_(lines, name, null, body);
   };
 
+  // Trap emitter for helper bodies: each call allocates its own --trap-sites id
+  // while the body string is being concatenated, so textual order is allocation
+  // order.  Without the flag it renders the historical bare throw.
+  var trapThrow = /** @param {string} helperName @return {string} */ function (helperName) {
+    return self.renderHelperTrapThrow_(Wasm2Lang.Backend.TrapKind.TRUNC_F2I_RANGE, helperName);
+  };
+
   // C# evaluates call arguments left-to-right, so these helpers preserve
   // wasm select's eager true/false/condition operand order.
   // prettier-ignore
@@ -169,17 +176,17 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitHelpers_ = function (
   // prettier-ignore
   h('$w2l_trunc_s_f64_to_i32',
     pad1 + 'static int ' + n('$w2l_trunc_s_f64_to_i32') + '(double ' + l0 + ') {\n' +
-    pad2 + 'if (double.IsNaN(' + l0 + ')) throw new System.ArithmeticException();\n' +
+    pad2 + 'if (double.IsNaN(' + l0 + ')) ' + trapThrow('$w2l_trunc_s_f64_to_i32') + '\n' +
     pad2 + l0 + ' = System.Math.Truncate(' + l0 + ');\n' +
-    pad2 + 'if (' + l0 + ' >= 2147483648.0 || ' + l0 + ' < -2147483648.0) throw new System.ArithmeticException();\n' +
+    pad2 + 'if (' + l0 + ' >= 2147483648.0 || ' + l0 + ' < -2147483648.0) ' + trapThrow('$w2l_trunc_s_f64_to_i32') + '\n' +
     pad2 + 'return (int)' + l0 + ';\n' +
     pad1 + '}');
   // prettier-ignore
   h('$w2l_trunc_u_f64_to_i32',
     pad1 + 'static int ' + n('$w2l_trunc_u_f64_to_i32') + '(double ' + l0 + ') {\n' +
-    pad2 + 'if (double.IsNaN(' + l0 + ')) throw new System.ArithmeticException();\n' +
+    pad2 + 'if (double.IsNaN(' + l0 + ')) ' + trapThrow('$w2l_trunc_u_f64_to_i32') + '\n' +
     pad2 + l0 + ' = System.Math.Truncate(' + l0 + ');\n' +
-    pad2 + 'if (' + l0 + ' >= 4294967296.0 || ' + l0 + ' < 0.0) throw new System.ArithmeticException();\n' +
+    pad2 + 'if (' + l0 + ' >= 4294967296.0 || ' + l0 + ' < 0.0) ' + trapThrow('$w2l_trunc_u_f64_to_i32') + '\n' +
     pad2 + 'return (int)(uint)' + l0 + ';\n' +
     pad1 + '}');
   // prettier-ignore
@@ -203,17 +210,17 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitHelpers_ = function (
   // prettier-ignore
   h('$w2l_trunc_s_f64_to_i64',
     pad1 + 'static long ' + n('$w2l_trunc_s_f64_to_i64') + '(double ' + l0 + ') {\n' +
-    pad2 + 'if (double.IsNaN(' + l0 + ')) throw new System.ArithmeticException();\n' +
+    pad2 + 'if (double.IsNaN(' + l0 + ')) ' + trapThrow('$w2l_trunc_s_f64_to_i64') + '\n' +
     pad2 + l0 + ' = System.Math.Truncate(' + l0 + ');\n' +
-    pad2 + 'if (' + l0 + ' >= 9.223372036854776E18 || ' + l0 + ' < -9.223372036854776E18) throw new System.ArithmeticException();\n' +
+    pad2 + 'if (' + l0 + ' >= 9.223372036854776E18 || ' + l0 + ' < -9.223372036854776E18) ' + trapThrow('$w2l_trunc_s_f64_to_i64') + '\n' +
     pad2 + 'return (long)' + l0 + ';\n' +
     pad1 + '}');
   // prettier-ignore
   h('$w2l_trunc_u_f64_to_i64',
     pad1 + 'static long ' + n('$w2l_trunc_u_f64_to_i64') + '(double ' + l0 + ') {\n' +
-    pad2 + 'if (double.IsNaN(' + l0 + ')) throw new System.ArithmeticException();\n' +
+    pad2 + 'if (double.IsNaN(' + l0 + ')) ' + trapThrow('$w2l_trunc_u_f64_to_i64') + '\n' +
     pad2 + l0 + ' = System.Math.Truncate(' + l0 + ');\n' +
-    pad2 + 'if (' + l0 + ' >= 1.8446744073709552E19 || ' + l0 + ' < 0.0) throw new System.ArithmeticException();\n' +
+    pad2 + 'if (' + l0 + ' >= 1.8446744073709552E19 || ' + l0 + ' < 0.0) ' + trapThrow('$w2l_trunc_u_f64_to_i64') + '\n' +
     pad2 + 'return (long)(ulong)' + l0 + ';\n' +
     pad1 + '}');
   // prettier-ignore

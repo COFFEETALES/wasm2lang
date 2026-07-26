@@ -264,6 +264,56 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
    * @protected @type {?Object<number, boolean>}
    */
   this.diagnosticSeenIds_ = null;
+
+  /**
+   * True while emitting under {@code --trap-sites}.  Every trap-emitting
+   * renderer consults it; when false each one must produce exactly the text it
+   * produced before the flag existed, since the byte-identical guarantee rests
+   * on that and nothing else.
+   * @protected @type {boolean}
+   */
+  this.trapSitesEnabled_ = false;
+
+  /**
+   * Dense module-unique id allocator for trap sites.  Reset at the top of
+   * every {@code emitCode} — the mangler path runs a full throwaway discovery
+   * emit before the real one ({@code runUsageDiscovery_}), so a counter that
+   * survived across calls would number the real emit's sites N..2N-1.
+   * @protected @type {number}
+   */
+  this.trapSiteCounter_ = 0;
+
+  /**
+   * Site rows accumulated by the emit in progress, or null when
+   * {@code --trap-sites} is off.
+   * @protected @type {?Array<!Wasm2Lang.Backend.TrapSite>}
+   */
+  this.trapSites_ = null;
+
+  /**
+   * Snapshot of {@code trapSites_} taken at the end of the most recent
+   * {@code emitCode}, mirroring the {@code lastEmitUsedHelpers_} contract:
+   * each emit overwrites it, and only the last one is published, so the
+   * discovery emit's table can never reach the artifact.
+   * @protected @type {?Array<!Wasm2Lang.Backend.TrapSite>}
+   */
+  this.lastEmitTrapSites_ = null;
+
+  /**
+   * Defined-function name to emitted ordinal, built once per emit.  Raw wasm
+   * function indices are unusable as identity because stripping the anchor
+   * import shifts them.
+   * @protected @type {?Object<string, number>}
+   */
+  this.trapFuncOrdinals_ = null;
+
+  /**
+   * Per-function count of trap sites emitted so far, keyed by function or
+   * helper name.  Feeds the {@code ordinal} column, which is what lets two
+   * trap sites in the SAME function be told apart.
+   * @protected @type {?Object<string, number>}
+   */
+  this.trapSiteOrdinals_ = null;
 };
 
 /**

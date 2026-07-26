@@ -82,6 +82,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   this.heapPageCount_ = heapSize / 65536;
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  this.resetTrapSites_(options, moduleInfo.functions);
   this.castNames_ = moduleInfo.castNames;
 
   var /** @const {!Array<string>} */ functionParts = [];
@@ -353,6 +354,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   // overwrite these on every call, so they only reflect the most recent run.
   this.lastEmitUsedHelpers_ = uh;
   this.lastEmitUsedBindings_ = ub;
+  this.publishTrapSites_();
 
   return outputParts.join('\n');
 };

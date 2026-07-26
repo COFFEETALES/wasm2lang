@@ -328,12 +328,17 @@ var redundantBlockRemoval = new PassFamily('redundant-block-removal', 'redundant
 // metadata would not surface.
 // ---------------------------------------------------------------------------
 
-function EmissionFamily(name, fixturePath, languageOut, assertions, opt_normalizeWasm) {
+// `assertions` receives (code, result) — the second argument is the whole
+// materialized transpile result, so a family can assert on side-car outputs
+// such as the `--trap-sites` table and not just the emitted source.
+// `opt_extraOptions` is merged into the transpile options.
+function EmissionFamily(name, fixturePath, languageOut, assertions, opt_normalizeWasm, opt_extraOptions) {
   this.name = name;
   this.fixturePath = fixturePath;
   this.languageOut = languageOut;
   this.assertions = assertions;
   this.normalizeWasm = opt_normalizeWasm || ['binaryen:max', 'wasm2lang:codegen'];
+  this.extraOptions = opt_extraOptions || {};
 }
 
 // Regression: `i32.eqz(i32.or(cmp, cmp))` compound negation.  Binaryen:max
@@ -428,7 +433,161 @@ var kernelLeaveFreshness = new EmissionFamily(
   ['binaryen:none', 'wasm2lang:codegen']
 );
 
-var emissionFamilies = [eqzOrCompoundNegation, kernelLeaveFreshness];
+// --trap-sites OFF.  Guards the opt-in contract at unit level: the emitted
+// trap must stay the historical argument-less `$w2l_trap();`, no abort must
+// appear, no checked-division helper must be referenced, and no site table
+// must be produced.  If this family fails, the byte-identical promise the
+// consumer relies on to adopt the feature without re-baselining is already
+// broken, whatever the artifact diff says.
+var trapSitesOff = new EmissionFamily(
+  'trap-sites-off',
+  'trap_sites.wast',
+  'javascript',
+  function (code, result) {
+    assert(/\$w2l_trap\(\)\s*;/.test(code), 'expected the bare `$w2l_trap();` form when --trap-sites is off\n' + code);
+    assert(!/\$w2l_trap\(\s*\d/.test(code), 'a (kind, siteId) payload leaked into a build with --trap-sites off\n' + code);
+    assert(!/\$w2l_div_s_i32/.test(code), 'a checked-division helper leaked into a build with --trap-sites off\n' + code);
+    assert(!result['traps'], 'a trap-site table was produced with --trap-sites off');
+  },
+  ['binaryen:none', 'wasm2lang:codegen']
+);
+
+// --trap-sites ON.  Pins the three properties a host actually depends on:
+// every trap carries (kind, siteId); every emitted id resolves in the table;
+// and two traps in ONE function get DISTINCT ids — the case that motivated
+// the feature and the one a single global counter would silently get wrong if
+// it were ever reset per function.
+var trapSitesOn = new EmissionFamily(
+  'trap-sites-on',
+  'trap_sites.wast',
+  'javascript',
+  function (code, result) {
+    var table = result['traps'];
+    assert(table, 'no trap-site table emitted with --trap-sites on');
+    var parsed = JSON.parse(table);
+
+    var emitted = [];
+    var callRe = /\$w2l_trap\((\d+),\s*(\d+)\)/g;
+    var m;
+    while ((m = callRe.exec(code)) !== null) {
+      emitted.push({kind: Number(m[1]), site: Number(m[2])});
+    }
+    assert(emitted.length >= 3, 'expected at least 3 instrumented trap calls; saw ' + emitted.length + '\n' + code);
+
+    var byId = {};
+    for (var i = 0; i < parsed.sites.length; i++) byId[parsed.sites[i].id] = parsed.sites[i];
+    for (var j = 0; j < emitted.length; j++) {
+      var row = byId[emitted[j].site];
+      assert(row, 'emitted site id ' + emitted[j].site + ' does not resolve in the table');
+      assert(
+        row.kind === emitted[j].kind,
+        'site ' + emitted[j].site + ': code says kind ' + emitted[j].kind + ', table says ' + row.kind
+      );
+    }
+
+    // Two unreachables inside $twoTrapsOneFunc must be separable.
+    var sameFunc = parsed.sites.filter(function (s) {
+      return s.funcName === 'twoTrapsOneFunc';
+    });
+    assert(sameFunc.length === 2, 'expected 2 sites in twoTrapsOneFunc; saw ' + sameFunc.length);
+    assert(sameFunc[0].id !== sameFunc[1].id, 'two traps in one function share a site id');
+    assert(sameFunc[0].ordinal !== sameFunc[1].ordinal, 'two traps in one function share an ordinal');
+
+    // The abort must follow the hook, so a host that fails to throw cannot
+    // resume on a fabricated value.
+    assert(/\$w2l_trap\(1, \d+\);\s*\n\s*throw new Error\(/.test(code), 'trap hook is not followed by an abort\n' + code);
+
+    // A non-zero literal divisor cannot trap, so it must NOT be instrumented.
+    assert(
+      !/\$w2l_div_s_i32\([^,]+,\s*10\)/.test(code),
+      'a constant non-zero divisor was needlessly routed through the checked helper\n' + code
+    );
+    // A variable divisor must be.
+    assert(/\$w2l_div_s_i32\(/.test(code), 'a variable divisor was not routed through the checked helper\n' + code);
+
+    // ---- Runtime: actually PROVOKE each kind and check what the host sees.
+    // Static text assertions cannot prove the hook is reached with the right
+    // payload, nor that the guard fires on the right condition.  The emitted
+    // 'javascript' module is ordinary JS, so it can be instantiated here.
+    var seen = [];
+    var foreign = {
+      __wasm2lang_trap: function (k, s) {
+        seen.push([k, s]);
+        throw new Error('trap');
+      }
+    };
+    var factory = eval(code + '\nmodule');
+    var inst = factory(globalThis, foreign, new ArrayBuffer(1 << 20));
+
+    function provoke(label, fn) {
+      var before = seen.length;
+      try {
+        fn();
+      } catch (e) {
+        /* the abort is expected */
+      }
+      assert(seen.length === before + 1, label + ': expected exactly one hook call, saw ' + (seen.length - before));
+      return seen[seen.length - 1];
+    }
+
+    var cases = [
+      [
+        'unreachable',
+        1,
+        function () {
+          inst.twoTrapsOneFunc(1);
+        }
+      ],
+      [
+        'div_s_zero',
+        2,
+        function () {
+          inst.divByVariable(1, 0);
+        }
+      ],
+      [
+        'div_s_overflow',
+        6,
+        function () {
+          inst.divByVariable(-2147483648, -1);
+        }
+      ],
+      [
+        'trunc_f2i_range',
+        7,
+        function () {
+          inst.truncOutOfRange(NaN);
+        }
+      ]
+    ];
+    for (var c = 0; c < cases.length; c++) {
+      var got = provoke(cases[c][0], cases[c][2]);
+      assert(got[0] === cases[c][1], cases[c][0] + ': host received kind ' + got[0] + ', expected ' + cases[c][1]);
+      var resolved = byId[got[1]];
+      assert(resolved, cases[c][0] + ': site id ' + got[1] + ' does not resolve in the table');
+      assert(resolved.kind === cases[c][1], cases[c][0] + ': table says kind ' + resolved.kind + ' for site ' + got[1]);
+    }
+
+    // The two unreachables must be distinguishable AT RUNTIME, not just on paper.
+    var firstArm = provoke('twoTrapsOneFunc(1)', function () {
+      inst.twoTrapsOneFunc(1);
+    });
+    var secondArm = provoke('twoTrapsOneFunc(0)', function () {
+      inst.twoTrapsOneFunc(0);
+    });
+    assert(
+      firstArm[1] !== secondArm[1],
+      'both traps in twoTrapsOneFunc reported the same site id (' + firstArm[1] + ') — they are indistinguishable'
+    );
+
+    // A constant divisor must still compute, not trap.
+    assert(inst.divByConstant(100) === 10, 'divByConstant(100) returned ' + inst.divByConstant(100) + ', expected 10');
+  },
+  ['binaryen:none', 'wasm2lang:codegen'],
+  {'trapSites': true}
+);
+
+var emissionFamilies = [eqzOrCompoundNegation, kernelLeaveFreshness, trapSitesOff, trapSitesOn];
 
 loadBinaryen().then(function (binaryen) {
   var fixtureDir = path.resolve(__dirname, 'fixtures');
@@ -456,12 +615,18 @@ loadBinaryen().then(function (binaryen) {
       var wastSrc = fs.readFileSync(path.resolve(fixtureDir, ef.fixturePath), 'utf8');
       var p;
       try {
-        var emit = wasm2lang['transpile'](binaryen, {
+        var transpileOptions = {
           'inputData': wastSrc,
           'normalizeWasm': ef.normalizeWasm,
           'languageOut': ef.languageOut,
           'emitCode': 'module'
-        });
+        };
+        for (var optKey in ef.extraOptions) {
+          if (Object.prototype.hasOwnProperty.call(ef.extraOptions, optKey)) {
+            transpileOptions[optKey] = ef.extraOptions[optKey];
+          }
+        }
+        var emit = wasm2lang['transpile'](binaryen, transpileOptions);
         p = emit && typeof emit.then === 'function' ? emit : Promise.resolve(emit);
       } catch (e) {
         p = Promise.reject(e);
@@ -471,7 +636,7 @@ loadBinaryen().then(function (binaryen) {
           .then(function (result) {
             var codeStr = result && result['code'];
             if (!codeStr) throw new Error('transpile did not return emitted code');
-            ef.assertions(codeStr);
+            ef.assertions(codeStr, result);
             console.log('\x1b[0;32mPASS\x1b[0m: ' + ef.name);
             ++passes;
           })

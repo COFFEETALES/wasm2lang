@@ -12,7 +12,8 @@ Wasm2Lang.Processor.TranspileResultProperty = {
   METADATA: 'metadata',
   CODE: 'code',
   WASM: 'wasm',
-  WAST: 'wast'
+  WAST: 'wast',
+  TRAPS: 'traps'
 };
 
 /**
@@ -41,6 +42,12 @@ Wasm2Lang.Processor.RESULT_KEY_ORDER_ = [
   Wasm2Lang.Processor.TranspileResultProperty.WAST,
   Wasm2Lang.Processor.TranspileResultProperty.WASM
 ];
+
+// TRAPS is deliberately absent from RESULT_KEY_ORDER_.  Everything in that
+// array is concatenated into ONE output stream, so a JSON table listed there
+// would be spliced into the emitted .js / .java / .php and corrupt it.  The
+// trap table is a side-car: written next to --out-file by the CLI, and handed
+// to programmatic callers as a separate key on the materialized result.
 
 /**
  * @private
@@ -156,6 +163,19 @@ Wasm2Lang.Processor.emitResults_ = function (wasmModule, codegen, options) {
   if ('string' === typeof options.emitCode) {
     var /** @const {string|!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */ codeResult = codegen.emitCode(wasmModule, options);
     results[Wasm2Lang.Processor.TranspileResultProperty.CODE] = codeResult;
+
+    // Read the table only after the real emit: with --mangler a throwaway
+    // discovery emit ran first, and getTrapSites() returns whichever emit
+    // published last.
+    if (options.trapSites) {
+      var /** @const {?Array<!Wasm2Lang.Backend.TrapSite>} */ trapSites = codegen.getTrapSites();
+      if (trapSites) {
+        results[Wasm2Lang.Processor.TranspileResultProperty.TRAPS] = Wasm2Lang.Backend.AbstractCodegen.renderTrapSiteTable(
+          trapSites,
+          options.languageOut
+        );
+      }
+    }
   }
 
   if ('string' === typeof options.emitWebAssembly) {
@@ -373,7 +393,9 @@ Wasm2Lang.Processor.normalizeUserOptions_ = function (userOptions) {
         emitWebAssembly: Wasm2Lang.Processor.normalizeEmitOption_(userOptions, 'emitWebAssembly', ''),
         mangler: userMangler || null,
         outFile: null,
-        preNormalized: !!userOptions['preNormalized']
+        preNormalized: !!userOptions['preNormalized'],
+        disabledPasses: d.disabledPasses.slice(),
+        trapSites: !!userOptions['trapSites']
       });
 
   return o;
@@ -401,6 +423,14 @@ Wasm2Lang.Processor.materializeResult_ = function (result) {
   var asyncKeys = [];
   /** @type {!Array<!Promise<string>>} */
   var asyncPromises = [];
+
+  // Side-car key: never a chunk array, and deliberately outside
+  // RESULT_KEY_ORDER_ so it stays out of the concatenated output stream.
+  // Copied before the loop so both the sync and the async return path carry it.
+  var /** @const {*} */ trapsValue = result[Wasm2Lang.Processor.TranspileResultProperty.TRAPS];
+  if ('string' === typeof trapsValue) {
+    materialized[Wasm2Lang.Processor.TranspileResultProperty.TRAPS] = trapsValue;
+  }
 
   Wasm2Lang.Processor.forEachResultEntry_(
     result,
@@ -465,7 +495,10 @@ Wasm2Lang.Processor.getPassAnalysis = function (binaryenModule, wastString) {
       emitCode: null,
       emitWebAssembly: null,
       mangler: null,
-      outFile: null
+      outFile: null,
+      preNormalized: false,
+      disabledPasses: [],
+      trapSites: false
     });
 
   var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ passes = Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses(options);
@@ -539,6 +572,35 @@ Wasm2Lang.Processor.transpile = function (binaryenModule, userOptions) {
 };
 
 /**
+ * Writes the {@code --trap-sites} table next to {@code --out-file}, as
+ * {@code <out-file>.traps.json}.
+ *
+ * A side-car rather than a stream entry: every {@code RESULT_KEY_ORDER_} value
+ * is concatenated into a single sink, so a JSON blob there would land inside
+ * the emitted module and break it.  With no {@code --out-file} there is nowhere
+ * safe to put it — stdout may be carrying a raw wasm binary — so it goes to
+ * stderr, which is already the CLI's out-of-band channel.
+ *
+ * @private
+ * @param {!Wasm2Lang.Processor.TranspileResult} results
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {void}
+ */
+Wasm2Lang.Processor.writeTrapSiteSideCar_ = function (results, options) {
+  var /** @const {*} */ table = results[Wasm2Lang.Processor.TranspileResultProperty.TRAPS];
+  if ('string' !== typeof table) return;
+  if (options.outFile) {
+    var /** @const {!Wasm2Lang.OutputSink.WriteFn} */ sideSink = Wasm2Lang.OutputSink.createFileSink(
+        options.outFile + '.traps.json'
+      );
+    sideSink(/** @type {string} */ (table));
+    return;
+  }
+  var /** @const */ log = Wasm2Lang.Utilities.Environment.stderrWriters[Wasm2Lang.Utilities.Environment.isNode()];
+  log(Wasm2Lang.Utilities.Environment.LogLevel.NONE, /** @type {string} */ (table));
+};
+
+/**
  * @param {?Binaryen} binaryenModule
  * @return {!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>}
  */
@@ -564,6 +626,7 @@ Wasm2Lang.Processor.runCliEntryPoint = function (binaryenModule) {
    * @return {!Wasm2Lang.Processor.TranspileResult|!Promise<!Wasm2Lang.Processor.TranspileResult>}
    */
   function drainAndReturn(results) {
+    Wasm2Lang.Processor.writeTrapSiteSideCar_(results, options);
     var /** @const {!Wasm2Lang.OutputSink.WriteFn} */ sink = options.outFile
         ? Wasm2Lang.OutputSink.createFileSink(options.outFile)
         : Wasm2Lang.OutputSink.createStdoutSink();

@@ -84,7 +84,8 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI32RotateBinary_ = function (self, inf
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI32DivisionBinary_ = function (self, info, L, R) {
-  void self;
+  var /** @const {?string} */ checked = Wasm2Lang.Backend.JsCommonCodegen.renderCheckedI32Division_(self, info, L, R);
+  if (null !== checked) return checked;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ J = Wasm2Lang.Backend.JsCommonCodegen;
   var /** @const {string} */ quotient = A.renderUnsignedAwareInfix_(

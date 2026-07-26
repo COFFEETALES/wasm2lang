@@ -390,6 +390,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.numericComparisonCat_ = function () {
  * @return {string}
  */
 Wasm2Lang.Backend.AsmjsCodegen.renderI32DivisionBinary_ = function (self, info, L, R) {
+  var /** @const {?string} */ checked = Wasm2Lang.Backend.JsCommonCodegen.renderCheckedI32Division_(self, info, L, R);
+  if (null !== checked) return checked;
   var /** @const {string} */ quotient = Wasm2Lang.Backend.JsCommonCodegen.renderDivisionBinary_(self, info, L, R);
   return Wasm2Lang.Backend.JsCommonCodegen.renderSignedCoercion_(quotient);
 };

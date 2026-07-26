@@ -80,6 +80,13 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitHelpers_ = function (
     self.emitOrCollectHelper_(lines, name, null, 'function ' + n(name) + body);
   };
 
+  // Trap emitter for helper bodies: each call allocates its own --trap-sites id
+  // while the body string is being concatenated, so textual order is allocation
+  // order.  Without the flag it renders the historical bare throw.
+  var trapThrow = /** @param {string} helperName @return {string} */ function (helperName) {
+    return self.renderHelperTrapThrow_(Wasm2Lang.Backend.TrapKind.TRUNC_F2I_RANGE, helperName);
+  };
+
   // Core coercion helpers (unconditional).  Skipped in collect mode: they
   // live in getFixedModuleBindings_, not in the helper roster.
   if (!this.helperNameCollector_) {
@@ -131,18 +138,26 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitHelpers_ = function (
   // prettier-ignore
   h(
     '_w2l_trunc_s_f64_to_i32',
-    '($x): int { if (is_nan($x) || is_infinite($x)) throw new \\RuntimeException(); $x = ' +
+    '($x): int { if (is_nan($x) || is_infinite($x)) ' +
+      trapThrow('_w2l_trunc_s_f64_to_i32') +
+      ' $x = ' +
       n('_w2l_trunc_f64') +
-      '((float)$x); if ($x >= 2147483648.0 || $x < -2147483648.0) throw new \\RuntimeException(); return ' +
+      '((float)$x); if ($x >= 2147483648.0 || $x < -2147483648.0) ' +
+      trapThrow('_w2l_trunc_s_f64_to_i32') +
+      ' return ' +
       nI +
       '((int)$x); }'
   );
   // prettier-ignore
   h(
     '_w2l_trunc_u_f64_to_i32',
-    '($x): int { if (is_nan($x) || is_infinite($x)) throw new \\RuntimeException(); $x = ' +
+    '($x): int { if (is_nan($x) || is_infinite($x)) ' +
+      trapThrow('_w2l_trunc_u_f64_to_i32') +
+      ' $x = ' +
       n('_w2l_trunc_f64') +
-      '((float)$x); if ($x >= 4294967296.0 || $x < 0.0) throw new \\RuntimeException(); return $x >= 2147483648.0 ? ' +
+      '((float)$x); if ($x >= 4294967296.0 || $x < 0.0) ' +
+      trapThrow('_w2l_trunc_u_f64_to_i32') +
+      ' return $x >= 2147483648.0 ? ' +
       nI +
       '((int)($x - 2147483648.0) + -2147483648) : ' +
       nI +

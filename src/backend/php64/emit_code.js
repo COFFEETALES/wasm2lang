@@ -57,6 +57,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   this.castNames_ = moduleInfo.castNames;
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  this.resetTrapSites_(options, moduleInfo.functions);
   var /** @const {!Array<string>} */ functionParts = [];
   for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
@@ -232,6 +233,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   }
   outputParts[outputParts.length] = pad1 + 'return [' + returnEntries.join(', ') + '];';
   outputParts[outputParts.length] = '};';
+
+  this.publishTrapSites_();
 
   return outputParts.join('\n');
 };

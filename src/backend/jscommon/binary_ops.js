@@ -43,6 +43,65 @@ Wasm2Lang.Backend.JsCommonCodegen.renderMultiplyBinary_ = function (self, info, 
 };
 
 /**
+ * Renders an i32 division/remainder as a call to the checked helper installed
+ * by {@code --trap-sites}, or returns {@code null} when instrumentation is off
+ * so the caller falls through to the plain infix form.
+ *
+ * The operands are coerced to {@code int} before the call because an asm.js
+ * call argument must be {@code int}/{@code double}/{@code float} — an
+ * {@code intish} sub-expression (an uncoerced {@code a + b}) is not accepted —
+ * and the call itself is coerced because the helper's return type is
+ * {@code signed}.
+ *
+ * A divisor that is a non-zero integer literal cannot trap, so those sites keep
+ * the plain inline form: instrumenting them would put a call and a branch on a
+ * hot path to detect a condition the operand makes impossible.  This is not an
+ * optimization the input compiler already did — the operand is a wasm constant,
+ * but the DECISION not to guard exists only here, because only this layer emits
+ * the guard.  On the reference module it removes most of the instrumented
+ * division sites.
+ *
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} self
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} L
+ * @param {string} R
+ * @return {?string}
+ */
+Wasm2Lang.Backend.JsCommonCodegen.renderCheckedI32Division_ = function (self, info, L, R) {
+  if (!self.trapSitesEnabled_) return null;
+  if (Wasm2Lang.Backend.JsCommonCodegen.isNonTrappingDivisor_(info, R)) return null;
+  var /** @const */ J = Wasm2Lang.Backend.JsCommonCodegen;
+  var /** @const {string} */ helperName =
+      ('/' === info.opStr ? '$w2l_div_' : '$w2l_rem_') + (info.unsigned ? 'u' : 's') + '_i32';
+  self.markHelper_(helperName);
+  return J.renderSignedCoercion_(
+    self.n_(helperName) + '(' + J.renderSignedCoercion_(L) + ', ' + J.renderSignedCoercion_(R) + ')'
+  );
+};
+
+/**
+ * Returns {@code true} when {@code R} is an integer literal for which neither
+ * trap condition can hold.
+ *
+ * Zero is excluded because it always traps.  {@code -1} is excluded for signed
+ * division only, where it is the divisor half of the INT_MIN/-1 overflow —
+ * signed remainder by -1 is defined (wasm gives 0) and unsigned operands never
+ * see -1 as a divisor value of 0xFFFFFFFF that could overflow.
+ *
+ * @private
+ * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
+ * @param {string} R
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.JsCommonCodegen.isNonTrappingDivisor_ = function (info, R) {
+  if (!/^-?[0-9]+$/.test(R)) return false;
+  var /** @const {number} */ value = Number(R);
+  if (0 === value) return false;
+  if (-1 === value && '/' === info.opStr && !info.unsigned) return false;
+  return true;
+};
+
+/**
  * @param {!Wasm2Lang.Backend.AbstractCodegen} self
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L

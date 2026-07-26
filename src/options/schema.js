@@ -20,7 +20,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
   MANGLER: 'mangler',
   OUT_FILE: 'outFile',
   PRE_NORMALIZED: 'preNormalized',
-  DISABLE_PASS: 'disablePass'
+  DISABLE_PASS: 'disablePass',
+  TRAP_SITES: 'trapSites'
 };
 
 /**
@@ -36,7 +37,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
  *   mangler: (string|null),
  *   outFile: (string|null),
  *   preNormalized: boolean,
- *   disabledPasses: !Array<string>
+ *   disabledPasses: !Array<string>,
+ *   trapSites: boolean
  * }}
  */
 Wasm2Lang.Options.Schema.NormalizedOptions;
@@ -59,7 +61,8 @@ Wasm2Lang.Options.Schema.NormalizedOptions;
  *   emitCode: (boolean|string|undefined),
  *   emitWebAssembly: (boolean|string|undefined),
  *   mangler: (string|undefined),
- *   preNormalized: (boolean|undefined)
+ *   preNormalized: (boolean|undefined),
+ *   trapSites: (boolean|undefined)
  * }}
  */
 Wasm2Lang.Options.Schema.UserOptions;
@@ -117,7 +120,8 @@ Wasm2Lang.Options.Schema.defaultOptions = {
   mangler: null,
   outFile: null,
   preNormalized: false,
-  disabledPasses: []
+  disabledPasses: [],
+  trapSites: false
 };
 
 /**
@@ -262,6 +266,15 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.DISABL
 };
 
 /**
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @param {!Array<string>} strs
+ */
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.TRAP_SITES] = function (options, strs) {
+  void strs;
+  options.trapSites = true;
+};
+
+/**
  * @const {
  *  !Object<
  *    !Wasm2Lang.Options.Schema.OptionKey, {
@@ -333,5 +346,10 @@ Wasm2Lang.Options.Schema.optionSchema = {
     optionType: 'string|null',
     optionDesc:
       'Disables one or more wasm2lang:codegen normalization passes by name (comma-separated, repeatable). Pass names match the registry entries, e.g. IfElseRecovery, BlockGuardElision, LoopSimplification.'
+  },
+  'trapSites': {
+    optionType: 'boolean',
+    optionDesc:
+      'Makes traps diagnosable: every trap site is given a dense module-unique id and calls the host hook as $w2l_trap(kind, siteId) before aborting unconditionally, and a <out-file>.traps.json table maps each id back to its kind and function. Also adds the divide-by-zero / overflow checks that the plain output omits. Off by default; when off the emitted code is byte-identical to a build without this flag.'
   }
 };

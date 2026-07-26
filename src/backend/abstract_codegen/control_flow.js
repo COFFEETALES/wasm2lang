@@ -2432,7 +2432,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLeaveCommonCase_ = function (
   }
   if (binaryen.UnreachableId === id) {
     return {
-      emittedString: this.renderUnreachableStatement_(indent),
+      emittedString: this.renderUnreachableStatement_(
+        indent,
+        this.allocateTrapSite_(Wasm2Lang.Backend.TrapKind.UNREACHABLE, functionInfo)
+      ),
       resultCat: A.CAT_VOID,
       isTerminal: true,
       mayExitFunction: true
@@ -2473,16 +2476,29 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.shouldEmitDropChild_ = function (bin
 
 /**
  * Renders the statement emitted for a wasm {@code unreachable} opcode.
- * Default implementation returns an empty string (no-op); JS-family
- * backends override to emit a trap call so execution aborts — matching
- * the WASM semantics.  Zig-produced code treats {@code unreachable} as a
- * real termination marker (panics, exhaustive switch arms), so silently
- * falling through corrupts state and can produce infinite loops.
+ * Default implementation returns an empty string (no-op); every concrete
+ * backend overrides to abort, matching the WASM semantics.  Zig-produced code
+ * treats {@code unreachable} as a real termination marker (panics, exhaustive
+ * switch arms), so silently falling through corrupts state and can produce
+ * infinite loops.
+ *
+ * {@code siteId} is the {@code --trap-sites} identifier for this occurrence,
+ * or {@code -1} when instrumentation is off — in which case the override must
+ * emit exactly the text it emitted before the flag existed.
+ *
+ * Note that a site id is allocated even for the dead {@code unreachable}
+ * placeholders binaryen injects after unconditional control flow, which the
+ * parent block's {@code reachableBlockChildCount_} then trims.  The table is
+ * therefore a superset of the sites reachable at run time: ids stay dense and
+ * stable, and an id that was trimmed simply never reaches the host.
  *
  * @protected
  * @param {number} indent
+ * @param {number} siteId
  * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.renderUnreachableStatement_ = function (indent) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderUnreachableStatement_ = function (indent, siteId) {
+  void indent;
+  void siteId;
   return '';
 };

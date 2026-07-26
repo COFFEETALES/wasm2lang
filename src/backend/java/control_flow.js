@@ -586,10 +586,52 @@ Wasm2Lang.Backend.JavaCodegen.prototype.shouldEmitDropChild_ = function (binarye
  * @override
  * @protected
  * @param {number} indent
+ * @param {number} siteId
  * @return {string}
  */
-Wasm2Lang.Backend.JavaCodegen.prototype.renderUnreachableStatement_ = function (indent) {
-  return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + 'throw new ArithmeticException();\n';
+Wasm2Lang.Backend.JavaCodegen.prototype.renderUnreachableStatement_ = function (indent, siteId) {
+  return this.renderJavaTrapStatement_(indent, Wasm2Lang.Backend.TrapKind.UNREACHABLE, siteId);
+};
+
+/**
+ * Renders a Java trap.  The throw is the abort — no host hook can skip it —
+ * and under {@code --trap-sites} it carries the kind and site id so a stack
+ * trace names the failure instead of showing a bare {@code ArithmeticException}
+ * that could equally be a division by zero.
+ *
+ * @protected
+ * @param {number} indent
+ * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
+ * @param {number} siteId
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaCodegen.prototype.renderJavaTrapStatement_ = function (indent, kind, siteId) {
+  var /** @const {string} */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_(indent);
+  if (!this.trapSitesEnabled_) {
+    return pad + 'throw new ArithmeticException();\n';
+  }
+  return pad + 'throw new ArithmeticException("' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");\n';
+};
+
+/**
+ * Renders a trap throw for a shared runtime helper body — no indent and no
+ * trailing newline, because helper templates place it inline after an `if`.
+ *
+ * Java raises {@code ArithmeticException} both for a failed truncation and for
+ * a division by zero, so without a payload a host genuinely cannot tell the
+ * two apart.  That ambiguity is the reason this feature exists.
+ *
+ * @protected
+ * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
+ * @param {string} helperName
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaCodegen.prototype.renderHelperTrapThrow_ = function (kind, helperName) {
+  if (!this.trapSitesEnabled_) {
+    return 'throw new ArithmeticException();';
+  }
+  var /** @const {number} */ siteId = this.allocateHelperTrapSite_(kind, helperName);
+  return 'throw new ArithmeticException("' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");';
 };
 
 /**

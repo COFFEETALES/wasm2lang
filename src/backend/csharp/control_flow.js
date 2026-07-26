@@ -251,10 +251,56 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.shouldEmitDropChild_ = function (binar
  * @override
  * @protected
  * @param {number} indent
+ * @param {number} siteId
  * @return {string}
  */
-Wasm2Lang.Backend.CsharpCodegen.prototype.renderUnreachableStatement_ = function (indent) {
-  return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + 'throw new System.InvalidOperationException();\n';
+Wasm2Lang.Backend.CsharpCodegen.prototype.renderUnreachableStatement_ = function (indent, siteId) {
+  return this.renderCsharpTrapStatement_(indent, Wasm2Lang.Backend.TrapKind.UNREACHABLE, siteId);
+};
+
+/**
+ * Renders a C# trap.  C# already separates {@code unreachable}
+ * ({@code InvalidOperationException}) from arithmetic traps, so the message
+ * adds the site id and pins the exact kind.
+ *
+ * @protected
+ * @param {number} indent
+ * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
+ * @param {number} siteId
+ * @return {string}
+ */
+Wasm2Lang.Backend.CsharpCodegen.prototype.renderCsharpTrapStatement_ = function (indent, kind, siteId) {
+  var /** @const {string} */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_(indent);
+  if (!this.trapSitesEnabled_) {
+    return pad + 'throw new System.InvalidOperationException();\n';
+  }
+  return (
+    pad +
+    'throw new System.InvalidOperationException("' +
+    Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) +
+    '");\n'
+  );
+};
+
+/**
+ * Renders a trap throw for a shared runtime helper body (no indent, no
+ * trailing newline — helper templates place it inline after an `if`).
+ *
+ * Helpers raise {@code System.ArithmeticException}, which the runtime also
+ * raises for {@code DivideByZeroException}'s base cases, so the payload is
+ * what separates a failed truncation from an arithmetic trap.
+ *
+ * @protected
+ * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
+ * @param {string} helperName
+ * @return {string}
+ */
+Wasm2Lang.Backend.CsharpCodegen.prototype.renderHelperTrapThrow_ = function (kind, helperName) {
+  if (!this.trapSitesEnabled_) {
+    return 'throw new System.ArithmeticException();';
+  }
+  var /** @const {number} */ siteId = this.allocateHelperTrapSite_(kind, helperName);
+  return 'throw new System.ArithmeticException("' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");';
 };
 
 /**

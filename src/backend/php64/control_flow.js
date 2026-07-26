@@ -763,10 +763,50 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
  * @override
  * @protected
  * @param {number} indent
+ * @param {number} siteId
  * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderUnreachableStatement_ = function (indent) {
-  return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + 'throw new \\RuntimeException();\n';
+Wasm2Lang.Backend.Php64Codegen.prototype.renderUnreachableStatement_ = function (indent, siteId) {
+  return this.renderPhpTrapStatement_(indent, Wasm2Lang.Backend.TrapKind.UNREACHABLE, siteId);
+};
+
+/**
+ * Renders a PHP trap.  PHP collapses every trap onto {@code \RuntimeException},
+ * so without a message a host cannot tell an {@code unreachable} from a failed
+ * truncation; the site id also survives opcache and mangling, unlike a name.
+ *
+ * @protected
+ * @param {number} indent
+ * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
+ * @param {number} siteId
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.renderPhpTrapStatement_ = function (indent, kind, siteId) {
+  var /** @const {string} */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_(indent);
+  if (!this.trapSitesEnabled_) {
+    return pad + 'throw new \\RuntimeException();\n';
+  }
+  return pad + 'throw new \\RuntimeException("' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");\n';
+};
+
+/**
+ * Renders a trap throw for a shared runtime helper body — no indent and no
+ * trailing newline, because helper templates place it inline after an `if`.
+ *
+ * PHP collapses every wasm trap onto {@code \RuntimeException}, so the message
+ * is the only channel that can distinguish them.
+ *
+ * @protected
+ * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
+ * @param {string} helperName
+ * @return {string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.renderHelperTrapThrow_ = function (kind, helperName) {
+  if (!this.trapSitesEnabled_) {
+    return 'throw new \\RuntimeException();';
+  }
+  var /** @const {number} */ siteId = this.allocateHelperTrapSite_(kind, helperName);
+  return 'throw new \\RuntimeException("' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");';
 };
 
 /**

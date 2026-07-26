@@ -47,3 +47,29 @@ Wasm2Lang.Backend.registerBackend('javascript', Wasm2Lang.Backend.JavaScriptCode
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.needsI64Lowering = function () {
   return false;
 };
+
+/**
+ * Aborts a trap site with a real {@code throw}.
+ *
+ * The asm.js base class has to spin ({@code while (1) {}}) because {@code throw}
+ * is outside the asm.js subset; modern JS has no such restriction, so the abort
+ * is both immediate and self-describing.  This runs only under
+ * {@code --trap-sites} — the host hook has already been called with
+ * {@code (kind, siteId)} at this point, and this statement is what makes the
+ * site unable to fall through even when the host declines to throw.
+ *
+ * @override
+ * @protected
+ * @param {number} indent
+ * @param {number} kind
+ * @param {number} siteId
+ * @return {string}
+ */
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderTrapAbortStatement_ = function (indent, kind, siteId) {
+  return (
+    Wasm2Lang.Backend.AbstractCodegen.pad_(indent) +
+    'throw new Error("' +
+    Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) +
+    '");\n'
+  );
+};
