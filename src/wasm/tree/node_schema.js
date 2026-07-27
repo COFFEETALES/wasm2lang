@@ -384,10 +384,9 @@ Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren = function (expressionInfo) {
           continue;
         }
         // prettier-ignore
-        children[children.length] =
-          /** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ (
+        children.push(/** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ (
             [edgeSpec.edgePropertyName, j, edgeSpec.edgeTraversalKind, listPtr, setter]
-          );
+          ));
       }
       continue;
     }
@@ -397,10 +396,9 @@ Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren = function (expressionInfo) {
       continue;
     }
     // prettier-ignore
-    children[children.length] =
-      /** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ (
+    children.push(/** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ (
         [edgeSpec.edgePropertyName, -1, edgeSpec.edgeTraversalKind, childPtr, setter]
-      );
+      ));
   }
 
   return children;

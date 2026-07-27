@@ -90,9 +90,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitHelpers_ = function (
   // Core coercion helpers (unconditional).  Skipped in collect mode: they
   // live in getFixedModuleBindings_, not in the helper roster.
   if (!this.helperNameCollector_) {
-    lines[lines.length] =
-      'function ' + nI + '($v): int { $v = (int)$v; $v &= 0xFFFFFFFF; return ($v > 2147483647) ? ($v - 4294967296) : $v; }';
-    lines[lines.length] = 'function ' + nF32 + "($v): float { return unpack('g', pack('g', (float)$v))[1]; }";
+    lines.push(
+      'function ' + nI + '($v): int { $v = (int)$v; $v &= 0xFFFFFFFF; return ($v > 2147483647) ? ($v - 4294967296) : $v; }'
+    );
+    lines.push('function ' + nF32 + "($v): float { return unpack('g', pack('g', (float)$v))[1]; }");
   }
 
   // The emitted runtimes evaluate function arguments in source order; pass

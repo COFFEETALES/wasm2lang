@@ -142,7 +142,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
   var hCond = function (cond, bindings, body) {
     if (self.helperNameCollector_ || !cond) return;
     for (var bi = 0; bi < bindings.length; ++bi) self.markBinding_(bindings[bi]);
-    lines[lines.length] = body;
+    lines.push(body);
   };
 
   // BigInt/Number bridge helpers — plain variable aliases so each call site
@@ -178,8 +178,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
   if (memGrowUsed) {
     var /** @const {string} */ bufferName = n('buffer');
     // prettier-ignore
-    lines[lines.length] =
-      pad1 + 'function ' + n('$w2l_memory_grow') + '(' + l0 + ') {\n' +
+    lines.push(pad1 + 'function ' + n('$w2l_memory_grow') + '(' + l0 + ') {\n' +
       pad2 + 'var ' + l1 + ' = ' + bufferName + '.byteLength >>> 16;\n' +
       pad2 + 'if (' + l0 + ' === 0) return ' + l1 + ';\n' +
       pad2 + 'try {\n' +
@@ -188,7 +187,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
       pad3 + 'return -1;\n' +
       pad2 + '}\n' +
       pad2 + 'return ' + l1 + ';\n' +
-      pad1 + '}';
+      pad1 + '}');
   }
 
   // prettier-ignore

@@ -333,14 +333,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.allocateTrapSite_ = function (kind, 
   var /** @const {?Object<string, number>} */ ordinals = this.trapFuncOrdinals_;
   var /** @const {number} */ funcIndex = ordinals && name in ordinals ? ordinals[name] : -1;
   var /** @const {number} */ siteId = this.trapSiteCounter_++;
-  sites[sites.length] = {
+  sites.push({
     id: siteId,
     kind: kind,
     funcIndex: funcIndex,
     funcName: Wasm2Lang.Backend.AbstractCodegen.trustedFunctionName_(name),
     helper: null,
     ordinal: this.nextTrapOrdinal_(name)
-  };
+  });
   return siteId;
 };
 
@@ -367,14 +367,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.allocateHelperTrapSite_ = function (
   if (this.helperNameCollector_) return -1;
   if (!this.trapSitesEnabled_ || !sites) return -1;
   var /** @const {number} */ siteId = this.trapSiteCounter_++;
-  sites[sites.length] = {
+  sites.push({
     id: siteId,
     kind: kind,
     funcIndex: -1,
     funcName: null,
     helper: helperName,
     ordinal: this.nextTrapOrdinal_(' helper ' + helperName)
-  };
+  });
   return siteId;
 };
 
@@ -416,25 +416,25 @@ Wasm2Lang.Backend.AbstractCodegen.renderTrapSiteTable = function (sites, languag
   var /** @const {!Array<string>} */ kindLines = [];
   var /** @const {!Array<string>} */ kindNames = Wasm2Lang.Backend.TRAP_KIND_NAMES;
   for (var /** @type {number} */ k = 1; k <= Wasm2Lang.Backend.TRAP_KIND_MAX; ++k) {
-    kindLines[kindLines.length] = '    "' + String(k) + '": ' + JSON.stringify(kindNames[k]);
+    kindLines.push('    "' + String(k) + '": ' + JSON.stringify(kindNames[k]));
   }
   var /** @const {!Array<string>} */ rowLines = [];
   for (var /** @type {number} */ i = 0, /** @const {number} */ len = sites.length; i !== len; ++i) {
     var /** @const {!Wasm2Lang.Backend.TrapSite} */ site = sites[i];
     var /** @const {!Array<string>} */ fields = [];
-    fields[fields.length] = '"id": ' + String(site.id);
-    fields[fields.length] = '"kind": ' + String(site.kind);
-    fields[fields.length] = '"kindName": ' + JSON.stringify(Wasm2Lang.Backend.describeTrapKind(site.kind));
+    fields.push('"id": ' + String(site.id));
+    fields.push('"kind": ' + String(site.kind));
+    fields.push('"kindName": ' + JSON.stringify(Wasm2Lang.Backend.describeTrapKind(site.kind)));
     if (null === site.helper) {
-      fields[fields.length] = '"funcIndex": ' + String(site.funcIndex);
+      fields.push('"funcIndex": ' + String(site.funcIndex));
       if (null !== site.funcName) {
-        fields[fields.length] = '"funcName": ' + JSON.stringify(site.funcName);
+        fields.push('"funcName": ' + JSON.stringify(site.funcName));
       }
     } else {
-      fields[fields.length] = '"helper": ' + JSON.stringify(site.helper);
+      fields.push('"helper": ' + JSON.stringify(site.helper));
     }
-    fields[fields.length] = '"ordinal": ' + String(site.ordinal);
-    rowLines[rowLines.length] = '    {' + fields.join(', ') + '}';
+    fields.push('"ordinal": ' + String(site.ordinal));
+    rowLines.push('    {' + fields.join(', ') + '}');
   }
   return (
     '{\n' +
@@ -478,7 +478,7 @@ Wasm2Lang.Backend.AbstractCodegen.renderTrapSiteTable = function (sites, languag
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitOrCollectHelper_ = function (bucket, name, bindings, body) {
   var /** @const {?Array<string>} */ collector = this.helperNameCollector_;
   if (collector) {
-    collector[collector.length] = name;
+    collector.push(name);
     return;
   }
   if (!this.usedHelpers_ || !this.usedHelpers_[name]) return;
@@ -487,7 +487,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitOrCollectHelper_ = function (buc
       this.markBinding_(bindings[bi]);
     }
   }
-  bucket[bucket.length] = body;
+  bucket.push(body);
 };
 
 /**

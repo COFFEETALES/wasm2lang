@@ -195,7 +195,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll = function (wasmModule, 
     void funcPtr;
     void funcInfo;
     void anchorId;
-    if (parentPtr) removals[removals.length] = [parentPtr, anchorIndex];
+    if (parentPtr) removals.push([parentPtr, anchorIndex]);
   });
 
   // Group removals per parent and apply in descending index order so earlier

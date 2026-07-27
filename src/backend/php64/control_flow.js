@@ -520,7 +520,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       if (this.callIndirectNeedsOrderedEvaluation_(binaryen, expr, state.wasmModule)) {
         var /** @const {string} */ ciWrapperVar = this.phpVar_(this.getOrderedCallIndirectWrapperName_(ciSigKey));
         state.usedCaptures[ciWrapperVar] = true;
-        ciArgs[ciArgs.length] = ciIndexExpr;
+        ciArgs.push(ciIndexExpr);
         ciCallExpr = ciWrapperVar + '(' + ciArgs.join(', ') + ')';
       } else {
         state.usedCaptures[ftableVar] = true;
@@ -695,7 +695,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
                 state.labelStack,
                 state.rootSwitchLoopName
               ).resolvedDepth;
-            rsExitLines[rsExitLines.length] = pad(ind) + 'break' + (1 < rsLoopDepth ? ' ' + rsLoopDepth : '') + ';\n';
+            rsExitLines.push(pad(ind) + 'break' + (1 < rsLoopDepth ? ' ' + rsLoopDepth : '') + ';\n');
           }
           if (0 !== brCondPtr) {
             result = pad(ind) + 'if ' + this.formatCondition_(cr(0), cc(0)) + ' {\n' + rsExitLines.join('') + pad(ind) + '}\n';
@@ -722,24 +722,22 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (expr.names || []);
       var /** @const {string} */ switchDefault = /** @type {string} */ (expr.defaultName || '');
       var /** @const {!Array<string>} */ switchLines = [];
-      switchLines[switchLines.length] = pad(ind) + 'switch (' + cr(0) + ') {\n';
+      switchLines.push(pad(ind) + 'switch (' + cr(0) + ') {\n');
       var /** @type {number} */ swIdx = 0;
       var /** @const {number} */ swNameLen = switchNames.length;
       while (swIdx < swNameLen) {
         var /** @const {string} */ switchTarget = switchNames[swIdx];
         while (swIdx < swNameLen && switchNames[swIdx] === switchTarget) {
-          switchLines[switchLines.length] = pad(ind + 1) + 'case ' + swIdx + ':\n';
+          switchLines.push(pad(ind + 1) + 'case ' + swIdx + ':\n');
           ++swIdx;
         }
-        switchLines[switchLines.length] =
-          pad(ind + 2) + Wasm2Lang.Backend.Php64Codegen.renderPhpJump_(state.labelStack, switchTarget, 1);
+        switchLines.push(pad(ind + 2) + Wasm2Lang.Backend.Php64Codegen.renderPhpJump_(state.labelStack, switchTarget, 1));
       }
       if ('' !== switchDefault) {
-        switchLines[switchLines.length] = pad(ind + 1) + 'default:\n';
-        switchLines[switchLines.length] =
-          pad(ind + 2) + Wasm2Lang.Backend.Php64Codegen.renderPhpJump_(state.labelStack, switchDefault, 1);
+        switchLines.push(pad(ind + 1) + 'default:\n');
+        switchLines.push(pad(ind + 2) + Wasm2Lang.Backend.Php64Codegen.renderPhpJump_(state.labelStack, switchDefault, 1));
       }
-      switchLines[switchLines.length] = pad(ind) + '}\n';
+      switchLines.push(pad(ind) + '}\n');
       result = switchLines.join('');
       A.appendUniqueBranchTargets_(resultBranchTargets, switchNames);
       if ('' !== switchDefault) A.appendUniqueBranchTargets_(resultBranchTargets, [switchDefault]);
@@ -850,9 +848,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitPhpFlatSwitchGroupBody_ = function 
     var /** @const {string} */ etCode = A.subWalkExpressionString_(state, state.wasmModule.break(group.externalTarget, 0, 0));
     if ('' !== etCode) {
       if (-1 === etCode.indexOf('\n')) {
-        lines[lines.length] = pad(ind + 2) + etCode + ';\n';
+        lines.push(pad(ind + 2) + etCode + ';\n');
       } else {
-        lines[lines.length] = etCode;
+        lines.push(etCode);
       }
     }
   } else if (group.needsBreak || strippedBreak) {
@@ -920,17 +918,17 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFlatSwitch_ = function (state, node
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ group = groups[gi];
     var /** @const {!Array<number>} */ indices = group.caseIndices;
     for (var /** @type {number} */ ii = 0, /** @const {number} */ idxLen = indices.length; ii < idxLen; ++ii) {
-      lines[lines.length] = pad(ind + 1) + 'case ' + indices[ii] + ':\n';
+      lines.push(pad(ind + 1) + 'case ' + indices[ii] + ':\n');
     }
     this.emitPhpFlatSwitchGroupBody_(state, lines, binaryen, vis, group, ind, info);
   }
 
   if (info.defaultGroup) {
-    lines[lines.length] = pad(ind + 1) + 'default:\n';
+    lines.push(pad(ind + 1) + 'default:\n');
     this.emitPhpFlatSwitchGroupBody_(state, lines, binaryen, vis, info.defaultGroup, ind, info);
   }
 
-  lines[lines.length] = pad(ind) + '}\n';
+  lines.push(pad(ind) + '}\n');
 
   // Remove the switch block entry before emitting the epilogue.  The epilogue
   // runs outside the switch, so break depth calculations must not count the

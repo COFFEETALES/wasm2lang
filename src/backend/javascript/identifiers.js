@@ -22,8 +22,8 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.getFixedModuleBindings_ = function
     );
   var /** @const {number} */ asmjsIdx = bindings.indexOf('asmjsModule');
   if (-1 !== asmjsIdx) bindings.splice(asmjsIdx, 1);
-  bindings[bindings.length] = 'HEAP64';
-  bindings[bindings.length] = 'Math_trunc';
+  bindings.push('HEAP64');
+  bindings.push('Math_trunc');
   return bindings;
 };
 
@@ -56,7 +56,7 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.getMathFunctionBindings_ = functio
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.getAlwaysRegisteredBindings_ = function (options) {
   var /** @const {!Array<string>} */ list = ['stdlib', 'foreign', 'buffer'];
-  if ('string' === typeof options.emitMetadata) list[list.length] = 'i32_array';
+  if ('string' === typeof options.emitMetadata) list.push('i32_array');
   return list;
 };
 
@@ -73,6 +73,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.getHotModuleBindings_ = function (
       this,
       options
     );
-  bindings[bindings.length] = 'HEAP64';
+  bindings.push('HEAP64');
   return bindings;
 };

@@ -220,7 +220,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
         // Target-language member-call syntax evaluates the table index before
         // its arguments.  Pass the index last to a typed dispatcher so wasm's
         // operand-left-to-right, then-index order is retained.
-        ciArgs[ciArgs.length] = this.coerceAtBoundary_(binaryen, cr(0), cc(0), binaryen.i32);
+        ciArgs.push(this.coerceAtBoundary_(binaryen, cr(0), cc(0), binaryen.i32));
         ciCallExpr = this.n_(this.getOrderedCallIndirectWrapperName_(ciSigKey)) + '(' + ciArgs.join(', ') + ')';
       } else {
         // asm.js requires the table index to be exactly (expr) & mask form.

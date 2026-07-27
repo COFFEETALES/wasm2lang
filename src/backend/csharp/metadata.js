@@ -45,7 +45,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitStaticI64InitLines_ = function (i3
   if (startWordIndex & 1) {
     if (pos < wordCount && 0 !== i32[pos]) {
       used.usedW4 = true;
-      lines[lines.length] = 'w4(' + startWordIndex * 4 + ', ' + String(i32[pos]) + ');';
+      lines.push('w4(' + startWordIndex * 4 + ', ' + String(i32[pos]) + ');');
     }
     pos = 1;
   }
@@ -76,7 +76,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitStaticI64InitLines_ = function (i3
       var /** @const {number} */ fillByte = (startWordIndex + pos) * 4;
       var /** @const {string} */ fillLit = fmt(lowSigned >>> 0, highSigned >>> 0);
       used.usedW8 = true;
-      lines[lines.length] = 'for (int i = 0; i < ' + pairCount + '; ++i) w8(' + fillByte + ' + i * 8, ' + fillLit + ');';
+      lines.push('for (int i = 0; i < ' + pairCount + '; ++i) w8(' + fillByte + ' + i * 8, ' + fillLit + ');');
       pos = fillEnd;
       continue;
     }
@@ -102,7 +102,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitStaticI64InitLines_ = function (i3
 
       var /** @const {number} */ setByte = (startWordIndex + pos) * 4;
       used.usedW8 = true;
-      lines[lines.length] = 'w8(' + setByte + ', ' + fmt(sLow >>> 0, sHigh >>> 0) + ');';
+      lines.push('w8(' + setByte + ', ' + fmt(sLow >>> 0, sHigh >>> 0) + ');');
       pos += 2;
     }
   }
@@ -111,7 +111,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitStaticI64InitLines_ = function (i3
   if (pairEnd < wordCount && 0 !== i32[pairEnd]) {
     var /** @const {number} */ trailByte = (startWordIndex + pairEnd) * 4;
     used.usedW4 = true;
-    lines[lines.length] = 'w4(' + trailByte + ', ' + String(i32[pairEnd]) + ');';
+    lines.push('w4(' + trailByte + ', ' + String(i32[pairEnd]) + ');');
   }
 
   return lines;
@@ -146,31 +146,33 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitMetadata = function (wasmModule, o
   var /** @const {!Array<string>} */ initLines =
       0 !== i32.length ? this.emitStaticI64InitLines_(i32, startWordIndex, used) : [];
 
-  lines[lines.length] = 'public static class ' + holderName + ' {';
-  lines[lines.length] = pad1 + 'public static byte[] ' + bufferName + '() {';
-  lines[lines.length] = pad2 + 'byte[] b = new byte[' + heapSize + '];';
+  lines.push('public static class ' + holderName + ' {');
+  lines.push(pad1 + 'public static byte[] ' + bufferName + '() {');
+  lines.push(pad2 + 'byte[] b = new byte[' + heapSize + '];');
   if (used.usedW8) {
-    lines[lines.length] =
+    lines.push(
       pad2 +
-      'void w8(int o, long v) { ' +
-      'System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(System.MemoryExtensions.AsSpan(b, o), v); }';
+        'void w8(int o, long v) { ' +
+        'System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(System.MemoryExtensions.AsSpan(b, o), v); }'
+    );
   }
   if (used.usedW4) {
-    lines[lines.length] =
+    lines.push(
       pad2 +
-      'void w4(int o, int v) { ' +
-      'System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(System.MemoryExtensions.AsSpan(b, o), v); }';
+        'void w4(int o, int v) { ' +
+        'System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(System.MemoryExtensions.AsSpan(b, o), v); }'
+    );
   }
   for (
     var /** @type {number} */ ii = 0, /** @const {number} */ initLinesCount = initLines.length;
     ii !== initLinesCount;
     ++ii
   ) {
-    lines[lines.length] = pad2 + initLines[ii];
+    lines.push(pad2 + initLines[ii]);
   }
-  lines[lines.length] = pad2 + 'return b;';
-  lines[lines.length] = pad1 + '}';
-  lines[lines.length] = '}';
+  lines.push(pad2 + 'return b;');
+  lines.push(pad1 + '}');
+  lines.push('}');
 
   return lines.join('\n');
 };

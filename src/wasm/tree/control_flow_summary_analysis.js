@@ -35,7 +35,7 @@ Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.appendUniqueBranchTargets = funct
         break;
       }
     }
-    if (!found) destination[destination.length] = candidate;
+    if (!found) destination.push(candidate);
   }
 };
 
@@ -90,34 +90,34 @@ Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.evaluationOrder = function (binar
   var /** @const {number} */ id = expression.id;
 
   if (binaryen.SelectId === id) {
-    ordered[ordered.length] = [/** @type {number} */ (expression.ifTrue), 1];
-    ordered[ordered.length] = [/** @type {number} */ (expression.ifFalse), 2];
-    ordered[ordered.length] = [/** @type {number} */ (expression.condition), 0];
+    ordered.push([/** @type {number} */ (expression.ifTrue), 1]);
+    ordered.push([/** @type {number} */ (expression.ifFalse), 2]);
+    ordered.push([/** @type {number} */ (expression.condition), 0]);
     return ordered;
   }
   if (binaryen.IfId === id) {
-    ordered[ordered.length] = [/** @type {number} */ (expression.condition), 0];
+    ordered.push([/** @type {number} */ (expression.condition), 0]);
     return ordered;
   }
   if (binaryen.BreakId === id || binaryen.SwitchId === id) {
     var /** @const {number} */ branchCondition = /** @type {number} */ (expression.condition || 0);
     var /** @const {number} */ branchValue = /** @type {number} */ (expression.value || 0);
-    if (0 !== branchValue) ordered[ordered.length] = [branchValue, 0 !== branchCondition ? 1 : 0];
-    if (0 !== branchCondition) ordered[ordered.length] = [branchCondition, 0];
+    if (0 !== branchValue) ordered.push([branchValue, 0 !== branchCondition ? 1 : 0]);
+    if (0 !== branchCondition) ordered.push([branchCondition, 0]);
     return ordered;
   }
   if (binaryen.CallIndirectId === id) {
     var /** @const {!Array<number>} */ operands = /** @type {!Array<number>} */ (expression.operands || []);
     for (var /** @type {number} */ oi = 0; oi !== operands.length; ++oi) {
-      ordered[ordered.length] = [operands[oi], oi + 1];
+      ordered.push([operands[oi], oi + 1]);
     }
-    ordered[ordered.length] = [/** @type {number} */ (expression.target), 0];
+    ordered.push([/** @type {number} */ (expression.target), 0]);
     return ordered;
   }
 
   var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ edges = Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren(expression);
   for (var /** @type {number} */ ei = 0; ei !== edges.length; ++ei) {
-    ordered[ordered.length] = [/** @type {number} */ (edges[ei][3]), ei];
+    ordered.push([/** @type {number} */ (edges[ei][3]), ei]);
   }
   return ordered;
 };
@@ -186,7 +186,7 @@ Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.summarizeNode_ = function (binary
         if (blockSummary.branchTargets[bt] === blockName) {
           blockCaptured = true;
         } else {
-          remainingBlockTargets[remainingBlockTargets.length] = blockSummary.branchTargets[bt];
+          remainingBlockTargets.push(blockSummary.branchTargets[bt]);
         }
       }
       blockSummary.branchTargets = remainingBlockTargets;
@@ -201,7 +201,7 @@ Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.summarizeNode_ = function (binary
     var /** @const {!Array<string>} */ remainingLoopTargets = [];
     for (var /** @type {number} */ li = 0; li !== loopBody.branchTargets.length; ++li) {
       if (loopBody.branchTargets[li] !== loopName) {
-        remainingLoopTargets[remainingLoopTargets.length] = loopBody.branchTargets[li];
+        remainingLoopTargets.push(loopBody.branchTargets[li]);
       }
     }
     return {

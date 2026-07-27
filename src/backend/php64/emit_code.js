@@ -18,7 +18,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   // Collect internal function names (safe identifiers, unmangled keys).
   var /** @const {!Array<string>} */ internalFuncNames = [];
   for (var /** @type {number} */ fn = 0, /** @const {number} */ fnCount = moduleInfo.functions.length; fn !== fnCount; ++fn) {
-    internalFuncNames[internalFuncNames.length] = this.safeName_(moduleInfo.functions[fn].name);
+    internalFuncNames.push(this.safeName_(moduleInfo.functions[fn].name));
   }
   var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
   for (var /** @type {number} */ ocn = 0; ocn !== ftKeys.length; ++ocn) {
@@ -29,7 +29,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     // Treat dispatchers like internal closure variables so emitted wasm
     // functions capture them by reference through the existing use-clause
     // machinery.
-    internalFuncNames[internalFuncNames.length] = ocnName;
+    internalFuncNames.push(ocnName);
   }
 
   // Resolve stdlib imports.
@@ -61,19 +61,21 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   var /** @const {!Array<string>} */ functionParts = [];
   for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
-    functionParts[functionParts.length] = this.emitFunction_(
-      wasmModule,
-      binaryen,
-      funcInfo,
-      moduleInfo.importedNames,
-      moduleInfo.globals,
-      moduleInfo.impFuncs,
-      internalFuncNames,
-      moduleInfo.functionSignatures,
-      moduleInfo.globalTypes,
-      moduleInfo.flatTableEntries.length > 0,
-      phpStdlibNames,
-      phpStdlibGlobals
+    functionParts.push(
+      this.emitFunction_(
+        wasmModule,
+        binaryen,
+        funcInfo,
+        moduleInfo.importedNames,
+        moduleInfo.globals,
+        moduleInfo.impFuncs,
+        internalFuncNames,
+        moduleInfo.functionSignatures,
+        moduleInfo.globalTypes,
+        moduleInfo.flatTableEntries.length > 0,
+        phpStdlibNames,
+        phpStdlibGlobals
+      )
     );
   }
   var /** @const {!Array<string>} */ orderedCallWrapperParts = [];
@@ -88,16 +90,17 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
         this.phpVar_('ftable') + '[' + ocwParams[ocwParamCount] + '](' + ocwCallArgs.join(', ') + ')';
     var /** @const {boolean} */ ocwHasReturn =
         binaryen.none !== ocwDesc.signatureReturnType && 0 !== ocwDesc.signatureReturnType;
-    orderedCallWrapperParts[orderedCallWrapperParts.length] =
+    orderedCallWrapperParts.push(
       Wasm2Lang.Backend.AbstractCodegen.pad_(1) +
-      this.phpVar_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
-      ' = function(' +
-      ocwParams.join(', ') +
-      ') use (&' +
-      this.phpVar_('ftable') +
-      ') { ' +
-      (ocwHasReturn ? 'return ' + this.renderCoercionByType_(binaryen, ocwCall, ocwDesc.signatureReturnType) : ocwCall) +
-      '; };';
+        this.phpVar_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
+        ' = function(' +
+        ocwParams.join(', ') +
+        ') use (&' +
+        this.phpVar_('ftable') +
+        ') { ' +
+        (ocwHasReturn ? 'return ' + this.renderCoercionByType_(binaryen, ocwCall, ocwDesc.signatureReturnType) : ocwCall) +
+        '; };'
+    );
   }
   this.castNames_ = null;
   var /** @const {!Object<string, boolean>} */ usedB = /** @type {!Object<string, boolean>} */ (this.usedBindings_);
@@ -109,14 +112,14 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   // Helper emission — core unconditional + opcode-specific gated on usedHelpers_.
   var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(0, 0, 0, 0);
   for (var /** @type {number} */ hi = 0, /** @const {number} */ hLen = helperLines.length; hi !== hLen; ++hi) {
-    outputParts[outputParts.length] = helperLines[hi];
+    outputParts.push(helperLines[hi]);
   }
   this.usedHelpers_ = null;
 
   // Module header.
   var /** @const {string} */ pad1 = Wasm2Lang.Backend.AbstractCodegen.pad_(1);
   var /** @const {string} */ nBuf = this.phpVar_('buffer');
-  outputParts[outputParts.length] = '$' + moduleName + ' = function(array $foreign, string &' + nBuf + '): array {';
+  outputParts.push('$' + moduleName + ' = function(array $foreign, string &' + nBuf + '): array {');
 
   // Imported function bindings — skip stdlib and unused imports.
   for (
@@ -131,8 +134,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     if (!usedB[phpImpKey]) {
       continue;
     }
-    outputParts[outputParts.length] =
-      pad1 + this.phpVar_(phpImpKey) + " = $foreign['" + moduleInfo.impFuncs[i].importBaseName + "'] ?? null;";
+    outputParts.push(pad1 + this.phpVar_(phpImpKey) + " = $foreign['" + moduleInfo.impFuncs[i].importBaseName + "'] ?? null;");
   }
 
   // Module-level globals (only those referenced by function bodies).
@@ -141,48 +143,49 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     if (!usedB[phpGlobalKey]) {
       continue;
     }
-    outputParts[outputParts.length] = pad1 + this.phpVar_(phpGlobalKey) + ' = ' + moduleInfo.globals[gi].globalInitValue + ';';
+    outputParts.push(pad1 + this.phpVar_(phpGlobalKey) + ' = ' + moduleInfo.globals[gi].globalInitValue + ';');
   }
 
   // Forward declarations for internal functions.
   for (var /** @type {number} */ fi = 0, /** @const {number} */ fNameLen = internalFuncNames.length; fi !== fNameLen; ++fi) {
-    outputParts[outputParts.length] = pad1 + this.phpVar_(internalFuncNames[fi]) + ' = null;';
+    outputParts.push(pad1 + this.phpVar_(internalFuncNames[fi]) + ' = null;');
   }
 
   // Function table forward declaration.
   if (moduleInfo.flatTableEntries.length > 0) {
-    outputParts[outputParts.length] = pad1 + this.phpVar_('ftable') + ' = [];';
+    outputParts.push(pad1 + this.phpVar_('ftable') + ' = [];');
   }
 
   for (var /** @type {number} */ ocp = 0; ocp !== orderedCallWrapperParts.length; ++ocp) {
-    outputParts[outputParts.length] = orderedCallWrapperParts[ocp];
+    outputParts.push(orderedCallWrapperParts[ocp]);
   }
 
   // Append function bodies.
   for (var /** @type {number} */ fp = 0, /** @const {number} */ fpLen = functionParts.length; fp !== fpLen; ++fp) {
-    outputParts[outputParts.length] = functionParts[fp];
+    outputParts.push(functionParts[fp]);
   }
 
   // Exported global accessor closures.
   for (var /** @type {number} */ peg = 0, /** @const {number} */ pegLen = moduleInfo.expGlobals.length; peg !== pegLen; ++peg) {
     var /** @const {string} */ pegVar = this.phpVar_('$g_' + this.safeName_(moduleInfo.expGlobals[peg].internalName));
     var /** @const {string} */ pegGetterVar = this.phpVar_('$get_' + this.safeName_(moduleInfo.expGlobals[peg].exportName));
-    outputParts[outputParts.length] = pad1 + pegGetterVar + ' = function() use (&' + pegVar + ') { return ' + pegVar + '; };';
+    outputParts.push(pad1 + pegGetterVar + ' = function() use (&' + pegVar + ') { return ' + pegVar + '; };');
     if (moduleInfo.expGlobals[peg].globalMutable) {
       var /** @const {string} */ pegSetterVar = this.phpVar_('$set_' + this.safeName_(moduleInfo.expGlobals[peg].exportName));
       var /** @const {string} */ pegSetterParam = this.localN_(0);
-      outputParts[outputParts.length] =
+      outputParts.push(
         pad1 +
-        pegSetterVar +
-        ' = function(' +
-        pegSetterParam +
-        ') use (&' +
-        pegVar +
-        ') { ' +
-        pegVar +
-        ' = ' +
-        pegSetterParam +
-        '; };';
+          pegSetterVar +
+          ' = function(' +
+          pegSetterParam +
+          ') use (&' +
+          pegVar +
+          ') { ' +
+          pegVar +
+          ' = ' +
+          pegSetterParam +
+          '; };'
+      );
     }
   }
 
@@ -198,12 +201,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     ) {
       var /** @const {string|null} */ fteName = moduleInfo.flatTableEntries[fte];
       if (null === fteName) {
-        ftEntries[ftEntries.length] = 'null';
+        ftEntries.push('null');
       } else {
-        ftEntries[ftEntries.length] = this.phpVar_(this.safeName_(fteName));
+        ftEntries.push(this.phpVar_(this.safeName_(fteName)));
       }
     }
-    outputParts[outputParts.length] = pad1 + this.phpVar_('ftable') + ' = [' + ftEntries.join(', ') + '];';
+    outputParts.push(pad1 + this.phpVar_('ftable') + ' = [' + ftEntries.join(', ') + '];');
   }
 
   // Return array.
@@ -213,26 +216,29 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
     r !== exportCount;
     ++r
   ) {
-    returnEntries[returnEntries.length] =
-      "'" + moduleInfo.expFuncs[r].exportName + "' => " + this.phpVar_(this.safeName_(moduleInfo.expFuncs[r].internalName));
+    returnEntries.push(
+      "'" + moduleInfo.expFuncs[r].exportName + "' => " + this.phpVar_(this.safeName_(moduleInfo.expFuncs[r].internalName))
+    );
   }
   for (var /** @type {number} */ pegr = 0; pegr !== pegLen; ++pegr) {
-    returnEntries[returnEntries.length] =
+    returnEntries.push(
       "'" +
-      moduleInfo.expGlobals[pegr].exportName +
-      "' => " +
-      this.phpVar_('$get_' + this.safeName_(moduleInfo.expGlobals[pegr].exportName));
-    if (moduleInfo.expGlobals[pegr].globalMutable) {
-      returnEntries[returnEntries.length] =
-        "'" +
         moduleInfo.expGlobals[pegr].exportName +
-        '$set' +
         "' => " +
-        this.phpVar_('$set_' + this.safeName_(moduleInfo.expGlobals[pegr].exportName));
+        this.phpVar_('$get_' + this.safeName_(moduleInfo.expGlobals[pegr].exportName))
+    );
+    if (moduleInfo.expGlobals[pegr].globalMutable) {
+      returnEntries.push(
+        "'" +
+          moduleInfo.expGlobals[pegr].exportName +
+          '$set' +
+          "' => " +
+          this.phpVar_('$set_' + this.safeName_(moduleInfo.expGlobals[pegr].exportName))
+      );
     }
   }
-  outputParts[outputParts.length] = pad1 + 'return [' + returnEntries.join(', ') + '];';
-  outputParts[outputParts.length] = '};';
+  outputParts.push(pad1 + 'return [' + returnEntries.join(', ') + '];');
+  outputParts.push('};');
 
   this.publishTrapSites_();
 

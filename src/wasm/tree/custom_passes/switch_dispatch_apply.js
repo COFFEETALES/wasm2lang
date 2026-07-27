@@ -182,7 +182,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
     var /** @const {string} */ curName = /** @type {string} */ (curInfo.name);
     var /** @const {!Array<number>} */ curChildPtrs = /** @type {!Array<number>} */ (curInfo.children);
     nameToIdx[curName] = chain.length;
-    chain[chain.length] = [curName, curChildPtrs];
+    chain.push([curName, curChildPtrs]);
 
     var /** @const {number} */ fcPtr = curChildPtrs[0];
     var /** @const {!BinaryenExpressionInfo} */ fcInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, fcPtr);
@@ -199,7 +199,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
         // Record innermost wrapper.
         var /** @const {string} */ wrapperName = /** @type {string} */ (fcInfo.name);
         nameToIdx[wrapperName] = chain.length;
-        chain[chain.length] = [wrapperName, fcChildren];
+        chain.push([wrapperName, fcChildren]);
 
         var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (soleInfo.names || []);
         var /** @const {string} */ switchDefault = /** @type {string} */ (soleInfo.defaultName || '');
@@ -294,10 +294,10 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
               buildGroup(target);
           var /** @const {!Array<number>} */ groupIndices = /** @type {!Array<number>} */ (group.caseIndices);
           while (si < swNameLen && switchNames[si] === target) {
-            groupIndices[groupIndices.length] = si;
+            groupIndices.push(si);
             ++si;
           }
-          caseGroups[caseGroups.length] = group;
+          caseGroups.push(group);
         }
 
         var /** @type {?Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */ defaultGroup = null;
@@ -403,8 +403,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitFlatSwitchHeader 
   info
 ) {
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
-  lines[lines.length] =
-    pad(indent) + (info.requiresLabel && '' !== switchLabel ? switchLabel + ': ' : '') + 'switch (' + conditionExpr + ') {\n';
+  lines.push(
+    pad(indent) + (info.requiresLabel && '' !== switchLabel ? switchLabel + ': ' : '') + 'switch (' + conditionExpr + ') {\n'
+  );
 };
 
 /**
@@ -419,7 +420,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitFlatSwitchHeader 
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitFlatSwitchBreak = function (lines, indent, switchLabel, info) {
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
-  lines[lines.length] = pad(indent) + 'break' + (info.requiresLabel ? ' ' + switchLabel : '') + ';\n';
+  lines.push(pad(indent) + 'break' + (info.requiresLabel ? ' ' + switchLabel : '') + ';\n');
 };
 
 /**
@@ -606,7 +607,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
   for (;;) {
     var /** @const {string} */ curName = /** @type {string} */ (curInfo.name);
     var /** @const {!Array<number>} */ curChildPtrs = /** @type {!Array<number>} */ (curInfo.children || []);
-    chain[chain.length] = {blockName: curName, childPtrs: curChildPtrs};
+    chain.push({blockName: curName, childPtrs: curChildPtrs});
 
     if (0 === curChildPtrs.length) {
       break;
@@ -645,7 +646,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
       ) {
         // Add fused block to the chain so that br targets inside the flat
         // switch are intercepted by the root-switch exit map.
-        chain[chain.length] = {blockName: fcName, childPtrs: fusedCh};
+        chain.push({blockName: fcName, childPtrs: fusedCh});
         loopPtr = fusedCh[0];
         loopName = /** @type {string} */ (fusedChild.name);
         break;
@@ -671,7 +672,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractRootSwitchStru
     for (var /** @type {number} */ k = j - 1; 0 <= k && !hitTerminal; --k) {
       var /** @const {!Array<number>} */ levelPtrs = chain[k].childPtrs;
       for (var /** @type {number} */ p = 1, /** @const {number} */ ptrLen = levelPtrs.length; p < ptrLen; ++p) {
-        exitPtrs[exitPtrs.length] = levelPtrs[p];
+        exitPtrs.push(levelPtrs[p]);
         var /** @const {number} */ ptrId = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, levelPtrs[p]).id;
         if (binaryen.ReturnId === ptrId || binaryen.UnreachableId === ptrId) {
           hitTerminal = true;
@@ -756,15 +757,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledGroupBody_
         );
       state.indent = savedInd2;
       if (!terminal) {
-        lines[lines.length] = pad(indent) + codegen.markAndRenderLabeledJump_(state, 'break', rsLoopName);
+        lines.push(pad(indent) + codegen.markAndRenderLabeledJump_(state, 'break', rsLoopName));
       }
     } else if (rsRsName && group.externalTarget === rsRsName) {
-      lines[lines.length] = pad(indent) + codegen.markAndRenderLabeledJump_(state, 'break', rsLoopName);
+      lines.push(pad(indent) + codegen.markAndRenderLabeledJump_(state, 'break', rsLoopName));
     } else {
-      lines[lines.length] = pad(indent) + codegen.resolveBreakTarget_(state, group.externalTarget);
+      lines.push(pad(indent) + codegen.resolveBreakTarget_(state, group.externalTarget));
     }
   } else if (group.needsBreak || strippedBreak) {
-    S.emitFlatSwitchBreak(lines, indent, outerLabel, info);
+    codegen.emitFlatSwitchCaseBreak_(lines, indent, outerLabel, info);
   }
 };
 
@@ -894,15 +895,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
   var /** @type {number} */ switchInd = ind;
 
   if (labeledEpilogue) {
-    lines[lines.length] = pad(ind) + outerLabel + ': {\n';
+    lines.push(pad(ind) + outerLabel + ': {\n');
     if ('' !== innerChainName) {
       state.usedLabels[innerChainName] = true;
       var /** @const {string} */ innerLabel = codegen.labelN_(state.labelMap, innerChainName);
-      lines[lines.length] = pad(ind + 1) + innerLabel + ': {\n';
-      lines[lines.length] = pad(ind + 2) + 'switch (' + condStr + ') {\n';
+      lines.push(pad(ind + 1) + innerLabel + ': {\n');
+      lines.push(pad(ind + 2) + 'switch (' + condStr + ') {\n');
       switchInd = ind + 2;
     } else {
-      lines[lines.length] = pad(ind + 1) + 'switch (' + condStr + ') {\n';
+      lines.push(pad(ind + 1) + 'switch (' + condStr + ') {\n');
       switchInd = ind + 1;
     }
   } else {
@@ -920,18 +921,18 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
     var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */ group = groups[gi];
     var /** @const {!Array<number>} */ indices = group.caseIndices;
     for (var /** @type {number} */ ii = 0, /** @const {number} */ idxLen = indices.length; ii < idxLen; ++ii) {
-      lines[lines.length] = pad(switchInd + 1) + 'case ' + indices[ii] + ':\n';
+      lines.push(pad(switchInd + 1) + 'case ' + indices[ii] + ':\n');
     }
     S.emitLabeledGroupBody_(lines, codegen, state, vis, group, info, breakLabel, switchInd + 2);
   }
 
   var /** @type {?Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */ defGroup = info.defaultGroup;
   if (defGroup) {
-    lines[lines.length] = pad(switchInd + 1) + 'default:\n';
+    lines.push(pad(switchInd + 1) + 'default:\n');
     S.emitLabeledGroupBody_(lines, codegen, state, vis, defGroup, info, breakLabel, switchInd + 2);
   }
 
-  lines[lines.length] = pad(switchInd) + '}\n';
+  lines.push(pad(switchInd) + '}\n');
 
   // Emit epilogue (shared between labeled and unlabeled paths).  When
   // labeledEpilogue, wrap the epilogue at inner indent inside the outer
@@ -947,7 +948,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
   // still correct.
   if (hasEpilogue) {
     if (labeledEpilogue && '' !== innerChainName) {
-      lines[lines.length] = pad(ind + 1) + '}\n';
+      lines.push(pad(ind + 1) + '}\n');
       --state.breakableStack.length;
     }
     --state.breakableStack.length;
@@ -963,7 +964,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
     );
     state.breakableStack[state.breakableStack.length] = '*';
     if (labeledEpilogue) {
-      lines[lines.length] = pad(ind) + '}\n';
+      lines.push(pad(ind) + '}\n');
     }
   }
 

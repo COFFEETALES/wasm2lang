@@ -177,7 +177,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
 
   // Pre-guard children + if, wrapped in block (named if refs remain).
   var /** @const {!Array<number>} */ preGuard = /** @type {!Array<number>} */ ([].slice.call(children, 0, guardIdx));
-  preGuard[preGuard.length] = ifExpr;
+  preGuard.push(ifExpr);
   return {
     decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.REPLACE_NODE,
     expressionPointer: module.block(hasRef ? blockName : null, preGuard, binaryen.none)

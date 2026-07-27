@@ -496,7 +496,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitLeave_ = function (state, nodeCtx,
       var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
       var /** @type {string} */ ciCallExpr;
       if (this.callIndirectNeedsOrderedEvaluation_(binaryen, expr, state.wasmModule)) {
-        ciArgs[ciArgs.length] = ciIndexExpr;
+        ciArgs.push(ciIndexExpr);
         ciCallExpr = 'this.' + this.n_(this.getOrderedCallIndirectWrapperName_(ciSigKey)) + '(' + ciArgs.join(', ') + ')';
       } else {
         ciCallExpr = 'this.' + ciTableName + '[' + ciIndexExpr + '](' + ciArgs.join(', ') + ')';
@@ -678,69 +678,23 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitLeave_ = function (state, nodeCtx,
 // ---------------------------------------------------------------------------
 
 /**
- * Emits a case/default group's action code and exit statement.  Mirrors
- * {@code SwitchDispatchApplication.emitLabeledGroupBody_} with one change:
- * the fallthrough-preventing break is always the plain {@code break;} —
- * exiting the switch in C# lands exactly where the labeled variants land in
- * Java (before the epilogue, or after the construct when there is none).
+ * C# exits a flat switch with an unlabeled {@code break;}.  The labeled
+ * variants the other backends emit land in exactly the same place, so the
+ * whole case-group emitter is shared with them and only this one statement
+ * differs.
  *
- * @suppress {accessControls, checkTypes}
- * @private
+ * @override
+ * @protected
  * @param {!Array<string>} lines
- * @param {!Wasm2Lang.Backend.CsharpCodegen.EmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalVisitor} vis
- * @param {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} group
- * @param {!Wasm2Lang.Backend.AbstractCodegen.SwitchDispatchInfo_} info
  * @param {number} indent
+ * @param {string} switchLabel
+ * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} info
  * @return {void}
  */
-Wasm2Lang.Backend.CsharpCodegen.prototype.csEmitGroupBody_ = function (lines, state, vis, group, info, indent) {
-  var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication;
-  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
-  var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const {?Object<string, !Array<number>>} */ rsExitMap = state.rootSwitchExitMap;
-  var /** @const {string} */ rsRsName = state.rootSwitchRsName;
-  var /** @const {string} */ rsLoopName = state.rootSwitchLoopName;
-
-  var /** @const {number} */ savedIndent = state.indent;
-  state.indent = indent;
-  var /** @const {boolean} */ strippedBreak = S.emitSwitchCaseActions(
-      lines,
-      state.wasmModule,
-      binaryen,
-      state.functionInfo,
-      vis,
-      group.actionPtrs,
-      indent,
-      info.outerName
-    );
-  state.indent = savedIndent;
-
-  if (group.externalTarget) {
-    if (rsExitMap && group.externalTarget in rsExitMap) {
-      var /** @const {number} */ savedInd2 = state.indent;
-      state.indent = indent;
-      var /** @const {boolean} */ terminal = S.emitRootSwitchExitCode(
-          lines,
-          state.wasmModule,
-          binaryen,
-          state.functionInfo,
-          vis,
-          rsExitMap[group.externalTarget],
-          indent
-        );
-      state.indent = savedInd2;
-      if (!terminal) {
-        lines[lines.length] = pad(indent) + this.markAndRenderLabeledJump_(state, 'break', rsLoopName);
-      }
-    } else if (rsRsName && group.externalTarget === rsRsName) {
-      lines[lines.length] = pad(indent) + this.markAndRenderLabeledJump_(state, 'break', rsLoopName);
-    } else {
-      lines[lines.length] = pad(indent) + this.resolveBreakTarget_(state, group.externalTarget);
-    }
-  } else if (group.needsBreak || strippedBreak) {
-    lines[lines.length] = pad(indent) + 'break;\n';
-  }
+Wasm2Lang.Backend.CsharpCodegen.prototype.emitFlatSwitchCaseBreak_ = function (lines, indent, switchLabel, info) {
+  void switchLabel;
+  void info;
+  lines.push(Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + 'break;\n');
 };
 
 /**
@@ -853,25 +807,43 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.csEmitLabeledFlatSwitch_ = function (s
   var /** @const {string} */ condStr = this.coerceSwitchCondition_(condInput);
 
   var /** @const {!Array<string>} */ lines = [];
-  lines[lines.length] = pad(ind) + 'switch (' + condStr + ') {\n';
+  lines.push(pad(ind) + 'switch (' + condStr + ') {\n');
 
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_>} */ groups = info.caseGroups;
   for (var /** @type {number} */ gi = 0, /** @const {number} */ groupLen = groups.length; gi < groupLen; ++gi) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ group = groups[gi];
     var /** @const {!Array<number>} */ indices = group.caseIndices;
     for (var /** @type {number} */ ii = 0, /** @const {number} */ idxLen = indices.length; ii < idxLen; ++ii) {
-      lines[lines.length] = pad(ind + 1) + 'case ' + indices[ii] + ':\n';
+      lines.push(pad(ind + 1) + 'case ' + indices[ii] + ':\n');
     }
-    this.csEmitGroupBody_(lines, state, vis, group, info, ind + 2);
+    Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledGroupBody_(
+      lines,
+      this,
+      state,
+      vis,
+      group,
+      info,
+      '',
+      ind + 2
+    );
   }
 
   var /** @type {?Wasm2Lang.Backend.AbstractCodegen.SwitchCaseGroup_} */ defGroup = info.defaultGroup;
   if (defGroup) {
-    lines[lines.length] = pad(ind + 1) + 'default:\n';
-    this.csEmitGroupBody_(lines, state, vis, defGroup, info, ind + 2);
+    lines.push(pad(ind + 1) + 'default:\n');
+    Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledGroupBody_(
+      lines,
+      this,
+      state,
+      vis,
+      defGroup,
+      info,
+      '',
+      ind + 2
+    );
   }
 
-  lines[lines.length] = pad(ind) + '}\n';
+  lines.push(pad(ind) + '}\n');
 
   // Epilogue: pop the switch sentinel (and the inner chain entry) so break
   // label-elision inside the epilogue resolves against the real outer stack,
@@ -879,7 +851,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.csEmitLabeledFlatSwitch_ = function (s
   // switch and the epilogue; the outer exit label lands after everything.
   if (hasEpilogue) {
     if (labeledEpilogue && '' !== innerChainName) {
-      lines[lines.length] = this.csExitLabelLine_(state, innerChainName, ind);
+      lines.push(this.csExitLabelLine_(state, innerChainName, ind));
       --state.breakableStack.length;
     }
     --state.breakableStack.length;
@@ -895,7 +867,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.csEmitLabeledFlatSwitch_ = function (s
     );
     state.breakableStack[state.breakableStack.length] = '*';
   }
-  lines[lines.length] = this.csExitLabelLine_(state, info.outerName, ind);
+  lines.push(this.csExitLabelLine_(state, info.outerName, ind));
 
   return {emittedString: lines.join(''), hasDefault: !!defGroup};
 };

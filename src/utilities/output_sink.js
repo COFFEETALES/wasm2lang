@@ -136,7 +136,7 @@ Wasm2Lang.OutputSink.collectAsync_ = function (chunks, parts, startIndex) {
       chunks,
       startIndex,
       /** @param {!Wasm2Lang.OutputSink.Chunk} chunk */ function (chunk) {
-        parts[parts.length] = /** @type {string} */ (chunk);
+        parts.push(/** @type {string} */ (chunk));
       },
       /** @return {string} */ function () {
         return parts.join('');
@@ -166,7 +166,7 @@ Wasm2Lang.OutputSink.collectChunks = function (chunks) {
   var /** @const {*} */ result = Wasm2Lang.OutputSink.scanChunks_(
       chunks,
       /** @param {!Wasm2Lang.OutputSink.Chunk} chunk */ function (chunk) {
-        parts[parts.length] = /** @type {string} */ (chunk);
+        parts.push(/** @type {string} */ (chunk));
       },
       /** @param {number} index @return {!Promise<string>} */ function (index) {
         return Wasm2Lang.OutputSink.collectAsync_(chunks, parts, index);

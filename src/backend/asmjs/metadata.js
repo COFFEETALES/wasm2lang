@@ -18,15 +18,14 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitStaticI32InitLines_ = function (i32
     if ('fill' === opKind) {
       var /** @const {number} */ value = op.fillValueI32;
       var /** @const {number} */ count = op.fillCountWords;
-      lines[lines.length] =
-        i32Name + '.fill(' + String(value) + ', ' + String(wordIndex) + ', ' + String(wordIndex + count) + ');';
+      lines.push(i32Name + '.fill(' + String(value) + ', ' + String(wordIndex) + ', ' + String(wordIndex + count) + ');');
     } else {
       var /** @const {!Array<number>} */ words = op.setWordsI32;
       var /** @const {!Array<string>} */ wordStrs = [];
       for (var /** @type {number} */ j = 0, /** @const {number} */ wLen = words.length; j !== wLen; ++j) {
-        wordStrs[wordStrs.length] = String(words[j]);
+        wordStrs.push(String(words[j]));
       }
-      lines[lines.length] = i32Name + '.set([' + wordStrs.join(', ') + '], ' + String(wordIndex) + ');';
+      lines.push(i32Name + '.set([' + wordStrs.join(', ') + '], ' + String(wordIndex) + ');');
     }
   }
 
@@ -48,8 +47,8 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitMetadata = function (wasmModule, op
   var /** @const {!Array<string>} */ lines = [];
 
   var /** @const {string} */ i32ArrayName = this.n_('i32_array');
-  lines[lines.length] = 'var ' + bufferName + ' = new ArrayBuffer(' + heapSize + ');';
-  lines[lines.length] = 'var ' + i32ArrayName + ' = new Int32Array(' + bufferName + ');';
+  lines.push('var ' + bufferName + ' = new ArrayBuffer(' + heapSize + ');');
+  lines.push('var ' + i32ArrayName + ' = new Int32Array(' + bufferName + ');');
 
   if (0 !== i32.length) {
     var /** @const {!Array<string>} */ initLines = this.emitStaticI32InitLines_(i32, startWordIndex);
@@ -58,7 +57,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitMetadata = function (wasmModule, op
       ii !== initLinesCount;
       ++ii
     ) {
-      lines[lines.length] = initLines[ii];
+      lines.push(initLines[ii]);
     }
   }
 

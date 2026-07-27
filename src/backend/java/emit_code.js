@@ -21,7 +21,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Class declaration — capitalise first letter, prefix with Wasm to avoid
   // collisions with java.lang.Module and other JDK classes.
   var /** @const {string} */ className = 'Wasm' + moduleName.charAt(0).toUpperCase() + moduleName.substring(1);
-  outputParts[outputParts.length] = 'class ' + className + ' {';
+  outputParts.push('class ' + className + ' {');
 
   // Functional interfaces for function table signatures.
   var /** @const {!Array<string>} */ ftKeys = Object.keys(moduleInfo.functionTables);
@@ -35,15 +35,17 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
       );
     var /** @const {!Array<string>} */ ifaceParams = [];
     for (var /** @type {number} */ ip = 0, /** @const {number} */ ipLen = ftDescI.signatureParams.length; ip !== ipLen; ++ip) {
-      ifaceParams[ifaceParams.length] =
-        Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, ftDescI.signatureParams[ip]) + ' ' + this.localN_(ip);
+      ifaceParams.push(
+        Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, ftDescI.signatureParams[ip]) + ' ' + this.localN_(ip)
+      );
     }
-    outputParts[outputParts.length] =
-      pad1 + '@FunctionalInterface interface ' + ifaceName + ' { ' + ifaceRetType + ' call(' + ifaceParams.join(', ') + '); }';
+    outputParts.push(
+      pad1 + '@FunctionalInterface interface ' + ifaceName + ' { ' + ifaceRetType + ' call(' + ifaceParams.join(', ') + '); }'
+    );
   }
 
   // Buffer field.
-  outputParts[outputParts.length] = pad1 + 'java.nio.ByteBuffer ' + this.n_('buffer') + ';';
+  outputParts.push(pad1 + 'java.nio.ByteBuffer ' + this.n_('buffer') + ';');
 
   // Resolve stdlib imports.
   var /** @const */ stdlibBindings = Wasm2Lang.Backend.AbstractCodegen.resolveStdlibBindings_(
@@ -74,23 +76,23 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   for (var /** @type {number} */ ftf = 0; ftf !== ftLen; ++ftf) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDescF =
         moduleInfo.functionTables[ftKeys[ftf]];
-    outputParts[outputParts.length] =
-      pad1 + this.n_('$ftsig_' + ftDescF.signatureKey) + '[] ' + this.n_('$ftable_' + ftDescF.signatureKey) + ';';
+    outputParts.push(
+      pad1 + this.n_('$ftsig_' + ftDescF.signatureKey) + '[] ' + this.n_('$ftable_' + ftDescF.signatureKey) + ';'
+    );
   }
 
   // Constructor accepting foreign imports and buffer.
   // Import assignments are deferred until after function body emission.
   var /** @const {string} */ bufferParamName = this.n_('buffer');
-  outputParts[outputParts.length] =
-    pad1 + className + '(java.util.Map<String, Object> foreign, java.nio.ByteBuffer ' + bufferParamName + ') {';
-  outputParts[outputParts.length] = pad2 + 'this.' + bufferParamName + ' = ' + bufferParamName + ';';
+  outputParts.push(pad1 + className + '(java.util.Map<String, Object> foreign, java.nio.ByteBuffer ' + bufferParamName + ') {');
+  outputParts.push(pad2 + 'this.' + bufferParamName + ' = ' + bufferParamName + ';');
   var /** @const {number} */ importAssignInsertIndex = outputParts.length;
   // Reserve a slot for function table array initialisation — method
   // references resolve against methods defined later in the class, but the
   // export-name map is not yet built at this point, so actual init is
   // spliced in after the function bodies have been emitted.
   var /** @const {number} */ ftInitInsertIndex = outputParts.length;
-  outputParts[outputParts.length] = pad1 + '}';
+  outputParts.push(pad1 + '}');
 
   // Build internalName → exportName map so exported methods use their
   // public export name and non-exported methods stay private.
@@ -107,17 +109,19 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   var /** @const {!Array<string>} */ functionParts = [];
   for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
-    functionParts[functionParts.length] = this.emitFunction_(
-      wasmModule,
-      binaryen,
-      funcInfo,
-      moduleInfo.importedNames,
-      moduleInfo.functionSignatures,
-      moduleInfo.globalTypes,
-      exportNameMap,
-      moduleInfo.functionTables,
-      javaStdlibNames,
-      javaStdlibGlobals
+    functionParts.push(
+      this.emitFunction_(
+        wasmModule,
+        binaryen,
+        funcInfo,
+        moduleInfo.importedNames,
+        moduleInfo.functionSignatures,
+        moduleInfo.globalTypes,
+        exportNameMap,
+        moduleInfo.functionTables,
+        javaStdlibNames,
+        javaStdlibGlobals
+      )
     );
   }
 
@@ -131,12 +135,11 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     var /** @const {!Array<string>} */ ocwCallArgs = [];
     for (var /** @type {number} */ ocp = 0; ocp !== ocwParamCount; ++ocp) {
       var /** @const {string} */ ocpName = this.localN_(ocp);
-      ocwParams[ocwParams.length] =
-        Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, ocwDesc.signatureParams[ocp]) + ' ' + ocpName;
-      ocwCallArgs[ocwCallArgs.length] = ocpName;
+      ocwParams.push(Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, ocwDesc.signatureParams[ocp]) + ' ' + ocpName);
+      ocwCallArgs.push(ocpName);
     }
     var /** @const {string} */ ocwIndex = this.localN_(ocwParamCount);
-    ocwParams[ocwParams.length] = 'int ' + ocwIndex;
+    ocwParams.push('int ' + ocwIndex);
     var /** @const {string} */ ocwReturnType = Wasm2Lang.Backend.JavaCodegen.javaTypeName_(
         binaryen,
         ocwDesc.signatureReturnType
@@ -145,20 +148,21 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
         binaryen.none !== ocwDesc.signatureReturnType && 0 !== ocwDesc.signatureReturnType;
     var /** @const {string} */ ocwCall =
         'this.' + this.n_('$ftable_' + ocwDesc.signatureKey) + '[' + ocwIndex + '].call(' + ocwCallArgs.join(', ') + ')';
-    orderedCallWrapperParts[orderedCallWrapperParts.length] =
+    orderedCallWrapperParts.push(
       pad1 +
-      ocwReturnType +
-      ' ' +
-      this.n_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
-      '(' +
-      ocwParams.join(', ') +
-      ') {\n' +
-      pad2 +
-      (ocwHasReturn ? 'return ' : '') +
-      ocwCall +
-      ';\n' +
-      pad1 +
-      '}';
+        ocwReturnType +
+        ' ' +
+        this.n_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
+        '(' +
+        ocwParams.join(', ') +
+        ') {\n' +
+        pad2 +
+        (ocwHasReturn ? 'return ' : '') +
+        ocwCall +
+        ';\n' +
+        pad1 +
+        '}'
+    );
   }
 
   // Helper methods (only those referenced by function bodies).
@@ -172,7 +176,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   this.markExportedGlobalsUsed_(jub, moduleInfo.expGlobals);
 
   for (var /** @type {number} */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
-    outputParts[outputParts.length] = helperLines[hi];
+    outputParts.push(helperLines[hi]);
   }
 
   // Splice conditional import fields, global fields, and constructor
@@ -188,9 +192,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     if (!jub[jImpKey]) {
       continue;
     }
-    javaFieldLines[javaFieldLines.length] = pad1 + 'Object ' + this.n_(jImpKey) + ';';
-    javaAssignLines[javaAssignLines.length] =
-      pad2 + 'this.' + this.n_(jImpKey) + ' = foreign.get("' + moduleInfo.impFuncs[ji].importBaseName + '");';
+    javaFieldLines.push(pad1 + 'Object ' + this.n_(jImpKey) + ';');
+    javaAssignLines.push(
+      pad2 + 'this.' + this.n_(jImpKey) + ' = foreign.get("' + moduleInfo.impFuncs[ji].importBaseName + '");'
+    );
   }
   for (var /** @type {number} */ jgf = 0, /** @const {number} */ jgfLen = moduleInfo.globals.length; jgf !== jgfLen; ++jgf) {
     var /** @const {string} */ jGlobalKey = '$g_' + this.safeName_(moduleInfo.globals[jgf].globalName);
@@ -205,7 +210,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     var /** @const {string} */ jGlobalInit = Wasm2Lang.Backend.ValueType.isI64(binaryen, jGlobalInfo.globalType)
         ? this.renderI64Const_(binaryen, jGlobalInfo.globalInitValue)
         : this.renderConst_(binaryen, /** @type {number} */ (jGlobalInfo.globalInitValue), jGlobalInfo.globalType);
-    javaFieldLines[javaFieldLines.length] = pad1 + jGlobalType + ' ' + this.n_(jGlobalKey) + ' = ' + jGlobalInit + ';';
+    javaFieldLines.push(pad1 + jGlobalType + ' ' + this.n_(jGlobalKey) + ' = ' + jGlobalInit + ';');
   }
   for (var /** @type {number} */ jfs = javaFieldLines.length - 1; jfs >= 0; --jfs) {
     outputParts.splice(fieldInsertIndex, 0, javaFieldLines[jfs]);
@@ -230,7 +235,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     // Build stub lambda for null entries.
     var /** @const {!Array<string>} */ lambdaParams = [];
     for (var /** @type {number} */ lp = 0, /** @const {number} */ lpLen = ftDescA.signatureParams.length; lp !== lpLen; ++lp) {
-      lambdaParams[lambdaParams.length] = this.localN_(lp);
+      lambdaParams.push(this.localN_(lp));
     }
     var /** @type {string} */ stubLambda;
     if (ftaHasReturn) {
@@ -243,18 +248,17 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     for (var /** @type {number} */ te = 0, /** @const {number} */ teLen = ftDescA.tableEntries.length; te !== teLen; ++te) {
       var /** @const {string|null} */ funcName = ftDescA.tableEntries[te].boundName;
       if (null === funcName) {
-        entryExprs[entryExprs.length] = stubLambda;
+        entryExprs.push(stubLambda);
       } else {
         var /** @const {boolean} */ fnIsExported = funcName in exportNameMap;
         var /** @const {string} */ resolvedName = fnIsExported ? exportNameMap[funcName] : funcName;
         var /** @const {string} */ methodRefName = fnIsExported
             ? this.safeName_(resolvedName)
             : this.n_(this.safeName_(resolvedName));
-        entryExprs[entryExprs.length] = 'this::' + methodRefName;
+        entryExprs.push('this::' + methodRefName);
       }
     }
-    ftInitLines[ftInitLines.length] =
-      pad2 + 'this.' + ftaArrayName + ' = new ' + ftaIfaceName + '[] { ' + entryExprs.join(', ') + ' };';
+    ftInitLines.push(pad2 + 'this.' + ftaArrayName + ' = new ' + ftaIfaceName + '[] { ' + entryExprs.join(', ') + ' };');
   }
   // Splice init lines into the constructor (just before the closing brace).
   for (var /** @type {number} */ fts = ftInitLines.length - 1; fts >= 0; --fts) {
@@ -263,10 +267,10 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
 
   // Append function bodies.
   for (var /** @type {number} */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
-    outputParts[outputParts.length] = functionParts[fi];
+    outputParts.push(functionParts[fi]);
   }
   for (var /** @type {number} */ owp = 0; owp !== orderedCallWrapperParts.length; ++owp) {
-    outputParts[outputParts.length] = orderedCallWrapperParts[owp];
+    outputParts.push(orderedCallWrapperParts[owp]);
   }
 
   // Exported global accessor methods.
@@ -276,31 +280,33 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
         Wasm2Lang.Backend.JavaCodegen.javaTypeName_(binaryen, moduleInfo.expGlobals[jeg].globalType);
     var /** @const {string} */ jegField = this.n_('$g_' + this.safeName_(moduleInfo.expGlobals[jeg].internalName));
     var /** @const {string} */ jegGetterName = this.safeName_(moduleInfo.expGlobals[jeg].exportName);
-    outputParts[outputParts.length] =
-      pad1 + 'public ' + jegType + ' ' + jegGetterName + '() {\n' + pad2 + 'return this.' + jegField + ';\n' + pad1 + '}';
+    outputParts.push(
+      pad1 + 'public ' + jegType + ' ' + jegGetterName + '() {\n' + pad2 + 'return this.' + jegField + ';\n' + pad1 + '}'
+    );
     if (moduleInfo.expGlobals[jeg].globalMutable) {
       var /** @const {string} */ jegSetterParam = this.localN_(0);
-      outputParts[outputParts.length] =
+      outputParts.push(
         pad1 +
-        'public void ' +
-        this.safeName_(moduleInfo.expGlobals[jeg].exportName + '$set') +
-        '(' +
-        jegType +
-        ' ' +
-        jegSetterParam +
-        ') {\n' +
-        pad2 +
-        'this.' +
-        jegField +
-        ' = ' +
-        jegSetterParam +
-        ';\n' +
-        pad1 +
-        '}';
+          'public void ' +
+          this.safeName_(moduleInfo.expGlobals[jeg].exportName + '$set') +
+          '(' +
+          jegType +
+          ' ' +
+          jegSetterParam +
+          ') {\n' +
+          pad2 +
+          'this.' +
+          jegField +
+          ' = ' +
+          jegSetterParam +
+          ';\n' +
+          pad1 +
+          '}'
+      );
     }
   }
 
-  outputParts[outputParts.length] = '}';
+  outputParts.push('}');
 
   // Emit Vector API import when any SIMD operation was emitted.
   if (jub['$v128']) {

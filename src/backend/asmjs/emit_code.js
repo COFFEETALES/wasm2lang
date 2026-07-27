@@ -44,7 +44,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getHeapSizeDefinitionKey_ = function ()
  * @return {void}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.emitUseAsmDirective_ = function (parts, pad1) {
-  parts[parts.length] = pad1 + '"use asm";';
+  parts.push(pad1 + '"use asm";');
 };
 
 /**

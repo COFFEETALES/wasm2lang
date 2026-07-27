@@ -170,7 +170,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
       var /** @const {number} */ specCount = specs.length;
 
       if (0 !== specCount) {
-        ancestors[ancestors.length] = expression;
+        ancestors.push(expression);
         childResults = [];
         var /** @const {!Object<string, *>} */ expressionMap = /** @type {!Object<string, *>} */ (expression);
 
@@ -196,7 +196,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
               if (effectiveListPtr !== listPtr && 0 !== effectiveListPtr) {
                 setter(currentExprPtr, j, effectiveListPtr);
               }
-              childResults[childResults.length] = listChildResult;
+              childResults.push(listChildResult);
             }
           } else {
             var /** @const {number} */ childPtr = /** @type {number} */ (expressionMap[spec.edgePropertyName] || 0);
@@ -211,7 +211,7 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
             if (effectiveChildPtr !== childPtr && 0 !== effectiveChildPtr) {
               setter(currentExprPtr, -1, effectiveChildPtr);
             }
-            childResults[childResults.length] = singleChildResult;
+            childResults.push(singleChildResult);
           }
         }
 

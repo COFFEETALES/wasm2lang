@@ -82,7 +82,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyNormalizationBundles = function (wasmModul
 
   for (var /** @type {number} */ i = bundles.length - 1; i !== -1; --i) {
     if ('object' !== typeof Wasm2Lang.Options.Schema.normalizeBundles[bundles[i]]) {
-      unknownBundles[unknownBundles.length] = bundles.splice(i, 1).pop();
+      unknownBundles.push(bundles.splice(i, 1).pop());
     }
   }
 
@@ -191,7 +191,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
     if (isJsTarget) {
       // Avoid-reinterprets benefits from propagation; run before and after
       // full optimization since the optimizer can reintroduce patterns.
-      postLoweringPasses[postLoweringPasses.length] = 'avoid-reinterprets';
+      postLoweringPasses.push('avoid-reinterprets');
     }
     runTimed('phase3.prop', postLoweringPasses);
     // {@code wasmModule.optimize()} skipped — its passes restructure

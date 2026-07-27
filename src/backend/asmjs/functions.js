@@ -28,6 +28,6 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitParameterAnnotations_ = function (
 ) {
   for (var /** @type {number} */ pa = 0; pa !== numParams; ++pa) {
     var /** @const {string} */ pName = this.localN_(pa);
-    parts[parts.length] = indentStr + pName + ' = ' + this.renderCoercionByType_(binaryen, pName, paramTypes[pa]) + ';';
+    parts.push(indentStr + pName + ' = ' + this.renderCoercionByType_(binaryen, pName, paramTypes[pa]) + ';');
   }
 };

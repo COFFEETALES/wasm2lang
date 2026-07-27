@@ -78,13 +78,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectI32InitOps_ = function (i32, 
   }
 
   function emitFill() {
-    ops[ops.length] = {
+    ops.push({
       opKind: 'fill',
       startWordIndex: startWordIndex + index,
       fillValueI32: i32[index],
       fillCountWords: repeatEnd - index,
       setWordsI32: []
-    };
+    });
   }
 
   while (index !== endIndex) {
@@ -115,18 +115,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectI32InitOps_ = function (i32, 
         break;
       }
 
-      setWords[setWords.length] = i32[index];
+      setWords.push(i32[index]);
       ++index;
     }
 
     if (0 !== setWords.length) {
-      ops[ops.length] = {
+      ops.push({
         opKind: 'set',
         startWordIndex: startWordIndex + setStart,
         fillValueI32: 0,
         fillCountWords: 0,
         setWordsI32: setWords
-      };
+      });
       continue;
     }
 
@@ -194,11 +194,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectStaticMemory_ = function (was
     if (segInfo.passive) {
       continue;
     }
-    segments[segments.length] = {
+    segments.push({
       segmentByteOffset_: segInfo.offset,
       segmentBuffer_: segInfo.data,
       segmentByteLength_: segInfo.data.byteLength
-    };
+    });
   }
 
   segments.sort(function (a, b) {
@@ -532,7 +532,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectDefinedFunctions_ = function 
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(funcPtr);
 
     if ('' === funcInfo.base) {
-      functions[functions.length] = funcInfo;
+      functions.push(funcInfo);
     }
   }
 
@@ -581,14 +581,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = binaryen.getFunctionInfo(wasmModule.getFunctionByIndex(f));
     functionSignatures[funcInfo.name] = {sigParams: binaryen.expandType(funcInfo.params), sigRetType: funcInfo.results};
     if ('' !== funcInfo.base) {
-      impFuncs[impFuncs.length] = {wasmFuncName: funcInfo.name, importBaseName: funcInfo.base, importModule: funcInfo.module};
+      impFuncs.push({wasmFuncName: funcInfo.name, importBaseName: funcInfo.base, importModule: funcInfo.module});
       if ('cast' === funcInfo.module && funcInfo.base in castImports) {
         castNames[funcInfo.name] = funcInfo.base;
       } else {
         importedNames[funcInfo.name] = funcInfo.base;
       }
     } else {
-      functions[functions.length] = funcInfo;
+      functions.push(funcInfo);
     }
   }
 
@@ -603,23 +603,23 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
     globalTypes[globalInfo.name] = globalInfo.type;
     globalMutableMap[globalInfo.name] = !!globalInfo.mutable;
     if ('' !== globalInfo.base) {
-      impGlobals[impGlobals.length] = {
+      impGlobals.push({
         globalName: globalInfo.name,
         importBaseName: globalInfo.base,
         importModule: globalInfo.module,
         globalType: globalInfo.type
-      };
+      });
     } else {
       var /** @const {!BinaryenExpressionInfo} */ initExpr = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
           binaryen,
           globalInfo.init
         );
-      globals[globals.length] = {
+      globals.push({
         globalName: globalInfo.name,
         globalType: globalInfo.type,
         globalMutable: !!globalInfo.mutable,
         globalInitValue: initExpr.value != null ? initExpr.value : 0
-      };
+      });
     }
   }
 
@@ -630,18 +630,18 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectModuleCodegenInfo_ = function
   for (var /** @type {number} */ e = 0; e !== numExports; ++e) {
     var /** @const {!BinaryenExportInfo} */ exportInfo = binaryen.getExportInfo(wasmModule.getExportByIndex(e));
     if (binaryen.ExternalFunction === exportInfo.kind) {
-      expFuncs[expFuncs.length] = {
+      expFuncs.push({
         exportName: exportInfo.name,
         internalName: exportInfo.value,
         stubName: Wasm2Lang.Backend.AbstractCodegen.safeIdentifier_(exportInfo.value)
-      };
+      });
     } else if (binaryen.ExternalGlobal === exportInfo.kind) {
-      expGlobals[expGlobals.length] = {
+      expGlobals.push({
         exportName: exportInfo.name,
         internalName: exportInfo.value,
         globalType: globalTypes[exportInfo.value] || binaryen.i32,
         globalMutable: !!globalMutableMap[exportInfo.value]
-      };
+      });
     }
   }
 
@@ -736,10 +736,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
 
   // Build flat entries array.
   for (var /** @type {number} */ p = 0; p < baseOffset; ++p) {
-    flatEntries[flatEntries.length] = null;
+    flatEntries.push(null);
   }
   for (var /** @type {number} */ d = 0, /** @const {number} */ dLen = data.length; d !== dLen; ++d) {
-    flatEntries[flatEntries.length] = data[d];
+    flatEntries.push(data[d]);
   }
 
   // Group entries by signature.

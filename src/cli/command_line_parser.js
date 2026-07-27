@@ -96,7 +96,7 @@ Wasm2Lang.CLI.CommandLineParser.parseArgv = function () {
           optionName
         );
       if (optionMatch) {
-        optionValues[optionValues.length] = optionMatch[2];
+        optionValues.push(optionMatch[2]);
         continue;
       }
       pendingOptionName = currentArg;

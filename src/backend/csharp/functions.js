@@ -45,24 +45,24 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitFunction_ = function (
   // Method header (indent 1 = inside class).
   var /** @const {!Array<string>} */ paramDecls = [];
   for (var /** @type {number} */ pi = 0; pi !== numParams; ++pi) {
-    paramDecls[paramDecls.length] =
-      Wasm2Lang.Backend.CsharpCodegen.csharpTypeName_(binaryen, paramTypes[pi]) + ' ' + this.localN_(pi);
+    paramDecls.push(Wasm2Lang.Backend.CsharpCodegen.csharpTypeName_(binaryen, paramTypes[pi]) + ' ' + this.localN_(pi));
   }
-  parts[parts.length] = pad1 + visibility + returnType + ' ' + fnName + '(' + paramDecls.join(', ') + ') {';
+  parts.push(pad1 + visibility + returnType + ' ' + fnName + '(' + paramDecls.join(', ') + ') {');
 
   // Local variable declarations.
   if (0 !== numVars) {
     var /** @const {!Array<string>} */ initStrs = this.buildLocalInitStrings_(binaryen, funcInfo.name, varTypes, numParams);
     for (var /** @type {number} */ vi = 0; vi !== numVars; ++vi) {
       var /** @const {number} */ localIdx = numParams + vi;
-      parts[parts.length] =
+      parts.push(
         pad2 +
-        Wasm2Lang.Backend.CsharpCodegen.csharpTypeName_(binaryen, varTypes[vi]) +
-        ' ' +
-        this.localN_(localIdx) +
-        ' = ' +
-        initStrs[vi] +
-        ';';
+          Wasm2Lang.Backend.CsharpCodegen.csharpTypeName_(binaryen, varTypes[vi]) +
+          ' ' +
+          this.localN_(localIdx) +
+          ' = ' +
+          initStrs[vi] +
+          ';'
+      );
     }
   }
 
@@ -104,6 +104,6 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitFunction_ = function (
     );
   }
 
-  parts[parts.length] = pad1 + '}';
+  parts.push(pad1 + '}');
   return parts.join('\n');
 };

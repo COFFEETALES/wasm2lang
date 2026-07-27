@@ -257,7 +257,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDiagnosticSummary_ = function (w
   for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = functions.length; f !== funcCount; ++f) {
     var /** @const {string} */ funcName = functions[f].name;
     var /** @const {number} */ nodeCount = counts[funcName] || 0;
-    outputParts[outputParts.length] = '// ' + funcName + ' [nodes:' + nodeCount + ']';
+    outputParts.push('// ' + funcName + ' [nodes:' + nodeCount + ']');
   }
 
   // Build seen-ids line from collected expression IDs.
@@ -265,9 +265,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDiagnosticSummary_ = function (w
   var /** @const {!Array<string>} */ seenIdNames = [];
   var /** @const {!Array<string>} */ idKeys = Object.keys(seenIds);
   for (var /** @type {number} */ k = 0, /** @const {number} */ kLen = idKeys.length; k !== kLen; ++k) {
-    seenIdNames[seenIdNames.length] = this.idName_(binaryen, Number(idKeys[k]));
+    seenIdNames.push(this.idName_(binaryen, Number(idKeys[k])));
   }
-  outputParts[outputParts.length] = '// [ids seen: ' + (0 !== seenIdNames.length ? seenIdNames.join(', ') : '(none)') + ']';
+  outputParts.push('// [ids seen: ' + (0 !== seenIdNames.length ? seenIdNames.join(', ') : '(none)') + ']');
 
   return outputParts.join('\n');
 };
@@ -305,11 +305,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitCode = function (wasmModule, opt
     traversalState.nodeCount = 0;
     this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
 
-    outputParts[outputParts.length] = '// ' + funcInfo.name + ' [nodes:' + traversalState.nodeCount + ']';
+    outputParts.push('// ' + funcInfo.name + ' [nodes:' + traversalState.nodeCount + ']');
   }
 
-  outputParts[outputParts.length] =
-    '// [ids seen: ' + (0 !== traversalState.seenIdNames.length ? traversalState.seenIdNames.join(', ') : '(none)') + ']';
+  outputParts.push(
+    '// [ids seen: ' + (0 !== traversalState.seenIdNames.length ? traversalState.seenIdNames.join(', ') : '(none)') + ']'
+  );
 
   return outputParts.join('\n');
 };

@@ -203,7 +203,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_b
       }
     }
 
-    funcsArray[funcsArray.length] = funcMetadata;
+    funcsArray.push(funcMetadata);
     ++runResult.processedCount;
   }
 
@@ -233,8 +233,8 @@ Wasm2Lang.Wasm.Tree.PassRunner.flushProfileReport_ = function (names, totalsMs) 
   for (var /** @type {number} */ k = 0; k !== passCount; ++k) {
     var /** @const {number} */ t = totalsMs[k];
     var /** @const {string} */ pct = grand > 0 ? ' (' + ((100 * t) / grand).toFixed(1) + '%)' : '';
-    lines[lines.length] = '  ' + names[k] + ': ' + t + 'ms' + pct;
+    lines.push('  ' + names[k] + ': ' + t + 'ms' + pct);
   }
-  lines[lines.length] = '  TOTAL: ' + grand + 'ms';
+  lines.push('  TOTAL: ' + grand + 'ms');
   Wasm2Lang.Wasm.Tree.PassRunner.writeProfileLine(lines.join('\n') + '\n');
 };

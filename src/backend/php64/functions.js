@@ -25,30 +25,30 @@ Wasm2Lang.Backend.Php64Codegen.prototype.buildUseClause_ = function (
   var /** @const {!Array<string>} */ entries = [];
   var /** @const {string} */ bufVar = this.phpVar_('buffer');
   if (usedCaptures[bufVar]) {
-    entries[entries.length] = '&' + bufVar;
+    entries.push('&' + bufVar);
   }
   for (var /** @type {number} */ gi = 0, /** @const {number} */ gLen = globals.length; gi !== gLen; ++gi) {
     var /** @const {string} */ gVar = this.phpVar_('$g_' + this.safeName_(globals[gi].globalName));
     if (usedCaptures[gVar]) {
-      entries[entries.length] = '&' + gVar;
+      entries.push('&' + gVar);
     }
   }
   for (var /** @type {number} */ ii = 0, /** @const {number} */ iLen = imports.length; ii !== iLen; ++ii) {
     var /** @const {string} */ iVar = this.phpVar_('$if_' + this.safeName_(imports[ii].importBaseName));
     if (usedCaptures[iVar]) {
-      entries[entries.length] = '&' + iVar;
+      entries.push('&' + iVar);
     }
   }
   for (var /** @type {number} */ fi = 0, /** @const {number} */ fLen = internalFuncNames.length; fi !== fLen; ++fi) {
     var /** @const {string} */ fVar = this.phpVar_(internalFuncNames[fi]);
     if (usedCaptures[fVar]) {
-      entries[entries.length] = '&' + fVar;
+      entries.push('&' + fVar);
     }
   }
   if (hasFunctionTable) {
     var /** @const {string} */ ftVar = this.phpVar_('ftable');
     if (usedCaptures[ftVar]) {
-      entries[entries.length] = '&' + ftVar;
+      entries.push('&' + ftVar);
     }
   }
   return entries.join(', ');
@@ -99,12 +99,12 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   // Reserve slot for the function header; the use clause is finalised after
   // the body walk so that &$ftable is only captured when actually needed.
   var /** @const {number} */ headerIndex = parts.length;
-  parts[parts.length] = '';
+  parts.push('');
 
   // Coerce parameters to their wasm types.
   for (var /** @type {number} */ pa = 0; pa !== numParams; ++pa) {
     var /** @const {string} */ pName = this.localN_(pa);
-    parts[parts.length] = pad(2) + pName + ' = ' + this.renderCoercionByType_(binaryen, pName, paramTypes[pa]) + ';';
+    parts.push(pad(2) + pName + ' = ' + this.renderCoercionByType_(binaryen, pName, paramTypes[pa]) + ';');
   }
 
   // Local variable declarations.
@@ -112,9 +112,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
     var /** @const {!Array<string>} */ initStrs = this.buildLocalInitStrings_(binaryen, funcInfo.name, varTypes, numParams);
     var /** @const {!Array<string>} */ varDecls = [];
     for (var /** @type {number} */ vi = 0; vi !== numVars; ++vi) {
-      varDecls[varDecls.length] = this.localN_(numParams + vi) + ' = ' + initStrs[vi];
+      varDecls.push(this.localN_(numParams + vi) + ' = ' + initStrs[vi]);
     }
-    parts[parts.length] = pad(2) + varDecls.join('; ') + ';';
+    parts.push(pad(2) + varDecls.join('; ') + ';');
   }
 
   // Walk the body with the code-gen visitor.
@@ -163,6 +163,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFunction_ = function (
   var /** @const {string} */ usePart = '' !== useClause ? ' use (' + useClause + ')' : '';
   parts[headerIndex] = pad(1) + fnName + ' = function(' + paramNames.join(', ') + ')' + usePart + ' {';
 
-  parts[parts.length] = pad(1) + '};';
+  parts.push(pad(1) + '};');
   return parts.join('\n');
 };

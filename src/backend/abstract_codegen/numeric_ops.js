@@ -230,12 +230,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallIndirectArgs_ = func
   // childResults[0] = target index expression, operands start at 1.
   for (var /** @type {number} */ ai = 0, /** @const {number} */ alen = paramTypes.length; ai !== alen; ++ai) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ argInfo = getInfo(childResults, ai + 1);
-    callArgs[callArgs.length] = this.coerceAtBoundary_(
-      binaryen,
-      argInfo.expressionString,
-      argInfo.expressionCategory,
-      paramTypes[ai]
-    );
+    callArgs.push(this.coerceAtBoundary_(binaryen, argInfo.expressionString, argInfo.expressionCategory, paramTypes[ai]));
   }
 
   return callArgs;
@@ -471,7 +466,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
         ai < callSig.sigParams.length
           ? callSig.sigParams[ai]
           : Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, operands[ai]).type;
-    callArgs[callArgs.length] = this.coerceAtBoundary_(binaryen, argInfo.expressionString, argInfo.expressionCategory, argType);
+    callArgs.push(this.coerceAtBoundary_(binaryen, argInfo.expressionString, argInfo.expressionCategory, argType));
   }
 
   return callArgs;

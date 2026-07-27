@@ -140,12 +140,12 @@ Wasm2Lang.Backend.CsharpCodegen.csharpDelegateType_ = function (binaryen, paramT
   var /** @const {boolean} */ isVoid = binaryen.none === callType || 0 === callType;
   var /** @const {!Array<string>} */ typeNames = [];
   for (var /** @type {number} */ i = 0, /** @const {number} */ len = paramTypes.length; i !== len; ++i) {
-    typeNames[typeNames.length] = Wasm2Lang.Backend.CsharpCodegen.csharpTypeName_(binaryen, paramTypes[i]);
+    typeNames.push(Wasm2Lang.Backend.CsharpCodegen.csharpTypeName_(binaryen, paramTypes[i]));
   }
   if (isVoid) {
     return 0 === typeNames.length ? 'System.Action' : 'System.Action<' + typeNames.join(', ') + '>';
   }
-  typeNames[typeNames.length] = Wasm2Lang.Backend.CsharpCodegen.csharpTypeName_(binaryen, callType);
+  typeNames.push(Wasm2Lang.Backend.CsharpCodegen.csharpTypeName_(binaryen, callType));
   return 'System.Func<' + typeNames.join(', ') + '>';
 };
 

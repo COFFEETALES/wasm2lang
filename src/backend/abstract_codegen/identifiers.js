@@ -143,11 +143,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildLocalInitStrings_ = function (b
     var /** @const {number} */ localIdx = numParams + vi;
     var /** @const {*} */ overrideValue = initOverrides ? initOverrides[String(localIdx)] : void 0;
     // prettier-ignore
-    result[result.length] = void 0 !== overrideValue
+    result.push(void 0 !== overrideValue
       ? (Wasm2Lang.Backend.ValueType.isI64(binaryen, localType)
         ? this.renderI64Const_(binaryen, overrideValue)
         : this.renderConst_(binaryen, /** @type {number} */ (overrideValue), localType))
-      : this.renderLocalInit_(binaryen, localType);
+      : this.renderLocalInit_(binaryen, localType));
   }
   return result;
 };
@@ -551,12 +551,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
   // 1. Hot fixed bindings.
   var /** @const {!Array<string>} */ hot = this.getHotModuleBindings_(options);
   for (var /** @type {number} */ ho = 0, /** @const {number} */ hoLen = hot.length; ho !== hoLen; ++ho) {
-    keys[keys.length] = hot[ho];
+    keys.push(hot[ho]);
   }
 
   // 2. Internal function names (module order).
   for (var /** @type {number} */ fn = 0, /** @const {number} */ fnLen = moduleInfo.functions.length; fn !== fnLen; ++fn) {
-    keys[keys.length] = this.safeName_(moduleInfo.functions[fn].name);
+    keys.push(this.safeName_(moduleInfo.functions[fn].name));
   }
 
   // 3. Import bindings (module order).  Cast imports (rewritten to native
@@ -569,21 +569,21 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ImportedFunctionInfo_} */ impFunc = moduleInfo.impFuncs[ii];
     if (impFunc.wasmFuncName in castNamesMap) continue;
     if ('math_func' === classifyStdlib(impFunc.importModule, impFunc.importBaseName)) continue;
-    keys[keys.length] = '$if_' + this.safeName_(impFunc.importBaseName);
+    keys.push('$if_' + this.safeName_(impFunc.importBaseName));
   }
 
   // 4. Module globals (module order).
   for (var /** @type {number} */ gi = 0, /** @const {number} */ gLen = moduleInfo.globals.length; gi !== gLen; ++gi) {
-    keys[keys.length] = '$g_' + this.safeName_(moduleInfo.globals[gi].globalName);
+    keys.push('$g_' + this.safeName_(moduleInfo.globals[gi].globalName));
   }
 
   // 5. Exported global getter / setter accessors (built from exported names).
   var /** @const {!Array<!Wasm2Lang.Backend.AbstractCodegen.ExportedGlobalInfo_>} */ expGlobals = moduleInfo.expGlobals;
   for (var /** @type {number} */ eg = 0, /** @const {number} */ egLen = expGlobals.length; eg !== egLen; ++eg) {
     var /** @const {string} */ egExportSafe = this.safeName_(expGlobals[eg].exportName);
-    keys[keys.length] = '$get_' + egExportSafe;
+    keys.push('$get_' + egExportSafe);
     if (expGlobals[eg].globalMutable) {
-      keys[keys.length] = '$set_' + egExportSafe;
+      keys.push('$set_' + egExportSafe);
     }
   }
 
@@ -596,7 +596,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
   var /** @const {!Array<string>} */ helpers = this.getAllHelperNames_();
   for (var /** @type {number} */ hi = 0, /** @const {number} */ hLen = helpers.length; hi !== hLen; ++hi) {
     if (usedHelpers && !usedHelpers[helpers[hi]]) continue;
-    keys[keys.length] = helpers[hi];
+    keys.push(helpers[hi]);
   }
 
   // 7. Cold fixed bindings — anything from {@code getFixedModuleBindings_}
@@ -617,20 +617,20 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.precomputeMangledNames_ = function (
   for (var /** @type {number} */ fi = 0, /** @const {number} */ fLen = fixed.length; fi !== fLen; ++fi) {
     var /** @const {string} */ fixedKey = fixed[fi];
     if (usedBindings && !usedBindings[fixedKey] && (!alwaysSet || !alwaysSet[fixedKey])) continue;
-    keys[keys.length] = fixedKey;
+    keys.push(fixedKey);
   }
 
   // 8. Function table bindings (per-signature table, stub, and interface names).
   var /** @const {!Array<string>} */ ftBindingKeys = Object.keys(moduleInfo.functionTables);
   if (0 !== ftBindingKeys.length) {
-    keys[keys.length] = 'ftable';
+    keys.push('ftable');
     for (var /** @type {number} */ fbi = 0, /** @const {number} */ fbLen = ftBindingKeys.length; fbi !== fbLen; ++fbi) {
       var /** @const {string} */ fbSigKey = ftBindingKeys[fbi];
-      keys[keys.length] = '$ftable_' + fbSigKey;
-      keys[keys.length] = '$ftable_' + fbSigKey + '_stub';
-      keys[keys.length] = '$ftsig_' + fbSigKey;
+      keys.push('$ftable_' + fbSigKey);
+      keys.push('$ftable_' + fbSigKey + '_stub');
+      keys.push('$ftsig_' + fbSigKey);
       if (moduleInfo.functionTables[fbSigKey].orderedCallNeeded) {
-        keys[keys.length] = this.getOrderedCallIndirectWrapperName_(fbSigKey);
+        keys.push(this.getOrderedCallIndirectWrapperName_(fbSigKey));
       }
     }
   }

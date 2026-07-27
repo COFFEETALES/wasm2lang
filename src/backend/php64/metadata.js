@@ -58,7 +58,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitMetadata = function (wasmModule, op
   var /** @const {!Int32Array} */ i32 = staticMemory.words;
   var /** @const {!Array<string>} */ lines = [];
 
-  lines[lines.length] = '<?php';
+  lines.push('<?php');
 
   // Check whether any word in the static data span is non-zero.
   var /** @type {boolean} */ hasNonZero = false;
@@ -71,7 +71,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitMetadata = function (wasmModule, op
 
   if (!hasNonZero) {
     // All-zero data — single str_repeat is sufficient.
-    lines[lines.length] = memVar + ' = str_repeat("\\x00", ' + heapSize + ');';
+    lines.push(memVar + ' = str_repeat("\\x00", ' + heapSize + ');');
     return lines.join('\n');
   }
 
@@ -84,30 +84,30 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitMetadata = function (wasmModule, op
   var /** @const */ fmt = Wasm2Lang.Backend.Php64Codegen.formatPhpI64Literal_;
 
   if (0 < startByte) {
-    concatParts[concatParts.length] = 'str_repeat("\\x00", ' + startByte + ')';
+    concatParts.push('str_repeat("\\x00", ' + startByte + ')');
   }
 
   // Pair words into i64 values.
   var /** @const {number} */ pairEnd = wordCount - (wordCount % 2);
   var /** @const {!Array<string>} */ i64Strs = [];
   for (var /** @type {number} */ p = 0; p < pairEnd; p += 2) {
-    i64Strs[i64Strs.length] = fmt(i32[p], i32[p + 1]);
+    i64Strs.push(fmt(i32[p], i32[p + 1]));
   }
 
   if (0 !== i64Strs.length) {
-    concatParts[concatParts.length] = "pack('P*', " + i64Strs.join(', ') + ')';
+    concatParts.push("pack('P*', " + i64Strs.join(', ') + ')');
   }
 
   // Handle trailing odd word.
   if (0 !== wordCount % 2) {
-    concatParts[concatParts.length] = "pack('V', " + String(i32[wordCount - 1]) + ')';
+    concatParts.push("pack('V', " + String(i32[wordCount - 1]) + ')');
   }
 
   if (0 < suffixBytes) {
-    concatParts[concatParts.length] = 'str_repeat("\\x00", ' + suffixBytes + ')';
+    concatParts.push('str_repeat("\\x00", ' + suffixBytes + ')');
   }
 
-  lines[lines.length] = memVar + ' = ' + concatParts.join(' . ') + ';';
+  lines.push(memVar + ' = ' + concatParts.join(' . ') + ';');
 
   return lines.join('\n');
 };

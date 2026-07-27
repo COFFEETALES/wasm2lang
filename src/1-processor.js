@@ -334,14 +334,14 @@ Wasm2Lang.Processor.drainResults_ = function (results, writeFn) {
       void key;
       if (Array.isArray(value)) {
         for (var /** @type {number} */ j = 0, /** @const {number} */ cLen = value.length; j !== cLen; ++j) {
-          allChunks[allChunks.length] = value[j];
+          allChunks.push(value[j]);
         }
-        allChunks[allChunks.length] = '\n';
+        allChunks.push('\n');
       } else if ('string' === typeof value) {
-        allChunks[allChunks.length] = /** @type {string} */ (value);
-        allChunks[allChunks.length] = '\n';
+        allChunks.push(/** @type {string} */ (value));
+        allChunks.push('\n');
       } else {
-        allChunks[allChunks.length] = /** @type {!Uint8Array} */ (value);
+        allChunks.push(/** @type {!Uint8Array} */ (value));
       }
     }
   );
@@ -441,8 +441,8 @@ Wasm2Lang.Processor.materializeResult_ = function (result) {
             /** @type {!Array<!Wasm2Lang.OutputSink.ChunkEntry>} */ (value)
           );
         if (collected instanceof Promise) {
-          asyncKeys[asyncKeys.length] = key;
-          asyncPromises[asyncPromises.length] = /** @type {!Promise<string>} */ (collected);
+          asyncKeys.push(key);
+          asyncPromises.push(/** @type {!Promise<string>} */ (collected));
         } else {
           materialized[key] = /** @type {string} */ (collected);
         }

@@ -109,14 +109,14 @@ Wasm2Lang.Backend.IdentifierMangler.buildEncoderSpec_ = function (key, singleCha
     var /** @const {number} */ stateLength = Math.max(2, length);
     var /** @const {number} */ rightDigits = Math.floor(stateLength / 2);
     var /** @const {number} */ tierSize = Math.pow(range, length);
-    tiers[tiers.length] = {
+    tiers.push({
       chars: charset,
       len: length,
       leftModulus: Math.pow(range, stateLength - rightDigits),
       ofs: offset,
       rightModulus: Math.pow(range, rightDigits),
       tierSize: tierSize
-    };
+    });
     offset += tierSize;
   }
   return {encKey: key, rounds: Wasm2Lang.Backend.IdentifierMangler.ENCODER_ROUNDS_, tiers: tiers};

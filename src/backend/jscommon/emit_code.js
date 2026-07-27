@@ -49,8 +49,9 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   var /** @const {string} */ stdlibName = this.n_('stdlib');
   var /** @const {string} */ foreignName = this.n_('foreign');
   var /** @const {string} */ bufferName = this.n_('buffer');
-  outputParts[outputParts.length] =
-    'var ' + moduleName + ' = function' + moduleFnSuffix + '(' + stdlibName + ', ' + foreignName + ', ' + bufferName + ') {';
+  outputParts.push(
+    'var ' + moduleName + ' = function' + moduleFnSuffix + '(' + stdlibName + ', ' + foreignName + ', ' + bufferName + ') {'
+  );
   this.emitUseAsmDirective_(outputParts, pad1);
 
   // Reserve the slot where conditional binding declarations are spliced in
@@ -88,16 +89,18 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   var /** @const {!Array<string>} */ functionParts = [];
   var /** @const {number} */ funcCount = moduleInfo.functions.length;
   for (var /** @type {number} */ f = 0; f !== funcCount; ++f) {
-    functionParts[functionParts.length] = this.emitFunction_(
-      wasmModule,
-      binaryen,
-      moduleInfo.functions[f],
-      moduleInfo.importedNames,
-      moduleInfo.functionSignatures,
-      moduleInfo.globalTypes,
-      moduleInfo.functionTables,
-      stdlibNames,
-      stdlibGlobals
+    functionParts.push(
+      this.emitFunction_(
+        wasmModule,
+        binaryen,
+        moduleInfo.functions[f],
+        moduleInfo.importedNames,
+        moduleInfo.functionSignatures,
+        moduleInfo.globalTypes,
+        moduleInfo.functionTables,
+        stdlibNames,
+        stdlibGlobals
+      )
     );
   }
 
@@ -116,32 +119,33 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     var /** @const {number} */ ocwParamCount = ocwDesc.signatureParams.length;
     var /** @const {!Array<string>} */ ocwParams = this.buildParamNameList_(ocwParamCount + 1);
     var /** @const {!Array<number>} */ ocwTypes = ocwDesc.signatureParams.slice();
-    ocwTypes[ocwTypes.length] = binaryen.i32;
+    ocwTypes.push(binaryen.i32);
     var /** @const {!Array<string>} */ ocwAnnotations = [];
     this.emitParameterAnnotations_(ocwAnnotations, binaryen, ocwTypes, ocwTypes.length, pad2);
     var /** @const {!Array<string>} */ ocwCallArgs = [];
     for (var /** @type {number} */ oca = 0; oca !== ocwParamCount; ++oca) {
-      ocwCallArgs[ocwCallArgs.length] = this.renderCoercionByType_(binaryen, ocwParams[oca], ocwDesc.signatureParams[oca]);
+      ocwCallArgs.push(this.renderCoercionByType_(binaryen, ocwParams[oca], ocwDesc.signatureParams[oca]));
     }
     var /** @const {string} */ ocwTable = this.n_('$ftable_' + ocwDesc.signatureKey);
     var /** @const {string} */ ocwCall =
         ocwTable + '[(' + ocwParams[ocwParamCount] + ') & ' + ocwDesc.tableMask + '](' + ocwCallArgs.join(', ') + ')';
     var /** @const {boolean} */ ocwHasReturn =
         binaryen.none !== ocwDesc.signatureReturnType && 0 !== ocwDesc.signatureReturnType;
-    orderedCallWrapperParts[orderedCallWrapperParts.length] =
+    orderedCallWrapperParts.push(
       pad1 +
-      'function ' +
-      this.n_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
-      '(' +
-      ocwParams.join(', ') +
-      ') {\n' +
-      ocwAnnotations.join('\n') +
-      (ocwAnnotations.length ? '\n' : '') +
-      pad2 +
-      (ocwHasReturn ? 'return ' + this.renderCoercionByType_(binaryen, ocwCall, ocwDesc.signatureReturnType) : ocwCall) +
-      ';\n' +
-      pad1 +
-      '}';
+        'function ' +
+        this.n_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
+        '(' +
+        ocwParams.join(', ') +
+        ') {\n' +
+        ocwAnnotations.join('\n') +
+        (ocwAnnotations.length ? '\n' : '') +
+        pad2 +
+        (ocwHasReturn ? 'return ' + this.renderCoercionByType_(binaryen, ocwCall, ocwDesc.signatureReturnType) : ocwCall) +
+        ';\n' +
+        pad1 +
+        '}'
+    );
   }
 
   var /** @const {!Array<string>} */ helperLines = this.emitHelpers_(
@@ -176,7 +180,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   var /** @const {!Array<string>} */ bindingLines = [];
   var /** @const */ self = this;
   var pushBinding = /** @param {string} name @param {string} initExpr */ function (name, initExpr) {
-    if (ub[name]) bindingLines[bindingLines.length] = pad1 + 'var ' + self.n_(name) + ' = ' + initExpr + ';';
+    if (ub[name]) bindingLines.push(pad1 + 'var ' + self.n_(name) + ' = ' + initExpr + ';');
   };
 
   var /** @const {!Array<!Array<string>>} */ heapBindings = this.getHeapBindingTable_();
@@ -232,13 +236,13 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     outputParts.splice(bindingsInsertIndex, 0, bindingLines[bi]);
   }
   for (var /** @type {number} */ hi = 0, /** @const {number} */ helperCount = helperLines.length; hi !== helperCount; ++hi) {
-    outputParts[outputParts.length] = helperLines[hi];
+    outputParts.push(helperLines[hi]);
   }
   for (var /** @type {number} */ fi = 0, /** @const {number} */ fpLen = functionParts.length; fi !== fpLen; ++fi) {
-    outputParts[outputParts.length] = functionParts[fi];
+    outputParts.push(functionParts[fi]);
   }
   for (var /** @type {number} */ owp = 0; owp !== orderedCallWrapperParts.length; ++owp) {
-    outputParts[outputParts.length] = orderedCallWrapperParts[owp];
+    outputParts.push(orderedCallWrapperParts[owp]);
   }
   for (var /** @type {number} */ fti = 0; fti !== ftLen; ++fti) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_} */ ftDesc =
@@ -249,7 +253,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     var /** @const {!Array<string>} */ stubParams = [];
     var /** @const {number} */ stubParamCount = ftDesc.signatureParams.length;
     for (var /** @type {number} */ sp = 0; sp !== stubParamCount; ++sp) {
-      stubParams[stubParams.length] = this.localN_(sp);
+      stubParams.push(this.localN_(sp));
     }
     var /** @const {!Array<string>} */ stubAnnotationLines = [];
     this.emitParameterAnnotations_(stubAnnotationLines, binaryen, ftDesc.signatureParams, stubParamCount, pad2);
@@ -257,55 +261,58 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     if (binaryen.none !== ftDesc.signatureReturnType && 0 !== ftDesc.signatureReturnType) {
       stubReturn = pad2 + 'return ' + this.renderCoercionByType_(binaryen, '0', ftDesc.signatureReturnType) + ';\n';
     }
-    outputParts[outputParts.length] =
+    outputParts.push(
       pad1 +
-      'function ' +
-      stubName +
-      '(' +
-      stubParams.join(', ') +
-      ') {\n' +
-      stubAnnotationLines.join('\n') +
-      (stubAnnotationLines.length ? '\n' : '') +
-      stubReturn +
-      pad1 +
-      '}';
+        'function ' +
+        stubName +
+        '(' +
+        stubParams.join(', ') +
+        ') {\n' +
+        stubAnnotationLines.join('\n') +
+        (stubAnnotationLines.length ? '\n' : '') +
+        stubReturn +
+        pad1 +
+        '}'
+    );
   }
 
   for (var /** @type {number} */ eg = 0; eg !== expGlobalCount; ++eg) {
     var /** @const {string} */ egVarName = this.n_('$g_' + this.safeName_(moduleInfo.expGlobals[eg].internalName));
     var /** @const {string} */ egGetterName = this.n_('$get_' + this.safeName_(moduleInfo.expGlobals[eg].exportName));
-    outputParts[outputParts.length] =
+    outputParts.push(
       pad1 +
-      'function ' +
-      egGetterName +
-      '() {\n' +
-      pad2 +
-      'return ' +
-      this.renderExportedGlobalGetterReturn_(binaryen, egVarName, moduleInfo.expGlobals[eg].globalType) +
-      ';\n' +
-      pad1 +
-      '}';
+        'function ' +
+        egGetterName +
+        '() {\n' +
+        pad2 +
+        'return ' +
+        this.renderExportedGlobalGetterReturn_(binaryen, egVarName, moduleInfo.expGlobals[eg].globalType) +
+        ';\n' +
+        pad1 +
+        '}'
+    );
     if (moduleInfo.expGlobals[eg].globalMutable) {
       var /** @const {string} */ egSetterName = this.n_('$set_' + this.safeName_(moduleInfo.expGlobals[eg].exportName));
       var /** @const {string} */ egParam = this.localN_(0);
       var /** @const {!Array<string>} */ setterAnnotationLines = [];
       this.emitParameterAnnotations_(setterAnnotationLines, binaryen, [moduleInfo.expGlobals[eg].globalType], 1, pad2);
-      outputParts[outputParts.length] =
+      outputParts.push(
         pad1 +
-        'function ' +
-        egSetterName +
-        '(' +
-        egParam +
-        ') {\n' +
-        setterAnnotationLines.join('\n') +
-        (setterAnnotationLines.length ? '\n' : '') +
-        pad2 +
-        egVarName +
-        ' = ' +
-        egParam +
-        ';\n' +
-        pad1 +
-        '}';
+          'function ' +
+          egSetterName +
+          '(' +
+          egParam +
+          ') {\n' +
+          setterAnnotationLines.join('\n') +
+          (setterAnnotationLines.length ? '\n' : '') +
+          pad2 +
+          egVarName +
+          ' = ' +
+          egParam +
+          ';\n' +
+          pad1 +
+          '}'
+      );
     }
   }
 
@@ -323,30 +330,30 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     var /** @const {number} */ teLen = ftDesc2.tableEntries.length;
     for (var /** @type {number} */ te = 0; te !== teLen; ++te) {
       var /** @const {string|null} */ funcName = ftDesc2.tableEntries[te].boundName;
-      tableEntryNames[tableEntryNames.length] =
-        null === funcName ? this.n_('$ftable_' + ftSigKey2 + '_stub') : this.n_(this.safeName_(funcName));
+      tableEntryNames.push(null === funcName ? this.n_('$ftable_' + ftSigKey2 + '_stub') : this.n_(this.safeName_(funcName)));
     }
-    outputParts[outputParts.length] = pad1 + 'var ' + ftTableName + ' = [' + tableEntryNames.join(', ') + '];';
+    outputParts.push(pad1 + 'var ' + ftTableName + ' = [' + tableEntryNames.join(', ') + '];');
   }
 
   var /** @const {!Array<string>} */ returnEntries = [];
   var /** @const {number} */ exportCount = moduleInfo.expFuncs.length;
   for (var /** @type {number} */ r = 0; r !== exportCount; ++r) {
-    returnEntries[returnEntries.length] =
-      moduleInfo.expFuncs[r].exportName + ': ' + this.n_(this.safeName_(moduleInfo.expFuncs[r].internalName));
+    returnEntries.push(moduleInfo.expFuncs[r].exportName + ': ' + this.n_(this.safeName_(moduleInfo.expFuncs[r].internalName)));
   }
   for (var /** @type {number} */ egr = 0; egr !== expGlobalCount; ++egr) {
-    returnEntries[returnEntries.length] =
-      moduleInfo.expGlobals[egr].exportName + ': ' + this.n_('$get_' + this.safeName_(moduleInfo.expGlobals[egr].exportName));
+    returnEntries.push(
+      moduleInfo.expGlobals[egr].exportName + ': ' + this.n_('$get_' + this.safeName_(moduleInfo.expGlobals[egr].exportName))
+    );
     if (moduleInfo.expGlobals[egr].globalMutable) {
-      returnEntries[returnEntries.length] =
+      returnEntries.push(
         moduleInfo.expGlobals[egr].exportName +
-        '$set: ' +
-        this.n_('$set_' + this.safeName_(moduleInfo.expGlobals[egr].exportName));
+          '$set: ' +
+          this.n_('$set_' + this.safeName_(moduleInfo.expGlobals[egr].exportName))
+      );
     }
   }
-  outputParts[outputParts.length] = pad1 + 'return { ' + returnEntries.join(', ') + ' };';
-  outputParts[outputParts.length] = '};';
+  outputParts.push(pad1 + 'return { ' + returnEntries.join(', ') + ' };');
+  outputParts.push('};');
 
   // Expose the populated marker sets so a preceding {@code runUsageDiscovery_}
   // can read the final state after all force-marks (exported globals, stdlib

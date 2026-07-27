@@ -54,7 +54,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getFixedModuleBindings_ = function (opt
       '$w2l_trap'
     ];
   if ('string' === typeof options.emitMetadata) {
-    bindings[bindings.length] = 'i32_array';
+    bindings.push('i32_array');
   }
   return bindings;
 };
@@ -93,6 +93,6 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getHotModuleBindings_ = function (optio
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.getAlwaysRegisteredBindings_ = function (options) {
   var /** @const {!Array<string>} */ list = ['asmjsModule', 'stdlib', 'foreign', 'buffer'];
-  if ('string' === typeof options.emitMetadata) list[list.length] = 'i32_array';
+  if ('string' === typeof options.emitMetadata) list.push('i32_array');
   return list;
 };

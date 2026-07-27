@@ -258,7 +258,7 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.DISABL
     for (var /** @type {number} */ j = 0, /** @const {number} */ partLen = parts.length; j !== partLen; ++j) {
       var /** @const {string} */ trimmed = parts[j].trim();
       if ('' !== trimmed) {
-        collected[collected.length] = trimmed;
+        collected.push(trimmed);
       }
     }
   }

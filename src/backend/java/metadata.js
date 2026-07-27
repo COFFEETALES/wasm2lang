@@ -37,7 +37,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitStaticI64InitLines_ = function (i32,
   // Handle leading odd word (startWordIndex is odd).
   if (startWordIndex & 1) {
     if (pos < wordCount && 0 !== i32[pos]) {
-      lines[lines.length] = bbVar + '.putInt(' + startWordIndex * 4 + ', ' + String(i32[pos]) + ');';
+      lines.push(bbVar + '.putInt(' + startWordIndex * 4 + ', ' + String(i32[pos]) + ');');
     }
     pos = 1;
   }
@@ -67,8 +67,9 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitStaticI64InitLines_ = function (i32,
     if (pairCount >= fillThreshold) {
       var /** @const {number} */ fillByte = (startWordIndex + pos) * 4;
       var /** @const {string} */ fillLit = fmt(lowSigned >>> 0, highSigned >>> 0);
-      lines[lines.length] =
-        'for (int $i = 0; $i < ' + pairCount + '; ++$i) ' + bbVar + '.putLong(' + fillByte + ' + $i * 8, ' + fillLit + ');';
+      lines.push(
+        'for (int $i = 0; $i < ' + pairCount + '; ++$i) ' + bbVar + '.putLong(' + fillByte + ' + $i * 8, ' + fillLit + ');'
+      );
       pos = fillEnd;
       continue;
     }
@@ -93,7 +94,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitStaticI64InitLines_ = function (i32,
       }
 
       var /** @const {number} */ setByte = (startWordIndex + pos) * 4;
-      lines[lines.length] = bbVar + '.putLong(' + setByte + ', ' + fmt(sLow >>> 0, sHigh >>> 0) + ');';
+      lines.push(bbVar + '.putLong(' + setByte + ', ' + fmt(sLow >>> 0, sHigh >>> 0) + ');');
       pos += 2;
     }
   }
@@ -101,7 +102,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitStaticI64InitLines_ = function (i32,
   // Handle trailing odd word.
   if (pairEnd < wordCount && 0 !== i32[pairEnd]) {
     var /** @const {number} */ trailByte = (startWordIndex + pairEnd) * 4;
-    lines[lines.length] = bbVar + '.putInt(' + trailByte + ', ' + String(i32[pairEnd]) + ');';
+    lines.push(bbVar + '.putInt(' + trailByte + ', ' + String(i32[pairEnd]) + ');');
   }
 
   return lines;
@@ -125,12 +126,13 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitMetadata = function (wasmModule, opt
   var /** @const {!Int32Array} */ i32 = staticMemory.words;
   var /** @const {!Array<string>} */ lines = [];
 
-  lines[lines.length] =
+  lines.push(
     'java.nio.ByteBuffer ' +
-    bufferName +
-    ' = java.nio.ByteBuffer.allocate(' +
-    heapSize +
-    ').order(java.nio.ByteOrder.LITTLE_ENDIAN);';
+      bufferName +
+      ' = java.nio.ByteBuffer.allocate(' +
+      heapSize +
+      ').order(java.nio.ByteOrder.LITTLE_ENDIAN);'
+  );
 
   if (0 !== i32.length) {
     var /** @const {!Array<string>} */ initLines = this.emitStaticI64InitLines_(i32, startWordIndex, bufferName);
@@ -139,7 +141,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitMetadata = function (wasmModule, opt
       ii !== initLinesCount;
       ++ii
     ) {
-      lines[lines.length] = initLines[ii];
+      lines.push(initLines[ii]);
     }
   }
 

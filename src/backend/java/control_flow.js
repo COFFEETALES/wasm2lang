@@ -273,7 +273,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitLeave_ = function (state, nodeCtx, c
       var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
       var /** @type {string} */ ciCallExpr;
       if (this.callIndirectNeedsOrderedEvaluation_(binaryen, expr, state.wasmModule)) {
-        ciArgs[ciArgs.length] = ciIndexExpr;
+        ciArgs.push(ciIndexExpr);
         ciCallExpr = 'this.' + this.n_(this.getOrderedCallIndirectWrapperName_(ciSigKey)) + '(' + ciArgs.join(', ') + ')';
       } else {
         ciCallExpr = 'this.' + ciTableName + '[' + ciIndexExpr + '].call(' + ciArgs.join(', ') + ')';

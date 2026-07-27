@@ -99,7 +99,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.isBrTable
       return null;
     }
     blockNameSet[childName] = true;
-    chainOrder[chainOrder.length] = childName;
+    chainOrder.push(childName);
 
     // Non-outermost blocks must end with an unconditional terminator —
     // an unconditional Break (to a loop continue, outer exit, etc.), a
@@ -272,7 +272,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
   // inner block ensures the outermost case body terminates in the JS switch.
   if (blockName && blockName in state.switchOuterBlocks && !(blockName in state.switchNeedsWrapping)) {
     var /** @const {!Array<number>} */ innerChildren = /** @type {!Array<number>} */ ((expr.children || []).slice(0));
-    innerChildren[innerChildren.length] = module.break(M + blockName, 0, 0);
+    innerChildren.push(module.break(M + blockName, 0, 0));
     var /** @const {number} */ innerBlock = module.block(blockName, innerChildren, expr.type);
     return {
       decisionAction: REPLACE_NODE,
@@ -295,7 +295,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.leave_ = 
       hasTerminal = Wasm2Lang.Wasm.Tree.CustomPasses.isUnconditionalTerminator(binaryen, tailInfo);
     }
     if (!hasTerminal) {
-      wrapChildren[wrapChildren.length] = module.break(blockName, 0, 0);
+      wrapChildren.push(module.break(blockName, 0, 0));
       return {
         decisionAction: REPLACE_NODE,
         expressionPointer: module.block(blockName, wrapChildren, expr.type)

@@ -65,7 +65,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitFunction_ = function (
   var /** @const {number} */ numVars = varTypes.length;
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const {!Array<string>} */ paramNames = this.buildParamNameList_(numParams);
-  parts[parts.length] = pad(1) + 'function ' + fnName + '(' + paramNames.join(', ') + ') {';
+  parts.push(pad(1) + 'function ' + fnName + '(' + paramNames.join(', ') + ') {');
 
   this.emitParameterAnnotations_(parts, binaryen, paramTypes, numParams, pad(2));
 
@@ -73,9 +73,9 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitFunction_ = function (
     var /** @const {!Array<string>} */ initStrs = this.buildLocalInitStrings_(binaryen, funcInfo.name, varTypes, numParams);
     var /** @const {!Array<string>} */ varDecls = [];
     for (var /** @type {number} */ vi = 0; vi !== numVars; ++vi) {
-      varDecls[varDecls.length] = this.localN_(numParams + vi) + ' = ' + initStrs[vi];
+      varDecls.push(this.localN_(numParams + vi) + ' = ' + initStrs[vi]);
     }
-    parts[parts.length] = pad(2) + 'var ' + varDecls.join(', ') + ';';
+    parts.push(pad(2) + 'var ' + varDecls.join(', ') + ';');
   }
 
   var /** @type {boolean} */ bodyEndsWithReturn = false;
@@ -117,9 +117,9 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitFunction_ = function (
   // Asm.js requires a syntactic return at the end of non-void functions; modern
   // JS keeps the same stabilizer so fall-through returns retain a coherent type.
   if (!bodyEndsWithReturn && binaryen.none !== funcInfo.results && 0 !== funcInfo.results) {
-    parts[parts.length] = pad(2) + 'return ' + this.renderCoercionByType_(binaryen, '0', funcInfo.results) + ';';
+    parts.push(pad(2) + 'return ' + this.renderCoercionByType_(binaryen, '0', funcInfo.results) + ';');
   }
 
-  parts[parts.length] = pad(1) + '}';
+  parts.push(pad(1) + '}');
   return parts.join('\n');
 };

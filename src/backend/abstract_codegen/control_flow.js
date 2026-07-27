@@ -22,7 +22,7 @@ Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_ = function (parts, text) 
   var /** @const {!Array<string>} */ lines = text.split('\n');
   for (var /** @type {number} */ i = 0, /** @const {number} */ lineCount = lines.length; i !== lineCount; ++i) {
     if ('' !== lines[i]) {
-      parts[parts.length] = lines[i];
+      parts.push(lines[i]);
     }
   }
 };
@@ -125,7 +125,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts,
     if ('string' === typeof prefix && '' !== prefix) {
       Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, /** @type {string} */ (prefix));
     }
-    parts[parts.length] = padStr + 'return ' + this.renderImplicitReturn_(binaryen, bodyResult, funcInfo.results) + ';';
+    parts.push(padStr + 'return ' + this.renderImplicitReturn_(binaryen, bodyResult, funcInfo.results) + ';');
     return true;
   }
   if (
@@ -841,9 +841,9 @@ Wasm2Lang.Backend.AbstractCodegen.assembleBlockChildren_ = function (childResult
     var /** @const {string} */ childCode = A.getChildResultInfo_(childResults, bi).expressionString;
     if ('' !== childCode) {
       if (-1 === childCode.indexOf('\n')) {
-        lines[lines.length] = pad(childInd) + childCode + ';\n';
+        lines.push(pad(childInd) + childCode + ';\n');
       } else {
-        lines[lines.length] = childCode;
+        lines.push(childCode);
       }
     }
   }
@@ -1034,7 +1034,7 @@ Wasm2Lang.Backend.AbstractCodegen.summarizeBlockControl_ = function (binaryen, w
       if (summary.branchTargets[i] === blockName) {
         captured = true;
       } else {
-        remainingTargets[remainingTargets.length] = summary.branchTargets[i];
+        remainingTargets.push(summary.branchTargets[i]);
       }
     }
     summary.branchTargets = remainingTargets;
@@ -1065,7 +1065,7 @@ Wasm2Lang.Backend.AbstractCodegen.summarizeLoopControl_ = function (binaryen, lo
   var /** @const {!Array<string>} */ remainingTargets = [];
   var /** @const {string} */ loopName = /** @type {string} */ (loopExpr.name || '');
   for (var /** @type {number} */ i = 0; i !== body.branchTargets.length; ++i) {
-    if (body.branchTargets[i] !== loopName) remainingTargets[remainingTargets.length] = body.branchTargets[i];
+    if (body.branchTargets[i] !== loopName) remainingTargets.push(body.branchTargets[i]);
   }
   return {
     isTerminal: body.isTerminal,
@@ -1139,8 +1139,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBreakStatement_ = function (
           indent
         );
       if (!rsIsTerminal) {
-        rsExitLines[rsExitLines.length] =
-          pad(indent) + this.markAndRenderLabeledJump_(state, 'break', state.rootSwitchLoopName);
+        rsExitLines.push(pad(indent) + this.markAndRenderLabeledJump_(state, 'break', state.rootSwitchLoopName));
       }
       var /** @type {string} */ rsResult;
       if (0 !== brCondPtr) {
@@ -1221,23 +1220,45 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSwitchStatement_ = function (
   if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === opt_condCat) {
     switchCond = this.renderNumericComparisonResult_(switchCond);
   }
-  lines[lines.length] = pad(indent) + 'switch (' + this.coerceSwitchCondition_(switchCond) + ') {\n';
+  lines.push(pad(indent) + 'switch (' + this.coerceSwitchCondition_(switchCond) + ') {\n');
   var /** @type {number} */ si = 0;
   var /** @const {number} */ nameLen = names.length;
   while (si < nameLen) {
     var /** @const {string} */ target = names[si];
     while (si < nameLen && names[si] === target) {
-      lines[lines.length] = pad(indent + 1) + 'case ' + si + ':\n';
+      lines.push(pad(indent + 1) + 'case ' + si + ':\n');
       ++si;
     }
-    lines[lines.length] = pad(indent + 2) + this.resolveBreakTarget_(state, target);
+    lines.push(pad(indent + 2) + this.resolveBreakTarget_(state, target));
   }
   if ('' !== defaultName) {
-    lines[lines.length] = pad(indent + 1) + 'default:\n';
-    lines[lines.length] = pad(indent + 2) + this.resolveBreakTarget_(state, defaultName);
+    lines.push(pad(indent + 1) + 'default:\n');
+    lines.push(pad(indent + 2) + this.resolveBreakTarget_(state, defaultName));
   }
-  lines[lines.length] = pad(indent) + '}\n';
+  lines.push(pad(indent) + '}\n');
   return {emittedString: lines.join(''), hasDefault: '' !== defaultName};
+};
+
+/**
+ * Appends the fallthrough-preventing exit statement for one flat-switch case
+ * group.  Labeled-break backends emit {@code break <label>;} when the dispatch
+ * requires a label; C# has no labeled break and overrides this to the plain
+ * form, which exits its unlabeled switch and lands exactly where the labeled
+ * variants land — before the epilogue, or after the construct when there is
+ * none.
+ *
+ * This hook is the single behavioural difference between the C# and the
+ * labeled-backend case-group emitters, which are otherwise identical.
+ *
+ * @protected
+ * @param {!Array<string>} lines
+ * @param {number} indent
+ * @param {string} switchLabel
+ * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} info
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitFlatSwitchCaseBreak_ = function (lines, indent, switchLabel, info) {
+  Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitFlatSwitchBreak(lines, indent, switchLabel, info);
 };
 
 /**
@@ -1398,7 +1419,7 @@ Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, node
   for (var /** @type {number} */ i = 0; i < emitCount - 1; ++i) {
     var /** @const {string} */ childCode = A.getChildResultInfo_(childResults, i).expressionString;
     if ('' === childCode) continue;
-    prefixLines[prefixLines.length] = -1 === childCode.indexOf('\n') ? pad(childInd) + childCode + ';\n' : childCode;
+    prefixLines.push(-1 === childCode.indexOf('\n') ? pad(childInd) + childCode + ';\n' : childCode);
   }
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ tailInfo = A.getChildResultInfo_(
       childResults,
@@ -1866,7 +1887,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitForLoopBody_ = function (
   // For-loops that had no trailing br stripped need a trailing break to exit.
   // Skip if the last emitted child is terminal (Java rejects unreachable statements).
   if (emitEnd === len && !state.lastExprIsTerminal) {
-    lines[lines.length] = A.pad_(ind) + 'break;\n';
+    lines.push(A.pad_(ind) + 'break;\n');
   }
 
   return lines.join('');
@@ -1994,7 +2015,7 @@ Wasm2Lang.Backend.AbstractCodegen.appendSubWalkedLines_ = function (
     var /** @const {*} */ walked = A.subWalkExpression_(wasmModule, binaryen, funcInfo, visitor, ptrs[i]);
     var /** @const {string} */ code = A.subWalkString_(walked);
     if ('' !== code) {
-      lines[lines.length] = -1 === code.indexOf('\n') ? padStr + code + ';\n' : code;
+      lines.push(-1 === code.indexOf('\n') ? padStr + code + ';\n' : code);
     }
     var /** @const {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} */ singleResult = [walked];
     if (A.childIsTerminal_(binaryen, wasmModule, singleResult, 0, ptrs[i])) break;
@@ -2312,10 +2333,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderMemoryBulkOp_ = function (bina
       this.getRuntimeHelperPrefix_() + (binaryen.MemoryFillId === id ? 'memory_fill' : 'memory_copy');
   this.markHelper_(helperName);
   var /** @const {!Array<string>} */ args = [];
-  if ('' !== bufferArg) args[args.length] = bufferArg;
+  if ('' !== bufferArg) args.push(bufferArg);
   for (var /** @type {number} */ ai = 0; ai < 3; ++ai) {
     var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ a = getInfo(childResults, ai);
-    args[args.length] = this.coerceToType_(binaryen, a.expressionString, a.expressionCategory, binaryen.i32);
+    args.push(this.coerceToType_(binaryen, a.expressionString, a.expressionCategory, binaryen.i32));
   }
   return A.pad_(indent) + this.n_(helperName) + '(' + args.join(', ') + ');\n';
 };
