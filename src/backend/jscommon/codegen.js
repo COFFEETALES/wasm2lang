@@ -97,19 +97,53 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.renderTrapStatement_ = function (ind
     return pad + trapName + '();\n';
   }
   return (
-    pad + trapName + '(' + String(kind) + ', ' + String(siteId) + ');\n' + this.renderTrapAbortStatement_(indent, kind, siteId)
+    pad +
+    trapName +
+    '(' +
+    Wasm2Lang.Backend.JsCommonCodegen.trapCallArguments_(kind, siteId) +
+    ');\n' +
+    this.renderTrapAbortStatement_(indent, kind, siteId)
   );
+};
+
+/**
+ * Formats the hook arguments.  A negative {@code siteId} is
+ * {@code --trap-sites=kind}: the kind travels alone, which is the whole cost
+ * of that mode at the call site — one extra immediate, no table, no ids.
+ *
+ * Bare integer literals, never {@code kind|0}: an asm.js numeric literal is a
+ * {@code fixnum}, hence {@code signed}, hence already a valid {@code extern}
+ * FFI argument, so the coercions would be dead bytes.
+ *
+ * @private
+ * @param {number} kind
+ * @param {number} siteId
+ * @return {string}
+ */
+Wasm2Lang.Backend.JsCommonCodegen.trapCallArguments_ = function (kind, siteId) {
+  if (0 > siteId) return String(kind);
+  return String(kind) + ', ' + String(siteId);
 };
 
 /**
  * Renders the unconditional abort emitted after the host hook.
  *
- * asm.js has no {@code throw} — it is a strict subset in which the only way to
- * guarantee the trap site does not fall through is to stop making progress.
- * {@code while (1) {}} is valid asm.js (verified against SpiderMonkey's
- * validator) and turns "silently wrong result" into "deterministic halt",
- * which is diagnosable.  The modern-JS backend overrides this with a real
- * {@code throw}.
+ * asm.js has no {@code throw} — it is a strict subset, and the only constructs
+ * that can stop a trap site from falling through are ones that never return.
+ * Of those, {@code $w2l_abort()} (unbounded self-recursion, see
+ * {@code asmjs/helpers.js}) is the only one that also leaves evidence: stack
+ * exhaustion surfaces as a throwable error naming the helper, in a few
+ * milliseconds.  A bare {@code while (1) {}} stops just as reliably and tells
+ * nobody anything — it hangs the tab, which is not a better outcome than the
+ * corruption it replaced.  The modern-JS backend overrides this with a real
+ * {@code throw}, so it never marks the helper and never emits it.
+ *
+ * Marking here is safe in the way {@code renderUnreachableStatement_} is not:
+ * this is a HELPER, gated by {@code usedHelpers_}, so a mark that the block
+ * trimmer later renders moot costs one unused definition — whereas the
+ * {@code $w2l_trap} BINDING is a foreign import that must not be declared
+ * unless a live call survives, which is why that one is resolved by scanning
+ * the emitted text instead.
  *
  * @protected
  * @param {number} indent
@@ -120,7 +154,30 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.renderTrapStatement_ = function (ind
 Wasm2Lang.Backend.JsCommonCodegen.prototype.renderTrapAbortStatement_ = function (indent, kind, siteId) {
   void kind;
   void siteId;
-  return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + 'while (1) {}\n';
+  this.markHelper_('$w2l_abort');
+  return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + this.n_('$w2l_abort') + '();\n';
+};
+
+/**
+ * Adds the hook-call form to the liveness patterns.
+ *
+ * asm.js aborts with a bare spin and therefore has no message to grep for, so
+ * the call itself is the only textual evidence that a site survived.  The
+ * binding name is unambiguous in both modes: unmangled it is {@code $w2l_trap},
+ * and mangled it is a token the encoder assigned to that key alone, so a call
+ * to it cannot be anything else.  The leading class guards against matching a
+ * longer identifier that merely ends with the token.
+ *
+ * @override
+ * @protected
+ * @return {!Array<!RegExp>}
+ */
+Wasm2Lang.Backend.JsCommonCodegen.prototype.trapSiteLivenessPatterns_ = function () {
+  var /** @const {string} */ escaped = this.n_('$w2l_trap').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [
+    new RegExp(Wasm2Lang.Backend.AbstractCodegen.TRAP_MESSAGE_SITE_PATTERN_, 'g'),
+    new RegExp('(?:^|[^A-Za-z0-9_$])' + escaped + '\\(\\s*\\d+\\s*,\\s*(\\d+)\\s*\\)', 'g')
+  ];
 };
 
 /**
@@ -148,7 +205,12 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.renderHelperTrapCall_ = function (in
   // does not throw hands the caller a fabricated zero for a value that has no
   // representable result.
   return (
-    pad + trapName + '(' + String(kind) + ', ' + String(siteId) + ');\n' + this.renderTrapAbortStatement_(indent, kind, siteId)
+    pad +
+    trapName +
+    '(' +
+    Wasm2Lang.Backend.JsCommonCodegen.trapCallArguments_(kind, siteId) +
+    ');\n' +
+    this.renderTrapAbortStatement_(indent, kind, siteId)
   );
 };
 

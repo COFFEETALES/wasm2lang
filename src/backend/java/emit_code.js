@@ -104,7 +104,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   // Function bodies (emitted first to discover which helpers and bindings are needed).
   this.usedHelpers_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
   this.usedBindings_ = /** @type {!Object<string, boolean>} */ (Object.create(null));
-  this.resetTrapSites_(options, moduleInfo.functions);
+  this.resetTrapSites_(options, moduleInfo.functions, exportNameMap);
   this.castNames_ = moduleInfo.castNames;
   var /** @const {!Array<string>} */ functionParts = [];
   for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
@@ -313,7 +313,8 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
     outputParts.splice(0, 0, 'import jdk.incubator.vector.*;');
   }
 
-  this.publishTrapSites_();
+  var /** @const {string} */ emittedSource = outputParts.join('\n');
+  this.publishTrapSites_(emittedSource);
 
-  return outputParts.join('\n');
+  return emittedSource;
 };

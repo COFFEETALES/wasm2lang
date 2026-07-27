@@ -332,13 +332,26 @@ var redundantBlockRemoval = new PassFamily('redundant-block-removal', 'redundant
 // materialized transpile result, so a family can assert on side-car outputs
 // such as the `--trap-sites` table and not just the emitted source.
 // `opt_extraOptions` is merged into the transpile options.
-function EmissionFamily(name, fixturePath, languageOut, assertions, opt_normalizeWasm, opt_extraOptions) {
+// `opt_expectErrorPattern` inverts the family: transpile is expected to FAIL,
+// and the family passes only when it rejects with a message matching the
+// pattern.  Some contracts are about refusing to emit — asserting on a string
+// that must never be produced cannot express them.
+function EmissionFamily(
+  name,
+  fixturePath,
+  languageOut,
+  assertions,
+  opt_normalizeWasm,
+  opt_extraOptions,
+  opt_expectErrorPattern
+) {
   this.name = name;
   this.fixturePath = fixturePath;
   this.languageOut = languageOut;
   this.assertions = assertions;
   this.normalizeWasm = opt_normalizeWasm || ['binaryen:max', 'wasm2lang:codegen'];
   this.extraOptions = opt_extraOptions || {};
+  this.expectErrorPattern = opt_expectErrorPattern || null;
 }
 
 // Regression: `i32.eqz(i32.or(cmp, cmp))` compound negation.  Binaryen:max
@@ -465,6 +478,17 @@ var trapSitesOn = new EmissionFamily(
     var table = result['traps'];
     assert(table, 'no trap-site table emitted with --trap-sites on');
     var parsed = JSON.parse(table);
+    assert(parsed.version === 2, 'expected site-table format version 2, got ' + parsed.version);
+
+    // The abort must not be a spin on this backend.  Asserted BEFORE anything
+    // below executes the module, so a regression that reintroduced
+    // `while (1) {}` fails here with a message instead of hanging the whole
+    // postbuild run with no diagnostic — which is the very failure mode the
+    // spin inflicts on a browser tab.
+    assert(
+      !/while \(1\) \{\}/.test(code),
+      'the javascript backend aborts by spinning; a host that does not throw would freeze with no stack and no log\n' + code
+    );
 
     var emitted = [];
     var callRe = /\$w2l_trap\((\d+),\s*(\d+)\)/g;
@@ -482,6 +506,45 @@ var trapSitesOn = new EmissionFamily(
       assert(
         row.kind === emitted[j].kind,
         'site ' + emitted[j].site + ': code says kind ' + emitted[j].kind + ', table says ' + row.kind
+      );
+    }
+
+    // The table must describe only what SHIPPED.  The reverse direction (every
+    // emitted call resolves) is checked above; this is the direction that used
+    // to fail, and by a wide margin — 918 rows for 54 live sites on the
+    // consumer's module, 257 for 13 on ours.  A row with no call behind it is
+    // an id the host can never receive.
+    var emittedIds = {};
+    for (var e = 0; e < emitted.length; e++) emittedIds[emitted[e].site] = true;
+    for (var r = 0; r < parsed.sites.length; r++) {
+      assert(
+        emittedIds[parsed.sites[r].id],
+        'table row ' + parsed.sites[r].id + ' has no trap call behind it — the table is still a superset'
+      );
+    }
+    assert(
+      parsed.siteCount === Object.keys(emittedIds).length,
+      'table has ' + parsed.siteCount + ' rows for ' + Object.keys(emittedIds).length + ' live sites'
+    );
+    // Filtering must be reported, never silent, and must not renumber: a site
+    // id is what the host receives at runtime.
+    assert(
+      parsed.allocatedSiteCount >= parsed.siteCount,
+      'allocatedSiteCount (' + parsed.allocatedSiteCount + ') < siteCount (' + parsed.siteCount + ')'
+    );
+    var maxId = 0;
+    for (var mi = 0; mi < parsed.sites.length; mi++) maxId = Math.max(maxId, parsed.sites[mi].id);
+    assert(maxId < parsed.allocatedSiteCount, 'site id ' + maxId + ' is outside the allocated range — ids were renumbered');
+
+    // Every row must name the identifier its container is DECLARED under, or a
+    // host holding a stack frame has nothing to join the table on.  Under
+    // --mangler this is the only column that still matches the stack.
+    for (var sy = 0; sy < parsed.sites.length; sy++) {
+      var symbol = parsed.sites[sy].symbol;
+      assert('string' === typeof symbol && '' !== symbol, 'table row ' + parsed.sites[sy].id + ' carries no emitted symbol');
+      assert(
+        new RegExp('function ' + symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\(').test(code),
+        'symbol "' + symbol + '" is not declared anywhere in the emitted source'
       );
     }
 
@@ -546,6 +609,27 @@ var trapSitesOn = new EmissionFamily(
         }
       ],
       [
+        'div_u_zero',
+        3,
+        function () {
+          inst.divUByVariable(1, 0);
+        }
+      ],
+      [
+        'rem_s_zero',
+        4,
+        function () {
+          inst.remSByVariable(1, 0);
+        }
+      ],
+      [
+        'rem_u_zero',
+        5,
+        function () {
+          inst.remUByVariable(1, 0);
+        }
+      ],
+      [
         'div_s_overflow',
         6,
         function () {
@@ -560,12 +644,23 @@ var trapSitesOn = new EmissionFamily(
         }
       ]
     ];
+    var provokedKinds = {};
     for (var c = 0; c < cases.length; c++) {
       var got = provoke(cases[c][0], cases[c][2]);
       assert(got[0] === cases[c][1], cases[c][0] + ': host received kind ' + got[0] + ', expected ' + cases[c][1]);
       var resolved = byId[got[1]];
       assert(resolved, cases[c][0] + ': site id ' + got[1] + ' does not resolve in the table');
       assert(resolved.kind === cases[c][1], cases[c][0] + ': table says kind ' + resolved.kind + ' for site ' + got[1]);
+      provokedKinds[got[0]] = true;
+    }
+    // Every kind this backend can actually raise must have been provoked, not
+    // just a representative sample — a kind that is emitted but never exercised
+    // is a classification the host would meet for the first time in production.
+    // 8 (indirect_signature) and 9 (memory_oob) are reserved and never emitted,
+    // so they are deliberately absent; if one ever gains an emit site, this
+    // assertion is what will demand a case for it.
+    for (var wanted = 1; wanted <= 7; wanted++) {
+      assert(provokedKinds[wanted], 'kind ' + wanted + ' is emittable but no runtime case provokes it');
     }
 
     // The two unreachables must be distinguishable AT RUNTIME, not just on paper.
@@ -582,12 +677,242 @@ var trapSitesOn = new EmissionFamily(
 
     // A constant divisor must still compute, not trap.
     assert(inst.divByConstant(100) === 10, 'divByConstant(100) returned ' + inst.divByConstant(100) + ', expected 10');
+
+    // ---- A host that does NOT throw must still be stopped — and stopped with
+    // something a crash report can carry.  Two ways to get this wrong: fall
+    // through (the caller resumes on the `return 0` after the trap and gets a
+    // fabricated value indistinguishable from a real one) or spin (the tab
+    // freezes with no stack, no log, nothing to report — worse than the
+    // corruption it replaced).  This block reaching its end at all is the
+    // proof that neither happens; the static assertion above already ruled out
+    // the spin, so running it here cannot hang.
+    var silentSeen = [];
+    var silentInst = factory(
+      globalThis,
+      {
+        __wasm2lang_trap: function (k, s) {
+          silentSeen.push([k, s]);
+        }
+      },
+      new ArrayBuffer(1 << 20)
+    );
+    var silentAbort = null;
+    var silentReturn = 'not-set';
+    try {
+      silentReturn = silentInst.twoTrapsOneFunc(1);
+    } catch (silentError) {
+      silentAbort = silentError;
+    }
+    assert(1 === silentSeen.length, 'non-throwing host: expected one hook call, saw ' + silentSeen.length);
+    assert(silentAbort, 'a host that declined to throw resumed the caller — the unconditional abort is missing');
+    assert('not-set' === silentReturn, 'the trap site fell through and handed the caller a fabricated ' + silentReturn);
+    assert(
+      /w2l trap kind=1 site=\d+/.test(String(silentAbort.message)),
+      'the abort is not self-describing, so a crash report carries nothing: ' + silentAbort.message
+    );
+    assert(
+      Number(String(silentAbort.message).replace(/^.*site=/, '')) === silentSeen[0][1],
+      'the abort names a different site than the hook received'
+    );
   },
   ['binaryen:none', 'wasm2lang:codegen'],
   {'trapSites': true}
 );
 
-var emissionFamilies = [eqzOrCompoundNegation, kernelLeaveFreshness, trapSitesOff, trapSitesOn];
+// The asm.js half of the same abort contract, and the reason it is a separate
+// family rather than a branch in the one above: `throw` is outside the asm.js
+// subset, so this backend genuinely cannot have the modern-JS abort and keeps
+// the spin.  Pinning that here turns the compromise into a tested property
+// instead of a comment — a well-meaning "fix" that emits `throw` would sail
+// past the javascript family and only fail later, in a validator, far from the
+// change.  It also pins the asymmetry itself: the spin must NOT appear in the
+// modern-JS output, which the javascript family asserts from the other side.
+var trapSitesAsmjsAbort = new EmissionFamily(
+  'trap-sites-asmjs-abort',
+  'trap_sites.wast',
+  'asmjs',
+  function (code, result) {
+    assert(
+      /\$w2l_trap\(\d+,\s*\d+\);\s*\n\s*\$w2l_abort\(\);/.test(code),
+      'asm.js trap site is not followed by the abort call\n' + code
+    );
+    assert(
+      /function \$w2l_abort\(\) \{\s*\n\s*\$w2l_abort\(\);\s*\n\s*\}/.test(code),
+      'the $w2l_abort helper is missing or is not self-recursive\n' + code
+    );
+    // A spin would stop the fall-through just as well and tell nobody anything.
+    assert(!/while \(1\) \{\}/.test(code), 'asm.js reverted to a spin abort — a frozen tab carries no diagnosis\n' + code);
+    // `return $w2l_abort();` would be a tail call, which ES6 proper tail calls
+    // (JavaScriptCore) would flatten back into the infinite loop this replaces.
+    assert(
+      !/return\s+\$w2l_abort\(\)/.test(code),
+      'the abort recursion is in tail position and could be TCO-flattened\n' + code
+    );
+    assert(!/\bthrow\b/.test(code), 'a `throw` leaked into asm.js output — it is outside the validated subset\n' + code);
+
+    // Runtime: a host that does NOT throw must still be stopped, and stopped
+    // fast enough that nobody calls it a hang.  This assertion could not exist
+    // while the abort was a spin: reaching it at all is the proof.
+    var seen = [];
+    var inst = eval(code + '\nmodule')(
+      globalThis,
+      {
+        __wasm2lang_trap: function (k, s) {
+          seen.push([k, s]);
+        }
+      },
+      new ArrayBuffer(1 << 20)
+    );
+    var started = Date.now();
+    var aborted = null;
+    var returned = 'not-set';
+    try {
+      returned = inst.twoTrapsOneFunc(1);
+    } catch (e) {
+      aborted = e;
+    }
+    assert(1 === seen.length, 'asm.js non-throwing host: expected one hook call, saw ' + seen.length);
+    assert(aborted, 'asm.js abort let a non-throwing host resume the caller');
+    assert('not-set' === returned, 'asm.js trap site fell through and returned ' + returned);
+    assert(Date.now() - started < 5000, 'asm.js abort took ' + (Date.now() - started) + ' ms — that is a hang, not an abort');
+    // The site table must be filtered and symbol-bearing here too: asm.js has
+    // no exception message, so the hook call is the only liveness evidence and
+    // this is the path where a stale pattern would silently empty the table.
+    var parsed = JSON.parse(result['traps']);
+    assert(parsed.siteCount > 0, 'asm.js site table came back empty — the liveness pattern no longer matches the emitted call');
+    for (var i = 0; i < parsed.sites.length; i++) {
+      assert(parsed.sites[i].symbol, 'asm.js table row ' + parsed.sites[i].id + ' carries no emitted symbol');
+    }
+  },
+  ['binaryen:none', 'wasm2lang:codegen'],
+  {'trapSites': true}
+);
+
+// --trap-sites=kind.  The release-weight mode: the kind travels alone, no ids
+// are allocated and no table is written, so there is nothing to ship next to
+// the module and nothing that can fall out of sync with it.  What it must
+// still do is the entire point — classify.  A crash in a delivered build has
+// to come back as "division by zero" rather than as silence, so the checked
+// division helpers must survive into this mode even though the site
+// bookkeeping does not.
+var trapSitesKindOnly = new EmissionFamily(
+  'trap-sites-kind-only',
+  'trap_sites.wast',
+  'javascript',
+  function (code, result) {
+    assert(!result['traps'], 'kind mode wrote a site table; it exists precisely so there is no artifact to distribute');
+    assert(!/\$w2l_trap\(\d+,/.test(code), 'a siteId survived into kind mode\n' + code);
+    assert(!/site=/.test(code), 'an abort still names a site id that no table resolves\n' + code);
+    assert(/\$w2l_trap\(\d+\)/.test(code), 'kind mode did not pass the kind to the hook\n' + code);
+
+    // Classification is the reason the mode exists, so the div/rem guards must
+    // still be here — without them a division by zero never reaches the hook
+    // at all and the crash stays exactly as mute as before.
+    assert(
+      /\$w2l_div_s_i32\(/.test(code),
+      'kind mode dropped the checked-division helper — div-by-zero would be unclassifiable'
+    );
+    assert(
+      !/\$w2l_div_s_i32\([^,]+,\s*10\)/.test(code),
+      'a constant non-zero divisor was routed through the checked helper in kind mode\n' + code
+    );
+
+    // Runtime: the host must receive a usable classification, and a host that
+    // declines to throw must still be stopped.
+    var seen = [];
+    var inst = eval(code + '\nmodule')(
+      globalThis,
+      {
+        __wasm2lang_trap: function (k) {
+          seen.push(k);
+        }
+      },
+      new ArrayBuffer(1 << 20)
+    );
+    var cases = [
+      [
+        1,
+        function () {
+          inst.twoTrapsOneFunc(1);
+        }
+      ],
+      [
+        2,
+        function () {
+          inst.divByVariable(1, 0);
+        }
+      ],
+      [
+        7,
+        function () {
+          inst.truncOutOfRange(NaN);
+        }
+      ]
+    ];
+    for (var c = 0; c < cases.length; c++) {
+      var before = seen.length;
+      var aborted = false;
+      try {
+        cases[c][1]();
+      } catch (e) {
+        aborted = true;
+      }
+      assert(seen.length === before + 1, 'kind ' + cases[c][0] + ': expected one hook call, saw ' + (seen.length - before));
+      assert(
+        seen[seen.length - 1] === cases[c][0],
+        'host received kind ' + seen[seen.length - 1] + ', expected ' + cases[c][0]
+      );
+      assert(aborted, 'kind ' + cases[c][0] + ': a non-throwing host was allowed to resume');
+    }
+    assert(inst.divByConstant(100) === 10, 'divByConstant(100) miscomputed in kind mode');
+  },
+  ['binaryen:none', 'wasm2lang:codegen'],
+  {'trapSites': true, 'trapSiteIds': false}
+);
+
+// An i64 operation that reaches a backend with no i64 renderer means
+// `i64-to-i32-lowering` never ran — the module cannot be expressed, and the only
+// honest outcome is to stop.  Emitting a placeholder call instead is how 13 753
+// references to a function that does not exist ended up in a real build, in
+// source that read perfectly normally until it threw ReferenceError.
+//
+// asm.js and PHP are the two backends that depend on the lowering; both must
+// refuse.  JavaScript is the control: it handles i64 natively, so the very same
+// module and pipeline must still emit successfully.
+function i64RefusalFamily(name, languageOut) {
+  return new EmissionFamily(
+    name,
+    'i64_needs_lowering.wast',
+    languageOut,
+    function () {},
+    ['binaryen:none'],
+    {},
+    /cannot express the i64 operation/
+  );
+}
+
+var i64ControlNative = new EmissionFamily(
+  'i64-no-lowering-javascript-ok',
+  'i64_needs_lowering.wast',
+  'javascript',
+  function (code) {
+    assert(!/__unknown/.test(code), 'a placeholder call leaked into a backend that handles i64 natively\n' + code);
+    assert(/addI64/.test(code), 'the native-i64 backend did not emit the function\n' + code);
+  },
+  ['binaryen:none']
+);
+
+var emissionFamilies = [
+  eqzOrCompoundNegation,
+  kernelLeaveFreshness,
+  trapSitesOff,
+  trapSitesOn,
+  trapSitesAsmjsAbort,
+  trapSitesKindOnly,
+  i64RefusalFamily('i64-no-lowering-asmjs-refused', 'asmjs'),
+  i64RefusalFamily('i64-no-lowering-php64-refused', 'php64'),
+  i64ControlNative
+];
 
 loadBinaryen().then(function (binaryen) {
   var fixtureDir = path.resolve(__dirname, 'fixtures');
@@ -634,6 +959,10 @@ loadBinaryen().then(function (binaryen) {
       emissionPromises.push(
         p
           .then(function (result) {
+            if (ef.expectErrorPattern) {
+              var emitted = (result && result['code']) || '';
+              throw new Error('expected transpile to be refused, but it emitted ' + emitted.length + ' chars of source');
+            }
             var codeStr = result && result['code'];
             if (!codeStr) throw new Error('transpile did not return emitted code');
             ef.assertions(codeStr, result);
@@ -641,6 +970,11 @@ loadBinaryen().then(function (binaryen) {
             ++passes;
           })
           .catch(function (e) {
+            if (ef.expectErrorPattern && ef.expectErrorPattern.test(String(e.message))) {
+              console.log('\x1b[0;32mPASS\x1b[0m: ' + ef.name);
+              ++passes;
+              return;
+            }
             console.error('\x1b[0;31mFAIL\x1b[0m: ' + ef.name + ': ' + e.message);
             ++failures;
           })

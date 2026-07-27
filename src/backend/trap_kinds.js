@@ -108,6 +108,14 @@ Wasm2Lang.Backend.describeTrapKind = function (kind) {
  * a shared runtime helper body ($w2l_trunc_*, $w2l_div_*): those are emitted
  * once per module from a static template and belong to no wasm function.
  *
+ * `symbol` is the identifier the container is ACTUALLY DECLARED UNDER in the
+ * emitted source — `fn_1217` unmangled, the short token under `--mangler`.
+ * `funcIndex` alone leaves the host to guess the correlation, and the guess
+ * stops working the moment the mangler runs: a JS stack frame reads
+ * `at <token>` and nothing in the table mentions that token.  This field is
+ * what makes a stack trace joinable to the table in BOTH modes, and the
+ * backend already knows it at the moment it writes the row.
+ *
  * There is deliberately NO `instrOffset`: binaryen's JS API exposes
  * `setDebugLocation` but no reader, and the pipeline (optimizer passes, the
  * internal binary round-trip, anchor stripping) destroys any correspondence to
@@ -119,6 +127,7 @@ Wasm2Lang.Backend.describeTrapKind = function (kind) {
  *   kind: number,
  *   funcIndex: number,
  *   funcName: ?string,
+ *   symbol: ?string,
  *   helper: ?string,
  *   ordinal: number
  * }}

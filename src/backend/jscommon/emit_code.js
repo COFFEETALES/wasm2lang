@@ -361,9 +361,10 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
   // overwrite these on every call, so they only reflect the most recent run.
   this.lastEmitUsedHelpers_ = uh;
   this.lastEmitUsedBindings_ = ub;
-  this.publishTrapSites_();
+  var /** @const {string} */ emittedSource = outputParts.join('\n');
+  this.publishTrapSites_(emittedSource);
 
-  return outputParts.join('\n');
+  return emittedSource;
 };
 
 // ---------------------------------------------------------------------------

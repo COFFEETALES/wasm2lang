@@ -91,6 +91,10 @@ byte-identical stdout and matching CRC32 memory snapshots.
   (`i32_to_f32`, `f64_to_i32`, ...) lower to native type casts.
 - **Spec-compliant trapping** -- NaN and out-of-range inputs trap instead of
   silently producing wrong results.
+- **Diagnosable traps** -- `--trap-sites` gives every trap a stable kind and a
+  module-unique id, and writes a side-car table naming the symbol each site was
+  emitted under, so a mangled stack frame still resolves. Opt-in; with it off
+  the output is byte-identical to a build without the feature.
 - **Bounded Java v128 memory** -- standalone values use JDK 21 `IntVector`;
   direct `v128.store(v128.load(...))` expressions fuse into one prevalidated
   helper whose heap path keeps a `ByteVector` local and whose non-array path
@@ -117,6 +121,7 @@ wasm2lang [options]
 | `--mangler <key>`            | Deterministic identifier mangling.                                                           |
 | `--define K=V`               | Compile-time defines (e.g. `JAVA_HEAP_SIZE=524288`). Repeatable.                             |
 | `--pre-normalized`           | Input was pre-normalized; recover passes from the custom section.                            |
+| `--trap-sites[=full\|kind]`  | Diagnosable traps -- see below. `full` (default) adds site ids and a table; `kind` neither.  |
 | `--out-file <path>`          | Write to a file instead of stdout.                                                           |
 
 Run `wasm2lang --help` for the full option list.
@@ -136,6 +141,59 @@ runtime allocations beyond the static segments.
 | `CSHARP_HEAP_SIZE` | C#         |
 
 If the module declares no memory, the heap falls back to 65536 bytes (one page).
+
+### Diagnosable traps
+
+By default every trap funnels into one argument-less signal, so a host can tell
+neither *which* trap fired nor *where* -- and in a mangled build the stack names
+nothing either. `--trap-sites` fixes that.
+
+| Mode                        | Hook call                 | Side-car table          |
+| --------------------------- | ------------------------- | ----------------------- |
+| `--trap-sites` (or `=full`) | `$w2l_trap(kind, siteId)` | `<out-file>.traps.json` |
+| `--trap-sites=kind`         | `$w2l_trap(kind)`         | none                    |
+
+Use `full` when you control the build artifacts. Use `kind` for a delivered
+build: there is nothing to distribute or keep in sync with the binary, yet a
+crash still comes back classified -- *divide by zero* rather than silence. Both
+modes add the divide-by-zero and overflow checks that plain output omits; on a
+2.6 MB asm.js module that costs +0.02 %.
+
+```bash
+wasm2lang --input-file module.wasm                         \
+          --normalize-wasm binaryen:max,wasm2lang:codegen  \
+          --language-out JAVASCRIPT                        \
+          --define JS_HEAP_SIZE=16777216                   \
+          --trap-sites --emit-code module                  \
+          --out-file module.js
+# writes module.js and module.js.traps.json
+```
+
+A bare `--trap-sites` swallows the next token unless it starts with `--`, so put
+it before another option or last on the line -- never immediately before a
+positional path.
+
+Each row maps a `siteId` the host received back to its cause and location:
+
+```json
+{"id": 74, "kind": 1, "kindName": "unreachable", "funcIndex": 200, "symbol": "fn_200", "ordinal": 0}
+```
+
+`symbol` is the identifier the container is actually declared under -- the short
+token when `--mangler` runs -- so a stack frame joins straight to a row.
+`ordinal` separates two traps in the same function. The table repeats the kind
+enum in a `kinds` map, so a host never hard-codes the numbering.
+
+Only sites that survived emission are listed, and that removes most of them: the
+emitter renders trap placeholders it later trims away, so on a real module the
+artifact drops from 257 rows to 13. Ids are never renumbered -- the table simply
+becomes sparse, and `allocatedSiteCount` records how many were handed out.
+
+After calling the hook the emitted code aborts on its own, so a host that forgets
+to throw cannot resume on a fabricated value. That abort is a `throw` everywhere
+except asm.js, which has none: there it calls a helper that recurses into itself,
+and the resulting stack exhaustion surfaces as a `RangeError` naming that helper
+within a few milliseconds -- terminated and diagnosable rather than hung.
 
 ## End-to-end example
 
@@ -169,6 +227,14 @@ wasm2lang --input-file normalized.wasm                    \
           --language-out PHP64                            \
           --emit-code
 ```
+
+Step 1 above takes the default `--language-out` (`ASMJS`), which is what makes
+the artifact reusable for every target: i64-to-i32 lowering runs during
+normalization, and asm.js and PHP need it while JavaScript, Java and C# handle
+i64 natively. If you instead normalize *for* one of those three, the resulting
+`.wasm` keeps its i64 and cannot be emitted as asm.js or PHP -- step 2 refuses
+with a message telling you to re-normalize. Normalize for `ASMJS` (or `PHP64`)
+when you intend to reuse one artifact across backends.
 
 ## How it works
 
@@ -220,7 +286,10 @@ timings on stderr.
 yarn closure-make   # → dist_artifacts/wasmxlang.js
 ```
 
-Targets Closure Compiler ADVANCED_OPTIMIZATIONS, ES5 strict.
+Targets Closure Compiler ADVANCED_OPTIMIZATIONS, ES5 strict. The build then runs
+`postbuild/wasm2lang_pass_tests.js`, which asserts on normalization metadata and
+on emitted source -- including the `--trap-sites` contracts, whose off-path
+output must stay byte-identical.
 
 ## Changelog
 

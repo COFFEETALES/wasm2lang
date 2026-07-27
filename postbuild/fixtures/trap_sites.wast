@@ -26,6 +26,19 @@
   (func $divByVariable (export "divByVariable") (param $a i32) (param $b i32) (result i32)
     (i32.div_s (local.get $a) (local.get $b)))
 
+  ;; One export per remaining division kind, so the runtime half of the
+  ;; `trap-sites-on` family can provoke EVERY kind the build can raise rather
+  ;; than a representative sample.  All four divisors are non-constant for the
+  ;; same reason $divByVariable's is.
+  (func $divUByVariable (export "divUByVariable") (param $a i32) (param $b i32) (result i32)
+    (i32.div_u (local.get $a) (local.get $b)))
+
+  (func $remSByVariable (export "remSByVariable") (param $a i32) (param $b i32) (result i32)
+    (i32.rem_s (local.get $a) (local.get $b)))
+
+  (func $remUByVariable (export "remUByVariable") (param $a i32) (param $b i32) (result i32)
+    (i32.rem_u (local.get $a) (local.get $b)))
+
   (func $divByConstant (export "divByConstant") (param $a i32) (result i32)
     (i32.div_s (local.get $a) (i32.const 10)))
 

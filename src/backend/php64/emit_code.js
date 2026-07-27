@@ -240,7 +240,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, option
   outputParts.push(pad1 + 'return [' + returnEntries.join(', ') + '];');
   outputParts.push('};');
 
-  this.publishTrapSites_();
+  var /** @const {string} */ emittedSource = outputParts.join('\n');
+  this.publishTrapSites_(emittedSource);
 
-  return outputParts.join('\n');
+  return emittedSource;
 };

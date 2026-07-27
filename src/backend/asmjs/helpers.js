@@ -397,6 +397,32 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     divHelper('$w2l_div_u_i32', K.DIV_U_ZERO, '>>>0', '/', false);
     divHelper('$w2l_rem_s_i32', K.REM_S_ZERO, '|0', '%', false);
     divHelper('$w2l_rem_u_i32', K.REM_U_ZERO, '>>>0', '%', false);
+
+    // The abort for the one backend that cannot throw.  Unbounded self-recursion
+    // is the only construct in the asm.js subset that both refuses to fall
+    // through AND produces something a crash report can carry: the engine
+    // reports stack exhaustion as a throwable error in single-digit
+    // milliseconds (RangeError in V8, InternalError in SpiderMonkey), and the
+    // top frame names this function.  `while (1) {}` also refuses to fall
+    // through, but it freezes the tab with no stack, no log and no way to tell
+    // a trap from a hang — trading silent corruption for silent paralysis.
+    // Measured on the reference module against the spin it replaces:
+    // isAsmJSModule stays true, +61 bytes unmangled across 13 sites and 59
+    // bytes SMALLER mangled, because this name mangles to two characters while
+    // `while (1) {}` cannot shrink.  Mangled is the shape that ships.
+    //
+    // The recursive call is deliberately a STATEMENT and not
+    // `return $w2l_abort();`.  A tail call would be eligible for ES6 proper tail
+    // calls, which JavaScriptCore implements, and would collapse this straight
+    // back into the infinite loop it exists to replace.
+    //
+    // Registered last in this block so every helper that emits a trap above has
+    // already marked it; function bodies ran before emitHelpers_ entirely.
+    // prettier-ignore
+    h('$w2l_abort', [],
+      pad1 + 'function ' + n('$w2l_abort') + '() {\n' +
+      pad2 + n('$w2l_abort') + '();\n' +
+      pad1 + '}');
   }
 
   // prettier-ignore

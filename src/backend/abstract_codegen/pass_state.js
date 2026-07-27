@@ -239,13 +239,23 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.markBinding_ = function (name) {
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
  * @param {!Array<!BinaryenFunctionInfo>} definedFunctions  Emitted-function
  *     sequence, in emission order.
+ * @param {?Object<string, string>=} opt_exportNameMap  internalName →
+ *     exportName, for the backends (java, csharp) that declare an exported
+ *     function under its export name instead of its mangled internal name.
+ *     Stored per emit so a stale map from a previous module cannot leak into
+ *     {@code emittedFunctionSymbol_}.
  * @return {void}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.resetTrapSites_ = function (options, definedFunctions) {
+Wasm2Lang.Backend.AbstractCodegen.prototype.resetTrapSites_ = function (options, definedFunctions, opt_exportNameMap) {
   this.trapSitesEnabled_ = !!options.trapSites;
   this.trapSiteCounter_ = 0;
   this.trapSiteOrdinals_ = /** @type {!Object<string, number>} */ (Object.create(null));
-  if (!this.trapSitesEnabled_) {
+  this.trapExportNames_ = opt_exportNameMap || null;
+  // `kind` mode leaves instrumentation on but allocates no ids: with no row
+  // store, both allocators return -1, and -1 is what every renderer reads as
+  // "emit the kind alone".  Keeping the mode in one place — the absence of the
+  // array — means no renderer needs a second flag to consult.
+  if (!this.trapSitesEnabled_ || false === options.trapSiteIds) {
     this.trapSites_ = null;
     this.trapFuncOrdinals_ = null;
     return;
@@ -263,11 +273,97 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.resetTrapSites_ = function (options,
  * discovery emit overwrites it and the real emit overwrites it again, so the
  * artifact always reflects the emit that produced the source.
  *
+ * When the assembled source is supplied, the rows whose text did not survive
+ * emission are dropped first — see {@code selectLiveTrapSites_}.
+ *
  * @protected
+ * @param {string=} opt_emittedSource  The fully assembled module source.
  * @return {void}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.publishTrapSites_ = function () {
-  this.lastEmitTrapSites_ = this.trapSites_;
+Wasm2Lang.Backend.AbstractCodegen.prototype.publishTrapSites_ = function (opt_emittedSource) {
+  var /** @const {?Array<!Wasm2Lang.Backend.TrapSite>} */ sites = this.trapSites_;
+  if (sites && 'string' === typeof opt_emittedSource) {
+    this.lastEmitTrapSites_ = this.selectLiveTrapSites_(sites, /** @type {string} */ (opt_emittedSource));
+    this.lastEmitAllocatedTrapSiteCount_ = sites.length;
+    return;
+  }
+  this.lastEmitTrapSites_ = sites;
+  this.lastEmitAllocatedTrapSiteCount_ = sites ? sites.length : 0;
+};
+
+/**
+ * Site-id capture pattern common to every backend whose abort is a native
+ * {@code throw}: the payload rides the exception message, so the id is present
+ * verbatim in the source.  Group 1 is the site id.
+ *
+ * @protected @const {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.TRAP_MESSAGE_SITE_PATTERN_ = 'w2l trap kind=\\d+ site=(\\d+)';
+
+/**
+ * Returns the patterns that locate a trap site that SURVIVED into the emitted
+ * source.  Group 1 of each must capture the site id.
+ *
+ * The default covers javascript, java, csharp and php64, whose abort embeds
+ * {@code w2l trap kind=<n> site=<n>} in the source.  asm.js has no message —
+ * its abort is a bare spin — so {@code JsCommonCodegen} adds the hook-call
+ * form, which is unambiguous because the trap binding's name (mangled or not)
+ * denotes nothing else in the module.
+ *
+ * @protected
+ * @return {!Array<!RegExp>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.trapSiteLivenessPatterns_ = function () {
+  return [new RegExp(Wasm2Lang.Backend.AbstractCodegen.TRAP_MESSAGE_SITE_PATTERN_, 'g')];
+};
+
+/**
+ * Drops the rows whose text never reached the output.
+ *
+ * Ids are handed out by the emission, but the emission is not the last word on
+ * what ships.  Three paths discard text that was already rendered:
+ * {@code effectiveReachableBlockChildCount_} trims block children past the
+ * first terminal one (235 of the 244 dead ids on the reference module),
+ * {@code emitOrCollectHelper_} discards a helper body nothing marked as used
+ * (9), and {@code propagateTerminalChild_} drops effect-free operands after a
+ * terminal sibling.  That left the table a 95 % superset — 257 rows for 13
+ * reachable sites here, 918 for 54 on the consumer's build — an artifact
+ * sixteen times larger than the information in it.
+ *
+ * Ids are NOT renumbered.  A site id is what the host receives at runtime, so
+ * it has to keep meaning the same thing across this filter; the table simply
+ * becomes sparse, and {@code allocatedSiteCount} in the artifact records how
+ * many rows were dropped so the gaps are documented rather than mysterious.
+ *
+ * Detection is textual on purpose: it is the same ground truth a consumer can
+ * reproduce with a grep over the artifact, and it is blind to WHY a site died,
+ * so a future trimmer needs no change here.  A false negative costs function
+ * attribution for one site — the host still receives its kind — which is the
+ * benign direction to fail in.
+ *
+ * @protected
+ * @param {!Array<!Wasm2Lang.Backend.TrapSite>} sites
+ * @param {string} emittedSource
+ * @return {!Array<!Wasm2Lang.Backend.TrapSite>}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.selectLiveTrapSites_ = function (sites, emittedSource) {
+  var /** @const {!Array<!RegExp>} */ patterns = this.trapSiteLivenessPatterns_();
+  if (0 === patterns.length) return sites;
+
+  var /** @const {!Object<string, boolean>} */ live = /** @type {!Object<string, boolean>} */ (Object.create(null));
+  for (var /** @type {number} */ p = 0, /** @const {number} */ pLen = patterns.length; p !== pLen; ++p) {
+    var /** @const {!RegExp} */ pattern = patterns[p];
+    pattern.lastIndex = 0;
+    for (var /** @type {?RegExpResult} */ match = pattern.exec(emittedSource); match; match = pattern.exec(emittedSource)) {
+      live[match[1]] = true;
+    }
+  }
+
+  var /** @const {!Array<!Wasm2Lang.Backend.TrapSite>} */ kept = [];
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = sites.length; i !== len; ++i) {
+    if (String(sites[i].id) in live) kept.push(sites[i]);
+  }
+  return kept;
 };
 
 /**
@@ -278,6 +374,17 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.publishTrapSites_ = function () {
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.getTrapSites = function () {
   return this.lastEmitTrapSites_;
+};
+
+/**
+ * Returns how many site ids the most recent emission allocated.  Larger than
+ * {@code getTrapSites().length} whenever dead rows were filtered out; the
+ * difference is what the artifact reports so the id gaps are documented.
+ *
+ * @return {number}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.getAllocatedTrapSiteCount = function () {
+  return this.lastEmitAllocatedTrapSiteCount_;
 };
 
 /**
@@ -319,6 +426,52 @@ Wasm2Lang.Backend.AbstractCodegen.trustedFunctionName_ = function (name) {
 };
 
 /**
+ * Returns the identifier a defined function is DECLARED UNDER in the emitted
+ * source, so the site table can be joined to a host stack trace.
+ *
+ * The default is the jscommon / java-non-exported form
+ * {@code n_(safeName_(name))}, which resolves to the mangled token when
+ * {@code --mangler} is active because {@code n_} consults the same mangler the
+ * emitter does.  Backends whose declaration site differs override this:
+ * java/csharp use the export name for exported functions, php64 declares a
+ * closure variable.
+ *
+ * Only ever called from the allocators below, i.e. never when
+ * {@code --trap-sites} is off — the flag-off byte-identity contract does not
+ * depend on this method being cheap or even correct.  {@code mangler_.mn} is a
+ * pure lookup that falls back to the original name, so calling it here cannot
+ * register a key and therefore cannot shift any other mangled name.
+ *
+ * @protected
+ * @param {?BinaryenFunctionInfo} functionInfo
+ * @return {?string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emittedFunctionSymbol_ = function (functionInfo) {
+  if (!functionInfo || '' === functionInfo.name) return null;
+  var /** @const {?Object<string, string>} */ exportNames = this.trapExportNames_;
+  if (exportNames && functionInfo.name in exportNames) {
+    // java/csharp declare an exported function under its public export name,
+    // unmangled — that is the symbol a stack frame shows.
+    return this.safeName_(exportNames[functionInfo.name]);
+  }
+  return this.n_(this.safeName_(functionInfo.name));
+};
+
+/**
+ * Returns the identifier a runtime helper is declared under in the emitted
+ * source.  Helpers are registered in the mangler roster under their own name,
+ * so {@code n_} is the whole answer on every backend that declares them as
+ * functions; php64 overrides it because helpers there are closure variables.
+ *
+ * @protected
+ * @param {string} helperName
+ * @return {?string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emittedHelperSymbol_ = function (helperName) {
+  return this.n_(helperName);
+};
+
+/**
  * Allocates a trap site for an IR node inside {@code functionInfo}.
  *
  * @protected
@@ -338,6 +491,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.allocateTrapSite_ = function (kind, 
     kind: kind,
     funcIndex: funcIndex,
     funcName: Wasm2Lang.Backend.AbstractCodegen.trustedFunctionName_(name),
+    symbol: this.emittedFunctionSymbol_(functionInfo),
     helper: null,
     ordinal: this.nextTrapOrdinal_(name)
   });
@@ -372,6 +526,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.allocateHelperTrapSite_ = function (
     kind: kind,
     funcIndex: -1,
     funcName: null,
+    symbol: this.emittedHelperSymbol_(helperName),
     helper: helperName,
     ordinal: this.nextTrapOrdinal_(' helper ' + helperName)
   });
@@ -392,11 +547,16 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.allocateHelperTrapSite_ = function (
  * The string is embedded in the emitted source, so it must never contain a
  * quote or a backslash — both inputs are integers, so it cannot.
  *
+ * A negative {@code siteId} means {@code --trap-sites=kind}: no ids were
+ * allocated, so the {@code site=} half is omitted rather than reporting a
+ * fabricated {@code -1} that no table would resolve.
+ *
  * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
  * @param {number} siteId
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.trapMessage_ = function (kind, siteId) {
+  if (0 > siteId) return 'w2l trap kind=' + String(kind);
   return 'w2l trap kind=' + String(kind) + ' site=' + String(siteId);
 };
 
@@ -408,11 +568,23 @@ Wasm2Lang.Backend.AbstractCodegen.trapMessage_ = function (kind, siteId) {
  * emitted in id order (which is allocation order), so the artifact is
  * byte-stable for a byte-stable module.
  *
+ * Format version 2 differs from 1 in two ways, both driven by what a consumer
+ * actually needed after adopting the feature: every row can now carry
+ * {@code symbol}, the identifier the container is declared under in the emitted
+ * source (which is what joins a stack frame to a row, and the only thing that
+ * still works under {@code --mangler}); and rows whose text did not survive
+ * emission are no longer written, with {@code allocatedSiteCount} recording how
+ * many ids were handed out so the resulting gaps in {@code id} are explicit.
+ * Lookup by id is unchanged, so a v1 reader that indexes {@code sites} by
+ * {@code id} keeps working.
+ *
  * @param {!Array<!Wasm2Lang.Backend.TrapSite>} sites
  * @param {string} languageOut
+ * @param {number=} opt_allocatedSiteCount  Ids allocated before filtering;
+ *     defaults to the row count for callers that do not filter.
  * @return {string}
  */
-Wasm2Lang.Backend.AbstractCodegen.renderTrapSiteTable = function (sites, languageOut) {
+Wasm2Lang.Backend.AbstractCodegen.renderTrapSiteTable = function (sites, languageOut, opt_allocatedSiteCount) {
   var /** @const {!Array<string>} */ kindLines = [];
   var /** @const {!Array<string>} */ kindNames = Wasm2Lang.Backend.TRAP_KIND_NAMES;
   for (var /** @type {number} */ k = 1; k <= Wasm2Lang.Backend.TRAP_KIND_MAX; ++k) {
@@ -433,17 +605,25 @@ Wasm2Lang.Backend.AbstractCodegen.renderTrapSiteTable = function (sites, languag
     } else {
       fields.push('"helper": ' + JSON.stringify(site.helper));
     }
+    if (null !== site.symbol) {
+      fields.push('"symbol": ' + JSON.stringify(site.symbol));
+    }
     fields.push('"ordinal": ' + String(site.ordinal));
     rowLines.push('    {' + fields.join(', ') + '}');
   }
+  var /** @const {number} */ allocatedCount =
+      'number' === typeof opt_allocatedSiteCount ? /** @type {number} */ (opt_allocatedSiteCount) : sites.length;
   return (
     '{\n' +
-    '  "version": 1,\n' +
+    '  "version": 2,\n' +
     '  "language": ' +
     JSON.stringify(languageOut) +
     ',\n' +
     '  "siteCount": ' +
     String(sites.length) +
+    ',\n' +
+    '  "allocatedSiteCount": ' +
+    String(allocatedCount) +
     ',\n' +
     '  "kinds": {\n' +
     kindLines.join(',\n') +

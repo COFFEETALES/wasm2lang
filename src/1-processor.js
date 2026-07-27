@@ -172,7 +172,8 @@ Wasm2Lang.Processor.emitResults_ = function (wasmModule, codegen, options) {
       if (trapSites) {
         results[Wasm2Lang.Processor.TranspileResultProperty.TRAPS] = Wasm2Lang.Backend.AbstractCodegen.renderTrapSiteTable(
           trapSites,
-          options.languageOut
+          options.languageOut,
+          codegen.getAllocatedTrapSiteCount()
         );
       }
     }
@@ -395,7 +396,10 @@ Wasm2Lang.Processor.normalizeUserOptions_ = function (userOptions) {
         outFile: null,
         preNormalized: !!userOptions['preNormalized'],
         disabledPasses: d.disabledPasses.slice(),
-        trapSites: !!userOptions['trapSites']
+        trapSites: !!userOptions['trapSites'],
+        // Absent means full mode, matching a bare --trap-sites; only an
+        // explicit false selects the id-less `kind` mode.
+        trapSiteIds: false !== userOptions['trapSiteIds']
       });
 
   return o;
@@ -498,7 +502,8 @@ Wasm2Lang.Processor.getPassAnalysis = function (binaryenModule, wastString) {
       outFile: null,
       preNormalized: false,
       disabledPasses: [],
-      trapSites: false
+      trapSites: false,
+      trapSiteIds: true
     });
 
   var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ passes = Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses(options);

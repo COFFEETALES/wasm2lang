@@ -38,7 +38,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
  *   outFile: (string|null),
  *   preNormalized: boolean,
  *   disabledPasses: !Array<string>,
- *   trapSites: boolean
+ *   trapSites: boolean,
+ *   trapSiteIds: boolean
  * }}
  */
 Wasm2Lang.Options.Schema.NormalizedOptions;
@@ -62,7 +63,8 @@ Wasm2Lang.Options.Schema.NormalizedOptions;
  *   emitWebAssembly: (boolean|string|undefined),
  *   mangler: (string|undefined),
  *   preNormalized: (boolean|undefined),
- *   trapSites: (boolean|undefined)
+ *   trapSites: (boolean|undefined),
+ *   trapSiteIds: (boolean|undefined)
  * }}
  */
 Wasm2Lang.Options.Schema.UserOptions;
@@ -121,7 +123,8 @@ Wasm2Lang.Options.Schema.defaultOptions = {
   outFile: null,
   preNormalized: false,
   disabledPasses: [],
-  trapSites: false
+  trapSites: false,
+  trapSiteIds: true
 };
 
 /**
@@ -266,12 +269,44 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.DISABL
 };
 
 /**
+ * Parses {@code --trap-sites[=full|kind]}.
+ *
+ * {@code full} (the default, and what a bare {@code --trap-sites} means) hands
+ * the host {@code (kind, siteId)} and writes the side-car table.  {@code kind}
+ * drops the id and the table and passes {@code (kind)} alone: the same nine
+ * frozen constants, no per-site bookkeeping, nothing to ship alongside the
+ * module.  It exists because full mode is too heavy to leave in a delivered
+ * build, which leaves a crash at a user's machine completely mute — the only
+ * case that actually matters for a product.
+ *
+ * An unrecognised value is an error rather than a silent fallback: the
+ * fallback would be {@code full}, so a typo in a release build would quietly
+ * ship the heavier mode AND a table.  This also turns the documented
+ * bare-flag-swallows-the-next-token trap ({@code --trap-sites in.wasm}) from a
+ * confusing "No input data provided" into a message that names the real
+ * mistake.
+ *
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
  * @param {!Array<string>} strs
  */
 Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.TRAP_SITES] = function (options, strs) {
-  void strs;
   options.trapSites = true;
+  options.trapSiteIds = true;
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = strs.length; i !== len; ++i) {
+    var /** @const {string} */ mode = strs[i].trim().toLowerCase();
+    if ('' === mode || 'full' === mode) continue;
+    if ('kind' === mode) {
+      options.trapSiteIds = false;
+      continue;
+    }
+    throw new Error(
+      'Unrecognized --trap-sites value: "' +
+        strs[i] +
+        '". Expected "full" (default) or "kind". Note that a bare --trap-sites swallows the next ' +
+        'token unless that token starts with a double dash, so place it before another option or ' +
+        'last on the line, never immediately before a positional path.'
+    );
+  }
 };
 
 /**
@@ -350,6 +385,6 @@ Wasm2Lang.Options.Schema.optionSchema = {
   'trapSites': {
     optionType: 'boolean',
     optionDesc:
-      'Makes traps diagnosable: every trap site is given a dense module-unique id and calls the host hook as $w2l_trap(kind, siteId) before aborting unconditionally, and a <out-file>.traps.json table maps each id back to its kind and function. Also adds the divide-by-zero / overflow checks that the plain output omits. Off by default; when off the emitted code is byte-identical to a build without this flag.'
+      'Makes traps diagnosable. --trap-sites (or =full) gives every trap site a module-unique id, calls the host hook as $w2l_trap(kind, siteId) before aborting unconditionally, and writes a <out-file>.traps.json table mapping each surviving id to its kind, function and emitted symbol. --trap-sites=kind is the release-weight variant: $w2l_trap(kind) only, no ids and no table, so a shipped crash is still classifiable (divide by zero vs violated engine invariant) without an artifact to distribute. Both modes add the divide-by-zero / overflow checks that the plain output omits. Off by default; when off the emitted code is byte-identical to a build without this flag.'
   }
 };

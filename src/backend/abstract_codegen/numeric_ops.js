@@ -515,6 +515,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDUnaryOp_ = function (binarye
  * Dispatches a classified i32 binary operation to the backend-specific
  * renderer registered in {@code binaryRenderers_}.
  *
+ * An unregistered category is a gap in this backend's renderer table, not
+ * something a module can legitimately reach — so it stops the build.  See
+ * {@code renderI64BinaryOp_} for why the previous placeholder call was worse
+ * than a hard failure.
+ *
  * @protected
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
@@ -523,7 +528,16 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDUnaryOp_ = function (binarye
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOp_ = function (info, L, R) {
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined} */ fn = this.binaryRenderers_[info.category];
-  return fn ? fn(this, info, L, R) : '(__unknown_binop(' + L + ', ' + R + '))';
+  if (!fn) {
+    throw new Error(
+      'Wasm2Lang codegen: no i32 binary renderer for category ' +
+        String(info.category) +
+        ' (op "' +
+        String(info.opStr) +
+        '"). This is a missing entry in the backend renderer table.'
+    );
+  }
+  return fn(this, info, L, R);
 };
 
 /**
@@ -552,6 +566,31 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.prepareI32BinaryOperand_ = function 
  * Dispatches a classified i64 binary operation to the backend-specific
  * renderer registered in {@code i64BinaryRenderers_}.
  *
+ * Reaching this with no renderer means the module still carries i64 that the
+ * target cannot express.  Only java, csharp and javascript register i64
+ * renderers; asm.js and php64 declare {@code needsI64Lowering()} and expect
+ * {@code i64-to-i32-lowering} to have erased i64 during normalization, so for
+ * them an unregistered category is proof the lowering never ran.
+ *
+ * That happens through a supported route: the lowering is a NORMALIZE-time
+ * binaryen pass chosen from the target backend, and
+ * {@code --pre-normalized --normalize-wasm binaryen:none} skips the whole
+ * binaryen phase.  A `.wasm` normalized for a native-i64 target (javascript,
+ * java, csharp) therefore cannot be emitted as asm.js or php64 — which
+ * contradicts "Backend independence" in the normalization rules, and is worth
+ * fixing at the pipeline level rather than here.
+ *
+ * Until then this must FAIL, not paper over it.  The previous fallback emitted
+ * {@code __unknown_i64_binop(...)}, a call to a function that is never defined:
+ * on the reference module that produced 13 753 of them in output that looked
+ * perfectly ordinary and died with {@code ReferenceError} on the first i64
+ * operation.  Same reasoning as the {@code w2l_codegen_meta} version check —
+ * valid-looking source that has quietly lost its meaning is far harder to
+ * diagnose than a hard stop.
+ *
+ * The throw is in the TRANSPILER and aborts the build; it never reaches the
+ * emitted module, so the asm.js subset's ban on `throw` does not apply.
+ *
  * @protected
  * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
  * @param {string} L
@@ -560,7 +599,19 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.prepareI32BinaryOperand_ = function 
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderI64BinaryOp_ = function (info, L, R) {
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined} */ fn = this.i64BinaryRenderers_[info.category];
-  return fn ? fn(this, info, L, R) : '(__unknown_i64_binop(' + L + ', ' + R + '))';
+  if (!fn) {
+    throw new Error(
+      'Wasm2Lang codegen: this backend cannot express the i64 operation "' +
+        String(info.opStr) +
+        '" (category ' +
+        String(info.category) +
+        '), because the module still contains i64 that i64-to-i32-lowering should have removed. ' +
+        'The lowering runs during normalization and is selected from --language-out, and ' +
+        '--normalize-wasm binaryen:none skips it. Re-normalize the input for THIS backend, ' +
+        'or normalize for asmjs/php64, whose lowered output every backend can consume.'
+    );
+  }
+  return fn(this, info, L, R);
 };
 
 /**

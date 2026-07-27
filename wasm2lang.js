@@ -13,6 +13,16 @@
   ) {
     var fs = await import('fs');
 
+    // This list must stay the exact mirror of the --js globs in
+    // scripts/closure.flags.  Closure discovers sources by glob and orders them
+    // itself; --dev evals a hand-maintained list in order, so a file added to
+    // src/ is picked up by the build and silently missed here.  The drift is
+    // invisible until some input reaches the missing code: src/backend/simd_ops.js
+    // was absent from day one, and --dev died with "classifyUnaryOp is not a
+    // function" on any module using v128 while the shipped build was fine.
+    //
+    // To re-check after adding a source, compare the two sets rather than
+    // eyeballing them: every .js under src/ must appear below exactly once.
     var moduleSpecs = [
       {'sourcePath': 'src/0-header.js', 'exportName': 'Wasm2Lang'},
       {'sourcePath': 'src/backend/trap_kinds.js'},
@@ -28,6 +38,7 @@
       {'sourcePath': 'src/backend/i64_coercion.js'},
       {'sourcePath': 'src/backend/value_types.js'},
       {'sourcePath': 'src/backend/numeric_ops.js'},
+      {'sourcePath': 'src/backend/simd_ops.js'},
       {'sourcePath': 'src/backend/identifier_mangler.js'}
     ];
 
@@ -58,7 +69,7 @@
     var backendFilesById = {
       'asmjs': sharedBackendFiles,
       'csharp': ['binary_ops.js'].concat(sharedBackendFiles),
-      'java': ['binary_ops.js'].concat(sharedBackendFiles),
+      'java': ['binary_ops.js', 'simd_ops.js'].concat(sharedBackendFiles),
       'php64': ['binary_ops.js'].concat(sharedBackendFiles),
       'javascript': [
         'binary_ops.js',
@@ -108,6 +119,7 @@
       {'sourcePath': 'src/wasm/tree/custom_passes/anchor_markers.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/metadata_section.js'},
       {'sourcePath': 'src/wasm/tree/custom_passes/registry.js'},
+      {'sourcePath': 'src/wasm/tree/typedefs.js'},
       {'sourcePath': 'src/wasm/tree/node_schema.js'},
       {'sourcePath': 'src/wasm/tree/pass_runner.js'},
       {'sourcePath': 'src/wasm/tree/traversal_kernel.js'},

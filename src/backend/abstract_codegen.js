@@ -314,6 +314,23 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
    * @protected @type {?Object<string, number>}
    */
   this.trapSiteOrdinals_ = null;
+
+  /**
+   * internalName → exportName for the current emit, or null on the backends
+   * that declare every function under its mangled internal name.  Read only by
+   * {@code emittedFunctionSymbol_}, which needs to report the identifier a
+   * host stack frame will actually show.
+   * @protected @type {?Object<string, string>}
+   */
+  this.trapExportNames_ = null;
+
+  /**
+   * How many site ids the most recent emit ALLOCATED, before the ones whose
+   * text did not survive were dropped.  Published in the artifact so a sparse
+   * table reads as deliberate filtering rather than as lost rows.
+   * @protected @type {number}
+   */
+  this.lastEmitAllocatedTrapSiteCount_ = 0;
 };
 
 /**

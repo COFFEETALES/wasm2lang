@@ -75,3 +75,19 @@ Wasm2Lang.Backend.Php64Codegen.prototype.localN_ = function (index) {
   }
   return '$l' + index;
 };
+
+/**
+ * Wasm functions are emitted as closures assigned to a module-scope variable
+ * ({@code $fn = function(...) {...};}), so the symbol a PHP stack frame shows
+ * carries the {@code $} sigil.  Helpers are plain {@code function} declarations
+ * and keep the inherited {@code emittedHelperSymbol_}.
+ *
+ * @override
+ * @protected
+ * @param {?BinaryenFunctionInfo} functionInfo
+ * @return {?string}
+ */
+Wasm2Lang.Backend.Php64Codegen.prototype.emittedFunctionSymbol_ = function (functionInfo) {
+  if (!functionInfo || '' === functionInfo.name) return null;
+  return this.phpVar_(this.safeName_(functionInfo.name));
+};

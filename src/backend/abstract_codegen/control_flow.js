@@ -2509,9 +2509,15 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.shouldEmitDropChild_ = function (bin
  *
  * Note that a site id is allocated even for the dead {@code unreachable}
  * placeholders binaryen injects after unconditional control flow, which the
- * parent block's {@code reachableBlockChildCount_} then trims.  The table is
- * therefore a superset of the sites reachable at run time: ids stay dense and
- * stable, and an id that was trimmed simply never reaches the host.
+ * parent block's {@code effectiveReachableBlockChildCount_} then trims (on a
+ * real module that is the overwhelming majority — 235 of 244 dead ids;
+ * {@code propagateTerminalChild_} and unused helper bodies account for the
+ * rest).  Allocation therefore stays a superset of what ships, deliberately:
+ * ids are minted by the emission itself, so they cannot be predicted before
+ * it.  {@code selectLiveTrapSites_} drops the dead rows afterwards, once the
+ * assembled source says which ids actually survived — the ids themselves are
+ * never renumbered, so a trimmed id simply never reaches the host and the
+ * surviving ones keep meaning what the emitted code says they mean.
  *
  * @protected
  * @param {number} indent
