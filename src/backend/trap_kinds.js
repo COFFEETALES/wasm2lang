@@ -16,8 +16,18 @@
 // zero-initialized field never reads as a valid kind.
 //
 // Not every kind has an emit site in every backend — the enum is the complete
-// contract, `Wasm2Lang.Backend.TrapKind.isEmitted` reports what a given build
-// can actually raise.  See the table in CLAUDE.md.
+// contract, and which of them a given build can actually raise is recorded in
+// the trap-kind table in CLAUDE.md.  There is deliberately no programmatic
+// query for that: the answer depends on the backend, the payload mode and which
+// helpers survived usage discovery, so anything short of the emitted artifact
+// would be a guess.  The `kinds` map written into <out-file>.traps.json is the
+// authoritative per-build answer.
+//
+// INDIRECT_SIGNATURE (8) and MEMORY_OOB (9) are reserved and never emitted by
+// any backend today.  That is NOT because those traps cannot happen: indirect
+// calls into an unpopulated table slot return a fabricated 0 (or alias another
+// function through the index mask), and linear-memory accesses are unchecked
+// everywhere.  See "Diagnosable traps" in CLAUDE.md.
 // ---------------------------------------------------------------------------
 
 /**

@@ -399,7 +399,9 @@ Wasm2Lang.Processor.normalizeUserOptions_ = function (userOptions) {
         trapSites: !!userOptions['trapSites'],
         // Absent means full mode, matching a bare --trap-sites; only an
         // explicit false selects the id-less `kind` mode.
-        trapSiteIds: false !== userOptions['trapSiteIds']
+        trapSiteIds: false !== userOptions['trapSiteIds'],
+        // Opt-in on top of either mode: absent keeps the self-contained abort.
+        trapHostAbort: !!userOptions['trapHostAbort']
       });
 
   return o;
@@ -503,7 +505,8 @@ Wasm2Lang.Processor.getPassAnalysis = function (binaryenModule, wastString) {
       preNormalized: false,
       disabledPasses: [],
       trapSites: false,
-      trapSiteIds: true
+      trapSiteIds: true,
+      trapHostAbort: false
     });
 
   var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ passes = Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses(options);

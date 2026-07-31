@@ -51,12 +51,17 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.needsI64Lowering = function () {
 /**
  * Aborts a trap site with a real {@code throw}.
  *
- * The asm.js base class has to spin ({@code while (1) {}}) because {@code throw}
- * is outside the asm.js subset; modern JS has no such restriction, so the abort
- * is both immediate and self-describing.  This runs only under
- * {@code --trap-sites} — the host hook has already been called with
+ * The asm.js base class has to reach for unbounded self-recursion because
+ * {@code throw} is outside the asm.js subset; modern JS has no such
+ * restriction, so the abort is both immediate and self-describing.  This runs
+ * only under {@code --trap-sites} — the host hook has already been called with
  * {@code (kind, siteId)} at this point, and this statement is what makes the
  * site unable to fall through even when the host declines to throw.
+ *
+ * {@code host-abort} is deliberately not honoured here.  It exists to remove
+ * the asm.js abort's call-graph cycle; a {@code throw} is not a call and forms
+ * no cycle, so obeying it on this backend would drop the fall-through guard in
+ * exchange for nothing at all.
  *
  * @override
  * @protected

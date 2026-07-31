@@ -39,7 +39,8 @@ Wasm2Lang.Options.Schema.OptionKey = {
  *   preNormalized: boolean,
  *   disabledPasses: !Array<string>,
  *   trapSites: boolean,
- *   trapSiteIds: boolean
+ *   trapSiteIds: boolean,
+ *   trapHostAbort: boolean
  * }}
  */
 Wasm2Lang.Options.Schema.NormalizedOptions;
@@ -64,7 +65,8 @@ Wasm2Lang.Options.Schema.NormalizedOptions;
  *   mangler: (string|undefined),
  *   preNormalized: (boolean|undefined),
  *   trapSites: (boolean|undefined),
- *   trapSiteIds: (boolean|undefined)
+ *   trapSiteIds: (boolean|undefined),
+ *   trapHostAbort: (boolean|undefined)
  * }}
  */
 Wasm2Lang.Options.Schema.UserOptions;
@@ -124,7 +126,8 @@ Wasm2Lang.Options.Schema.defaultOptions = {
   preNormalized: false,
   disabledPasses: [],
   trapSites: false,
-  trapSiteIds: true
+  trapSiteIds: true,
+  trapHostAbort: false
 };
 
 /**
@@ -269,7 +272,13 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.DISABL
 };
 
 /**
- * Parses {@code --trap-sites[=full|kind]}.
+ * Parses {@code --trap-sites[=<mode>[,<modifier>…]]}.
+ *
+ * The value is a comma-separated list because the payload mode and the abort
+ * shape are independent choices: {@code full} vs {@code kind} decides what the
+ * host hook receives, {@code host-abort} decides what — if anything — the
+ * emitted code does after calling it.  Every combination is meaningful, so a
+ * single enum would have needed one name per product.
  *
  * {@code full} (the default, and what a bare {@code --trap-sites} means) hands
  * the host {@code (kind, siteId)} and writes the side-car table.  {@code kind}
@@ -278,6 +287,16 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.DISABL
  * module.  It exists because full mode is too heavy to leave in a delivered
  * build, which leaves a crash at a user's machine completely mute — the only
  * case that actually matters for a product.
+ *
+ * {@code host-abort} makes stopping the program entirely the host's job on the
+ * asm.js backend: the hook call is emitted and nothing follows it, so the
+ * module contains no self-recursive {@code $w2l_abort}.  It exists for
+ * consumers whose delivery pipeline validates the artifact's call graph and
+ * rejects any cycle, self-loop included — a policy that makes the default
+ * abort unshippable and therefore makes {@code --trap-sites} unusable in
+ * either mode.  It buys that at a real price, documented at
+ * {@code renderTrapAbortStatement_}: a host that returns instead of throwing
+ * resumes the caller on a fabricated value.
  *
  * An unrecognised value is an error rather than a silent fallback: the
  * fallback would be {@code full}, so a typo in a release build would quietly
@@ -292,20 +311,29 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.DISABL
 Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.TRAP_SITES] = function (options, strs) {
   options.trapSites = true;
   options.trapSiteIds = true;
+  options.trapHostAbort = false;
   for (var /** @type {number} */ i = 0, /** @const {number} */ len = strs.length; i !== len; ++i) {
-    var /** @const {string} */ mode = strs[i].trim().toLowerCase();
-    if ('' === mode || 'full' === mode) continue;
-    if ('kind' === mode) {
-      options.trapSiteIds = false;
-      continue;
+    var /** @const {!Array<string>} */ parts = strs[i].split(',');
+    for (var /** @type {number} */ j = 0, /** @const {number} */ pLen = parts.length; j !== pLen; ++j) {
+      var /** @const {string} */ mode = parts[j].trim().toLowerCase();
+      if ('' === mode || 'full' === mode) continue;
+      if ('kind' === mode) {
+        options.trapSiteIds = false;
+        continue;
+      }
+      if ('host-abort' === mode) {
+        options.trapHostAbort = true;
+        continue;
+      }
+      throw new Error(
+        'Unrecognized --trap-sites value: "' +
+          parts[j] +
+          '". Expected a comma-separated list of "full" (default) or "kind", optionally with ' +
+          '"host-abort". Note that a bare --trap-sites swallows the next token unless that token ' +
+          'starts with a double dash, so place it before another option or last on the line, ' +
+          'never immediately before a positional path.'
+      );
     }
-    throw new Error(
-      'Unrecognized --trap-sites value: "' +
-        strs[i] +
-        '". Expected "full" (default) or "kind". Note that a bare --trap-sites swallows the next ' +
-        'token unless that token starts with a double dash, so place it before another option or ' +
-        'last on the line, never immediately before a positional path.'
-    );
   }
 };
 
@@ -385,6 +413,6 @@ Wasm2Lang.Options.Schema.optionSchema = {
   'trapSites': {
     optionType: 'boolean',
     optionDesc:
-      'Makes traps diagnosable. --trap-sites (or =full) gives every trap site a module-unique id, calls the host hook as $w2l_trap(kind, siteId) before aborting unconditionally, and writes a <out-file>.traps.json table mapping each surviving id to its kind, function and emitted symbol. --trap-sites=kind is the release-weight variant: $w2l_trap(kind) only, no ids and no table, so a shipped crash is still classifiable (divide by zero vs violated engine invariant) without an artifact to distribute. Both modes add the divide-by-zero / overflow checks that the plain output omits. Off by default; when off the emitted code is byte-identical to a build without this flag.'
+      'Makes traps diagnosable. --trap-sites (or =full) gives every trap site a module-unique id, calls the host hook as $w2l_trap(kind, siteId) before aborting unconditionally, and writes a <out-file>.traps.json table mapping each surviving id to its kind, function and emitted symbol. --trap-sites=kind is the release-weight variant: $w2l_trap(kind) only, no ids and no table, so a shipped crash is still classifiable (divide by zero vs violated engine invariant) without an artifact to distribute. Both modes add the divide-by-zero / overflow checks that the plain output omits. Append ,host-abort (e.g. --trap-sites=full,host-abort) to emit nothing after the hook on the asmjs backend, which removes the self-recursive $w2l_abort helper for consumers whose artifact validation rejects call-graph cycles; the host then owns stopping the program entirely, and one that returns instead of throwing resumes the caller on a fabricated value. Off by default; when off the emitted code is byte-identical to a build without this flag.'
   }
 };

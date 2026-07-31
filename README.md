@@ -121,7 +121,7 @@ wasm2lang [options]
 | `--mangler <key>`            | Deterministic identifier mangling.                                                           |
 | `--define K=V`               | Compile-time defines (e.g. `JAVA_HEAP_SIZE=524288`). Repeatable.                             |
 | `--pre-normalized`           | Input was pre-normalized; recover passes from the custom section.                            |
-| `--trap-sites[=full\|kind]`  | Diagnosable traps -- see below. `full` (default) adds site ids and a table; `kind` neither.  |
+| `--trap-sites[=<modes>]`     | Diagnosable traps -- see below. `full` (default) adds site ids and a table, `kind` neither; append `,host-abort` for asm.js. |
 | `--out-file <path>`          | Write to a file instead of stdout.                                                           |
 
 Run `wasm2lang --help` for the full option list.
@@ -172,6 +172,24 @@ wasm2lang --input-file module.wasm                         \
 A bare `--trap-sites` swallows the next token unless it starts with `--`, so put
 it before another option or last on the line -- never immediately before a
 positional path.
+
+After the hook, the emitted code aborts on its own, so a host that forgets to
+throw cannot resume on a fabricated value. On asm.js -- which has no `throw` --
+that abort is a self-recursive helper, and some delivery pipelines validate the
+generated artifact's call graph and reject every cycle, self-loop included.
+For those, append `,host-abort`:
+
+```bash
+wasm2lang ... --trap-sites=full,host-abort   # or =kind,host-abort
+```
+
+The hook is then the last thing emitted at a trap site and the helper is gone,
+so the module has no self-recursive function. **The stop becomes entirely
+yours**: a host that returns from `$w2l_trap` resumes the caller on a fabricated
+value, exactly the corruption the abort exists to prevent. Never return from the
+hook -- throw an `Error`, or latch a flag your driver loop checks before
+re-entering the module. The four backends that abort with `throw` are
+unaffected: a throw is not a call and forms no cycle.
 
 Each row maps a `siteId` the host received back to its cause and location:
 

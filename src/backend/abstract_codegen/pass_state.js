@@ -248,6 +248,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.markBinding_ = function (name) {
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.resetTrapSites_ = function (options, definedFunctions, opt_exportNameMap) {
   this.trapSitesEnabled_ = !!options.trapSites;
+  // Read unconditionally rather than only when the flag is on: the only reader
+  // is a renderer that the flag-off path never reaches, so gating it here would
+  // add a branch that protects nothing and leave a stale value behind on a
+  // codegen reused across emits.
+  this.trapHostAbort_ = !!options.trapHostAbort;
   this.trapSiteCounter_ = 0;
   this.trapSiteOrdinals_ = /** @type {!Object<string, number>} */ (Object.create(null));
   this.trapExportNames_ = opt_exportNameMap || null;
@@ -306,9 +311,10 @@ Wasm2Lang.Backend.AbstractCodegen.TRAP_MESSAGE_SITE_PATTERN_ = 'w2l trap kind=\\
  *
  * The default covers javascript, java, csharp and php64, whose abort embeds
  * {@code w2l trap kind=<n> site=<n>} in the source.  asm.js has no message —
- * its abort is a bare spin — so {@code JsCommonCodegen} adds the hook-call
- * form, which is unambiguous because the trap binding's name (mangled or not)
- * denotes nothing else in the module.
+ * its abort is a helper call, and under {@code host-abort} it has no abort at
+ * all — so {@code JsCommonCodegen} adds the hook-call form, which is
+ * unambiguous because the trap binding's name (mangled or not) denotes nothing
+ * else in the module.
  *
  * @protected
  * @return {!Array<!RegExp>}
@@ -528,7 +534,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.allocateHelperTrapSite_ = function (
     funcName: null,
     symbol: this.emittedHelperSymbol_(helperName),
     helper: helperName,
-    ordinal: this.nextTrapOrdinal_(' helper ' + helperName)
+    ordinal: this.nextTrapOrdinal_('\0helper\0' + helperName)
   });
   return siteId;
 };

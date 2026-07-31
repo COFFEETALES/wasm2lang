@@ -780,7 +780,13 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
     var /** @type {number} */ size = 1;
     while (size < sg.slots.length) size *= 2;
     while (sg.slots.length < size) sg.slots[sg.slots.length] = {boundName: null};
-    // Any null slot means a call-indirect through it needs a trap stub.
+    // Any null slot means a call-indirect through it needs a filler function.
+    // It is NOT a trap: the emitted stub returns the zero of the signature's
+    // result type (nothing, for a void signature), where wasm would trap on an
+    // uninitialized element.  Measured, all backends, `binaryen:max`: an
+    // indirect call landing on an unpopulated signature yields 0 instead of
+    // trapping.  Kind `indirect_signature` (8) is reserved for the day this
+    // becomes a real trap and is deliberately never emitted today.
     var /** @type {boolean} */ hasNulls = false;
     for (var /** @type {number} */ ni = 0; ni !== size; ++ni) {
       if (null === sg.slots[ni].boundName) {
@@ -820,9 +826,23 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.collectFunctionTables_ = function (w
  * validator rejects the module ("function-pointer table ... wasn't defined").
  *
  * A missing signature is given a single-slot, stub-only table (size 1, mask 0,
- * {@code stubNeeded} = true).  The shared emitter then renders the trap stub
- * and the {@code [stub]} table; calling through it matches wasm semantics —
- * the call traps / is never reached.
+ * {@code stubNeeded} = true).  The shared emitter then renders the stub and the
+ * {@code [stub]} table.
+ *
+ * The stub is a **filler, not a trap**, and the distinction matters: its body is
+ * {@code return 0} coerced to the signature's result type (empty for a void
+ * signature).  Wasm traps on a call through an uninitialized element; the
+ * emitted module returns a fabricated zero and keeps running.  This is sound for
+ * the shape the paragraph above describes — a statically-guarded call site that
+ * is never reached — and unsound for any input where the call site *is* reached,
+ * which nothing here detects.  Measured on all five backends: an indirect call
+ * into an unpopulated signature returns 0 where wasm reports "null function or
+ * function signature mismatch".  Trailing-null slots are worse still, because
+ * {@code tableEntries} is trimmed and the index is masked, so the call aliases
+ * onto a *different* function rather than reaching the stub at all.
+ * {@code Wasm2Lang.Backend.TrapKind.INDIRECT_SIGNATURE} (8) is reserved for
+ * closing this and is deliberately never emitted; see the trap-kind contract in
+ * CLAUDE.md before wiring it up, because doing so changes emitted output.
  *
  * @protected
  * @param {!BinaryenModule} wasmModule

@@ -145,6 +145,20 @@ Wasm2Lang.Backend.JsCommonCodegen.trapCallArguments_ = function (kind, siteId) {
  * unless a live call survives, which is why that one is resolved by scanning
  * the emitted text instead.
  *
+ * Under {@code --trap-sites=…,host-abort} nothing is emitted here at all, and
+ * the helper is therefore never marked, never registered and never defined.
+ * That is a deliberate downgrade, not a cheaper equivalent: the trap site goes
+ * back to falling through, so a host that returns from the hook resumes the
+ * caller on the {@code return 0} that follows every trap site — a fabricated
+ * value indistinguishable from a real one, which is the exact failure the
+ * abort exists to prevent.  The mode buys back the one thing the abort cannot
+ * give: an artifact with no call-graph cycle, for a consumer whose delivery
+ * pipeline rejects self-recursion outright and for whom the default is
+ * therefore not shippable in either payload mode.  It shifts the whole
+ * obligation onto the host, which must never return from {@code $w2l_trap} —
+ * throw an {@code Error}, or latch a flag that the driver loop checks before
+ * re-entering the module.
+ *
  * @protected
  * @param {number} indent
  * @param {number} kind
@@ -154,6 +168,7 @@ Wasm2Lang.Backend.JsCommonCodegen.trapCallArguments_ = function (kind, siteId) {
 Wasm2Lang.Backend.JsCommonCodegen.prototype.renderTrapAbortStatement_ = function (indent, kind, siteId) {
   void kind;
   void siteId;
+  if (this.trapHostAbort_) return '';
   this.markHelper_('$w2l_abort');
   return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + this.n_('$w2l_abort') + '();\n';
 };
@@ -161,7 +176,8 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.renderTrapAbortStatement_ = function
 /**
  * Adds the hook-call form to the liveness patterns.
  *
- * asm.js aborts with a bare spin and therefore has no message to grep for, so
+ * asm.js has no {@code throw} and therefore no message to grep for — its abort
+ * is a helper call, and under {@code host-abort} there is no abort at all — so
  * the call itself is the only textual evidence that a site survived.  The
  * binding name is unambiguous in both modes: unmangled it is {@code $w2l_trap},
  * and mangled it is a token the encoder assigned to that key alone, so a call

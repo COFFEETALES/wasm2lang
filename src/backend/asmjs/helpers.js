@@ -418,6 +418,13 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     //
     // Registered last in this block so every helper that emits a trap above has
     // already marked it; function bodies ran before emitHelpers_ entirely.
+    //
+    // Registration stays unconditional under `host-abort`, which emits no abort
+    // and therefore never marks this helper.  Nothing needs a second gate: an
+    // unmarked helper is skipped by emitOrCollectHelper_, and asm.js filters the
+    // mangler roster through discoveredHelpers_, so an unmarked name claims no
+    // encoder slot either.  Gating the registration as well would only add a
+    // second place for the two conditions to disagree.
     // prettier-ignore
     h('$w2l_abort', [],
       pad1 + 'function ' + n('$w2l_abort') + '() {\n' +

@@ -275,6 +275,16 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
   this.trapSitesEnabled_ = false;
 
   /**
+   * True while emitting under {@code --trap-sites=…,host-abort}: the trap hook
+   * is called and NOTHING is emitted after it, so stopping the program is
+   * entirely the host's job.  Only the asm.js backend reads it — the other four
+   * abort with a {@code throw}, which is not a call and cannot form the
+   * call-graph cycle this mode exists to remove.
+   * @protected @type {boolean}
+   */
+  this.trapHostAbort_ = false;
+
+  /**
    * Dense module-unique id allocator for trap sites.  Reset at the top of
    * every {@code emitCode} — the mangler path runs a full throwaway discovery
    * emit before the real one ({@code runUsageDiscovery_}), so a counter that

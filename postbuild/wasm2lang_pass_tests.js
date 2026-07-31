@@ -870,6 +870,285 @@ var trapSitesKindOnly = new EmissionFamily(
   {'trapSites': true, 'trapSiteIds': false}
 );
 
+// ---------------------------------------------------------------------------
+// Call-graph extraction, for the host-abort families.
+//
+// The property those families pin is the consumer's, not ours: their delivery
+// pipeline walks the artifact's call graph and rejects any cycle, a self-loop
+// included.  Grepping for `$w2l_abort` would only prove that ONE known cycle is
+// gone; building the graph proves no other appeared in its place, which is what
+// the mode actually promises.
+// ---------------------------------------------------------------------------
+
+/** Returns the index of the closing quote of the literal starting at `i`. */
+function skipStringLiteral(code, i) {
+  var quote = code.charAt(i);
+  for (var j = i + 1; j < code.length; ++j) {
+    var c = code.charAt(j);
+    if ('\\' === c) {
+      ++j;
+      continue;
+    }
+    if (c === quote) return j;
+  }
+  return code.length;
+}
+
+/** Returns the index of the `}` matching the `{` at `open`, or -1. */
+function matchBrace(code, open) {
+  var depth = 0;
+  for (var i = open; i < code.length; ++i) {
+    var c = code.charAt(i);
+    if ('"' === c || "'" === c) {
+      i = skipStringLiteral(code, i);
+      continue;
+    }
+    if ('/' === c && '/' === code.charAt(i + 1)) {
+      i = code.indexOf('\n', i);
+      if (i < 0) return -1;
+      continue;
+    }
+    if ('/' === c && '*' === code.charAt(i + 1)) {
+      i = code.indexOf('*/', i + 2);
+      if (i < 0) return -1;
+      ++i;
+      continue;
+    }
+    if ('{' === c) ++depth;
+    else if ('}' === c && 0 === --depth) return i;
+  }
+  return -1;
+}
+
+/**
+ * Returns one entry per `function NAME(...) { ... }` in `code`, carrying the
+ * span of the whole declaration and of its body.  Covers both the declarations
+ * and the named function expression the module shell is wrapped in.
+ */
+function scanFunctionSpans(code) {
+  var declaration = /function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/g;
+  var spans = [];
+  var match;
+  while ((match = declaration.exec(code)) !== null) {
+    var open = code.indexOf('{', declaration.lastIndex);
+    if (open < 0) continue;
+    var close = matchBrace(code, open);
+    if (close < 0) continue;
+    spans.push({name: match[1], declStart: match.index, bodyStart: open + 1, end: close});
+  }
+  return spans;
+}
+
+/** Escapes `name` for use inside a RegExp. */
+function escapeForRegExp(name) {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Builds the call graph of `code`: name -> [names it calls from its OWN body].
+ * Nested declarations are blanked out of the enclosing body first, so the
+ * module shell does not inherit an edge for every call its children make.
+ */
+function buildCallGraph(code) {
+  var spans = scanFunctionSpans(code);
+  var graph = Object.create(null);
+  var i;
+  for (i = 0; i < spans.length; ++i) graph[spans[i].name] = [];
+  var names = Object.keys(graph);
+  for (i = 0; i < spans.length; ++i) {
+    var self = spans[i];
+    var body = code.slice(self.bodyStart, self.end).split('');
+    for (var n = 0; n < spans.length; ++n) {
+      var nested = spans[n];
+      if (n === i || nested.declStart < self.bodyStart || nested.end > self.end) continue;
+      for (var b = nested.declStart - self.bodyStart; b <= nested.end - self.bodyStart; ++b) body[b] = ' ';
+    }
+    var ownBody = body.join('');
+    for (var t = 0; t < names.length; ++t) {
+      if (new RegExp('(?:^|[^A-Za-z0-9_$])' + escapeForRegExp(names[t]) + '\\s*\\(').test(ownBody)) {
+        graph[self.name].push(names[t]);
+      }
+    }
+  }
+  return graph;
+}
+
+/** Returns a cycle in `graph` as a name array, or null when it is acyclic. */
+function findCallCycle(graph) {
+  var state = Object.create(null);
+  var stack = [];
+  var found = null;
+  function visit(name) {
+    if (found) return;
+    if (1 === state[name]) {
+      found = stack.slice(stack.indexOf(name)).concat([name]);
+      return;
+    }
+    if (2 === state[name]) return;
+    state[name] = 1;
+    stack.push(name);
+    var callees = graph[name] || [];
+    for (var i = 0; i < callees.length; ++i) visit(callees[i]);
+    stack.pop();
+    state[name] = 2;
+  }
+  Object.keys(graph).forEach(visit);
+  return found;
+}
+
+// --trap-sites=<mode>,host-abort on asm.js.  The mode emits the hook and
+// NOTHING after it, so the module carries no self-recursive $w2l_abort — the
+// one construct a consumer whose artifact validation forbids call-graph cycles
+// cannot accept, and the reason --trap-sites was unusable for them in either
+// payload mode.
+//
+// Three things have to hold together, and each of them is a way a well-meaning
+// change could quietly undo the mode.  The graph must be acyclic (not merely
+// free of the one helper we know about).  No spin may have taken the abort's
+// place — that would satisfy the validator while making the artifact strictly
+// worse than the recursion it replaced.  And the trade-off must be REAL: a host
+// that returns from the hook resumes the caller on a fabricated value.  That
+// last assertion looks like it is pinning a bug; it is pinning the price of the
+// mode, so nobody can reintroduce an abort here and still call it host-abort.
+function hostAbortFamily(name, modeOptions, expectTable) {
+  return new EmissionFamily(
+    name,
+    'trap_sites.wast',
+    'asmjs',
+    function (code, result) {
+      assert(!/w2l_abort/.test(code), 'host-abort emitted the abort helper it exists to remove\n' + code);
+
+      var cycle = findCallCycle(buildCallGraph(code));
+      assert(null === cycle, 'host-abort output has a call-graph cycle: ' + (cycle || []).join(' -> ') + '\n' + code);
+
+      // A spin passes a call-graph validator too, and is the worse artifact:
+      // it stops the fall-through by freezing, with no stack and no log.
+      assert(
+        !/while\s*\(\s*(?:1|true)\s*\)/.test(code) && !/for\s*\(\s*;\s*;\s*\)/.test(code),
+        'host-abort replaced the abort with a spin — a frozen tab carries no diagnosis\n' + code
+      );
+      assert(!/\bthrow\b/.test(code), 'a `throw` leaked into asm.js output — it is outside the validated subset\n' + code);
+
+      // The hook itself is untouched: this mode drops the abort, not the
+      // diagnosis, and the payload shape still follows the selected mode.
+      if (expectTable) {
+        assert(/\$w2l_trap\(\d+,\s*\d+\)/.test(code), 'host-abort dropped the (kind, siteId) payload\n' + code);
+        var parsed = JSON.parse(result['traps']);
+        assert(parsed.siteCount > 0, 'host-abort site table came back empty — liveness detection no longer matches');
+        // Dropping the abort helper frees a mangler slot and shifts every later
+        // helper's token, so `symbol` legitimately differs from a non-host-abort
+        // build.  What must NOT differ is that each row names something the
+        // artifact it was emitted with actually declares.
+        for (var s = 0; s < parsed.sites.length; ++s) {
+          var symbol = parsed.sites[s].symbol;
+          assert(symbol, 'host-abort table row ' + parsed.sites[s].id + ' carries no emitted symbol');
+          assert(
+            new RegExp('function ' + escapeForRegExp(symbol) + '\\s*\\(').test(code),
+            'host-abort row ' + parsed.sites[s].id + ' names "' + symbol + '", which is declared nowhere in the source'
+          );
+        }
+      } else {
+        assert(!result['traps'], 'host-abort in kind mode wrote a site table');
+        assert(!/\$w2l_trap\(\d+,/.test(code), 'a siteId survived into kind mode\n' + code);
+        assert(/\$w2l_trap\(\d+\)/.test(code), 'kind mode did not pass the kind to the hook\n' + code);
+      }
+
+      // The checked-division guards stay on: without them a division by zero
+      // never reaches the hook at all and there is nothing to classify.
+      assert(/\$w2l_div_s_i32\(/.test(code), 'host-abort dropped the checked-division helper\n' + code);
+
+      var factory = eval(code + '\nmodule');
+
+      // A host that throws is what this mode requires, and it is the host —
+      // not the module — that stops the program.
+      var thrownSeen = [];
+      var thrownInst = factory(
+        globalThis,
+        {
+          __wasm2lang_trap: function (k, s) {
+            thrownSeen.push([k, s]);
+            throw new Error('host stop');
+          }
+        },
+        new ArrayBuffer(1 << 20)
+      );
+      var thrownReturn = 'not-set';
+      var thrownError = null;
+      try {
+        thrownReturn = thrownInst.twoTrapsOneFunc(1);
+      } catch (e) {
+        thrownError = e;
+      }
+      assert(1 === thrownSeen.length, 'throwing host: expected one hook call, saw ' + thrownSeen.length);
+      assert(1 === thrownSeen[0][0], 'throwing host: expected kind 1 (unreachable), got ' + thrownSeen[0][0]);
+      assert(thrownError, 'a host that threw did not stop the caller');
+      assert('not-set' === thrownReturn, 'the caller resumed despite the host throwing, returning ' + thrownReturn);
+
+      // And the documented price, asserted rather than left in a comment: with
+      // nothing emitted after the hook, a host that returns hands the caller a
+      // value wasm says cannot exist.  If this ever stops holding, an abort has
+      // come back and the mode no longer does what its name says.
+      var silentSeen = [];
+      var silentInst = factory(
+        globalThis,
+        {
+          __wasm2lang_trap: function (k, s) {
+            silentSeen.push([k, s]);
+          }
+        },
+        new ArrayBuffer(1 << 20)
+      );
+      var silentReturn = 'not-set';
+      var silentError = null;
+      try {
+        silentReturn = silentInst.twoTrapsOneFunc(1);
+      } catch (e) {
+        silentError = e;
+      }
+      assert(null === silentError, 'host-abort still aborted on its own: ' + silentError);
+      assert(1 === silentSeen.length, 'non-throwing host: expected one hook call, saw ' + silentSeen.length);
+      assert(
+        3 === silentReturn,
+        'expected the documented fall-through onto the fabricated value; got ' +
+          silentReturn +
+          ' — if an abort came back, host-abort is no longer host-abort'
+      );
+
+      // Unaffected paths still compute.
+      assert(10 === silentInst.divByConstant(100), 'divByConstant(100) miscomputed under host-abort');
+    },
+    ['binaryen:none', 'wasm2lang:codegen'],
+    modeOptions
+  );
+}
+
+var trapSitesHostAbort = hostAbortFamily('trap-sites-host-abort', {'trapSites': true, 'trapHostAbort': true}, true);
+
+var trapSitesHostAbortKind = hostAbortFamily(
+  'trap-sites-host-abort-kind',
+  {'trapSites': true, 'trapSiteIds': false, 'trapHostAbort': true},
+  false
+);
+
+// host-abort is asm.js-only, and silently so on the four backends that abort
+// with a `throw`: a throw is not a call and forms no cycle, so honouring the
+// modifier there would drop the fall-through guard in exchange for nothing.
+// Pinned here because "unchanged" is exactly the kind of claim that rots.
+var trapSitesHostAbortThrowingBackend = new EmissionFamily(
+  'trap-sites-host-abort-throwing-backend',
+  'trap_sites.wast',
+  'javascript',
+  function (code) {
+    assert(
+      /\$w2l_trap\(1, \d+\);\s*\n\s*throw new Error\(/.test(code),
+      'host-abort disarmed the throwing backend, which had no cycle to remove\n' + code
+    );
+    assert(/w2l trap kind=1 site=\d+/.test(code), 'the self-describing abort message went missing\n' + code);
+  },
+  ['binaryen:none', 'wasm2lang:codegen'],
+  {'trapSites': true, 'trapHostAbort': true}
+);
+
 // An i64 operation that reaches a backend with no i64 renderer means
 // `i64-to-i32-lowering` never ran — the module cannot be expressed, and the only
 // honest outcome is to stop.  Emitting a placeholder call instead is how 13 753
@@ -909,6 +1188,9 @@ var emissionFamilies = [
   trapSitesOn,
   trapSitesAsmjsAbort,
   trapSitesKindOnly,
+  trapSitesHostAbort,
+  trapSitesHostAbortKind,
+  trapSitesHostAbortThrowingBackend,
   i64RefusalFamily('i64-no-lowering-asmjs-refused', 'asmjs'),
   i64RefusalFamily('i64-no-lowering-php64-refused', 'php64'),
   i64ControlNative
