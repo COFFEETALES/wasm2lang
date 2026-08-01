@@ -7,8 +7,6 @@
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.emitCode = function (wasmModule, options) {
-  this.initDiagnostics_();
-
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {string} */ moduleName = /** @type {string} */ (options.emitCode);
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_} */ moduleInfo =

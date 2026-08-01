@@ -24,7 +24,6 @@
  * @return {string}
  */
 Wasm2Lang.Backend.JsCommonCodegen.renderArithmeticBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_, '+' === info.opStr);
 };
@@ -37,7 +36,6 @@ Wasm2Lang.Backend.JsCommonCodegen.renderArithmeticBinary_ = function (self, info
  * @return {string}
  */
 Wasm2Lang.Backend.JsCommonCodegen.renderMultiplyBinary_ = function (self, info, L, R) {
-  void info;
   self.markBinding_('Math_imul');
   return self.n_('Math_imul') + '(' + L + ', ' + R + ')';
 };
@@ -109,7 +107,6 @@ Wasm2Lang.Backend.JsCommonCodegen.isNonTrappingDivisor_ = function (info, R) {
  * @return {string}
  */
 Wasm2Lang.Backend.JsCommonCodegen.renderDivisionBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const {function(string): string} */ coerce = info.unsigned
       ? Wasm2Lang.Backend.JsCommonCodegen.renderUnsignedCoercion_
@@ -159,7 +156,6 @@ Wasm2Lang.Backend.JsCommonCodegen.renderComparisonOperand_ = function (expr, isU
  * @return {string}
  */
 Wasm2Lang.Backend.JsCommonCodegen.renderComparisonBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const */ renderOp = Wasm2Lang.Backend.JsCommonCodegen.renderComparisonOperand_;
   // Comparisons produce fixnum (0 or 1) in asm.js — no |0 coercion needed.

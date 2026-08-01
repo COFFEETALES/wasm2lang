@@ -43,23 +43,17 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
     );
   var /** @const {!BinaryenModule} */ module = context.treeModule;
   var /** @const {?BinaryenFunctionInfo} */ functionInfo = context.functionInfo || null;
-  // prettier-ignore
-  var /** @type {(!Wasm2Lang.Wasm.Tree.ExpressionAncestorList|void)} */ contextAncestors =
-    /** @type {(!Wasm2Lang.Wasm.Tree.ExpressionAncestorList|void)} */ (context.ancestors);
-  if (!contextAncestors) {
-    contextAncestors = [];
-  }
+  // Both fields are optional on TraversalContext, so each keeps its fallback;
+  // only the spelling is shortened.  The visitor fallback above is NOT the
+  // same case — EmitState_.visitor is declared nullable and cast away at the
+  // subWalkExpression_ call site, so dropping it would turn a no-op walk into
+  // a crash.
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionAncestorList} */ ancestors =
-    /** @const {!Wasm2Lang.Wasm.Tree.ExpressionAncestorList} */ (contextAncestors);
-  var /** @const {*} */ metadataValue = context.treeMetadata;
+    /** @type {!Wasm2Lang.Wasm.Tree.ExpressionAncestorList} */ (context.ancestors || []);
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ metadata =
-    /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ (
-      'object' === typeof metadataValue && metadataValue ?
-        metadataValue :
-        Object.create(null)
-    );
+    /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata} */ (context.treeMetadata || Object.create(null));
 
   // Cache callback references once — avoids repeated property lookups per node.
   // prettier-ignore
@@ -79,7 +73,6 @@ Wasm2Lang.Wasm.Tree.TraversalKernel.walkExpression = function (exprPtr, context,
       functionInfo: functionInfo,
       treeMetadata: metadata,
       parentExpression: null,
-      edge: null,
       ancestors: ancestors,
       expression: /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ ({}),
       expressionPointer: 0

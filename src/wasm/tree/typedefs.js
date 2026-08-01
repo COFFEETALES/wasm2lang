@@ -122,20 +122,6 @@ Wasm2Lang.Wasm.Tree.EdgeSpecList;
 Wasm2Lang.Wasm.Tree.ExpressionEdgeSpecMap;
 
 /**
- * Child edge tuple: [key, index, kind, expressionPointer, setter].
- * The setter has signature (parentPtr, listIndex, childPtr) and is carried
- * from the EdgeSpec so the traversal kernel can apply replacements without
- * maintaining a parallel dispatch table.
- * @typedef {!Array<(string|number|function(number, number, number): void)>}
- */
-Wasm2Lang.Wasm.Tree.ChildEdge;
-
-/**
- * @typedef {!Array<!Wasm2Lang.Wasm.Tree.ChildEdge>}
- */
-Wasm2Lang.Wasm.Tree.ChildEdgeList;
-
-/**
  * @typedef {!Array<!Wasm2Lang.Wasm.Tree.ExpressionInfo>}
  */
 Wasm2Lang.Wasm.Tree.ExpressionAncestorList;
@@ -158,22 +144,12 @@ Wasm2Lang.Wasm.Tree.TraversalContext;
  *   functionInfo: ?BinaryenFunctionInfo,
  *   treeMetadata: !Wasm2Lang.Wasm.Tree.PassMetadata,
  *   parentExpression: ?Wasm2Lang.Wasm.Tree.ExpressionInfo,
- *   edge: ?Wasm2Lang.Wasm.Tree.ChildEdge,
  *   ancestors: !Wasm2Lang.Wasm.Tree.ExpressionAncestorList,
  *   expression: !Wasm2Lang.Wasm.Tree.ExpressionInfo,
  *   expressionPointer: number
  * }}
  */
 Wasm2Lang.Wasm.Tree.TraversalNodeContext;
-
-/**
- * @typedef {{
- *   decisionAction: string,
- *   expressionPointer: (*|void),
- *   decisionValue: (*|void)
- * }}
- */
-Wasm2Lang.Wasm.Tree.TraversalDecision;
 
 /**
  * @typedef {{
@@ -185,14 +161,10 @@ Wasm2Lang.Wasm.Tree.TraversalDecision;
 Wasm2Lang.Wasm.Tree.TraversalDecisionInput;
 
 /**
- * A single child traversal result — the raw value returned by walkInner for
- * one child expression.  Typically either a code string, a typed expression
- * object ({@code {s: string, c: number}}), or an expression pointer.
- * @typedef {*}
- */
-Wasm2Lang.Wasm.Tree.TraversalChildResult;
-
-/**
+ * The child traversal results for one expression.  Each element is the raw
+ * value walkInner returned for one child — typically either a code string, a
+ * typed expression object ({@code {s: string, c: number}}), or an expression
+ * pointer.
  * @typedef {!Array<*>}
  */
 Wasm2Lang.Wasm.Tree.TraversalChildResultList;
@@ -216,12 +188,12 @@ Wasm2Lang.Wasm.Tree.TraversalLeaveCallback;
 Wasm2Lang.Wasm.Tree.TraversalVisitor;
 
 /**
- * @typedef {function(?Wasm2Lang.Wasm.Tree.ExpressionInfo, ?Wasm2Lang.Wasm.Tree.ChildEdge, number): *}
- */
-Wasm2Lang.Wasm.Tree.TraversalWalkInnerFn;
-
-/**
- * @typedef {function(!BinaryenFunctionInfo, !Wasm2Lang.Wasm.Tree.PassMetadata): void}
+ * The module is passed so a hook can reach the shared traversal kernel, which
+ * needs a {@code BinaryenModule} for its context.  Without it an analysis hook
+ * has no way to walk a subtree except by hand-rolling a recursion, which hard
+ * rule #4 forbids.
+ *
+ * @typedef {function(!BinaryenFunctionInfo, !Wasm2Lang.Wasm.Tree.PassMetadata, !BinaryenModule): void}
  */
 Wasm2Lang.Wasm.Tree.PassFunctionHook;
 

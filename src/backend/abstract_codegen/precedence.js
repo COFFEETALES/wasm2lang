@@ -460,6 +460,57 @@ Wasm2Lang.Backend.AbstractCodegen.Precedence_ = /** @type {!Wasm2Lang.Backend.Ab
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.formatCondition_ = function (expr, opt_condCat) {
-  void opt_condCat;
   return Wasm2Lang.Backend.AbstractCodegen.Precedence_.formatCondition(expr);
+};
+
+/**
+ * Condition formatter for target languages whose {@code if} requires a
+ * genuine boolean: an already-boolean expression only needs parentheses,
+ * everything else is compared against the zero literal of its own width.
+ * Java and C# both install this as their {@code formatCondition_}; it is one
+ * function rather than two identical ones because the two languages spell
+ * this construct the same way, down to the {@code 0L} suffix.
+ *
+ * Deliberately not {@code @protected}: the two backends install it by direct
+ * assignment onto their own prototypes rather than by calling it through
+ * {@code this}, and Closure rejects a protected access made outside the
+ * declaring class's own methods.
+ *
+ * @param {string} expr
+ * @param {number=} opt_condCat
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.formatTypedCondition_ = function (expr, opt_condCat) {
+  if ('' === expr) return '(0 != 0)';
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === opt_condCat) {
+    return P.isFullyParenthesized(expr) ? expr : '(' + expr + ')';
+  }
+  if (Wasm2Lang.Backend.AbstractCodegen.CAT_I64 === opt_condCat) {
+    return '(' + P.wrap_(expr, P.PREC_EQUALITY_, true) + ' != 0L)';
+  }
+  return '(' + P.wrap_(expr, P.PREC_EQUALITY_, true) + ' != 0)';
+};
+
+/**
+ * Coercion-by-type for the two backends whose primitive casts are spelled
+ * identically: an i64/f32/f64 target takes a prefix cast, an i32 target needs
+ * none.  Installed by Java and C# as {@code renderCoercionByType_}.
+ *
+ * Not {@code @protected}, for the same reason as
+ * {@code formatTypedCondition_} above.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {string} expr
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderPrimitiveCastCoercion_ = function (binaryen, expr, wasmType) {
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @type {?string} */ cast = null;
+  if (V.isI64(binaryen, wasmType)) cast = '(long)';
+  else if (V.isF32(binaryen, wasmType)) cast = '(float)';
+  else if (V.isF64(binaryen, wasmType)) cast = '(double)';
+  return null === cast ? expr : cast + P.wrap_(expr, P.PREC_UNARY_, true);
 };

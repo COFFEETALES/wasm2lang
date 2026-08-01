@@ -503,6 +503,32 @@ Wasm2Lang.Wasm.Tree.CustomPasses.hasReference = function (binaryen, wasmModule, 
   );
 };
 
+/**
+ * Returns true when any subtree in {@code children[start..end)} contains a
+ * break/switch targeting {@code loopName}.  Used to reject do-while pattern
+ * classification: an interior back-branch would compile to {@code continue},
+ * but in a {@code do{...}while(cond)} {@code continue} jumps to the cond
+ * check — diverging from WASM's unconditional re-iterate when cond is false.
+ *
+ * The loop-simplification pass classifies the shape and the codegen re-checks
+ * it at emit time, so both call this; it lives here because the predicate is
+ * about wasm control flow, not about either caller.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Array<number>} children
+ * @param {number} start  inclusive
+ * @param {number} end  exclusive
+ * @param {string} loopName
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.hasInteriorLoopBackBranch = function (binaryen, wasmModule, children, start, end, loopName) {
+  for (var /** @type {number} */ i = start; i < end; ++i) {
+    if (Wasm2Lang.Wasm.Tree.CustomPasses.hasReference(binaryen, wasmModule, children[i], loopName)) return true;
+  }
+  return false;
+};
+
 // ---------------------------------------------------------------------------
 // Shared terminator recognition
 // ---------------------------------------------------------------------------

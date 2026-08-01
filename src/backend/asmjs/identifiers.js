@@ -72,27 +72,5 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.getFixedModuleBindings_ = function (opt
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.AsmjsCodegen.prototype.getHotModuleBindings_ = function (options) {
-  void options;
   return ['HEAPU8', 'HEAP32', 'HEAPF32', 'HEAPF64', 'HEAP8', 'HEAP16', 'HEAPU16', 'Math_fround', 'Math_imul', 'Math_clz32'];
-};
-
-/**
- * The asm.js module shell emits {@code stdlib}, {@code foreign}, and
- * {@code buffer} as closure parameters and {@code asmjsModule} as the inner
- * function name regardless of whether any function body marks them via
- * {@code markBinding_}.  Pin these as always-registered so the discovery
- * filter does not strip them and leak them into the output unmangled.
- * {@code i32_array} is added when {@code --emit-metadata} is active, since
- * the metadata emitter references the binding via {@code n_(...)} without
- * routing through {@code markBinding_} and the discovery walk only covers
- * the code-emit phase.
- *
- * @override
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @return {!Array<string>}
- */
-Wasm2Lang.Backend.AsmjsCodegen.prototype.getAlwaysRegisteredBindings_ = function (options) {
-  var /** @const {!Array<string>} */ list = ['asmjsModule', 'stdlib', 'foreign', 'buffer'];
-  if ('string' === typeof options.emitMetadata) list.push('i32_array');
-  return list;
 };

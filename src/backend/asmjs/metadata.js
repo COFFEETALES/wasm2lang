@@ -33,6 +33,21 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitStaticI32InitLines_ = function (i32
 };
 
 /**
+ * Renders the {@code ArrayBuffer} construction for the emitted heap.  asm.js
+ * heaps are fixed-size; the modern-JS backend overrides this to request a
+ * resizable buffer.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @param {number} heapSize
+ * @return {string}
+ */
+Wasm2Lang.Backend.AsmjsCodegen.prototype.renderHeapBufferExpr_ = function (wasmModule, options, heapSize) {
+  return 'new ArrayBuffer(' + heapSize + ')';
+};
+
+/**
  * @override
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
@@ -47,7 +62,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitMetadata = function (wasmModule, op
   var /** @const {!Array<string>} */ lines = [];
 
   var /** @const {string} */ i32ArrayName = this.n_('i32_array');
-  lines.push('var ' + bufferName + ' = new ArrayBuffer(' + heapSize + ');');
+  lines.push('var ' + bufferName + ' = ' + this.renderHeapBufferExpr_(wasmModule, options, heapSize) + ';');
   lines.push('var ' + i32ArrayName + ' = new Int32Array(' + bufferName + ');');
 
   if (0 !== i32.length) {

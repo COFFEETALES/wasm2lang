@@ -196,27 +196,6 @@ Wasm2Lang.Backend.I32Coercion.classifyBinaryOp = function (binaryen, op) {
   return C.binaryOpMap_[op] || null;
 };
 
-/**
- * Returns the result value-category produced by a binary operation.
- *
- * @param {!Wasm2Lang.Backend.I32Coercion.BinaryOpInfo} info
- * @return {number}
- */
-Wasm2Lang.Backend.I32Coercion.binaryResultType = function (info) {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  switch (info.category) {
-    case C.OP_COMPARISON:
-      return C.INT;
-    case C.OP_BITWISE:
-      return info.unsigned ? C.UNSIGNED : C.SIGNED;
-    default:
-      // Arithmetic, multiply, division, rotate all produce intish before
-      // backend-specific truncation.  Backends apply their own coercion
-      // (e.g. |0 for asm.js) and then upgrade the result to SIGNED.
-      return C.INTISH;
-  }
-};
-
 // ---------------------------------------------------------------------------
 // Unary-op classification.
 // ---------------------------------------------------------------------------

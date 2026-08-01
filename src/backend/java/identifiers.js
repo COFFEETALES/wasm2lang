@@ -6,7 +6,6 @@
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.getFixedModuleBindings_ = function (options) {
-  void options;
   return ['buffer'];
 };
 
@@ -19,7 +18,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.getFixedModuleBindings_ = function (opti
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.getHotModuleBindings_ = function (options) {
-  void options;
   return ['buffer'];
 };
 

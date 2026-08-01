@@ -677,6 +677,63 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitOrCollectHelper_ = function (buc
 };
 
 /**
+ * Emits the eager-select helper family for the class-shaped backends.  Java
+ * and C# spell the body identically — a ternary on the condition operand —
+ * so the only per-language input is the list of (wasm suffix, target type)
+ * pairs.  The list is walked in order and each entry reaches
+ * {@code emitOrCollectHelper_} exactly where the unrolled calls used to:
+ * {@code precomputeMangledNames_} assigns encoder slots positionally over the
+ * roster this collect pass produces, so reordering the list would rename
+ * every identifier registered after it.
+ *
+ * @protected
+ * @param {function(string, string): void} emitHelper  The backend's local
+ *     {@code h(name, body)} closure.
+ * @param {!Array<string>} suffixAndType  Flat {@code [suffix, targetType, …]}.
+ * @param {string} pad1
+ * @param {string} pad2
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitSelectHelperFamily_ = function (emitHelper, suffixAndType, pad1, pad2) {
+  var /** @const {string} */ l0 = this.localN_(0);
+  var /** @const {string} */ l1 = this.localN_(1);
+  var /** @const {string} */ l2 = this.localN_(2);
+  for (var /** @type {number} */ i = 0, /** @const {number} */ len = suffixAndType.length; i !== len; i += 2) {
+    var /** @const {string} */ helperName = '$w2l_select_' + suffixAndType[i];
+    var /** @const {string} */ t = suffixAndType[i + 1];
+    emitHelper(
+      helperName,
+      pad1 +
+        'static ' +
+        t +
+        ' ' +
+        this.n_(helperName) +
+        '(' +
+        t +
+        ' ' +
+        l0 +
+        ', ' +
+        t +
+        ' ' +
+        l1 +
+        ', int ' +
+        l2 +
+        ') {\n' +
+        pad2 +
+        'return ' +
+        l2 +
+        ' != 0 ? ' +
+        l0 +
+        ' : ' +
+        l1 +
+        ';\n' +
+        pad1 +
+        '}'
+    );
+  }
+};
+
+/**
  * Default helper emission — returns an empty array.  Concrete backends
  * override this to emit their runtime helper definitions.
  *
@@ -693,10 +750,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitHelpers_ = function (
   scratchQwordIndex,
   heapPageCount
 ) {
-  void scratchByteOffset;
-  void scratchWordIndex;
-  void scratchQwordIndex;
-  void heapPageCount;
   return [];
 };
 
@@ -792,6 +845,5 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.catForValueTypeRead_ = function (bin
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitMetadata = function (wasmModule, options) {
-  void wasmModule;
   return /** @type {string} */ (options.emitMetadata);
 };

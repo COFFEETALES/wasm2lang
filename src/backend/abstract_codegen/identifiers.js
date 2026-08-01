@@ -364,7 +364,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getInlineTempCount_ = function () {
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.getFixedModuleBindings_ = function (options) {
-  void options;
   return [];
 };
 
@@ -381,7 +380,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getFixedModuleBindings_ = function (
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.getHotModuleBindings_ = function (options) {
-  void options;
   return [];
 };
 
@@ -457,7 +455,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getAllHelperNames_ = function () {
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.getAlwaysRegisteredBindings_ = function (options) {
-  void options;
   return [];
 };
 

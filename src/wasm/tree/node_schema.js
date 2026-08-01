@@ -65,7 +65,6 @@ Wasm2Lang.Wasm.Tree.NodeSchema.createSingleEdgeSpec_ = function (edgePropertyNam
     edgePropertyName,
     Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind.SINGLE,
     /** @param {number} p @param {number} i @param {number} c */ function (p, i, c) {
-      void i;
       setterOwner[setterName](p, c);
     }
   );
@@ -256,36 +255,20 @@ Wasm2Lang.Wasm.Tree.NodeSchema.ensureSafeExpressionIds_ = function (binaryen) {
   }
   // All expression IDs that have a property-accessor class in binaryen's PA
   // table and can therefore be passed to getExpressionInfo safely.
-  s[binaryen.BlockId] = true;
-  s[binaryen.IfId] = true;
-  s[binaryen.LoopId] = true;
-  s[binaryen.BreakId] = true;
-  s[binaryen.SwitchId] = true;
-  s[binaryen.LocalSetId] = true;
-  s[binaryen.LocalGetId] = true;
-  s[binaryen.GlobalSetId] = true;
-  s[binaryen.GlobalGetId] = true;
-  s[binaryen.UnaryId] = true;
-  s[binaryen.BinaryId] = true;
-  s[binaryen.CallId] = true;
-  s[binaryen.CallIndirectId] = true;
-  s[binaryen.LoadId] = true;
-  s[binaryen.StoreId] = true;
-  s[binaryen.ReturnId] = true;
-  s[binaryen.DropId] = true;
-  s[binaryen.SelectId] = true;
-  s[binaryen.ConstId] = true;
-  s[binaryen.MemorySizeId] = true;
-  s[binaryen.MemoryGrowId] = true;
-  s[binaryen.MemoryFillId] = true;
-  s[binaryen.MemoryCopyId] = true;
-  s[binaryen.SIMDExtractId] = true;
-  s[binaryen.SIMDReplaceId] = true;
-  s[binaryen.SIMDShuffleId] = true;
-  s[binaryen.SIMDTernaryId] = true;
-  s[binaryen.SIMDShiftId] = true;
-  s[binaryen.SIMDLoadId] = true;
-  s[binaryen.SIMDLoadStoreLaneId] = true;
+  // prettier-ignore
+  var /** @const {!Array<number>} */ safeIds = [
+    binaryen.BlockId, binaryen.IfId, binaryen.LoopId, binaryen.BreakId, binaryen.SwitchId,
+    binaryen.LocalSetId, binaryen.LocalGetId, binaryen.GlobalSetId, binaryen.GlobalGetId,
+    binaryen.UnaryId, binaryen.BinaryId, binaryen.CallId, binaryen.CallIndirectId,
+    binaryen.LoadId, binaryen.StoreId, binaryen.ReturnId, binaryen.DropId, binaryen.SelectId,
+    binaryen.ConstId, binaryen.MemorySizeId, binaryen.MemoryGrowId, binaryen.MemoryFillId,
+    binaryen.MemoryCopyId, binaryen.SIMDExtractId, binaryen.SIMDReplaceId,
+    binaryen.SIMDShuffleId, binaryen.SIMDTernaryId, binaryen.SIMDShiftId,
+    binaryen.SIMDLoadId, binaryen.SIMDLoadStoreLaneId
+  ];
+  for (var /** @type {number} */ k = 0; k !== safeIds.length; ++k) {
+    s[safeIds[k]] = true;
+  }
   Wasm2Lang.Wasm.Tree.NodeSchema.safeExpressionIds_ = s;
   return s;
 };
@@ -345,17 +328,23 @@ Wasm2Lang.Wasm.Tree.NodeSchema.augmentExpressionInfo_ = function (binaryen, expr
 };
 
 /**
- * Shared empty child-edge list returned for leaf nodes — avoids allocating
+ * Shared empty child list returned for leaf nodes — avoids allocating
  * a fresh empty array for every ConstId, LocalGetId, NopId, etc.
  *
  * @private
- * @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList}
+ * @const {!Array<number>}
  */
-Wasm2Lang.Wasm.Tree.NodeSchema.EMPTY_CHILDREN_ = /** @type {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ ([]);
+Wasm2Lang.Wasm.Tree.NodeSchema.EMPTY_CHILDREN_ = /** @type {!Array<number>} */ ([]);
 
 /**
+ * Returns the non-null child expression pointers of {@code expressionInfo} in
+ * schema order, with list edges expanded in place.  The traversal kernel does
+ * not come through here — it reads {@code expressionEdgeSpecs_} directly so it
+ * can also write child slots back — so this hands out pointers alone rather
+ * than the key/index/kind/setter tuple a replacement would need.
+ *
  * @param {!Wasm2Lang.Wasm.Tree.ExpressionInfo} expressionInfo
- * @return {!Wasm2Lang.Wasm.Tree.ChildEdgeList}
+ * @return {!Array<number>}
  */
 Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren = function (expressionInfo) {
   var /** @const {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ expression = expressionInfo;
@@ -367,38 +356,23 @@ Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren = function (expressionInfo) {
   }
 
   var /** @const {!Object<string, *>} */ expressionMap = /** @type {!Object<string, *>} */ (expression);
-  var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ children = [];
+  var /** @const {!Array<number>} */ children = [];
 
   for (var /** @type {number} */ i = 0; i !== edgeCount; ++i) {
     var /** @const {!Wasm2Lang.Wasm.Tree.EdgeSpec} */ edgeSpec = specs[i];
-    var /** @const {function(number, number, number): void} */ setter = /** @type {function(number, number, number): void} */ (
-        edgeSpec.setter
-      );
     if (Wasm2Lang.Wasm.Tree.NodeSchema.EdgeKind.LIST === edgeSpec.edgeTraversalKind) {
       // prettier-ignore
       var /** @const {!Array<number>} */ childList =
         /** @const {!Array<number>} */ (expressionMap[edgeSpec.edgePropertyName] || []);
       for (var /** @type {number} */ j = 0, /** @const {number} */ childCount = childList.length; j !== childCount; ++j) {
         var /** @const {number} */ listPtr = /** @type {number} */ (childList[j] || 0);
-        if (0 === listPtr) {
-          continue;
-        }
-        // prettier-ignore
-        children.push(/** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ (
-            [edgeSpec.edgePropertyName, j, edgeSpec.edgeTraversalKind, listPtr, setter]
-          ));
+        if (0 !== listPtr) children.push(listPtr);
       }
       continue;
     }
 
     var /** @const {number} */ childPtr = /** @type {number} */ (expressionMap[edgeSpec.edgePropertyName] || 0);
-    if (0 === childPtr) {
-      continue;
-    }
-    // prettier-ignore
-    children.push(/** @const {!Wasm2Lang.Wasm.Tree.ChildEdge} */ (
-        [edgeSpec.edgePropertyName, -1, edgeSpec.edgeTraversalKind, childPtr, setter]
-      ));
+    if (0 !== childPtr) children.push(childPtr);
   }
 
   return children;

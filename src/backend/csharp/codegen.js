@@ -7,6 +7,7 @@
 Wasm2Lang.Backend.CsharpCodegen = function () {
   Wasm2Lang.Backend.AbstractCodegen.call(this);
   this.f32WidensToF64_ = true;
+  this.exportedMethodVisibility_ = 'public ';
   this.reservedWords_ = Wasm2Lang.Backend.CsharpCodegen.RESERVED_;
   this.preSanitizeRegex_ = /\$/g;
   var /** @const */ Cs = Wasm2Lang.Backend.CsharpCodegen;

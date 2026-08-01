@@ -40,7 +40,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_ = function (self, expr) {
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI32ComparisonBinary_ = function (self, info, L, R) {
-  void self;
   return Wasm2Lang.Backend.AbstractCodegen.renderComparisonInfix_(
     info,
     L,
@@ -130,7 +129,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.renderI64ArithmeticBinary_ = function (self,
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.renderI64MultiplyBinary_ = function (self, info, L, R) {
-  void info;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   return Wasm2Lang.Backend.JavaScriptCodegen.wrapI64_(self, P.renderInfix(L, '*', R, P.PREC_MULTIPLICATIVE_));
 };

@@ -30,8 +30,6 @@
  * @return {string}
  */
 Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, options) {
-  this.initDiagnostics_();
-
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {string} */ moduleName = /** @type {string} */ (options.emitCode);
   var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, this.getHeapSizeDefinitionKey_());
@@ -132,19 +130,14 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     var /** @const {boolean} */ ocwHasReturn =
         binaryen.none !== ocwDesc.signatureReturnType && 0 !== ocwDesc.signatureReturnType;
     orderedCallWrapperParts.push(
-      pad1 +
-        'function ' +
-        this.n_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)) +
-        '(' +
-        ocwParams.join(', ') +
-        ') {\n' +
-        ocwAnnotations.join('\n') +
-        (ocwAnnotations.length ? '\n' : '') +
+      Wasm2Lang.Backend.JsCommonCodegen.renderEmittedFunction_(
+        this.n_(this.getOrderedCallIndirectWrapperName_(ocwDesc.signatureKey)),
+        ocwParams.join(', '),
+        ocwAnnotations,
         pad2 +
-        (ocwHasReturn ? 'return ' + this.renderCoercionByType_(binaryen, ocwCall, ocwDesc.signatureReturnType) : ocwCall) +
-        ';\n' +
-        pad1 +
-        '}'
+          (ocwHasReturn ? 'return ' + this.renderCoercionByType_(binaryen, ocwCall, ocwDesc.signatureReturnType) : ocwCall) +
+          ';\n'
+      )
     );
   }
 
@@ -262,17 +255,7 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
       stubReturn = pad2 + 'return ' + this.renderCoercionByType_(binaryen, '0', ftDesc.signatureReturnType) + ';\n';
     }
     outputParts.push(
-      pad1 +
-        'function ' +
-        stubName +
-        '(' +
-        stubParams.join(', ') +
-        ') {\n' +
-        stubAnnotationLines.join('\n') +
-        (stubAnnotationLines.length ? '\n' : '') +
-        stubReturn +
-        pad1 +
-        '}'
+      Wasm2Lang.Backend.JsCommonCodegen.renderEmittedFunction_(stubName, stubParams.join(', '), stubAnnotationLines, stubReturn)
     );
   }
 
@@ -280,16 +263,15 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
     var /** @const {string} */ egVarName = this.n_('$g_' + this.safeName_(moduleInfo.expGlobals[eg].internalName));
     var /** @const {string} */ egGetterName = this.n_('$get_' + this.safeName_(moduleInfo.expGlobals[eg].exportName));
     outputParts.push(
-      pad1 +
-        'function ' +
-        egGetterName +
-        '() {\n' +
+      Wasm2Lang.Backend.JsCommonCodegen.renderEmittedFunction_(
+        egGetterName,
+        '',
+        [],
         pad2 +
-        'return ' +
-        this.renderExportedGlobalGetterReturn_(binaryen, egVarName, moduleInfo.expGlobals[eg].globalType) +
-        ';\n' +
-        pad1 +
-        '}'
+          'return ' +
+          this.renderExportedGlobalGetterReturn_(binaryen, egVarName, moduleInfo.expGlobals[eg].globalType) +
+          ';\n'
+      )
     );
     if (moduleInfo.expGlobals[eg].globalMutable) {
       var /** @const {string} */ egSetterName = this.n_('$set_' + this.safeName_(moduleInfo.expGlobals[eg].exportName));
@@ -297,21 +279,12 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
       var /** @const {!Array<string>} */ setterAnnotationLines = [];
       this.emitParameterAnnotations_(setterAnnotationLines, binaryen, [moduleInfo.expGlobals[eg].globalType], 1, pad2);
       outputParts.push(
-        pad1 +
-          'function ' +
-          egSetterName +
-          '(' +
-          egParam +
-          ') {\n' +
-          setterAnnotationLines.join('\n') +
-          (setterAnnotationLines.length ? '\n' : '') +
-          pad2 +
-          egVarName +
-          ' = ' +
-          egParam +
-          ';\n' +
-          pad1 +
-          '}'
+        Wasm2Lang.Backend.JsCommonCodegen.renderEmittedFunction_(
+          egSetterName,
+          egParam,
+          setterAnnotationLines,
+          pad2 + egVarName + ' = ' + egParam + ';\n'
+        )
       );
     }
   }
@@ -371,6 +344,37 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.emitCode = function (wasmModule, opt
 // Static binding tables.
 // ---------------------------------------------------------------------------
 
+/**
+ * Assembles one emitted function: header line, optional parameter-annotation
+ * block (nothing at all when the backend's annotation hook produced none),
+ * body text, closing brace.  Every JS-family function the module shell emits —
+ * ordered-call wrappers, function-table stubs, exported-global accessors —
+ * has this exact shape.
+ *
+ * @private
+ * @param {string} name  Already mangled.
+ * @param {string} paramList  Already joined with ', '.
+ * @param {!Array<string>} annotationLines
+ * @param {string} bodyText  Already indented and newline-terminated, or ''.
+ * @return {string}
+ */
+Wasm2Lang.Backend.JsCommonCodegen.renderEmittedFunction_ = function (name, paramList, annotationLines, bodyText) {
+  var /** @const {string} */ pad1 = Wasm2Lang.Backend.AbstractCodegen.pad_(1);
+  return (
+    pad1 +
+    'function ' +
+    name +
+    '(' +
+    paramList +
+    ') {\n' +
+    annotationLines.join('\n') +
+    (annotationLines.length ? '\n' : '') +
+    bodyText +
+    pad1 +
+    '}'
+  );
+};
+
 /** @const {!Array<string>} */
 Wasm2Lang.Backend.JsCommonCodegen.MATH_FUNCTION_BINDINGS_ = [
   'Math_imul',
@@ -416,6 +420,36 @@ Wasm2Lang.Backend.JsCommonCodegen.MATH_CONSTANT_BINDINGS_ = [
  */
 Wasm2Lang.Backend.JsCommonCodegen.prototype.getModuleFunctionBindingName_ = function () {
   return 'javascriptModule';
+};
+
+/**
+ * The JS-family module shell emits {@code stdlib}, {@code foreign} and
+ * {@code buffer} as closure parameters — and asm.js additionally names the
+ * inner function — regardless of whether any function body marks them via
+ * {@code markBinding_}.  Pin them so the discovery filter does not strip them
+ * and leak them into the output unmangled.  {@code i32_array} is added when
+ * {@code --emit-metadata} is active, since the metadata emitter references the
+ * binding via {@code n_(...)} without routing through {@code markBinding_} and
+ * the discovery walk only covers the code-emit phase.
+ *
+ * @override
+ * @protected
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.JsCommonCodegen.prototype.getAlwaysRegisteredBindings_ = function (options) {
+  // The module-function name leads the list, ahead of the closure parameters.
+  // That position is not cosmetic: precomputeMangledNames_ hands out encoder
+  // slots positionally over this unsorted array, so moving an entry renames
+  // every identifier registered after it.  The modern-JS shell does not name
+  // its inner function (getModuleFunctionBindingName_ returns ''), so there
+  // the list starts at 'stdlib' and the slots shift up by one — which is
+  // exactly what the two separate per-backend rosters used to spell out.
+  var /** @const {string} */ moduleFnName = this.getModuleFunctionBindingName_();
+  var /** @const {!Array<string>} */ list =
+      '' !== moduleFnName ? [moduleFnName, 'stdlib', 'foreign', 'buffer'] : ['stdlib', 'foreign', 'buffer'];
+  if ('string' === typeof options.emitMetadata) list.push('i32_array');
+  return list;
 };
 
 /**

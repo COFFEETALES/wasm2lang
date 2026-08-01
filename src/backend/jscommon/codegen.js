@@ -166,8 +166,6 @@ Wasm2Lang.Backend.JsCommonCodegen.trapCallArguments_ = function (kind, siteId) {
  * @return {string}
  */
 Wasm2Lang.Backend.JsCommonCodegen.prototype.renderTrapAbortStatement_ = function (indent, kind, siteId) {
-  void kind;
-  void siteId;
   if (this.trapHostAbort_) return '';
   this.markHelper_('$w2l_abort');
   return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + this.n_('$w2l_abort') + '();\n';
@@ -210,24 +208,15 @@ Wasm2Lang.Backend.JsCommonCodegen.prototype.trapSiteLivenessPatterns_ = function
  * @return {string}
  */
 Wasm2Lang.Backend.JsCommonCodegen.prototype.renderHelperTrapCall_ = function (indent, kind, helperName) {
-  var /** @const {string} */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_(indent);
-  var /** @const {string} */ trapName = this.n_('$w2l_trap');
   if (!this.trapSitesEnabled_) {
-    return pad + trapName + '();\n';
+    return Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + this.n_('$w2l_trap') + '();\n';
   }
-  var /** @const {number} */ siteId = this.allocateHelperTrapSite_(kind, helperName);
   // The abort matters more here than at an `unreachable`: every trapping
   // truncation helper follows its trap call with `return 0`, so a host that
   // does not throw hands the caller a fabricated zero for a value that has no
-  // representable result.
-  return (
-    pad +
-    trapName +
-    '(' +
-    Wasm2Lang.Backend.JsCommonCodegen.trapCallArguments_(kind, siteId) +
-    ');\n' +
-    this.renderTrapAbortStatement_(indent, kind, siteId)
-  );
+  // representable result.  Allocating the id before delegating keeps textual
+  // order equal to allocation order, which the site table depends on.
+  return this.renderTrapStatement_(indent, kind, this.allocateHelperTrapSite_(kind, helperName));
 };
 
 /**

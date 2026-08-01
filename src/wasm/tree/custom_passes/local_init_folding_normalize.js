@@ -30,43 +30,38 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass = function () {
 };
 
 /**
- * Recursively scans an expression tree for local.get, recording read indices.
+ * Scans an expression tree for local.get, recording read indices.
+ *
+ * Goes through the shared kernel rather than recursing by hand (hard rule #4).
+ * The hand-rolled version this replaces called {@code NodeSchema.iterChildren}
+ * without first calling {@code augmentExpressionInfo_}, whose documented
+ * contract is that it runs first: it is what populates the
+ * {@code dest}/{@code value}/{@code size} child pointers on MemoryFill and
+ * MemoryCopy.  That scan happened to be correct only because binaryen 130/131
+ * fills those properties itself (measured 2026-08-01) — the moment it stops,
+ * or a new node kind needs the same patching, a hand-rolled walk goes silently
+ * blind and the pass folds away an initializer for a local that is still read.
  *
  * @private
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {number} ptr
  * @param {!Object<number, boolean>} readLocals
  * @return {void}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.scanForLocalGets_ = function (binaryen, ptr, readLocals) {
-  if (!ptr) {
-    return;
-  }
-  // prettier-ignore
-  var /** @const {!BinaryenExpressionInfo} */ info =
-    /** @type {!BinaryenExpressionInfo} */ (Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, ptr));
-
-  if (binaryen.LocalGetId === info.id) {
-    readLocals[/** @type {number} */ (info.index || 0)] = true;
-  }
-
-  if (!Wasm2Lang.Wasm.Tree.NodeSchema.supportsExpressionId(info.id)) {
-    return;
-  }
-
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ children =
-    Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren(
-      /** @type {!Wasm2Lang.Wasm.Tree.ExpressionInfo} */ (info)
-    );
-
-  for (var /** @type {number} */ i = 0, /** @const {number} */ len = children.length; i !== len; ++i) {
-    Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.scanForLocalGets_(
-      binaryen,
-      /** @type {number} */ (children[i][3]),
-      readLocals
-    );
-  }
+Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.scanForLocalGets_ = function (binaryen, wasmModule, ptr, readLocals) {
+  Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
+    binaryen,
+    wasmModule,
+    ptr,
+    /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx @return {(string|undefined)} */ function (nodeCtx) {
+      var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (nodeCtx.expression);
+      if (binaryen.LocalGetId === info.id) {
+        readLocals[/** @type {number} */ (info.index || 0)] = true;
+      }
+      return undefined;
+    }
+  );
 };
 
 /**
@@ -75,9 +70,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.scanForLocalGets_ = functi
  * @private
  * @param {!BinaryenFunctionInfo} funcInfo
  * @param {!Wasm2Lang.Wasm.Tree.PassMetadata} funcMetadata
+ * @param {!BinaryenModule} wasmModule
  * @return {void}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_ = function (funcInfo, funcMetadata) {
+Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_ = function (
+  funcInfo,
+  funcMetadata,
+  wasmModule
+) {
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {number} */ bodyPtr = funcInfo.body;
   if (0 === bodyPtr) {
@@ -167,7 +167,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.prototype.onFunctionEnter_
     }
 
     // Scan this child for local.get usage.
-    scanFn(binaryen, childPtr, readLocals);
+    scanFn(binaryen, wasmModule, childPtr, readLocals);
   }
 
   if (hasOverrides) {
@@ -250,7 +250,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LocalInitFoldingPass.reanalyzeOverrides = funct
     if (!fm) continue;
     fm.localInitOverrides = void 0;
     fm._localInitZeroFoldSet = void 0;
-    pass.onFunctionEnter_(funcInfo, fm);
+    pass.onFunctionEnter_(funcInfo, fm, wasmModule);
   }
 };
 

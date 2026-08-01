@@ -60,7 +60,6 @@ Wasm2Lang.Backend.JavaCodegen.SIMD_CMP_OPS_ = {
  * @return {{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitSIMDBinaryOp_ = function (binaryen, info, L, R) {
-  void binaryen;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const {string} */ opName = info.opName;
 
@@ -114,7 +113,6 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitSIMDBinaryOp_ = function (binaryen, 
  * @return {{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitSIMDUnaryOp_ = function (binaryen, info, operandExpr) {
-  void binaryen;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const {string} */ opName = info.opName;

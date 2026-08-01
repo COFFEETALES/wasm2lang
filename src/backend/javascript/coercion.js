@@ -134,8 +134,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.prepareI32BinaryOperand_ = functio
  * @return {number}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.loadResultCat_ = function (binaryen, loadType, loadBytes, loadAlign) {
-  void loadBytes;
-  void loadAlign;
   return Wasm2Lang.Backend.AbstractCodegen.catForCoercedType_(binaryen, loadType);
 };
 
@@ -213,8 +211,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderCoercionByType_ = function (
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHelperCall_ = function (binaryen, helperName, args, resultType) {
-  void binaryen;
-  void resultType;
   this.markHelper_(helperName);
   return this.n_(helperName) + '(' + args.join(', ') + ')';
 };
@@ -253,9 +249,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHelperCall_ = function (bina
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.coerceCallResult_ = function (binaryen, callExpr, callType, isImport) {
-  void binaryen;
-  void callType;
-  void isImport;
   return callExpr;
 };
 
@@ -275,7 +268,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.coerceCallResult_ = function (bina
  * @return {string}
  */
 Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderI64Const_ = function (binaryen, value) {
-  void binaryen;
   if ('bigint' === typeof value) return String(value) + 'n';
   return Wasm2Lang.Backend.AbstractCodegen.formatI64WithSuffix_(value, 'n');
 };

@@ -101,19 +101,25 @@ Wasm2Lang.Backend.getManglerProfile = function (languageId) {
  * {@code $}).  Returns the reserved-word set so concrete backends can assign
  * it to their {@code reservedWords_} field.
  *
+ * {@code opt_alphaCharset} overrides the leading-character charset for a
+ * language whose identifiers reject one of the default characters — C# passes
+ * the case-sensitive set minus {@code $}.  The charset is part of the mangling
+ * contract: changing one renames every identifier that language emits.
+ *
  * @param {string} languageId
  * @param {!Array<string>} words
  * @param {boolean} caseInsensitive
+ * @param {string=} opt_alphaCharset
  * @return {!Object<string, boolean>}
  */
-Wasm2Lang.Backend.defineLanguageManglerProfile = function (languageId, words, caseInsensitive) {
+Wasm2Lang.Backend.defineLanguageManglerProfile = function (languageId, words, caseInsensitive, opt_alphaCharset) {
   var /** @const {!Object<string, boolean>} */ reserved = /** @type {!Object<string, boolean>} */ (Object.create(null));
   for (var /** @type {number} */ i = 0, /** @const {number} */ wordLen = words.length; i < wordLen; ++i) {
     reserved[words[i]] = true;
   }
-  var /** @const {string} */ alpha = caseInsensitive
-      ? 'abcdefghijklmnopqrstuvwxyz_'
-      : '$ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+  var /** @const {string} */ alpha =
+      opt_alphaCharset ||
+      (caseInsensitive ? 'abcdefghijklmnopqrstuvwxyz_' : '$ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz');
   Wasm2Lang.Backend.registerManglerProfile(languageId, {
     reservedWords: reserved,
     rejectName: /** @param {string} name @return {boolean} */ function (name) {
@@ -230,6 +236,14 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
   this.caseInsensitiveReserved_ = false;
 
   /**
+   * Visibility keyword an exported method carries in the class-shaped
+   * backends.  Java exports are package-private (no keyword); C# needs an
+   * explicit {@code public}.  Read only by {@code emitClassMethod_}.
+   * @protected @type {string}
+   */
+  this.exportedMethodVisibility_ = '';
+
+  /**
    * Optional pre-sanitize regex applied by safeName_ before safeIdentifier_.
    * PHP sets this to strip {@code $} characters that are not valid in PHP
    * identifiers (PHP uses {@code $} as a variable sigil).
@@ -251,19 +265,6 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
    * @protected @type {!Array<!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_|undefined>}
    */
   this.i64BinaryRenderers_ = [];
-
-  /**
-   * Per-function node counts collected during walkAndAppendBody_.
-   * Eliminates the need for the abstract emitCode's separate traversal.
-   * @protected @type {?Object<string, number>}
-   */
-  this.diagnosticNodeCounts_ = null;
-
-  /**
-   * Expression IDs seen across all function bodies during codegen traversal.
-   * @protected @type {?Object<number, boolean>}
-   */
-  this.diagnosticSeenIds_ = null;
 
   /**
    * True while emitting under {@code --trap-sites}.  Every trap-emitting

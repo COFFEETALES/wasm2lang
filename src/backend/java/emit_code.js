@@ -7,8 +7,6 @@
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options) {
-  this.initDiagnostics_();
-
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {string} */ moduleName = /** @type {string} */ (options.emitCode);
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ModuleCodegenInfo_} */ moduleInfo =
@@ -110,7 +108,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitCode = function (wasmModule, options
   for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = moduleInfo.functions.length; f !== funcCount; ++f) {
     var /** @const {!BinaryenFunctionInfo} */ funcInfo = moduleInfo.functions[f];
     functionParts.push(
-      this.emitFunction_(
+      this.emitClassMethod_(
         wasmModule,
         binaryen,
         funcInfo,

@@ -442,7 +442,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.serializeWithAnchorsV3_ = funct
       fm.fusedBlocks,
       MS.TYPE_FUSED_BLOCK_,
       /** @param {string} k @param {*} v @param {!Object} e */ function (k, v, e) {
-        void k;
         e['v'] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ (v).fusionVariant;
       }
     );
@@ -542,7 +541,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildWithAnchorsV3_ = functio
       anchorIndex,
       anchorId
     ) {
-      void anchorIndex;
       var /** @const {string} */ fname = funcInfo.name;
       var /** @const */ fdata = perFunc[fname];
       if (!fdata) return;
@@ -611,7 +609,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildWithAnchorsV3_ = functio
     var /** @const {string} */ fnKey = funcNames[fnIdx];
     var /** @const */ fdata2 = perFunc[fnKey];
     if (0 === fdata2.byName.length) continue;
-    var /** @const {number} */ funcPtr2 = MS.findFunctionByName_(wasmModule, fnKey);
+    var /** @const {number} */ funcPtr2 = wasmModule.getFunction(fnKey) || 0;
     if (!funcPtr2) continue;
     var /** @const {!BinaryenFunctionInfo} */ funcInfo2 = binaryen.getFunctionInfo(funcPtr2);
     if ('' !== funcInfo2.base) continue;
@@ -694,16 +692,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.makeFreshPassMetadata_ = functi
   fm.passTreeModule = wasmModule;
   fm.bodyReplaced = false;
   return fm;
-};
-
-/**
- * @private
- * @param {!BinaryenModule} wasmModule
- * @param {string} name
- * @return {number}  Function pointer or 0.
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.findFunctionByName_ = function (wasmModule, name) {
-  return wasmModule.getFunction(name) || 0;
 };
 
 /**

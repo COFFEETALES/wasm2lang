@@ -123,7 +123,6 @@ Wasm2Lang.Backend.CsharpCodegen.makeDivisionRenderer_ = function (signedType, un
  */
 Wasm2Lang.Backend.CsharpCodegen.makeRotateRenderer_ = function (signedType, unsignedType, castAmountToInt) {
   var /** @type {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} */ renderer = function (self, info, L, R) {
-      void self;
       var /** @const {string} */ amountExpr = castAmountToInt ? Wasm2Lang.Backend.CsharpCodegen.narrowingCast_('int', R) : R;
       var /** @const {string} */ method = info.rotateLeft ? 'RotateLeft' : 'RotateRight';
       return (
@@ -152,7 +151,6 @@ Wasm2Lang.Backend.CsharpCodegen.makeRotateRenderer_ = function (signedType, unsi
  */
 Wasm2Lang.Backend.CsharpCodegen.makeComparisonRenderer_ = function (unsignedType) {
   var /** @type {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} */ renderer = function (self, info, L, R) {
-      void self;
       var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
       return A.renderComparisonInfix_(info, L, R, function (x) {
         return Wasm2Lang.Backend.CsharpCodegen.narrowingCast_(unsignedType, x);
@@ -170,7 +168,6 @@ Wasm2Lang.Backend.CsharpCodegen.makeComparisonRenderer_ = function (unsignedType
  * @const {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_}
  */
 Wasm2Lang.Backend.CsharpCodegen.renderI64BitwiseBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const */ bi = P.bitwiseInfo(info.opStr);
   var /** @type {string} */ right = R;

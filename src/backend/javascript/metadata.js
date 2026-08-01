@@ -18,14 +18,18 @@
  * ceiling), the cap falls back to {@code initial * 16} to keep a reasonable
  * test footprint.
  *
+ * Everything else about the metadata block — the i32 view and the static
+ * memory init lines — is identical to asm.js and stays in its
+ * {@code emitMetadata}.
+ *
  * @override
+ * @protected
  * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @param {number} heapSize
  * @return {string}
  */
-Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitMetadata = function (wasmModule, options) {
-  var /** @const {string} */ bufferName = /** @type {string} */ (options.emitMetadata);
-  var /** @const {number} */ heapSize = this.resolveHeapSize_(wasmModule, options, this.getHeapSizeDefinitionKey_());
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHeapBufferExpr_ = function (wasmModule, options, heapSize) {
   var /** @type {number} */ defaultCap = heapSize * 16;
   if (wasmModule.hasMemory()) {
     var /** @const {!BinaryenMemoryInfo} */ memInfo = wasmModule.getMemoryInfo();
@@ -43,25 +47,5 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitMetadata = function (wasmModul
     }
   }
   var /** @const {number} */ effectiveMax = maxHeapSize < heapSize ? heapSize : maxHeapSize;
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.StaticMemoryInfo_} */ staticMemory = this.collectStaticMemory_(wasmModule);
-  var /** @const {number} */ startWordIndex = staticMemory.startWordIndex;
-  var /** @const {!Int32Array} */ i32 = staticMemory.words;
-  var /** @const {!Array<string>} */ lines = [];
-
-  var /** @const {string} */ i32ArrayName = this.n_('i32_array');
-  lines.push('var ' + bufferName + ' = new ArrayBuffer(' + heapSize + ', {maxByteLength: ' + effectiveMax + '});');
-  lines.push('var ' + i32ArrayName + ' = new Int32Array(' + bufferName + ');');
-
-  if (0 !== i32.length) {
-    var /** @const {!Array<string>} */ initLines = this.emitStaticI32InitLines_(i32, startWordIndex);
-    for (
-      var /** @type {number} */ ii = 0, /** @const {number} */ initLinesCount = initLines.length;
-      ii !== initLinesCount;
-      ++ii
-    ) {
-      lines.push(initLines[ii]);
-    }
-  }
-
-  return lines.join('\n');
+  return 'new ArrayBuffer(' + heapSize + ', {maxByteLength: ' + effectiveMax + '})';
 };

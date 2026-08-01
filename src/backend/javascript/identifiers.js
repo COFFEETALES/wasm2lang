@@ -42,25 +42,6 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.getMathFunctionBindings_ = functio
 };
 
 /**
- * The modern-JS module shell uses {@code stdlib}, {@code foreign}, and
- * {@code buffer} as closure parameters but does not name the inner
- * function (the outer {@code var module = function(...)} already binds it),
- * so {@code javascriptModule} stays out of the always-registered set.
- * {@code i32_array} is added when {@code --emit-metadata} is active for the
- * same reason as in {@code AsmjsCodegen}: the metadata emitter references
- * it via {@code n_(...)} without calling {@code markBinding_}.
- *
- * @override
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @return {!Array<string>}
- */
-Wasm2Lang.Backend.JavaScriptCodegen.prototype.getAlwaysRegisteredBindings_ = function (options) {
-  var /** @const {!Array<string>} */ list = ['stdlib', 'foreign', 'buffer'];
-  if ('string' === typeof options.emitMetadata) list.push('i32_array');
-  return list;
-};
-
-/**
  * Inherits the asm.js hot-binding set and adds {@code HEAP64} (the
  * {@code BigInt64Array} view used by every aligned i64 load/store).
  *

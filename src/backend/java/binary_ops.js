@@ -29,7 +29,6 @@ Wasm2Lang.Backend.JavaCodegen.renderBitwiseBinary_ = Wasm2Lang.Backend.AbstractC
  */
 Wasm2Lang.Backend.JavaCodegen.makeDivisionRenderer_ = function (intClass) {
   var /** @type {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} */ renderer = function (self, info, L, R) {
-      void self;
       if (info.unsigned) {
         var /** @const {string} */ method = '/' === info.opStr ? 'divideUnsigned' : 'remainderUnsigned';
         return intClass + '.' + method + '(' + L + ', ' + R + ')';
@@ -52,7 +51,6 @@ Wasm2Lang.Backend.JavaCodegen.makeDivisionRenderer_ = function (intClass) {
  */
 Wasm2Lang.Backend.JavaCodegen.makeRotateRenderer_ = function (intClass, castAmountToInt) {
   var /** @type {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} */ renderer = function (self, info, L, R) {
-      void self;
       var /** @const {string} */ amountExpr = castAmountToInt ? '(int)(' + R + ')' : R;
       var /** @const {string} */ method = info.rotateLeft ? 'rotateLeft' : 'rotateRight';
       return intClass + '.' + method + '(' + L + ', ' + amountExpr + ')';
@@ -71,7 +69,6 @@ Wasm2Lang.Backend.JavaCodegen.makeRotateRenderer_ = function (intClass, castAmou
  */
 Wasm2Lang.Backend.JavaCodegen.makeComparisonRenderer_ = function (intClass) {
   var /** @type {!Wasm2Lang.Backend.AbstractCodegen.BinaryRenderer_} */ renderer = function (self, info, L, R) {
-      void self;
       var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
       if (info.unsigned) {
         return P.renderInfix(intClass + '.compareUnsigned(' + L + ', ' + R + ')', info.opStr, '0', P.PREC_RELATIONAL_);

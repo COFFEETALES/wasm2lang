@@ -115,9 +115,9 @@ Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.evaluationOrder = function (binar
     return ordered;
   }
 
-  var /** @const {!Wasm2Lang.Wasm.Tree.ChildEdgeList} */ edges = Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren(expression);
+  var /** @const {!Array<number>} */ edges = Wasm2Lang.Wasm.Tree.NodeSchema.iterChildren(expression);
   for (var /** @type {number} */ ei = 0; ei !== edges.length; ++ei) {
-    ordered.push([/** @type {number} */ (edges[ei][3]), ei]);
+    ordered.push([edges[ei], ei]);
   }
   return ordered;
 };
@@ -264,7 +264,6 @@ Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.summarizeNode_ = function (binary
  * @return {void}
  */
 Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.prototype.onFunctionEnter = function (functionInfo, funcMetadata) {
-  void funcMetadata;
   var /** @const {!Wasm2Lang.Wasm.Tree.FunctionControlFlowSummaryIndex} */ functionIndex =
       /** @type {!Wasm2Lang.Wasm.Tree.FunctionControlFlowSummaryIndex} */ (Object.create(null));
   this.index_[functionInfo.name] = functionIndex;
@@ -276,7 +275,6 @@ Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.prototype.onFunctionEnter = funct
  * @return {!Wasm2Lang.Wasm.Tree.TraversalVisitor}
  */
 Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.prototype.createVisitor = function (funcMetadata) {
-  void funcMetadata;
   var /** @const {!Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis} */ self = this;
   return {
     leave: /**

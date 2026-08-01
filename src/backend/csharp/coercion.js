@@ -1,22 +1,8 @@
 'use strict';
 
-/**
- * @override
- * @protected
- * @param {!Binaryen} binaryen
- * @param {string} expr
- * @param {number} wasmType
- * @return {string}
- */
-Wasm2Lang.Backend.CsharpCodegen.prototype.renderCoercionByType_ = function (binaryen, expr, wasmType) {
-  var /** @const */ V = Wasm2Lang.Backend.ValueType;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  var /** @type {?string} */ cast = null;
-  if (V.isI64(binaryen, wasmType)) cast = '(long)';
-  else if (V.isF32(binaryen, wasmType)) cast = '(float)';
-  else if (V.isF64(binaryen, wasmType)) cast = '(double)';
-  return null === cast ? expr : cast + P.wrap_(expr, P.PREC_UNARY_, true);
-};
+/** @override @protected */
+Wasm2Lang.Backend.CsharpCodegen.prototype.renderCoercionByType_ =
+  Wasm2Lang.Backend.AbstractCodegen.prototype.renderPrimitiveCastCoercion_;
 
 /**
  * @override
@@ -46,7 +32,6 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.renderConst_ = function (binaryen, val
  * @return {string}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.renderI64Const_ = function (binaryen, value) {
-  void binaryen;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const {!Array<number>} */ parts = A.decomposeI64_(value);
   var /** @const {number} */ low = parts[0];
@@ -247,7 +232,6 @@ Wasm2Lang.Backend.CsharpCodegen.CS_I64_UNARY_CASTS_ = /** @type {!Object<number,
  * @return {?{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.emitI32Unary_ = function (binaryen, unaryCategory, operandExpr) {
-  void binaryen;
   var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   if (C.UNARY_EQZ === unaryCategory) {
@@ -279,7 +263,6 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitI32Unary_ = function (binaryen, un
  * @return {?{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.emitI64Unary_ = function (binaryen, unaryCategory, operandExpr) {
-  void binaryen;
   var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const */ P = A.Precedence_;

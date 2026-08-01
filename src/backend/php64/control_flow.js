@@ -222,7 +222,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitSimplifiedLoopFromIR_ = function (s
  * @return {boolean}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.canElideBlockWrapper_ = function (blockName, childControl) {
-  void blockName;
   return 0 === childControl.branchTargets.length;
 };
 

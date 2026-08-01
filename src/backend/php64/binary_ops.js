@@ -20,7 +20,6 @@
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.renderArithmeticBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   // `+` parent: right additive operand can stay unwrapped (associativity).
   // `-` parent: must wrap so `a - (b + c)` doesn't degrade to `a - b + c`.
@@ -35,7 +34,6 @@ Wasm2Lang.Backend.Php64Codegen.renderArithmeticBinary_ = function (self, info, L
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.renderMultiplyBinary_ = function (self, info, L, R) {
-  void info;
   self.markHelper_('_w2l_imul');
   return self.n_('_w2l_imul') + '(' + L + ', ' + R + ')';
 };
@@ -114,7 +112,6 @@ Wasm2Lang.Backend.Php64Codegen.renderRotateBinary_ = function (self, info, L, R)
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.renderComparisonBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   return A.renderUnsignedAwareInfix_(info, L, R, Wasm2Lang.Backend.Php64Codegen.renderMask32_, A.Precedence_.PREC_RELATIONAL_);
 };

@@ -192,9 +192,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll = function (wasmModule, 
   var /** @const {!Array<!Array<number>>} */ removals = [];
 
   AM.forEachAnchor(wasmModule, binaryen, function (funcPtr, funcInfo, parentPtr, anchorIndex, anchorId) {
-    void funcPtr;
-    void funcInfo;
-    void anchorId;
     if (parentPtr) removals.push([parentPtr, anchorIndex]);
   });
 

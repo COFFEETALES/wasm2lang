@@ -165,7 +165,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_b
       var /** @type {number} */ passStart = profileOn ? Date.now() : 0;
 
       if ('function' === typeof pass.onFunctionEnter) {
-        /** @type {!Wasm2Lang.Wasm.Tree.PassFunctionHook} */ (pass.onFunctionEnter)(funcInfo, funcMetadata);
+        /** @type {!Wasm2Lang.Wasm.Tree.PassFunctionHook} */ (pass.onFunctionEnter)(funcInfo, funcMetadata, wasmModule);
       }
 
       // prettier-ignore
@@ -195,7 +195,7 @@ Wasm2Lang.Wasm.Tree.PassRunner.runOnModule = function (wasmModule, passes, opt_b
       }
 
       if ('function' === typeof pass.onFunctionLeave) {
-        /** @type {!Wasm2Lang.Wasm.Tree.PassFunctionHook} */ (pass.onFunctionLeave)(funcInfo, funcMetadata);
+        /** @type {!Wasm2Lang.Wasm.Tree.PassFunctionHook} */ (pass.onFunctionLeave)(funcInfo, funcMetadata, wasmModule);
       }
 
       if (profileOn) {

@@ -102,50 +102,45 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderImplicitReturn_ = function (bi
  * @return {boolean}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.appendBodyResult_ = function (parts, bodyResult, binaryen, funcInfo, padStr) {
-  if (
-    bodyResult &&
-    'string' !== typeof bodyResult &&
-    true === /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprTerminal
-  ) {
-    var /** @const {number} */ terminalBeforeLen = parts.length;
-    Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(
-      parts,
-      /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprStr
-    );
-    return parts.length > terminalBeforeLen && /^\s*return\b/.test(parts[parts.length - 1]);
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  // prettier-ignore
+  var /** @const {?Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ typed =
+    bodyResult && 'string' !== typeof bodyResult
+      ? /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult)
+      : null;
+
+  if (typed && true === typed.w2lExprTerminal) {
+    return A.appendAndProbeReturn_(parts, typed.w2lExprStr);
   }
-  if (
-    bodyResult &&
-    'string' !== typeof bodyResult &&
-    'string' === typeof (/** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprStr) &&
-    binaryen.none !== funcInfo.results &&
-    0 !== funcInfo.results
-  ) {
-    var /** @const {*} */ prefix = /** @type {{w2lRootValueBlockPrefix: *}} */ (bodyResult).w2lRootValueBlockPrefix;
-    if ('string' === typeof prefix && '' !== prefix) {
-      Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, /** @type {string} */ (prefix));
+  if (typed && 'string' === typeof typed.w2lExprStr) {
+    if (binaryen.none !== funcInfo.results && 0 !== funcInfo.results) {
+      var /** @const {*} */ prefix = /** @type {{w2lRootValueBlockPrefix: *}} */ (bodyResult).w2lRootValueBlockPrefix;
+      if ('string' === typeof prefix && '' !== prefix) {
+        A.appendNonEmptyLines_(parts, /** @type {string} */ (prefix));
+      }
+      parts.push(padStr + 'return ' + this.renderImplicitReturn_(binaryen, bodyResult, funcInfo.results) + ';');
+      return true;
     }
-    parts.push(padStr + 'return ' + this.renderImplicitReturn_(binaryen, bodyResult, funcInfo.results) + ';');
-    return true;
+    return A.appendAndProbeReturn_(parts, typed.w2lExprStr);
   }
-  if (
-    bodyResult &&
-    'string' !== typeof bodyResult &&
-    'string' === typeof (/** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprStr)
-  ) {
-    var /** @const {number} */ typedBeforeLen = parts.length;
-    Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(
-      parts,
-      /** @type {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ (bodyResult).w2lExprStr
-    );
-    return parts.length > typedBeforeLen && /^\s*return\b/.test(parts[parts.length - 1]);
-  }
+  return A.appendAndProbeReturn_(parts, bodyResult);
+};
+
+/**
+ * Appends {@code text}'s non-empty lines to {@code parts} and reports whether
+ * the appended body ends in a {@code return} statement.  Every exit of
+ * {@code appendBodyResult_} that is not the synthesized implicit return goes
+ * through here, so the "did the body already return?" probe is written once.
+ *
+ * @private
+ * @param {!Array<string>} parts
+ * @param {*} text
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.appendAndProbeReturn_ = function (parts, text) {
   var /** @const {number} */ beforeLen = parts.length;
-  Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, bodyResult);
-  if (parts.length > beforeLen) {
-    return /^\s*return\b/.test(parts[parts.length - 1]);
-  }
-  return false;
+  Wasm2Lang.Backend.AbstractCodegen.appendNonEmptyLines_(parts, text);
+  return parts.length > beforeLen && /^\s*return\b/.test(parts[parts.length - 1]);
 };
 
 /**
@@ -232,16 +227,6 @@ Wasm2Lang.Backend.AbstractCodegen.ControlSummary_;
  */
 Wasm2Lang.Backend.AbstractCodegen.appendUniqueBranchTargets_ = function (destination, source) {
   Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.appendUniqueBranchTargets(destination, source);
-};
-
-/**
- * @protected
- * @param {!Array<string>} targets
- * @param {string} name
- * @return {boolean}
- */
-Wasm2Lang.Backend.AbstractCodegen.hasBranchTarget_ = function (targets, name) {
-  return Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.hasBranchTarget(targets, name);
 };
 
 /**
@@ -378,32 +363,6 @@ Wasm2Lang.Backend.AbstractCodegen.isBreakTo_ = function (binaryen, info, targetN
   if (binaryen.BreakId !== info.id) return false;
   if (/** @type {?string} */ (info.name) !== targetName) return false;
   return conditional === (0 !== /** @type {number} */ (info.condition || 0));
-};
-
-/**
- * Returns true if any child in {@code children[start..end]} contains a
- * subtree reference (Break or Switch) targeting {@code loopName}.  Used to
- * reject {@code dowhile} loop-kind detection when the body has interior
- * back-branches: in a JS {@code do{...}while(cond)}, {@code continue} jumps
- * to the condition check, not to the loop head — so an interior
- * {@code br $loop} would incorrectly exit when {@code cond} is false.
- *
- * @protected
- * @param {!Binaryen} binaryen
- * @param {!BinaryenModule} wasmModule
- * @param {!Array<number>} children
- * @param {number} start  inclusive
- * @param {number} end  exclusive
- * @param {string} loopName
- * @return {boolean}
- */
-Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_ = function (binaryen, wasmModule, children, start, end, loopName) {
-  var /** @const {function(!Binaryen, !BinaryenModule, number, string): boolean} */ check =
-      Wasm2Lang.Wasm.Tree.CustomPasses.hasReference;
-  for (var /** @type {number} */ i = start; i < end; ++i) {
-    if (check(binaryen, wasmModule, children[i], loopName)) return true;
-  }
-  return false;
 };
 
 /** @protected @typedef {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup} */
@@ -645,7 +604,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (bi
 
     // Do-while variant B: last child is conditional br_if targeting loop.
     if (lastName === loopName && 0 !== lastCond && len > 1) {
-      if (!Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_(binaryen, wasmModule, children, 0, len - 1, loopName)) {
+      if (!Wasm2Lang.Wasm.Tree.CustomPasses.hasInteriorLoopBackBranch(binaryen, wasmModule, children, 0, len - 1, loopName)) {
         return 'dowhile';
       }
     }
@@ -655,9 +614,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.detectLoopKindFromIR_ = function (bi
     if (lastName !== loopName && 0 === lastCond && len >= 2) {
       var /** @const {!BinaryenExpressionInfo} */ prevInfo = NS.safeGetExpressionInfo(binaryen, children[len - 2]);
       if (Wasm2Lang.Backend.AbstractCodegen.isBreakTo_(binaryen, prevInfo, loopName, true) && len > 2) {
-        if (
-          !Wasm2Lang.Backend.AbstractCodegen.hasInteriorLoopBackBranch_(binaryen, wasmModule, children, 0, len - 2, loopName)
-        ) {
+        if (!Wasm2Lang.Wasm.Tree.CustomPasses.hasInteriorLoopBackBranch(binaryen, wasmModule, children, 0, len - 2, loopName)) {
           return 'dowhile';
         }
       }
@@ -923,20 +880,6 @@ Wasm2Lang.Backend.AbstractCodegen.classifyLoopBackEdge_ = function (binaryen, wa
       tailInfo.name === loopInfo.name &&
       0 === /** @type {number} */ (tailInfo.condition || 0);
   return hasBackEdge ? (canBypass ? 0 : 1) : -1;
-};
-
-/**
- * Returns whether a loop body ends in an unavoidable unconditional branch
- * back to that loop.
- *
- * @protected
- * @param {!Binaryen} binaryen
- * @param {!BinaryenModule} wasmModule
- * @param {number} loopPtr
- * @return {boolean}
- */
-Wasm2Lang.Backend.AbstractCodegen.loopHasUnconditionalBackEdge_ = function (binaryen, wasmModule, loopPtr) {
-  return 1 === Wasm2Lang.Backend.AbstractCodegen.classifyLoopBackEdge_(binaryen, wasmModule, loopPtr);
 };
 
 /**
@@ -1311,7 +1254,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state
  * @return {boolean}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.canElideBlockWrapper_ = function (blockName, childControl) {
-  return !Wasm2Lang.Backend.AbstractCodegen.hasBranchTarget_(childControl.branchTargets, blockName);
+  return !Wasm2Lang.Wasm.Tree.ControlFlowSummaryAnalysis.hasBranchTarget(childControl.branchTargets, blockName);
 };
 
 /**
@@ -2525,7 +2468,5 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.shouldEmitDropChild_ = function (bin
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderUnreachableStatement_ = function (indent, siteId) {
-  void indent;
-  void siteId;
   return '';
 };

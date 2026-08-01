@@ -135,23 +135,24 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + 'return +(' + l2 + ' ? ' + l0 + ' : ' + l1 + ');\n' +
     pad1 + '}');
 
-  // prettier-ignore
-  h('$w2l_rotl', [],
-    pad1 + 'function ' + n('$w2l_rotl') + '(' + l0 + ', ' + l1 + ') {\n' +
-    pad2 + l0 + ' = ' + l0 + '|0;\n' +
-    pad2 + l1 + ' = ' + l1 + '|0;\n' +
-    pad2 + l1 + ' = ' + l1 + ' & 31;\n' +
-    pad2 + 'return ' + l0 + ' << ' + l1 + ' | (' + l0 + ' >>> 0) >>> (32 - ' + l1 + '|0)|0;\n' +
-    pad1 + '}');
+  /**
+   * @param {string} helperName
+   * @param {string} returnExpr
+   * @return {void}
+   */
+  var rotHelper = function (helperName, returnExpr) {
+    // prettier-ignore
+    h(helperName, [],
+      pad1 + 'function ' + n(helperName) + '(' + l0 + ', ' + l1 + ') {\n' +
+      pad2 + l0 + ' = ' + l0 + '|0;\n' +
+      pad2 + l1 + ' = ' + l1 + '|0;\n' +
+      pad2 + l1 + ' = ' + l1 + ' & 31;\n' +
+      pad2 + 'return ' + returnExpr + ';\n' +
+      pad1 + '}');
+  };
 
-  // prettier-ignore
-  h('$w2l_rotr', [],
-    pad1 + 'function ' + n('$w2l_rotr') + '(' + l0 + ', ' + l1 + ') {\n' +
-    pad2 + l0 + ' = ' + l0 + '|0;\n' +
-    pad2 + l1 + ' = ' + l1 + '|0;\n' +
-    pad2 + l1 + ' = ' + l1 + ' & 31;\n' +
-    pad2 + 'return (' + l0 + ' >>> 0) >>> ' + l1 + ' | ' + l0 + ' << (32 - ' + l1 + '|0)|0;\n' +
-    pad1 + '}');
+  rotHelper('$w2l_rotl', l0 + ' << ' + l1 + ' | (' + l0 + ' >>> 0) >>> (32 - ' + l1 + '|0)|0');
+  rotHelper('$w2l_rotr', '(' + l0 + ' >>> 0) >>> ' + l1 + ' | ' + l0 + ' << (32 - ' + l1 + '|0)|0');
 
   // prettier-ignore
   h('$w2l_copysign_f64', ['Math_abs'],
@@ -280,12 +281,21 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + 'return ~~' + l0 + '|0;\n' +
     pad1 + '}');
 
-  // prettier-ignore
-  h('$w2l_trunc_s_f32_to_i32', ['Math_fround', '$w2l_trap'],
-    pad1 + 'function ' + n('$w2l_trunc_s_f32_to_i32') + '(' + l0 + ') {\n' +
-    pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');\n' +
-    pad2 + 'return ' + n('$w2l_trunc_s_f64_to_i32') + '(+' + l0 + ')|0;\n' +
-    pad1 + '}');
+  /**
+   * @param {string} sign  Signedness token: {@code s} or {@code u}.
+   * @return {void}
+   */
+  var truncF32ToI32 = function (sign) {
+    var /** @const {string} */ helperName = '$w2l_trunc_' + sign + '_f32_to_i32';
+    // prettier-ignore
+    h(helperName, ['Math_fround', '$w2l_trap'],
+      pad1 + 'function ' + n(helperName) + '(' + l0 + ') {\n' +
+      pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');\n' +
+      pad2 + 'return ' + n('$w2l_trunc_' + sign + '_f64_to_i32') + '(+' + l0 + ')|0;\n' +
+      pad1 + '}');
+  };
+
+  truncF32ToI32('s');
 
   // prettier-ignore
   h('$w2l_trunc_u_f64_to_i32', ['$w2l_trap'],
@@ -310,12 +320,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitHelpers_ = function (
     pad2 + 'return ~~' + l0 + '|0;\n' +
     pad1 + '}');
 
-  // prettier-ignore
-  h('$w2l_trunc_u_f32_to_i32', ['Math_fround', '$w2l_trap'],
-    pad1 + 'function ' + n('$w2l_trunc_u_f32_to_i32') + '(' + l0 + ') {\n' +
-    pad2 + l0 + ' = ' + nMathFround + '(' + l0 + ');\n' +
-    pad2 + 'return ' + n('$w2l_trunc_u_f64_to_i32') + '(+' + l0 + ')|0;\n' +
-    pad1 + '}');
+  truncF32ToI32('u');
 
   // -------------------------------------------------------------------------
   // Checked integer division (--trap-sites only).

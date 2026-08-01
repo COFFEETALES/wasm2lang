@@ -17,8 +17,6 @@
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderCoercionByType_ = function (binaryen, expr, wasmType) {
-  void binaryen;
-  void wasmType;
   return expr;
 };
 
@@ -34,8 +32,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderCoercionByType_ = function (bi
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderConst_ = function (binaryen, value, wasmType) {
-  void binaryen;
-  void wasmType;
   return String(value);
 };
 
@@ -126,7 +122,6 @@ Wasm2Lang.Backend.AbstractCodegen.formatI64WithSuffix_ = function (value, suffix
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderI64Const_ = function (binaryen, value) {
-  void binaryen;
   var /** @const {!Array<number>} */ parts = Wasm2Lang.Backend.AbstractCodegen.decomposeI64_(value);
   return Wasm2Lang.Backend.AbstractCodegen.renderI64HexLiteral_(parts[1], parts[0], '/*i64*/');
 };
@@ -142,8 +137,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderI64Const_ = function (binaryen
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderLocalInit_ = function (binaryen, wasmType) {
-  void binaryen;
-  void wasmType;
   return '0';
 };
 
@@ -484,8 +477,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
  * @return {{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDBinaryOp_ = function (binaryen, info, L, R) {
-  void binaryen;
-  void info;
   return {
     emittedString: '/* unsupported SIMD binary: ' + info.opName + '(' + L + ', ' + R + ') */',
     resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_V128
@@ -503,8 +494,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDBinaryOp_ = function (binary
  * @return {{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDUnaryOp_ = function (binaryen, info, operandExpr) {
-  void binaryen;
-  void info;
   return {
     emittedString: '/* unsupported SIMD unary: ' + info.opName + '(' + operandExpr + ') */',
     resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_V128
@@ -557,8 +546,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderBinaryOp_ = function (info, L,
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.prepareI32BinaryOperand_ = function (operand, cat, opt_opInfo) {
-  void cat;
-  void opt_opInfo;
   return operand;
 };
 
@@ -666,9 +653,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.numericComparisonCat_ = function () 
  * @return {?{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitI32Unary_ = function (binaryen, unaryCategory, operandExpr) {
-  void binaryen;
-  void unaryCategory;
-  void operandExpr;
   return null;
 };
 
@@ -684,9 +668,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitI32Unary_ = function (binaryen, 
  * @return {?{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitI64Unary_ = function (binaryen, unaryCategory, operandExpr) {
-  void binaryen;
-  void unaryCategory;
-  void operandExpr;
   return null;
 };
 
@@ -770,7 +751,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, u
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.renderPlainBitwiseBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   var /** @const */ bi = P.bitwiseInfo(info.opStr);
   return P.renderInfix(L, info.opStr, R, bi.bitwisePrecedence, bi.bitwiseAllowRightEqual);
@@ -792,7 +772,6 @@ Wasm2Lang.Backend.AbstractCodegen.renderPlainBitwiseBinary_ = function (self, in
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.renderPlainArithmeticBinary_ = function (self, info, L, R) {
-  void self;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   return P.renderInfix(L, info.opStr, R, P.PREC_ADDITIVE_, '+' === info.opStr);
 };
@@ -807,8 +786,6 @@ Wasm2Lang.Backend.AbstractCodegen.renderPlainArithmeticBinary_ = function (self,
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.renderPlainMultiplyBinary_ = function (self, info, L, R) {
-  void self;
-  void info;
   var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
   return P.renderInfix(L, '*', R, P.PREC_MULTIPLICATIVE_);
 };

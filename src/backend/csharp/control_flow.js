@@ -692,8 +692,6 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitLeave_ = function (state, nodeCtx,
  * @return {void}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.emitFlatSwitchCaseBreak_ = function (lines, indent, switchLabel, info) {
-  void switchLabel;
-  void info;
   lines.push(Wasm2Lang.Backend.AbstractCodegen.pad_(indent) + 'break;\n');
 };
 

@@ -1,23 +1,7 @@
 'use strict';
 
-/**
- * @override
- * @protected
- * @param {string} expr
- * @param {number=} opt_condCat
- * @return {string}
- */
-Wasm2Lang.Backend.JavaCodegen.prototype.formatCondition_ = function (expr, opt_condCat) {
-  if ('' === expr) return '(0 != 0)';
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === opt_condCat) {
-    return P.isFullyParenthesized(expr) ? expr : '(' + expr + ')';
-  }
-  if (Wasm2Lang.Backend.AbstractCodegen.CAT_I64 === opt_condCat) {
-    return '(' + P.wrap_(expr, P.PREC_EQUALITY_, true) + ' != 0L)';
-  }
-  return '(' + P.wrap_(expr, P.PREC_EQUALITY_, true) + ' != 0)';
-};
+/** @override @protected */
+Wasm2Lang.Backend.JavaCodegen.prototype.formatCondition_ = Wasm2Lang.Backend.AbstractCodegen.prototype.formatTypedCondition_;
 
 /**
  * @param {!Binaryen} binaryen

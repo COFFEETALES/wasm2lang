@@ -16,7 +16,6 @@
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.getFixedModuleBindings_ = function (options) {
-  void options;
   return ['buffer'];
 };
 
@@ -29,7 +28,6 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.getFixedModuleBindings_ = function (op
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.getHotModuleBindings_ = function (options) {
-  void options;
   return ['buffer'];
 };
 

@@ -24,7 +24,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.phpVar_ = function (key) {
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.getFixedModuleBindings_ = function (options) {
-  void options;
   return ['buffer', '_w2l_i', '_w2l_f32'];
 };
 
@@ -39,7 +38,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.getFixedModuleBindings_ = function (opt
  * @return {!Array<string>}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.getHotModuleBindings_ = function (options) {
-  void options;
   return ['_w2l_i', '_w2l_f32', 'buffer'];
 };
 

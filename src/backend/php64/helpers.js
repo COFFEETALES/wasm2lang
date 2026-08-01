@@ -64,11 +64,6 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitHelpers_ = function (
   scratchQwordIndex,
   heapPageCount
 ) {
-  void scratchByteOffset;
-  void scratchWordIndex;
-  void scratchQwordIndex;
-  void heapPageCount;
-
   var /** @const {!Array<string>} */ lines = [];
   var /** @const */ self = this;
   var n = /** @param {string} s @return {string} */ function (s) {

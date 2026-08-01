@@ -11,9 +11,6 @@
  * backend behavior is dispatched through emitEnter_, adjustLeaveIndent_,
  * and emitLeave_ virtual methods.
  *
- * Also collects per-function node counts and seen expression IDs for the
- * diagnostic summary, eliminating the need for a separate traversal.
- *
  * @suppress {checkTypes, reportUnknownTypes}
  * @protected
  * @param {!Array<string>} parts
@@ -35,16 +32,11 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.walkAndAppendBody_ = function (
   this.prepareControlFlowSummary_(wasmModule, binaryen);
 
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen} */ self = this;
-  var /** @type {number} */ nodeCount = 0;
-  var /** @const {!Object<number, boolean>} */ seenIds =
-      this.diagnosticSeenIds_ || /** @type {!Object<number, boolean>} */ (Object.create(null));
   var /** @const {!Object<string, boolean>} */ skippedPointers = Object.create(null);
   // prettier-ignore
   var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ visitor =
     /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ ({
       enter: /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nc @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ function(nc) {
-        ++nodeCount;
-        seenIds[nc.expression.id] = true;
         var /** @const {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ decision = self.emitEnter_(emitState, nc);
         if (
           decision &&
@@ -87,11 +79,135 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.walkAndAppendBody_ = function (
   var /** @const {?Object<string, *>} */ liOverrides = this.getLocalInitOverrides_(funcInfo.name);
   this.localInitOverridesActive_ = liOverrides ? {map: liOverrides, consumed: Object.create(null)} : null;
   var /** @type {*} */ bodyResult = this.walkFunctionBody_(wasmModule, binaryen, funcInfo, visitor);
-  // Store diagnostic data for emitDiagnosticSummary_.
-  if (this.diagnosticNodeCounts_) {
-    this.diagnosticNodeCounts_[funcInfo.name] = nodeCount;
-  }
   return this.appendBodyResult_(parts, bodyResult, binaryen, funcInfo, padStr);
+};
+
+/**
+ * Target-language type name for a wasm value type, used by the shared
+ * class-method emitter below.  Only the class-shaped backends (Java, C#)
+ * consult it; the default is unreachable for the others and exists so the
+ * shared emitter type-checks against the base prototype.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} wasmType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.classTypeName_ = function (binaryen, wasmType) {
+  return Wasm2Lang.Backend.ValueType.typeName(binaryen, wasmType);
+};
+
+/**
+ * Emits one method body for a class-shaped backend (Java, C#).  Both declare
+ * a method inside a class, coerce nothing at the parameter boundary, declare
+ * each local with its target type, and walk the body with the shared visitor;
+ * the only divergences are the type-name spelling ({@code classTypeName_}) and
+ * the visibility keyword an exported method carries
+ * ({@code exportedMethodVisibility_}).
+ *
+ * The emit state carries {@code usedExitLabels} unconditionally.  Only C#
+ * reads it — Java has labeled {@code break}/{@code continue} and never needs
+ * a goto exit label — but building one shape for both keeps this emitter free
+ * of a per-backend branch, and an unread empty map costs one allocation per
+ * function.
+ *
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!Object<string, string>} importedNames
+ * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>} functionSignatures
+ * @param {!Object<string, number>} globalTypes
+ * @param {!Object<string, string>} exportNameMap
+ * @param {!Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>} functionTables
+ * @param {?Object<string, string>=} opt_stdlibNames
+ * @param {?Object<string, string>=} opt_stdlibGlobals
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitClassMethod_ = function (
+  wasmModule,
+  binaryen,
+  funcInfo,
+  importedNames,
+  functionSignatures,
+  globalTypes,
+  exportNameMap,
+  functionTables,
+  opt_stdlibNames,
+  opt_stdlibGlobals
+) {
+  var /** @const {!Array<string>} */ parts = [];
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const {string} */ pad1 = pad(1);
+  var /** @const {string} */ pad2 = pad(2);
+  var /** @const {boolean} */ isExported = funcInfo.name in exportNameMap;
+  var /** @const {string} */ fnName = isExported
+      ? this.safeName_(exportNameMap[funcInfo.name])
+      : this.n_(this.safeName_(funcInfo.name));
+  var /** @const {string} */ visibility = isExported ? this.exportedMethodVisibility_ : 'private ';
+  var /** @const {!Array<number>} */ paramTypes = binaryen.expandType(funcInfo.params);
+  var /** @const {number} */ numParams = paramTypes.length;
+  var /** @const {!Array<number>} */ varTypes = /** @type {!Array<number>} */ (funcInfo.vars) || [];
+  var /** @const {number} */ numVars = varTypes.length;
+  var /** @const {string} */ returnType = this.classTypeName_(binaryen, funcInfo.results);
+
+  // Method header (indent 1 = inside class).
+  var /** @const {!Array<string>} */ paramDecls = [];
+  for (var /** @type {number} */ pi = 0; pi !== numParams; ++pi) {
+    paramDecls.push(this.classTypeName_(binaryen, paramTypes[pi]) + ' ' + this.localN_(pi));
+  }
+  parts.push(pad1 + visibility + returnType + ' ' + fnName + '(' + paramDecls.join(', ') + ') {');
+
+  // Local variable declarations.
+  if (0 !== numVars) {
+    var /** @const {!Array<string>} */ initStrs = this.buildLocalInitStrings_(binaryen, funcInfo.name, varTypes, numParams);
+    for (var /** @type {number} */ vi = 0; vi !== numVars; ++vi) {
+      parts.push(
+        pad2 + this.classTypeName_(binaryen, varTypes[vi]) + ' ' + this.localN_(numParams + vi) + ' = ' + initStrs[vi] + ';'
+      );
+    }
+  }
+
+  // Walk the body with the code-gen visitor.
+  if (0 !== funcInfo.body) {
+    this.walkAndAppendBody_(
+      parts,
+      wasmModule,
+      binaryen,
+      funcInfo,
+      /** @type {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} */ ({
+        binaryen: binaryen,
+        functionInfo: funcInfo,
+        functionSignatures: functionSignatures,
+        globalTypes: globalTypes,
+        functionTables: functionTables,
+        labelKinds: /** @type {!Object<string, string>} */ (Object.create(null)),
+        labelMap: /** @type {!Object<string, number>} */ (Object.create(null)),
+        importedNames: importedNames,
+        stdlibNames: opt_stdlibNames || null,
+        stdlibGlobals: opt_stdlibGlobals || null,
+        exportNameMap: exportNameMap,
+        indent: 2,
+        lastExprIsTerminal: false,
+        wasmModule: wasmModule,
+        visitor: null,
+        fusedBlockToLoop: /** @type {!Object<string, string>} */ (Object.create(null)),
+        pendingBlockFusion: '',
+        currentLoopName: '',
+        rootSwitchExitMap: null,
+        rootSwitchRsName: '',
+        rootSwitchLoopName: '',
+        breakableStack: [],
+        usedLabels: /** @type {!Object<string, boolean>} */ (Object.create(null)),
+        usedExitLabels: /** @type {!Object<string, boolean>} */ (Object.create(null)),
+        pendingLoopKind: ''
+      }),
+      pad2
+    );
+  }
+
+  parts.push(pad1 + '}');
+  return parts.join('\n');
 };
 
 /**
@@ -218,61 +334,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.traversalEnter_ = function (state, n
 };
 
 /**
- * Initializes diagnostic collection fields so that walkAndAppendBody_ can
- * accumulate node counts and seen IDs during the main codegen traversal.
- * Call once before emitting function bodies.
- *
- * @protected
- * @return {void}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.initDiagnostics_ = function () {
-  this.diagnosticNodeCounts_ = /** @type {!Object<string, number>} */ (Object.create(null));
-  this.diagnosticSeenIds_ = /** @type {!Object<number, boolean>} */ (Object.create(null));
-};
-
-/**
- * Emits the diagnostic summary lines from data collected during the main
- * codegen traversal (via walkAndAppendBody_), avoiding a separate
- * traversal pass over all function bodies.
- *
- * Falls back to the full traversal when diagnostic data was not collected
- * (e.g. when called from the abstract base emitCode).
- *
- * @protected
- * @param {!BinaryenModule} wasmModule
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @return {string}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.emitDiagnosticSummary_ = function (wasmModule, options) {
-  if (!this.diagnosticNodeCounts_) {
-    // Fallback: no collected data — run the old full-traversal emitCode.
-    return /** @type {string} */ (this.emitCode(wasmModule, options));
-  }
-
-  var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
-  var /** @const {!Array<string>} */ outputParts = [];
-  var /** @const {!Array<!BinaryenFunctionInfo>} */ functions = this.collectDefinedFunctions_(wasmModule);
-  var /** @const {!Object<string, number>} */ counts = /** @type {!Object<string, number>} */ (this.diagnosticNodeCounts_);
-
-  for (var /** @type {number} */ f = 0, /** @const {number} */ funcCount = functions.length; f !== funcCount; ++f) {
-    var /** @const {string} */ funcName = functions[f].name;
-    var /** @const {number} */ nodeCount = counts[funcName] || 0;
-    outputParts.push('// ' + funcName + ' [nodes:' + nodeCount + ']');
-  }
-
-  // Build seen-ids line from collected expression IDs.
-  var /** @const {!Object<number, boolean>} */ seenIds = /** @type {!Object<number, boolean>} */ (this.diagnosticSeenIds_);
-  var /** @const {!Array<string>} */ seenIdNames = [];
-  var /** @const {!Array<string>} */ idKeys = Object.keys(seenIds);
-  for (var /** @type {number} */ k = 0, /** @const {number} */ kLen = idKeys.length; k !== kLen; ++k) {
-    seenIdNames.push(this.idName_(binaryen, Number(idKeys[k])));
-  }
-  outputParts.push('// [ids seen: ' + (0 !== seenIdNames.length ? seenIdNames.join(', ') : '(none)') + ']');
-
-  return outputParts.join('\n');
-};
-
-/**
  * Traversal-driven backend emission.  Walks every non-imported function body
  * with the TraversalKernel and emits a skeleton string — one comment line per
  * function with the traversal node count.  Replace the visitor body with real
@@ -283,7 +344,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitDiagnosticSummary_ = function (w
  * @return {string|!Array<!Wasm2Lang.OutputSink.ChunkEntry>}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitCode = function (wasmModule, options) {
-  void options;
   var /** @const {!Binaryen} */ binaryen = Wasm2Lang.Processor.getBinaryen();
   var /** @const {!Array<!BinaryenFunctionInfo>} */ functions = this.collectDefinedFunctions_(wasmModule);
   var /** @const {!Array<string>} */ outputParts = [];

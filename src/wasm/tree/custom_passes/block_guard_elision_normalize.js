@@ -36,13 +36,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass = function () {
 Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.State_;
 
 /**
- * Delegates to the shared invertCondition utility.
- * @private
- * @const {function(!Binaryen, !BinaryenModule, number): number}
- */
-Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.invertCondition_ = Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition;
-
-/**
  * @private
  * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.State_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
@@ -137,11 +130,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.prototype.leave_ = functi
   // -----------------------------------------------------------------------
   // Build the if(inverted_condition) { post-guard body }.
   // -----------------------------------------------------------------------
-  var /** @const {number} */ invertedCond = Wasm2Lang.Wasm.Tree.CustomPasses.BlockGuardElisionPass.invertCondition_(
-      binaryen,
-      module,
-      condPtr
-    );
+  var /** @const {number} */ invertedCond = Wasm2Lang.Wasm.Tree.CustomPasses.invertCondition(binaryen, module, condPtr);
 
   var /** @const {!Array<number>} */ postGuard = /** @type {!Array<number>} */ ([].slice.call(children, guardIdx + 1));
   var /** @type {number} */ thenBody;

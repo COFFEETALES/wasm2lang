@@ -332,7 +332,6 @@ Wasm2Lang.Processor.drainResults_ = function (results, writeFn) {
     results,
     /** @param {!Wasm2Lang.Processor.TranspileResultProperty} key @param {*} value */
     function (key, value) {
-      void key;
       if (Array.isArray(value)) {
         for (var /** @type {number} */ j = 0, /** @const {number} */ cLen = value.length; j !== cLen; ++j) {
           allChunks.push(value[j]);

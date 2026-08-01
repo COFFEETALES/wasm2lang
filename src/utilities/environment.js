@@ -20,23 +20,16 @@ Wasm2Lang.Utilities.Environment.sliceArgs_ = function (args, startIndex) {
  * @param {!NodeWritableStream} stream
  * @param {!IArrayLike<(string|!Uint8Array)>} args
  * @param {number} startIndex
- * @return {boolean}  True if every written chunk was a Uint8Array.
+ * @return {void}
  */
 Wasm2Lang.Utilities.Environment.writeCliChunks_ = function (stream, args, startIndex) {
-  var /** @type {boolean} */ binaryOnly = true;
   for (var /** @type {number} */ i = startIndex, /** @const {number} */ argCount = args.length; i !== argCount; ++i) {
     if (i !== startIndex) {
       stream.write(' ');
     }
     var /** @const {(string|!Uint8Array)} */ chunk = args[i];
-    if (chunk instanceof Uint8Array) {
-      stream.write(Buffer.from(/** @type {!Uint8Array} */ (chunk)));
-      continue;
-    }
-    binaryOnly = false;
-    stream.write(/** @type {string} */ (chunk));
+    stream.write(chunk instanceof Uint8Array ? Buffer.from(/** @type {!Uint8Array} */ (chunk)) : /** @type {string} */ (chunk));
   }
-  return binaryOnly;
 };
 
 /**
@@ -57,39 +50,6 @@ Wasm2Lang.Utilities.Environment.LogLevel = {
   INFO: 3,
   DEBUG: 4,
   TRACE: 5
-};
-
-/**
- * @const {
- *  !Object<
- *    number,
- *    function(...(string|!Uint8Array)): void
- *  >
- * }
- */
-Wasm2Lang.Utilities.Environment.stdoutWriters = Object.create(null);
-
-/**
- * @param {...(string|!Uint8Array)} data
- * @return {void}
- */
-Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.OutputTarget.WEB] = function (data) {
-  // prettier-ignore
-  var dataArgs = /** @const {!Array<(string|!Uint8Array)>} */ (
-    Wasm2Lang.Utilities.Environment.sliceArgs_(arguments, 0)
-  );
-  console.log.apply(console, dataArgs);
-};
-
-/**
- * @param {...(string|!Uint8Array)} data
- * @return {void}
- */
-Wasm2Lang.Utilities.Environment.stdoutWriters[Wasm2Lang.Utilities.Environment.OutputTarget.CLI] = function (data) {
-  var /** @const {boolean} */ binaryOnly = Wasm2Lang.Utilities.Environment.writeCliChunks_(process.stdout, arguments, 0);
-  if (!binaryOnly) {
-    process.stdout.write('\n');
-  }
 };
 
 /**

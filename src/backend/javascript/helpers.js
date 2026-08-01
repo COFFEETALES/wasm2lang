@@ -226,37 +226,35 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
     pad2 + 'return ' + nBigInt + '(' + l1 + ' + ' + l2 + ');\n' +
     pad1 + '}');
 
-  // prettier-ignore
-  h('$w2l_i64_rotl', [],
-    pad1 + 'function ' + n('$w2l_i64_rotl') + '(' + l0 + ', ' + l1 + ') {\n' +
-    pad2 + l1 + ' = ' + l1 + ' & 63n;\n' +
-    pad2 + 'if (' + l1 + ' === 0n) return ' + l0 + ';\n' +
-    pad2 + 'var ' + l2 + ' = ' + nBigIntAsUintN + '(64, ' + l0 + ');\n' +
-    pad2 + 'return ' + nBigIntAsIntN + '(64, (' + l2 + ' << ' + l1 + ') | (' + l2 + ' >> (64n - ' + l1 + ')));\n' +
-    pad1 + '}');
+  /**
+   * @param {string} helperName
+   * @param {string} firstOp   Shift applied to the low rotate half.
+   * @param {string} secondOp  Shift applied to the wrap-around half.
+   * @return {void}
+   */
+  var i64RotHelper = function (helperName, firstOp, secondOp) {
+    // prettier-ignore
+    h(helperName, [],
+      pad1 + 'function ' + n(helperName) + '(' + l0 + ', ' + l1 + ') {\n' +
+      pad2 + l1 + ' = ' + l1 + ' & 63n;\n' +
+      pad2 + 'if (' + l1 + ' === 0n) return ' + l0 + ';\n' +
+      pad2 + 'var ' + l2 + ' = ' + nBigIntAsUintN + '(64, ' + l0 + ');\n' +
+      pad2 + 'return ' + nBigIntAsIntN + '(64, (' + l2 + ' ' + firstOp + ' ' + l1 + ') | (' + l2 + ' ' + secondOp + ' (64n - ' + l1 + ')));\n' +
+      pad1 + '}');
+  };
 
-  // prettier-ignore
-  h('$w2l_i64_rotr', [],
-    pad1 + 'function ' + n('$w2l_i64_rotr') + '(' + l0 + ', ' + l1 + ') {\n' +
-    pad2 + l1 + ' = ' + l1 + ' & 63n;\n' +
-    pad2 + 'if (' + l1 + ' === 0n) return ' + l0 + ';\n' +
-    pad2 + 'var ' + l2 + ' = ' + nBigIntAsUintN + '(64, ' + l0 + ');\n' +
-    pad2 + 'return ' + nBigIntAsIntN + '(64, (' + l2 + ' >> ' + l1 + ') | (' + l2 + ' << (64n - ' + l1 + ')));\n' +
-    pad1 + '}');
+  i64RotHelper('$w2l_i64_rotl', '<<', '>>');
+  i64RotHelper('$w2l_i64_rotr', '>>', '<<');
 
   var /** @const {string} */ nTrap = n('$w2l_trap');
 
   /**
    * @param {string} helperName
    * @param {string} rangeCheck
-   * @param {boolean} needsFround
    */
-  var emitTruncI64 = function (helperName, rangeCheck, needsFround) {
-    var /** @const {!Array<string>} */ bindings = needsFround
-        ? ['$w2l_trap', 'Math_fround', 'Math_ceil', 'Math_floor']
-        : ['$w2l_trap', 'Math_ceil', 'Math_floor'];
+  var emitTruncI64 = function (helperName, rangeCheck) {
     // prettier-ignore
-    h(helperName, bindings,
+    h(helperName, ['$w2l_trap', 'Math_ceil', 'Math_floor'],
       pad1 + 'function ' + n(helperName) + '(' + l0 + ') {\n' +
       pad2 + 'if (' + l0 + ' !== ' + l0 + ') { ' + nTrap + '(); return 0n; }\n' +
       pad2 + rangeCheck + '\n' +
@@ -264,26 +262,17 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
       pad1 + '}');
   };
 
-  emitTruncI64(
-    '$w2l_trunc_s_f32_to_i64',
-    'if (' + l0 + ' >= 9223372036854775808.0 || ' + l0 + ' < -9223372036854775808.0) { ' + nTrap + '(); return 0n; }',
-    false
-  );
-  emitTruncI64(
-    '$w2l_trunc_u_f32_to_i64',
-    'if (' + l0 + ' >= 18446744073709551616.0 || ' + l0 + ' <= -1.0) { ' + nTrap + '(); return 0n; }',
-    false
-  );
-  emitTruncI64(
-    '$w2l_trunc_s_f64_to_i64',
-    'if (' + l0 + ' >= 9223372036854775808.0 || ' + l0 + ' < -9223372036854775808.0) { ' + nTrap + '(); return 0n; }',
-    false
-  );
-  emitTruncI64(
-    '$w2l_trunc_u_f64_to_i64',
-    'if (' + l0 + ' >= 18446744073709551616.0 || ' + l0 + ' <= -1.0) { ' + nTrap + '(); return 0n; }',
-    false
-  );
+  // The f32 and f64 variants share a range check: the operand is a JS Number
+  // either way, so only the signedness of the target changes the bounds.
+  var /** @const {string} */ signedI64Range =
+      'if (' + l0 + ' >= 9223372036854775808.0 || ' + l0 + ' < -9223372036854775808.0) { ' + nTrap + '(); return 0n; }';
+  var /** @const {string} */ unsignedI64Range =
+      'if (' + l0 + ' >= 18446744073709551616.0 || ' + l0 + ' <= -1.0) { ' + nTrap + '(); return 0n; }';
+
+  emitTruncI64('$w2l_trunc_s_f32_to_i64', signedI64Range);
+  emitTruncI64('$w2l_trunc_u_f32_to_i64', unsignedI64Range);
+  emitTruncI64('$w2l_trunc_s_f64_to_i64', signedI64Range);
+  emitTruncI64('$w2l_trunc_u_f64_to_i64', unsignedI64Range);
 
   /**
    * @param {string} helperName

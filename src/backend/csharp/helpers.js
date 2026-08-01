@@ -43,10 +43,6 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitHelpers_ = function (
   scratchQwordIndex,
   heapPageCount
 ) {
-  void scratchByteOffset;
-  void scratchWordIndex;
-  void scratchQwordIndex;
-  void heapPageCount;
   var /** @const {!Array<string>} */ lines = [];
 
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
@@ -78,26 +74,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitHelpers_ = function (
 
   // C# evaluates call arguments left-to-right, so these helpers preserve
   // wasm select's eager true/false/condition operand order.
-  // prettier-ignore
-  h('$w2l_select_i32',
-    pad1 + 'static int ' + n('$w2l_select_i32') + '(int ' + l0 + ', int ' + l1 + ', int ' + l2 + ') {\n' +
-    pad2 + 'return ' + l2 + ' != 0 ? ' + l0 + ' : ' + l1 + ';\n' +
-    pad1 + '}');
-  // prettier-ignore
-  h('$w2l_select_i64',
-    pad1 + 'static long ' + n('$w2l_select_i64') + '(long ' + l0 + ', long ' + l1 + ', int ' + l2 + ') {\n' +
-    pad2 + 'return ' + l2 + ' != 0 ? ' + l0 + ' : ' + l1 + ';\n' +
-    pad1 + '}');
-  // prettier-ignore
-  h('$w2l_select_f32',
-    pad1 + 'static float ' + n('$w2l_select_f32') + '(float ' + l0 + ', float ' + l1 + ', int ' + l2 + ') {\n' +
-    pad2 + 'return ' + l2 + ' != 0 ? ' + l0 + ' : ' + l1 + ';\n' +
-    pad1 + '}');
-  // prettier-ignore
-  h('$w2l_select_f64',
-    pad1 + 'static double ' + n('$w2l_select_f64') + '(double ' + l0 + ', double ' + l1 + ', int ' + l2 + ') {\n' +
-    pad2 + 'return ' + l2 + ' != 0 ? ' + l0 + ' : ' + l1 + ';\n' +
-    pad1 + '}');
+  this.emitSelectHelperFamily_(h, ['i32', 'int', 'i64', 'long', 'f32', 'float', 'f64', 'double'], pad1, pad2);
 
   // --- Little-endian byte[] load/store helpers (instance — they read the
   // buffer field).  Single-byte accesses index the buffer inline instead.
