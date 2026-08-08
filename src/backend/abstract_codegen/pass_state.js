@@ -189,6 +189,35 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.getHelperDeps_ = function () {
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.markHelper_ = function (name) {
   if (!this.usedHelpers_ || this.usedHelpers_[name]) return;
+  // A marked name that no emitter offers produces a CALL TO A FUNCTION THAT IS
+  // NEVER DEFINED, in output that is otherwise perfectly ordinary.  It is not
+  // hypothetical: it has happened twice here, both times from a helper name
+  // built by concatenation or reached through a HELPER_DEPS_ edge nobody
+  // registered, and both times the symptom was a runtime "undefined function"
+  // in a module that had compiled and shipped.
+  //
+  // getAllHelperNames_ is the authoritative roster - it runs emitHelpers_ in
+  // collect mode, so it is by construction every name this backend can emit.
+  // Cached per instance: the collect pass is cheap but not free, and one
+  // invocation transpiles one module.  Skipped while the collector is active,
+  // because that IS the roster being built.
+  if (!this.helperNameCollector_) {
+    if (!this.emittableHelperNames_) {
+      var /** @const {!Array<string>} */ roster = this.getAllHelperNames_();
+      var /** @const {!Object<string, boolean>} */ known = /** @type {!Object<string, boolean>} */ (Object.create(null));
+      for (var /** @type {number} */ ri = 0; ri !== roster.length; ++ri) known[roster[ri]] = true;
+      this.emittableHelperNames_ = known;
+    }
+    if (!this.emittableHelperNames_[name]) {
+      throw new Error(
+        'Wasm2Lang codegen: helper "' +
+          name +
+          '" was marked as used but no emitter offers a body for it, so the emitted module would call a ' +
+          'function that is never defined. Either the name is misspelled or built wrong, or a HELPER_DEPS_ ' +
+          'edge points at a helper this backend does not have.'
+      );
+    }
+  }
   this.usedHelpers_[name] = true;
   var /** @const {?Object<string, !Array<string>>} */ depsMap = this.getHelperDeps_();
   if (depsMap) {

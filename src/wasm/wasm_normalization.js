@@ -7,14 +7,17 @@ Wasm2Lang.Wasm.WasmNormalization = {};
 
 /**
  * Feature mask shared by {@code readWasmModule} (early, so validation sees
- * post-MVP ops) and {@code applyBinaryenNormalization_} (for optimizer
- * passes).
+ * post-MVP ops), {@code applyBinaryenNormalization_} (for optimizer passes),
+ * and {@code FeatureProfileValidationPass.validateModule_} (as the validation
+ * allowlist).  The last of those makes the sharing load-bearing rather than
+ * cosmetic: readWasmModule enables exactly this mask before validation runs,
+ * so "enabled here" and "allowed there" must be the same set — one definition
+ * makes that a structural fact instead of two lists that must move together.
  *
- * @private
  * @param {!Binaryen} binaryen
  * @return {number}
  */
-Wasm2Lang.Wasm.WasmNormalization.getFeatureMask_ = function (binaryen) {
+Wasm2Lang.Wasm.WasmNormalization.getFeatureMask = function (binaryen) {
   var /** @const {!BinaryenFeatures} */ f = binaryen.Features;
   return 0 | f.NontrappingFPToInt | f.BulkMemory | f.BulkMemoryOpt | f.SignExt | f.MutableGlobals | f.SIMD128;
 };
@@ -39,7 +42,7 @@ Wasm2Lang.Wasm.WasmNormalization.readWasmModule = function (inputData, opt_binar
 
   // Enable post-MVP features early so the validation pass can traverse
   // sign-ext, mutable-globals, bulk-memory, etc. without errors.
-  wasmModule.setFeatures(Wasm2Lang.Wasm.WasmNormalization.getFeatureMask_(binaryen));
+  wasmModule.setFeatures(Wasm2Lang.Wasm.WasmNormalization.getFeatureMask(binaryen));
 
   Wasm2Lang.Wasm.WasmNormalization.validateInputModule_(/** @type {!BinaryenModule} */ (wasmModule));
   // prettier-ignore
@@ -163,7 +166,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   };
   // Feature mask already set by readWasmModule; refresh in case the caller
   // bypassed that entry point.
-  wasmModule.setFeatures(Wasm2Lang.Wasm.WasmNormalization.getFeatureMask_(binaryen));
+  wasmModule.setFeatures(Wasm2Lang.Wasm.WasmNormalization.getFeatureMask(binaryen));
 
   // Phase 1 — Pre-lowering.
   if (isJsTarget) {
@@ -185,7 +188,6 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // Following wasm2js's approach: propagate constants first (especially
   // effective on i64 lowering artifacts), then run a full optimization
   // pass to inline, simplify, and eliminate dead code.
-  var /** @type {boolean} */ optimizeSucceeded = false;
   if (aggressive) {
     var /** @const {!Array<string>} */ postLoweringPasses = ['simplify-locals-nonesting', 'precompute-propagate'];
     if (isJsTarget) {
@@ -199,7 +201,6 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
     // emitter mistranslates (stalls QUIC TLS handshake at step 2).  The
     // surrounding targeted passes cover what the JS target benefits from.
     // Tracked in memory/project_quic_webtransport_codegen.md as TODO.
-    optimizeSucceeded = true;
     if (isJsTarget) {
       runTimed('phase3.reinterprets', ['avoid-reinterprets']);
     }
@@ -239,8 +240,8 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // coalesce-locals resilient to very large local counts.  The check is
   // purely a defensive workaround — if the pass itself becomes cheap, the
   // threshold can be removed and coalesce-locals re-enabled unconditionally
-  // when {@code optimizeSucceeded} is true.
-  if (optimizeSucceeded && !Wasm2Lang.Wasm.WasmNormalization.hasPathologicalLocalCount_(wasmModule, binaryen, 2000)) {
+  // when {@code aggressive} is true.
+  if (aggressive && !Wasm2Lang.Wasm.WasmNormalization.hasPathologicalLocalCount_(wasmModule, binaryen, 2000)) {
     runTimed('phase4b', ['coalesce-locals']);
   }
 

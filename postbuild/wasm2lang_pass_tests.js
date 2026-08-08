@@ -1181,9 +1181,102 @@ var i64ControlNative = new EmissionFamily(
   ['binaryen:none']
 );
 
+// A backend with no SIMD type must REFUSE a module that uses v128, not emit one
+// with the SIMD quietly missing.  The fixture is pure v128 data movement, which
+// is precisely the shape the old per-renderer refusal let through: it guarded
+// the SIMD arithmetic ops and nothing else, so asm.js emitted a valid-parsing,
+// wrong-computing module at exit 0.
+//
+// java and csharp are the controls: the same module and pipeline must still
+// emit, because both express v128 as a language primitive.
+function simdRefusalFamily(name, languageOut) {
+  return new EmissionFamily(
+    name,
+    'simd_no_lane_ops.wast',
+    languageOut,
+    function () {},
+    ['binaryen:max', 'wasm2lang:codegen'],
+    {},
+    /cannot express v128/
+  );
+}
+
+var simdRefusalAsmjs = simdRefusalFamily('simd-refused-asmjs', 'asmjs');
+var simdRefusalJavascript = simdRefusalFamily('simd-refused-javascript', 'javascript');
+var simdRefusalPhp64 = simdRefusalFamily('simd-refused-php64', 'php64');
+
+// The controls run at binaryen:none so the swizzle actually reaches the
+// backend: both its operands are constants, and binaryen:max folds the whole
+// thing to a v128.const before any emitter sees it.  The refusal families above
+// deliberately stay at binaryen:max — v128 survives folding as a parameter, a
+// store and a constant, which is the point.
+var simdNativeJava = new EmissionFamily(
+  'simd-native-java-ok',
+  'simd_no_lane_ops.wast',
+  'java',
+  function (code) {
+    assert(-1 !== code.indexOf('import jdk.incubator.vector.*;'), 'the Vector API import is missing from a SIMD module');
+    assert(
+      /static IntVector \S*v128_swizzle_i8x16\(IntVector \w+, IntVector \w+\)/.test(code),
+      'the swizzle did not survive to the Vector helper'
+    );
+  },
+  ['binaryen:none', 'wasm2lang:codegen'],
+  {}
+);
+
+var simdNativeCsharp = new EmissionFamily(
+  'simd-native-csharp-ok',
+  'simd_no_lane_ops.wast',
+  'csharp',
+  function (code) {
+    assert(-1 !== code.indexOf('System.Runtime.Intrinsics'), 'the Vector128 namespace is missing from a SIMD module');
+    assert(/Vector128\.Shuffle\(/.test(code), 'the swizzle did not survive to a Vector128 shuffle');
+    assert(-1 === code.indexOf('unknown expr id'), 'a placeholder comment reached the emitted C#');
+  },
+  ['binaryen:none', 'wasm2lang:codegen'],
+  {}
+);
+
+var simdVectorPathOperands = new EmissionFamily(
+  'simd-vector-path-operands',
+  'simd_vector_ops.wast',
+  'java',
+  function (code) {
+    assert(
+      /static IntVector \S*v128_bitselect_v128\(IntVector \w+, IntVector \w+, IntVector \w+\)/.test(code),
+      'bitselect is not a three-parameter helper — the inline form evaluates its mask twice\n'
+    );
+    // The AND-then-OR chain is the bitselect formula, so it MUST appear exactly
+    // once — inside the helper body.  A second occurrence is a call site that
+    // expanded inline, which is the defect: the mask is named twice there.
+    // Asserting its absence outright would fail on the helper itself.
+    var bitselectChains = (code.match(/lanewise\(VectorOperators\.AND, [^;]*?\)\.lanewise\(VectorOperators\.OR,/g) || [])
+      .length;
+    assertEqual(
+      bitselectChains,
+      1,
+      'the bitselect AND/OR chain must occur once (the helper body) — a second is an inline call site that evaluates its mask twice'
+    );
+    assert(
+      /VectorShuffle\.fromValues\(ByteVector\.SPECIES_128(, \d+){16}\)/.test(code),
+      'shuffle is not a 16-index BYTE rearrange — a 4-lane form is wrong for any unaligned mask'
+    );
+    assert(!/VectorShuffle\.fromValues\(IntVector\.SPECIES_128/.test(code), 'the 4-lane shuffle form came back');
+  },
+  ['binaryen:none', 'wasm2lang:codegen'],
+  {}
+);
+
 var emissionFamilies = [
   eqzOrCompoundNegation,
   kernelLeaveFreshness,
+  simdVectorPathOperands,
+  simdRefusalAsmjs,
+  simdRefusalJavascript,
+  simdRefusalPhp64,
+  simdNativeJava,
+  simdNativeCsharp,
   trapSitesOff,
   trapSitesOn,
   trapSitesAsmjsAbort,
@@ -1216,55 +1309,66 @@ loadBinaryen().then(function (binaryen) {
     }
   }
 
-  var emissionPromises = [];
+  // Emission families run ONE AT A TIME, not concurrently.
+  //
+  // transpile() is asynchronous (the mangler precomputes names), so two
+  // overlapping transpiles interleave across every await point.  Serialising
+  // them costs a few seconds and removes a whole class of order-dependent
+  // failure — in particular any backend state that is static rather than
+  // per-instance would be corrupted by whichever emit pinned it last.
+  function runEmissionFamily(ef) {
+    var wastSrc = fs.readFileSync(path.resolve(fixtureDir, ef.fixturePath), 'utf8');
+    var p;
+    try {
+      var transpileOptions = {
+        'inputData': wastSrc,
+        'normalizeWasm': ef.normalizeWasm,
+        'languageOut': ef.languageOut,
+        'emitCode': 'module'
+      };
+      for (var optKey in ef.extraOptions) {
+        if (Object.prototype.hasOwnProperty.call(ef.extraOptions, optKey)) {
+          transpileOptions[optKey] = ef.extraOptions[optKey];
+        }
+      }
+      var emit = wasm2lang['transpile'](binaryen, transpileOptions);
+      p = emit && typeof emit.then === 'function' ? emit : Promise.resolve(emit);
+    } catch (e) {
+      p = Promise.reject(e);
+    }
+    return p
+      .then(function (result) {
+        if (ef.expectErrorPattern) {
+          var emitted = (result && result['code']) || '';
+          throw new Error('expected transpile to be refused, but it emitted ' + emitted.length + ' chars of source');
+        }
+        var codeStr = result && result['code'];
+        if (!codeStr) throw new Error('transpile did not return emitted code');
+        ef.assertions(codeStr, result);
+        console.log('[0;32mPASS[0m: ' + ef.name);
+        ++passes;
+      })
+      .catch(function (e) {
+        if (ef.expectErrorPattern && ef.expectErrorPattern.test(String(e.message))) {
+          console.log('[0;32mPASS[0m: ' + ef.name);
+          ++passes;
+          return;
+        }
+        console.error('[0;31mFAIL[0m: ' + ef.name + ': ' + e.message);
+        ++failures;
+      });
+  }
+
+  var emissionChain = Promise.resolve();
   for (var j = 0; j < emissionFamilies.length; j++) {
     (function (ef) {
-      var wastSrc = fs.readFileSync(path.resolve(fixtureDir, ef.fixturePath), 'utf8');
-      var p;
-      try {
-        var transpileOptions = {
-          'inputData': wastSrc,
-          'normalizeWasm': ef.normalizeWasm,
-          'languageOut': ef.languageOut,
-          'emitCode': 'module'
-        };
-        for (var optKey in ef.extraOptions) {
-          if (Object.prototype.hasOwnProperty.call(ef.extraOptions, optKey)) {
-            transpileOptions[optKey] = ef.extraOptions[optKey];
-          }
-        }
-        var emit = wasm2lang['transpile'](binaryen, transpileOptions);
-        p = emit && typeof emit.then === 'function' ? emit : Promise.resolve(emit);
-      } catch (e) {
-        p = Promise.reject(e);
-      }
-      emissionPromises.push(
-        p
-          .then(function (result) {
-            if (ef.expectErrorPattern) {
-              var emitted = (result && result['code']) || '';
-              throw new Error('expected transpile to be refused, but it emitted ' + emitted.length + ' chars of source');
-            }
-            var codeStr = result && result['code'];
-            if (!codeStr) throw new Error('transpile did not return emitted code');
-            ef.assertions(codeStr, result);
-            console.log('\x1b[0;32mPASS\x1b[0m: ' + ef.name);
-            ++passes;
-          })
-          .catch(function (e) {
-            if (ef.expectErrorPattern && ef.expectErrorPattern.test(String(e.message))) {
-              console.log('\x1b[0;32mPASS\x1b[0m: ' + ef.name);
-              ++passes;
-              return;
-            }
-            console.error('\x1b[0;31mFAIL\x1b[0m: ' + ef.name + ': ' + e.message);
-            ++failures;
-          })
-      );
+      emissionChain = emissionChain.then(function () {
+        return runEmissionFamily(ef);
+      });
     })(emissionFamilies[j]);
   }
 
-  Promise.all(emissionPromises).then(function () {
+  emissionChain.then(function () {
     var total = families.length + emissionFamilies.length;
     console.log('');
     console.log(passes + '/' + total + ' families passed.');

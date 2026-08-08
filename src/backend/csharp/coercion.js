@@ -16,7 +16,29 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.renderConst_ = function (binaryen, val
   if (Wasm2Lang.Backend.ValueType.isI32(binaryen, wasmType)) {
     return String(value);
   }
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    return Wasm2Lang.Backend.CsharpCodegen.renderV128Const_(value);
+  }
   return Wasm2Lang.Backend.CsharpCodegen.formatCsharpFloat_(value, Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType));
+};
+
+/**
+ * Renders a v128 constant.  binaryen hands the value over as an ArrayLike of
+ * 16 bytes in memory order, which is exactly the byte-view carrier, so the
+ * bytes go straight into a 16-argument {@code Vector128.Create} with no
+ * endianness reasoning required — the value is already a byte sequence rather
+ * than a number.
+ *
+ * @param {*} value  16-byte array-like from binaryen.
+ * @return {string}
+ */
+Wasm2Lang.Backend.CsharpCodegen.renderV128Const_ = function (value) {
+  var /** @const {!Array<number>} */ bytes = /** @type {!Array<number>} */ (value);
+  var /** @const {!Array<string>} */ args = [];
+  for (var /** @type {number} */ i = 0; i !== 16; ++i) {
+    args.push('(byte)' + String(bytes[i] & 0xff));
+  }
+  return 'System.Runtime.Intrinsics.Vector128.Create(' + args.join(', ') + ')';
 };
 
 /**
@@ -50,16 +72,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.renderI64Const_ = function (binaryen, 
  * @return {string}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.renderLocalInit_ = function (binaryen, wasmType) {
-  if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) {
-    return '0L';
-  }
-  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return '0.0f';
-  }
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return '0.0';
-  }
-  return '0';
+  return this.renderManagedLocalInit_(binaryen, wasmType, Wasm2Lang.Backend.CsharpCodegen.V128_TYPE_ + '.Zero');
 };
 
 /**
@@ -224,6 +237,70 @@ Wasm2Lang.Backend.CsharpCodegen.CS_I64_UNARY_CASTS_ = /** @type {!Object<number,
 );
 
 /**
+ * C#'s {@code BitOperations} statics overload on the unsigned types, so the
+ * operand is routed through {@code narrowingCast_} to the spec's unsigned
+ * parameter type (Java's default passes it bare).
+ *
+ * @override
+ * @protected
+ * @param {string} operandExpr
+ * @param {string} unsignedType
+ * @return {string}
+ */
+Wasm2Lang.Backend.CsharpCodegen.prototype.renderUnaryBitOpArg_ = function (operandExpr, unsignedType) {
+  return Wasm2Lang.Backend.CsharpCodegen.narrowingCast_(unsignedType, operandExpr);
+};
+
+/**
+ * C# spells the sign-extend cast through {@code narrowingCast_} so constant
+ * operands that would overflow the target range still get their
+ * {@code unchecked(...)} wrap exactly as before.
+ *
+ * @override
+ * @protected
+ * @param {string} castType
+ * @param {string} operandExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.CsharpCodegen.prototype.renderUnaryExtendCast_ = function (castType, operandExpr) {
+  return Wasm2Lang.Backend.CsharpCodegen.narrowingCast_(castType, operandExpr);
+};
+
+/**
+ * i32 width spec for the shared {@code emitManagedIntUnary_} dispatch.
+ *
+ * @const {!Wasm2Lang.Backend.AbstractCodegen.ManagedUnarySpec_}
+ * @private
+ */
+Wasm2Lang.Backend.CsharpCodegen.CS_I32_UNARY_SPEC_ = {
+  eqzCat: Wasm2Lang.Backend.I32Coercion.UNARY_EQZ,
+  zeroLit: '0',
+  methods: Wasm2Lang.Backend.CsharpCodegen.CS_I32_UNARY_METHODS_,
+  casts: Wasm2Lang.Backend.CsharpCodegen.CS_I32_UNARY_CASTS_,
+  bitOpArgType: 'uint',
+  widenPrefix: '',
+  resultCat: Wasm2Lang.Backend.I32Coercion.SIGNED
+};
+
+/**
+ * i64 width spec for the shared {@code emitManagedIntUnary_} dispatch.  The
+ * {@code (long)} widen prefix makes the narrowing casts' implicit widening
+ * explicit so the result type stays CAT_I64-truthful.
+ *
+ * @const {!Wasm2Lang.Backend.AbstractCodegen.ManagedUnarySpec_}
+ * @private
+ */
+Wasm2Lang.Backend.CsharpCodegen.CS_I64_UNARY_SPEC_ = {
+  eqzCat: Wasm2Lang.Backend.I64Coercion.UNARY_EQZ,
+  zeroLit: '0L',
+  methods: Wasm2Lang.Backend.CsharpCodegen.CS_I64_UNARY_METHODS_,
+  casts: Wasm2Lang.Backend.CsharpCodegen.CS_I64_UNARY_CASTS_,
+  bitOpArgType: 'ulong',
+  widenPrefix: '(long)',
+  resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_I64
+};
+
+/**
  * @override
  * @protected
  * @param {!Binaryen} binaryen
@@ -232,26 +309,7 @@ Wasm2Lang.Backend.CsharpCodegen.CS_I64_UNARY_CASTS_ = /** @type {!Object<number,
  * @return {?{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.emitI32Unary_ = function (binaryen, unaryCategory, operandExpr) {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if (C.UNARY_EQZ === unaryCategory) {
-    return {
-      emittedString: P.renderInfix(operandExpr, '==', '0', P.PREC_EQUALITY_),
-      resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32
-    };
-  }
-  var /** @const {string|undefined} */ method = Wasm2Lang.Backend.CsharpCodegen.CS_I32_UNARY_METHODS_[unaryCategory];
-  if (method) {
-    return {
-      emittedString: method + '(' + Wasm2Lang.Backend.CsharpCodegen.narrowingCast_('uint', operandExpr) + ')',
-      resultCat: C.SIGNED
-    };
-  }
-  var /** @const {string|undefined} */ cast = Wasm2Lang.Backend.CsharpCodegen.CS_I32_UNARY_CASTS_[unaryCategory];
-  if (cast) {
-    return {emittedString: Wasm2Lang.Backend.CsharpCodegen.narrowingCast_(cast, operandExpr), resultCat: C.SIGNED};
-  }
-  return null;
+  return this.emitManagedIntUnary_(unaryCategory, operandExpr, Wasm2Lang.Backend.CsharpCodegen.CS_I32_UNARY_SPEC_);
 };
 
 /**
@@ -263,28 +321,5 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitI32Unary_ = function (binaryen, un
  * @return {?{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.emitI64Unary_ = function (binaryen, unaryCategory, operandExpr) {
-  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ P = A.Precedence_;
-  if (I.UNARY_EQZ === unaryCategory) {
-    return {
-      emittedString: P.renderInfix(operandExpr, '==', '0L', P.PREC_EQUALITY_),
-      resultCat: A.CAT_BOOL_I32
-    };
-  }
-  var /** @const {string|undefined} */ method = Wasm2Lang.Backend.CsharpCodegen.CS_I64_UNARY_METHODS_[unaryCategory];
-  if (method) {
-    return {
-      emittedString: '(long)' + method + '(' + Wasm2Lang.Backend.CsharpCodegen.narrowingCast_('ulong', operandExpr) + ')',
-      resultCat: A.CAT_I64
-    };
-  }
-  var /** @const {string|undefined} */ cast = Wasm2Lang.Backend.CsharpCodegen.CS_I64_UNARY_CASTS_[unaryCategory];
-  if (cast) {
-    return {
-      emittedString: '(long)' + Wasm2Lang.Backend.CsharpCodegen.narrowingCast_(cast, operandExpr),
-      resultCat: A.CAT_I64
-    };
-  }
-  return null;
+  return this.emitManagedIntUnary_(unaryCategory, operandExpr, Wasm2Lang.Backend.CsharpCodegen.CS_I64_UNARY_SPEC_);
 };

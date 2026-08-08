@@ -309,23 +309,28 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.emitHelpers_ = function (
   );
   emitTruncSatI64('$w2l_trunc_sat_u_f64_to_i64', '0n', '18446744073709551615n', '0.0', '18446744073709551616.0');
 
-  // prettier-ignore
-  h('$w2l_reinterpret_f64_to_i64', ['HEAPF64', 'HEAP64'],
-    pad1 + 'function ' + n('$w2l_reinterpret_f64_to_i64') + '(' + l0 + ') {\n' +
-    pad2 + n('HEAPF64') + '[' + scratchQ + '] = ' + l0 + ';\n' +
-    pad2 + 'var ' + l1 + ' = ' + n('HEAP64') + '[' + scratchQ + '];\n' +
-    pad2 + n('HEAP64') + '[' + scratchQ + '] = 0n;\n' +
-    pad2 + 'return ' + l1 + ';\n' +
-    pad1 + '}');
-
-  // prettier-ignore
-  h('$w2l_reinterpret_i64_to_f64', ['HEAP64', 'HEAPF64'],
-    pad1 + 'function ' + n('$w2l_reinterpret_i64_to_f64') + '(' + l0 + ') {\n' +
-    pad2 + n('HEAP64') + '[' + scratchQ + '] = ' + l0 + ';\n' +
-    pad2 + 'var ' + l1 + ' = ' + n('HEAPF64') + '[' + scratchQ + '];\n' +
-    pad2 + n('HEAP64') + '[' + scratchQ + '] = 0n;\n' +
-    pad2 + 'return ' + l1 + ';\n' +
-    pad1 + '}');
+  // The two reinterpret helpers are exact mirrors: write through one 64-bit
+  // view, read the bit pattern back through the other, zero the scratch slot
+  // (always via HEAP64) and return.  One table row per direction —
+  // [name, writeView, readView] — with the bindings array carrying the same
+  // write/read pair; row order keeps the registration order.
+  var /** @const {!Array<!Array<string>>} */ REINTERPRET_I64 = [
+      ['$w2l_reinterpret_f64_to_i64', 'HEAPF64', 'HEAP64'],
+      ['$w2l_reinterpret_i64_to_f64', 'HEAP64', 'HEAPF64']
+    ];
+  for (var /** @type {number} */ ri = 0; ri < REINTERPRET_I64.length; ++ri) {
+    var /** @const {string} */ rName = REINTERPRET_I64[ri][0];
+    var /** @const {string} */ rWrite = REINTERPRET_I64[ri][1];
+    var /** @const {string} */ rRead = REINTERPRET_I64[ri][2];
+    // prettier-ignore
+    h(rName, [rWrite, rRead],
+      pad1 + 'function ' + n(rName) + '(' + l0 + ') {\n' +
+      pad2 + n(rWrite) + '[' + scratchQ + '] = ' + l0 + ';\n' +
+      pad2 + 'var ' + l1 + ' = ' + n(rRead) + '[' + scratchQ + '];\n' +
+      pad2 + n('HEAP64') + '[' + scratchQ + '] = 0n;\n' +
+      pad2 + 'return ' + l1 + ';\n' +
+      pad1 + '}');
+  }
 
   // prettier-ignore
   h('$w2l_store_i64', ['HEAP64', 'HEAPU8'],

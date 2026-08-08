@@ -150,12 +150,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
         state.stripTrailingUnreachable[blockName] = true;
       }
       state.fusionBlocks[blockName] = true;
-      var /** @const {*} */ fbRef = state.funcMetadata.fusedBlocks;
-      if (fbRef) {
-        /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (fbRef)[
-          Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER + blockName
-        ] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionVariant: 'a'});
-      }
+      Wasm2Lang.Wasm.Tree.CustomPasses.recordMarkedEntry_(
+        state.funcMetadata.fusedBlocks,
+        Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER,
+        blockName,
+        /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionVariant: 'a'})
+      );
     }
   } else if (binaryen.LoopId === id) {
     // Pattern B: loop whose sole body is a named block.
@@ -168,12 +168,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
       var /** @const {?string} */ bodyName = /** @type {?string} */ (body.name);
       if (bodyName) {
         state.fusionBlocks[bodyName] = true;
-        var /** @const {*} */ fbRefB = state.funcMetadata.fusedBlocks;
-        if (fbRefB) {
-          /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.BlockFusionPlan>} */ (fbRefB)[
-            Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER + bodyName
-          ] = /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionVariant: 'b'});
-        }
+        Wasm2Lang.Wasm.Tree.CustomPasses.recordMarkedEntry_(
+          state.funcMetadata.fusedBlocks,
+          Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.MARKER,
+          bodyName,
+          /** @type {!Wasm2Lang.Wasm.Tree.BlockFusionPlan} */ ({fusionVariant: 'b'})
+        );
       }
     }
   }
@@ -190,10 +190,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.enter_ = function
 Wasm2Lang.Wasm.Tree.CustomPasses.BlockLoopFusionPass.prototype.leave_ = function (state, nodeCtx) {
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
   var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
-  var /** @const {!BinaryenExpressionInfo} */ expr = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
-      binaryen,
-      nodeCtx.expressionPointer
-    );
+  // Fresh by the kernel's leave-freshness contract — no re-fetch needed.
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   if (binaryen.BlockId === expr.id) {
     var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
     if (blockName && blockName in state.stripTrailingUnreachable) {

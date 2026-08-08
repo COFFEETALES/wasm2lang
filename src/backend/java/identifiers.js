@@ -38,6 +38,13 @@ Wasm2Lang.Backend.JavaCodegen.javaTypeName_ = function (binaryen, wasmType) {
 };
 
 /**
+ * @override
+ * @protected
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
+ * @return {!Promise<void>}
+ */
+/**
  * Formats a float literal for Java (appends {@code f} suffix for f32).
  *
  * @param {number} value

@@ -29,8 +29,12 @@ Wasm2Lang.Backend.registerBackend = function (languageId, ctor) {
 };
 
 /**
- * Creates the backend for the given language identifier.  Falls back to
- * {@code AbstractCodegen} when the identifier has no registered backend.
+ * Creates the backend for the given language identifier.  An unregistered
+ * identifier is a hard error naming the registered ones: the previous
+ * fallback to the skeleton {@code AbstractCodegen} meant a typo'd
+ * {@code --language-out} silently produced a diagnostic dump instead of
+ * code.  The skeleton stays directly constructible for backend development;
+ * it is only the id-driven path that refuses.
  *
  * @param {string} languageId
  * @return {!Wasm2Lang.Backend.AbstractCodegen}
@@ -40,7 +44,13 @@ Wasm2Lang.Backend.createBackend = function (languageId) {
   if (ctor) {
     return new ctor();
   }
-  return new Wasm2Lang.Backend.AbstractCodegen();
+  throw new Error(
+    'Wasm2Lang: unknown --language-out value "' +
+      languageId +
+      '"; supported: ' +
+      Object.keys(Wasm2Lang.Backend.registry_).sort().join(', ') +
+      '.'
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -165,6 +175,15 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
   this.lastEmitUsedBindings_ = null;
 
   /**
+   * Every helper name this backend can emit, as a set, built lazily from
+   * {@code getAllHelperNames_} and used by {@code markHelper_} to reject a name
+   * nothing offers a body for.
+   *
+   * @protected {?Object<string, boolean>}
+   */
+  this.emittableHelperNames_ = null;
+
+  /**
    * Filter sets populated by {@code runUsageDiscovery_} from the snapshot
    * fields above.  When non-null, {@code precomputeMangledNames_} skips
    * registering helpers and cold-tier bindings whose keys are absent — the
@@ -242,6 +261,81 @@ Wasm2Lang.Backend.AbstractCodegen = function () {
    * @protected @type {string}
    */
   this.exportedMethodVisibility_ = '';
+
+  // Spelling table for the shared class-shell emitter (emitClassCode_).
+  // Read only by the class-shaped backends (Java, C#), whose constructors
+  // each set the full table; the empty defaults are never read.  One field
+  // per single-token divergence between the two class shells — anything
+  // larger goes through the emitClassCode_ method hooks instead.
+
+  /**
+   * Class declaration opener up to the class name ({@code 'class '} /
+   * {@code 'public class '}).
+   * @protected @type {string}
+   */
+  this.classDeclPrefix_ = '';
+
+  /**
+   * Linear-memory field type, trailing space included
+   * ({@code 'java.nio.ByteBuffer '} / {@code 'byte[] '}).
+   * @protected @type {string}
+   */
+  this.bufferTypeName_ = '';
+
+  /**
+   * Foreign-import field type, trailing space included
+   * ({@code 'Object '} / {@code 'object '}).
+   * @protected @type {string}
+   */
+  this.importFieldTypeName_ = '';
+
+  /**
+   * Lambda arrow token, surrounding spaces included
+   * ({@code ' -> '} / {@code ' => '}).
+   * @protected @type {string}
+   */
+  this.classLambdaArrow_ = '';
+
+  /**
+   * Prefix a function-table entry uses to reference a method on the current
+   * instance ({@code 'this::'} method reference / {@code 'this.'} method
+   * group).
+   * @protected @type {string}
+   */
+  this.tableEntryRefPrefix_ = '';
+
+  /**
+   * Token between a function-table index expression and the call's argument
+   * list ({@code '].call('} through a functional interface / {@code ']('}
+   * on a delegate).
+   * @protected @type {string}
+   */
+  this.tableInvokeOpen_ = '';
+
+  /**
+   * memory.size rendering appended to the buffer reference
+   * ({@code '.capacity() / 65536'} / {@code '.Length / 65536'}).
+   * @protected @type {string}
+   */
+  this.classMemorySizeSuffix_ = '';
+
+  /**
+   * Exception-constructor opener for a throw-shaped trap statement, up to
+   * (and excluding) the argument list — set by the backends whose abort is a
+   * {@code throw} (Java, C#, PHP).  Read only by
+   * {@code renderThrowTrapStatement_}; the empty default is never read.
+   * @protected @type {string}
+   */
+  this.trapThrowOpen_ = '';
+
+  /**
+   * Same, for the trap throw inside a shared runtime helper body — C# uses a
+   * different exception there ({@code System.ArithmeticException}, matching
+   * what an unguarded division would raise) than for {@code unreachable}.
+   * Read only by {@code renderThrowHelperTrap_}.
+   * @protected @type {string}
+   */
+  this.helperTrapThrowOpen_ = '';
 
   /**
    * Optional pre-sanitize regex applied by safeName_ before safeIdentifier_.

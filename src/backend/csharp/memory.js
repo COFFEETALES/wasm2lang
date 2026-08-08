@@ -23,6 +23,9 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.renderLoad_ = function (binaryen, ptrE
     self.markHelper_(name);
     return 'this.' + self.n_(name) + '(' + ptrExpr + ')';
   };
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    return call('$w2l_v128_load');
+  }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     return call('$w2l_load_f64');
   }
@@ -82,6 +85,9 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.renderStore_ = function (
     self.markHelper_(name);
     return 'this.' + self.n_(name) + '(' + ptrExpr + ', ' + value + ');';
   };
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    return call('$w2l_v128_store', P.stripOuter(valueExpr));
+  }
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
     return call('$w2l_store_f64', P.stripOuter(this.coerceToType_(binaryen, valueExpr, valueCat, wasmType)));
   }
@@ -138,6 +144,8 @@ Wasm2Lang.Backend.CsharpCodegen.csharpDelegateType_ = function (binaryen, paramT
  * cast to the {@code Func}/{@code Action} delegate matching the wasm
  * signature and invoked directly.
  *
+ * @override
+ * @protected
  * @param {!Binaryen} binaryen
  * @param {string} importBaseName
  * @param {!Array<string>} callArgs

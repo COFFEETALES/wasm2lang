@@ -68,9 +68,15 @@
     ];
     var backendFilesById = {
       'asmjs': sharedBackendFiles,
-      'csharp': ['binary_ops.js'].concat(sharedBackendFiles),
+      // csharp keeps its own simd_ops.js: Vector128 is a language primitive, so
+      // the backend expresses v128 natively.  java does the same through the
+      // Vector API.  The other three have no SIMD type at all and none is
+      // emulated — they refuse v128 instead (see Php64Codegen/AsmjsCodegen
+      // refuseSIMDOp_ and the v128 rejection in the processor).
+      'csharp': ['binary_ops.js', 'simd_ops.js'].concat(sharedBackendFiles),
       'java': ['binary_ops.js', 'simd_ops.js'].concat(sharedBackendFiles),
       'php64': ['binary_ops.js'].concat(sharedBackendFiles),
+      // javascript inherits metadata / numeric_ops / control_flow from asm.js.
       'javascript': [
         'binary_ops.js',
         'coercion.js',

@@ -19,11 +19,16 @@ Wasm2Lang.CLI.CommandLineParser.ensureParamList_ = function (parsedParams, optio
 };
 
 /**
- * @private
+ * The single spelling of the camelCase-schema-key to CLI-flag mapping
+ * ({@code emitWebAssembly} -> {@code --emit-web-assembly}).  Also used by
+ * {@code Wasm2Lang.Processor.writeCliHelp_} so the help text always displays
+ * exactly the flag {@code processParams} accepts — a second regex would let
+ * the two drift apart silently.
+ *
  * @param {string} key
  * @return {string}
  */
-Wasm2Lang.CLI.CommandLineParser.optionKeyToCliKey_ = function (key) {
+Wasm2Lang.CLI.CommandLineParser.optionKeyToCliKey = function (key) {
   return '--' + key.replace(/([A-Z])/g, '-$1').toLowerCase();
 };
 
@@ -124,7 +129,50 @@ Wasm2Lang.CLI.CommandLineParser.processParams = function (params) {
   var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ options = /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ (
     Object.assign({}, Wasm2Lang.Options.Schema.defaultOptions)
   );
+  // Object.assign is shallow, so without this line {@code options.definitions}
+  // would alias {@code Schema.defaultOptions.definitions} and the DEFINE
+  // parser's in-place writes would permanently pollute the shared default
+  // object for the rest of the process.  The other container fields
+  // (normalizeWasm, disabledPasses) are safe as-is: their parsers reassign a
+  // fresh array instead of mutating.
+  options.definitions = /** @type {!Object<string, string>} */ (Object.create(null));
   var /** @const {!Wasm2Lang.Utilities.Environment.OutputTarget} */ outputTarget = Wasm2Lang.Utilities.Environment.isNode();
+
+  /** @const {!Array<!Wasm2Lang.Options.Schema.OptionKey>} */
+  var props = Object.keys(Wasm2Lang.Options.Schema.optionSchema);
+
+  // Reject unknown options before anything else: parseArgv stores ANY --flag
+  // it sees, and the schema loop below only ever looks up recognized
+  // spellings, so a typo'd option (--managler, --language-outt) used to be
+  // dropped silently and ship a default-configured build.  Checked before the
+  // input probe so a misspelled --input-file names the real mistake instead of
+  // surfacing as "No input data provided", and before any file is read.
+  var /** @const {!Object<string, boolean>} */ recognizedCliKeys = /** @type {!Object<string, boolean>} */ (
+      Object.create(null)
+    );
+  // Non-schema options that legitimately appear in argv: --dev is consumed by
+  // the wasm2lang.js launcher but stays visible here, and --help
+  // short-circuits in runCliEntryPoint before this function runs.
+  recognizedCliKeys['--dev'] = true;
+  recognizedCliKeys['--help'] = true;
+  for (var /** @type {number} */ ri = 0, /** @const {number} */ rLen = props.length; ri !== rLen; ++ri) {
+    recognizedCliKeys[Wasm2Lang.CLI.CommandLineParser.optionKeyToCliKey(props[ri])] = true;
+  }
+  var /** @const {!Array<string>} */ unknownOptions = [];
+  for (var /** @type {string} */ optionName in params) {
+    if (!recognizedCliKeys[optionName]) {
+      unknownOptions.push(optionName);
+    }
+  }
+  if (0 !== unknownOptions.length) {
+    throw new Error(
+      'Unrecognized option(s): ' +
+        unknownOptions.join(', ') +
+        '. Run --help for the supported options. Note that a bare --option swallows the next token as its ' +
+        'value unless that token starts with a double dash, so a mistyped option can also hide the argument ' +
+        'that followed it.'
+    );
+  }
 
   Wasm2Lang.CLI.CommandLineParser.assignInputData_(options, params);
 
@@ -132,12 +180,9 @@ Wasm2Lang.CLI.CommandLineParser.processParams = function (params) {
     throw new Error('No input data provided. Use --input-data or --input-file to specify input.');
   }
 
-  /** @const {!Array<!Wasm2Lang.Options.Schema.OptionKey>} */
-  var props = Object.keys(Wasm2Lang.Options.Schema.optionSchema);
-
   for (var /** @type {number} */ i = 0, /** @const {number} */ len = props.length; i !== len; ++i) {
     var /** @const {!Wasm2Lang.Options.Schema.OptionKey} */ key = props[i];
-    var /** @const {string} */ cliKey = Wasm2Lang.CLI.CommandLineParser.optionKeyToCliKey_(key);
+    var /** @const {string} */ cliKey = Wasm2Lang.CLI.CommandLineParser.optionKeyToCliKey(key);
     var /** @type {!Array<string>|void} */ optionValues = params[cliKey];
     if ('object' === typeof optionValues) {
       Wasm2Lang.Options.Schema.optionParsers[key](options, optionValues);

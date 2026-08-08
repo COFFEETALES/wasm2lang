@@ -221,16 +221,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
         // When chain[0] is recognized as a chain block, the epilogue
         // siblings live in the parent (loop body, etc.) and are emitted
         // naturally by the parent's traversal.
-        var /** @type {boolean} */ outerIsChainBlock = false;
-        for (var /** @type {number} */ sni = 0, /** @const {number} */ snLen = switchNames.length; sni < snLen; ++sni) {
-          if (switchNames[sni] === outerName) {
-            outerIsChainBlock = true;
-            break;
-          }
-        }
-        if (!outerIsChainBlock && switchDefault === outerName) {
-          outerIsChainBlock = true;
-        }
+        var /** @const {boolean} */ outerIsChainBlock = Wasm2Lang.Wasm.Tree.CustomPasses.switchTargetsName_(
+            switchNames,
+            switchDefault,
+            outerName
+          );
         var /** @const {!Array<number>} */ wrapperTrail = outerIsChainBlock
             ? /** @type {!Array<number>} */ ([])
             : /** @type {!Array<number>} */ (chain[0][1]).slice(1);
@@ -770,64 +765,41 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledGroupBody_
 };
 
 /**
- * Emits a flat switch statement for backends using labeled break semantics
- * (asm.js, Java).  PHP overrides {@code emitFlatSwitch_} entirely because
- * it uses numeric break depths instead of labels.
+ * Applies the three-way chain-name redirect bookkeeping shared by the
+ * labeled flat-switch emitter below and C#'s goto-exit-label variant:
+ *
+ *  - labeled epilogue (epilogue AND label required): the inner label
+ *    corresponds to the original chain outer block (e.g. "exit").  Chain-name
+ *    breaks already target it by name — register the block in
+ *    labelKinds/breakableStack as a normal block so the BreakId handler
+ *    produces `break innerLabel;`.  The inner chain name is the first chain
+ *    name that isn't outerName; all other chain names redirect to it so
+ *    their breaks also exit the inner labeled block ({@code labelN_} ensures
+ *    it is registered in the label map).
+ *  - label required, no epilogue: chain names redirect to outerName via
+ *    fusedBlockToLoop (exit label / labeled break after the switch).
+ *  - otherwise: no label needed (with or without epilogue).  Redirect all
+ *    chain names — including outerName — to the switch sentinel '*' so the
+ *    BreakId handler produces unlabeled `break;` which exits the enclosing
+ *    switch.  This covers the non-wrapping drift case where binary
+ *    round-trip strips the wrapper label and metadata points to the inner
+ *    dispatch block; action code may carry `br $outerName` which must
+ *    degrade to unlabeled break.  {@code adjustLeaveIndent_} treats the '*'
+ *    sentinel as "not fused" so the enter/leave indent bump around the flat
+ *    switch stays balanced.
  *
  * @suppress {accessControls}
  * @param {!Wasm2Lang.Backend.AbstractCodegen} codegen
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @return {{emittedString: string, hasDefault: boolean}}
+ * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} info
+ * @return {{labeledEpilogue: boolean, innerChainName: string}}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch = function (codegen, state, nodeCtx) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication;
-  var /** @const */ pad = A.pad_;
-  var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const {number} */ ind = state.indent;
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
-    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
-  // prettier-ignore
-  var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ info =
-    /** @type {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ (
-      S.extractStructure(binaryen, nodeCtx.expressionPointer)
-    );
-  var /** @const {string} */ outerLabel = codegen.labelN_(state.labelMap, info.outerName);
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.applyChainRedirects_ = function (codegen, state, info) {
   var /** @const {!Array<string>} */ cn = info.chainNames;
   var /** @const {number} */ cnLen = cn.length;
-  var /** @const {boolean} */ hasEpilogue = info.epiloguePtrs.length > 0;
-
-  // When epilogue exists AND a label is required, emit:
-  //   outerLabel: {           ← wraps everything; epilogue breaks target this
-  //     innerLabel: {         ← wraps switch; case-action breaks target this
-  //       switch (cond) { }
-  //     }
-  //     epilogue;
-  //   }
-  //
-  // The inner labeled block makes case-action `break innerLabel;` exit the
-  // switch and reach the epilogue.  Epilogue `break outerLabel;` exits all.
-  //
-  // When epilogue exists but no label needed: label-free switch + epilogue.
-  //   Chain-name breaks are redirected to '*' (switch sentinel) so they
-  //   produce unlabeled `break;` which exits the switch and reaches epilogue.
-  //
-  // When no epilogue but requiresLabel: label goes on the switch directly.
-  //   Chain-name breaks are redirected to outerName via fusedBlockToLoop.
-  //
-  // When neither: label-free switch; chain-name breaks redirect to '*'.
-  var /** @const {boolean} */ labeledEpilogue = hasEpilogue && info.requiresLabel;
+  var /** @const {boolean} */ labeledEpilogue = info.epiloguePtrs.length > 0 && info.requiresLabel;
   var /** @type {string} */ innerChainName = '';
   if (labeledEpilogue) {
-    // The inner label corresponds to the original chain outer block (e.g.
-    // "exit"). Chain-name breaks already target it by name — register the
-    // block in labelKinds/breakableStack as a normal block so the BreakId
-    // handler produces `break innerLabel;`.
-    // Find the chain-outer name (chain[1] in the extracted chain, which is
-    // the first name after outerName that other chain names relate to).
-    // Use the first chain name that isn't outerName.
     for (var /** @type {number} */ fi = 0; fi < cnLen; ++fi) {
       if (cn[fi] !== info.outerName) {
         innerChainName = cn[fi];
@@ -837,9 +809,6 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
     if ('' !== innerChainName) {
       state.labelKinds[innerChainName] = 'block';
       state.breakableStack[state.breakableStack.length] = innerChainName;
-      // Redirect all other chain names to innerChainName so their breaks
-      // also exit the inner labeled block.  Call labelN_ to ensure
-      // innerChainName is registered in the label map.
       codegen.labelN_(state.labelMap, innerChainName);
       var /** @const {number|void} */ innerMapSeq = state.labelMap[innerChainName];
       for (var /** @type {number} */ ci = 0; ci < cnLen; ++ci) {
@@ -866,30 +835,91 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch
       }
     }
   } else {
-    // No label needed (with or without epilogue).  Redirect all chain names
-    // — including outerName — to the switch sentinel '*' so BreakId handler
-    // produces unlabeled `break;` which exits the enclosing switch.  This
-    // covers the non-wrapping drift case where binary round-trip strips the
-    // wrapper label and metadata points to the inner dispatch block; action
-    // code may carry `br $outerName` which must degrade to unlabeled break.
-    // {@code adjustLeaveIndent_} treats the '*' sentinel as "not fused" so
-    // the enter/leave indent bump around the flat switch stays balanced.
     for (var /** @type {number} */ ci3 = 0; ci3 < cnLen; ++ci3) {
       if (!(cn[ci3] in state.fusedBlockToLoop)) {
         state.fusedBlockToLoop[cn[ci3]] = '*';
       }
     }
   }
+  return {labeledEpilogue: labeledEpilogue, innerChainName: innerChainName};
+};
 
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ condResult = A.subWalkExpressionWithCategory_(
-      state,
-      info.conditionPtr
-    );
+/**
+ * Renders the flat-switch condition: sub-walk the condition expression, turn
+ * a boolean-i32 result into its numeric comparison form, and apply the
+ * backend's switch-condition coercion.
+ *
+ * @suppress {accessControls}
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} codegen
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {number} conditionPtr
+ * @return {string}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.renderFlatSwitchCondition_ = function (
+  codegen,
+  state,
+  conditionPtr
+) {
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ condResult =
+      Wasm2Lang.Backend.AbstractCodegen.subWalkExpressionWithCategory_(state, conditionPtr);
   var /** @type {string} */ condInput = condResult.w2lExprStr;
   if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === condResult.w2lExprCat) {
     condInput = codegen.renderNumericComparisonResult_(condInput);
   }
-  var /** @const {string} */ condStr = codegen.coerceSwitchCondition_(condInput);
+  return codegen.coerceSwitchCondition_(condInput);
+};
+
+/**
+ * Emits a flat switch statement for backends using labeled break semantics
+ * (asm.js, Java).  PHP overrides {@code emitFlatSwitch_} entirely because
+ * it uses numeric break depths instead of labels.
+ *
+ * @suppress {accessControls}
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} codegen
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {{emittedString: string, hasDefault: boolean}}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch = function (codegen, state, nodeCtx) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ S = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication;
+  var /** @const */ pad = A.pad_;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const {number} */ ind = state.indent;
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ vis =
+    /** @type {!Wasm2Lang.Wasm.Tree.TraversalVisitor} */ (state.visitor);
+  // prettier-ignore
+  var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ info =
+    /** @type {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ (
+      S.extractStructure(binaryen, nodeCtx.expressionPointer)
+    );
+  var /** @const {string} */ outerLabel = codegen.labelN_(state.labelMap, info.outerName);
+  var /** @const {boolean} */ hasEpilogue = info.epiloguePtrs.length > 0;
+
+  // When epilogue exists AND a label is required, emit:
+  //   outerLabel: {           ← wraps everything; epilogue breaks target this
+  //     innerLabel: {         ← wraps switch; case-action breaks target this
+  //       switch (cond) { }
+  //     }
+  //     epilogue;
+  //   }
+  //
+  // The inner labeled block makes case-action `break innerLabel;` exit the
+  // switch and reach the epilogue.  Epilogue `break outerLabel;` exits all.
+  //
+  // When epilogue exists but no label needed: label-free switch + epilogue.
+  //   Chain-name breaks are redirected to '*' (switch sentinel) so they
+  //   produce unlabeled `break;` which exits the switch and reaches epilogue.
+  //
+  // When no epilogue but requiresLabel: label goes on the switch directly.
+  //   Chain-name breaks are redirected to outerName via fusedBlockToLoop.
+  //
+  // When neither: label-free switch; chain-name breaks redirect to '*'.
+  var /** @const */ redirects = S.applyChainRedirects_(codegen, state, info);
+  var /** @const {boolean} */ labeledEpilogue = redirects.labeledEpilogue;
+  var /** @type {string} */ innerChainName = redirects.innerChainName;
+  var /** @const {string} */ condStr = S.renderFlatSwitchCondition_(codegen, state, info.conditionPtr);
 
   var /** @const {!Array<string>} */ lines = [];
   var /** @type {number} */ switchInd = ind;

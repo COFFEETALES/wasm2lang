@@ -129,6 +129,8 @@ Wasm2Lang.Backend.JavaCodegen.UNARY_IFACE_ = {
  * Renders a call to an imported function, choosing the appropriate Java
  * functional interface and invocation method based on the wasm signature.
  *
+ * @override
+ * @protected
  * @param {!Binaryen} binaryen
  * @param {string} importBaseName
  * @param {!Array<string>} callArgs

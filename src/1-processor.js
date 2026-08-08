@@ -132,7 +132,7 @@ Wasm2Lang.Processor.writeCliHelp_ = function () {
     var /** @const {!Wasm2Lang.Options.Schema.OptionKey} */ key = props[i];
     log(
       NONE,
-      '\n--' + key.replace(/(?=[A-Z])/g, '-').toLowerCase() + ':\n',
+      '\n' + Wasm2Lang.CLI.CommandLineParser.optionKeyToCliKey(key) + ':\n',
       Wasm2Lang.Options.Schema.optionSchema[key].optionDesc
     );
   }
@@ -290,6 +290,19 @@ Wasm2Lang.Processor.transpile_ = function (options) {
   // and a no-op when no anchors exist.
   if ('string' === typeof options.emitCode) {
     Wasm2Lang.Wasm.Tree.CustomPasses.AnchorMarkers.stripAll(wasmModule, Wasm2Lang.Processor.getBinaryen());
+    // Before anything is rendered: a backend must not emit a module that uses a
+    // value type it cannot express - v128 on a backend with no SIMD type, i64 on
+    // a backend that depends on i64-to-i32 lowering.  This is the ONE door every
+    // code emission passes through, which is why the check lives here rather
+    // than in each renderer: scattered refusals covered the arithmetic ops of
+    // each type and missed every form of pure data movement, and the artifact
+    // came out looking fine.
+    Wasm2Lang.Backend.AbstractCodegen.rejectUnsupportedTypes_(
+      Wasm2Lang.Processor.getBinaryen(),
+      wasmModule,
+      codegen,
+      String(options.languageOut)
+    );
     codegen.prepareControlFlowSummary_(wasmModule, Wasm2Lang.Processor.getBinaryen());
   }
 
@@ -488,25 +501,19 @@ Wasm2Lang.Processor.getPassAnalysis = function (binaryenModule, wastString) {
 
   var /** @const {!BinaryenModule} */ wasmModule = Wasm2Lang.Wasm.WasmNormalization.readWasmModule(wastString);
 
+  // Derived from defaultOptions rather than spelled out field-for-field so a
+  // newly added option reaches this analysis path without a second edit here.
+  // Only normalizeWasm differs in value; definitions and disabledPasses are
+  // overridden with fresh containers to keep the aliasing of the literal this
+  // replaces (a shallow copy would share the default object's instances).
   // prettier-ignore
   var /** @const {!Wasm2Lang.Options.Schema.NormalizedOptions} */ options =
-    /** @type {!Wasm2Lang.Options.Schema.NormalizedOptions} */ ({
-      languageOut: 'asmjs',
-      normalizeWasm: ['binaryen:none', 'wasm2lang:codegen'],
-      definitions: /** @type {!Object<string, string>} */ (Object.create(null)),
-      inputData: null,
-      inputFile: null,
-      emitMetadata: null,
-      emitCode: null,
-      emitWebAssembly: null,
-      mangler: null,
-      outFile: null,
-      preNormalized: false,
-      disabledPasses: [],
-      trapSites: false,
-      trapSiteIds: true,
-      trapHostAbort: false
-    });
+    /** @type {!Wasm2Lang.Options.Schema.NormalizedOptions} */ (
+      Object.assign({}, Wasm2Lang.Options.Schema.defaultOptions)
+    );
+  options.normalizeWasm = ['binaryen:none', 'wasm2lang:codegen'];
+  options.definitions = /** @type {!Object<string, string>} */ (Object.create(null));
+  options.disabledPasses = [];
 
   var /** @const {!Wasm2Lang.Wasm.Tree.PassList} */ passes = Wasm2Lang.Wasm.Tree.CustomPasses.getNormalizationPasses(options);
 

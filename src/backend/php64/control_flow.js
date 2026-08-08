@@ -269,19 +269,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLabeledBlock_ = function (state, no
   var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
   if (isFused) return blockBody;
   if (blockName) {
-    var /** @const {!Binaryen} */ binaryen = state.binaryen;
-    var /** @const {number} */ blockType = expr.type;
-    if (binaryen.none !== blockType && 0 !== blockType && binaryen.unreachable !== blockType) {
-      throw new Error(
-        "Wasm2Lang codegen: named block '" +
-          blockName +
-          '\' in function "' +
-          state.functionInfo.name +
-          '" has a value result type. ' +
-          'The target language cannot use labeled blocks as expressions. ' +
-          'Use binaryen:min normalization to flatten value-typed blocks before codegen.'
-      );
-    }
+    A.rejectValueTypedNamedBlock_(state.binaryen, expr.type, blockName, state.functionInfo.name);
     if (!needsWrapper) return blockBody;
     return pad(ind) + 'do {\n' + blockBody + pad(ind) + '} while (false);\n';
   }
@@ -743,8 +731,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     default:
-      result = '/* unknown expr id=' + id + ' */';
-      break;
+      this.refuseExpressionId_(id);
   }
 
   return A.buildLeaveResult_(
@@ -764,46 +751,7 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitLeave_ = function (state, nodeCtx, 
  * @return {string}
  */
 Wasm2Lang.Backend.Php64Codegen.prototype.renderUnreachableStatement_ = function (indent, siteId) {
-  return this.renderPhpTrapStatement_(indent, Wasm2Lang.Backend.TrapKind.UNREACHABLE, siteId);
-};
-
-/**
- * Renders a PHP trap.  PHP collapses every trap onto {@code \RuntimeException},
- * so without a message a host cannot tell an {@code unreachable} from a failed
- * truncation; the site id also survives opcache and mangling, unlike a name.
- *
- * @protected
- * @param {number} indent
- * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
- * @param {number} siteId
- * @return {string}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderPhpTrapStatement_ = function (indent, kind, siteId) {
-  var /** @const {string} */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_(indent);
-  if (!this.trapSitesEnabled_) {
-    return pad + 'throw new \\RuntimeException();\n';
-  }
-  return pad + 'throw new \\RuntimeException("' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");\n';
-};
-
-/**
- * Renders a trap throw for a shared runtime helper body — no indent and no
- * trailing newline, because helper templates place it inline after an `if`.
- *
- * PHP collapses every wasm trap onto {@code \RuntimeException}, so the message
- * is the only channel that can distinguish them.
- *
- * @protected
- * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
- * @param {string} helperName
- * @return {string}
- */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderHelperTrapThrow_ = function (kind, helperName) {
-  if (!this.trapSitesEnabled_) {
-    return 'throw new \\RuntimeException();';
-  }
-  var /** @const {number} */ siteId = this.allocateHelperTrapSite_(kind, helperName);
-  return 'throw new \\RuntimeException("' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");';
+  return this.renderThrowTrapStatement_(indent, Wasm2Lang.Backend.TrapKind.UNREACHABLE, siteId);
 };
 
 /**

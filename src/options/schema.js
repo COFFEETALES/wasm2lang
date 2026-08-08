@@ -72,11 +72,6 @@ Wasm2Lang.Options.Schema.NormalizedOptions;
 Wasm2Lang.Options.Schema.UserOptions;
 
 /**
- * @const {!Array<string>}
- */
-Wasm2Lang.Options.Schema.languages = ['asmjs', 'php64', 'java', 'javascript', 'csharp'];
-
-/**
  * @typedef {{
  *   infoDescription: string,
  *   infoPhase: string
@@ -141,6 +136,29 @@ Wasm2Lang.Options.Schema.defaultOptions = {
 Wasm2Lang.Options.Schema.optionParsers = {};
 
 /**
+ * Builds a parser for the common last-value option shape: the last supplied
+ * value wins ({@code --opt a --opt b} keeps {@code b}), and a bare flag with
+ * no value either stores {@code opt_bareValue} (when given, which may be the
+ * empty string) or leaves the option untouched.
+ *
+ * @private
+ * @param {function(!Wasm2Lang.Options.Schema.NormalizedOptions, string): void} setFn
+ * @param {string=} opt_bareValue
+ * @return {function(!Wasm2Lang.Options.Schema.NormalizedOptions, !Array<string>): void}
+ */
+Wasm2Lang.Options.Schema.makeLastValueParser_ = function (setFn, opt_bareValue) {
+  return function (/** !Wasm2Lang.Options.Schema.NormalizedOptions */ options, /** !Array<string> */ strs) {
+    if (0 === strs.length) {
+      if (void 0 !== opt_bareValue) {
+        setFn(options, opt_bareValue);
+      }
+      return;
+    }
+    setFn(options, strs[strs.length - 1]);
+  };
+};
+
+/**
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
  * @param {!Array<string>} strs
  */
@@ -169,81 +187,64 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.DEFINE
   }
 };
 
-/**
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @param {!Array<string>} strs
- */
-Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.INPUT_DATA] = function (options, strs) {
-  if (0 !== strs.length) {
-    options.inputData = strs[strs.length - 1];
-  }
-};
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.INPUT_DATA] =
+  Wasm2Lang.Options.Schema.makeLastValueParser_(
+    /** @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options @param {string} value */
+    function (options, value) {
+      options.inputData = value;
+    }
+  );
 
-/**
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @param {!Array<string>} strs
- */
-Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.INPUT_FILE] = function (options, strs) {
-  if (0 !== strs.length) {
-    options.inputFile = strs[strs.length - 1];
-  }
-};
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.INPUT_FILE] =
+  Wasm2Lang.Options.Schema.makeLastValueParser_(
+    /** @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options @param {string} value */
+    function (options, value) {
+      options.inputFile = value;
+    }
+  );
 
-/**
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @param {!Array<string>} strs
- */
-Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.EMIT_METADATA] = function (options, strs) {
-  if (0 === strs.length) {
-    options.emitMetadata = 'metadata';
-    return;
-  }
-  options.emitMetadata = strs[strs.length - 1];
-};
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.EMIT_METADATA] =
+  Wasm2Lang.Options.Schema.makeLastValueParser_(
+    /** @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options @param {string} value */
+    function (options, value) {
+      options.emitMetadata = value;
+    },
+    'metadata'
+  );
 
-/**
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @param {!Array<string>} strs
- */
-Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.EMIT_CODE] = function (options, strs) {
-  if (0 === strs.length) {
-    options.emitCode = 'code';
-    return;
-  }
-  options.emitCode = strs[strs.length - 1];
-};
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.EMIT_CODE] =
+  Wasm2Lang.Options.Schema.makeLastValueParser_(
+    /** @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options @param {string} value */
+    function (options, value) {
+      options.emitCode = value;
+    },
+    'code'
+  );
 
-/**
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @param {!Array<string>} strs
- */
-Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.EMIT_WEBASSEMBLY] = function (options, strs) {
-  if (0 === strs.length) {
-    options.emitWebAssembly = '';
-    return;
-  }
-  options.emitWebAssembly = strs[strs.length - 1];
-};
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.EMIT_WEBASSEMBLY] =
+  Wasm2Lang.Options.Schema.makeLastValueParser_(
+    /** @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options @param {string} value */
+    function (options, value) {
+      options.emitWebAssembly = value;
+    },
+    ''
+  );
 
-/**
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @param {!Array<string>} strs
- */
-Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.MANGLER] = function (options, strs) {
-  if (0 !== strs.length) {
-    options.mangler = strs[strs.length - 1];
-  }
-};
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.MANGLER] =
+  Wasm2Lang.Options.Schema.makeLastValueParser_(
+    /** @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options @param {string} value */
+    function (options, value) {
+      options.mangler = value;
+    }
+  );
 
-/**
- * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
- * @param {!Array<string>} strs
- */
-Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.OUT_FILE] = function (options, strs) {
-  if (0 !== strs.length) {
-    options.outFile = strs[strs.length - 1];
-  }
-};
+Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.OUT_FILE] =
+  Wasm2Lang.Options.Schema.makeLastValueParser_(
+    /** @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options @param {string} value */
+    function (options, value) {
+      options.outFile = value;
+    }
+  );
 
 /**
  * @param {!Wasm2Lang.Options.Schema.NormalizedOptions} options
@@ -338,80 +339,54 @@ Wasm2Lang.Options.Schema.optionParsers[Wasm2Lang.Options.Schema.OptionKey.TRAP_S
 };
 
 /**
- * @const {
- *  !Object<
- *    !Wasm2Lang.Options.Schema.OptionKey, {
- *      optionType: string,
- *      optionValues: ?Array<string>,
- *      bundles: ?Object<
- *        string,
- *        !Wasm2Lang.Options.Schema.NormalizeBundleInfo
- *      >,
- *      optionDesc: string
- *    }
- *  >
- * }
+ * @const {!Object<!Wasm2Lang.Options.Schema.OptionKey, {optionDesc: string}>}
  */
 Wasm2Lang.Options.Schema.optionSchema = {
   'languageOut': {
-    optionType: 'enum',
-    optionValues: Wasm2Lang.Options.Schema.languages,
     optionDesc: 'Selects the output backend language to generate.'
   },
   'normalizeWasm': {
-    optionType: 'bundle-list',
-    bundles: Wasm2Lang.Options.Schema.normalizeBundles,
     optionDesc:
       'Comma-separated list of normalization bundles to apply before code generation (e.g. "binaryen:min,wasm2lang:codegen").'
   },
   'define': {
-    optionType: 'string|null',
     optionDesc: 'Defines a compile-time constant (repeatable), e.g. -DNAME=VALUE (VALUE may be string/number/boolean).'
   },
   'inputData': {
-    optionType: 'string|Uint8Array',
     optionDesc: 'Input WebAssembly contents to compile (binary buffer or text string).'
   },
   'inputFile': {
-    optionType: 'string|null',
     optionDesc: 'CLI-only: path to a WebAssembly file to load into inputData (\".wat\"/\".wast\" read as text).'
   },
   'emitMetadata': {
-    optionType: 'string|null',
     optionDesc:
       'When set, emits the memory buffer as a named field/variable (e.g. --emit-metadata mybuffer => var mybuffer = metadata). Can be used together with --emit-code.'
   },
   'emitCode': {
-    optionType: 'string|null',
     optionDesc:
       'When set, emits the generated code as a named field/variable (e.g. --emit-code asmjs => var asmjs = code). Can be used together with --emit-metadata.'
   },
   'emitWebAssembly': {
-    optionType: 'string|null',
     optionDesc:
       'Emits the (normalized) WebAssembly module to stdout. Defaults to binary; use "text" to emit the text format instead.'
   },
   'mangler': {
-    optionType: 'string|null',
     optionDesc:
       'Enables deterministic keyed identifier mangling for generated output. Internal identifiers are replaced with short, opaque names derived from the given key. Same key produces identical output; different keys produce different names.'
   },
   'outFile': {
-    optionType: 'string|null',
     optionDesc: 'Writes output to the specified file instead of stdout.'
   },
   'preNormalized': {
-    optionType: 'boolean',
     optionDesc:
       'Indicates the input was already normalized by wasm2lang:codegen. Enables IR-based structural detection of simplified loops and control flow patterns whose label hints were lost during binary serialization.'
   },
   'disablePass': {
-    optionType: 'string|null',
     optionDesc:
       'Disables one or more wasm2lang:codegen normalization passes by name (comma-separated, repeatable). Pass names match the registry entries, e.g. IfElseRecovery, BlockGuardElision, LoopSimplification.'
   },
+
   'trapSites': {
-    optionType: 'boolean',
     optionDesc:
       'Makes traps diagnosable. --trap-sites (or =full) gives every trap site a module-unique id, calls the host hook as $w2l_trap(kind, siteId) before aborting unconditionally, and writes a <out-file>.traps.json table mapping each surviving id to its kind, function and emitted symbol. --trap-sites=kind is the release-weight variant: $w2l_trap(kind) only, no ids and no table, so a shipped crash is still classifiable (divide by zero vs violated engine invariant) without an artifact to distribute. Both modes add the divide-by-zero / overflow checks that the plain output omits. Append ,host-abort (e.g. --trap-sites=full,host-abort) to emit nothing after the hook on the asmjs backend, which removes the self-recursive $w2l_abort helper for consumers whose artifact validation rejects call-graph cycles; the host then owns stopping the program entirely, and one that returns instead of throwing resumes the caller on a fabricated value. Off by default; when off the emitted code is byte-identical to a build without this flag.'
   }

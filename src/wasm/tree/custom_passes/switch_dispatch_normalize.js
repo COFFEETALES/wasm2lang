@@ -203,12 +203,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.prototype.enter_ = 
 
   var /** @const {string} */ name = /** @type {string} */ (checkName);
   state.switchOuterBlocks[name] = true;
-  var /** @const {*} */ sdRef = state.funcMetadata.switchDispatchNames;
-  if (sdRef) {
-    /** @type {!Object<string, boolean>} */ (sdRef)[
-      Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER + name
-    ] = true;
-  }
+  Wasm2Lang.Wasm.Tree.CustomPasses.recordMarkedEntry_(
+    state.funcMetadata.switchDispatchNames,
+    Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchDetectionPass.MARKER,
+    name,
+    true
+  );
 
   // Mark all chain block names so intermediate blocks are not re-detected.
   for (var /** @type {string} */ cn in chainNames) {
@@ -577,12 +577,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.prototype.enter_ = func
       this.isRootSwitchOuter_(binaryen, /** @type {!BinaryenExpressionInfo} */ (expression))
     ) {
       st.rootSwitchOuters[name] = true;
-      var /** @const {*} */ rsRef = st.funcMetadata.rootSwitchNames;
-      if (rsRef) {
-        /** @type {!Object<string, boolean>} */ (rsRef)[
-          Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.MARKER + name
-        ] = true;
-      }
+      Wasm2Lang.Wasm.Tree.CustomPasses.recordMarkedEntry_(
+        st.funcMetadata.rootSwitchNames,
+        Wasm2Lang.Wasm.Tree.CustomPasses.RootSwitchDetectionPass.MARKER,
+        name,
+        true
+      );
     }
   }
 

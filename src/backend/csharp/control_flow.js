@@ -9,33 +9,7 @@
  * to an exit label placed after the construct.  {@code usedLabels} therefore
  * tracks continue-targets only and {@code usedExitLabels} break-targets.
  *
- * @typedef {{
- *   binaryen: !Binaryen,
- *   functionInfo: !BinaryenFunctionInfo,
- *   functionSignatures: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>,
- *   globalTypes: !Object<string, number>,
- *   labelKinds: !Object<string, string>,
- *   labelMap: !Object<string, number>,
- *   importedNames: !Object<string, string>,
- *   stdlibNames: ?Object<string, string>,
- *   stdlibGlobals: ?Object<string, string>,
- *   exportNameMap: !Object<string, string>,
- *   functionTables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>,
- *   indent: number,
- *   lastExprIsTerminal: boolean,
- *   wasmModule: !BinaryenModule,
- *   visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor,
- *   fusedBlockToLoop: !Object<string, string>,
- *   pendingBlockFusion: string,
- *   currentLoopName: string,
- *   rootSwitchExitMap: ?Object<string, !Array<number>>,
- *   rootSwitchRsName: string,
- *   rootSwitchLoopName: string,
- *   breakableStack: !Array<string>,
- *   usedLabels: !Object<string, boolean>,
- *   usedExitLabels: !Object<string, boolean>,
- *   pendingLoopKind: string
- * }}
+ * @typedef {!Wasm2Lang.Backend.AbstractCodegen.ClassEmitState_}
  */
 Wasm2Lang.Backend.CsharpCodegen.EmitState_;
 
@@ -133,68 +107,38 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.csExitLabelLine_ = function (state, na
 };
 
 /**
- * Emits a named block as a plain brace block followed by a conditional exit
+ * Renders a named block as a plain brace block followed by a conditional exit
  * label — C# cannot label a block for {@code break}, so breaks targeting the
- * block were rendered as {@code goto <exit>} and the label lands here.
+ * block were rendered as {@code goto <exit>} and the label lands here.  The
+ * shared {@code emitLabeledBlock_} handles fusion, elision and the
+ * value-typed refusal before dispatching here.
  *
- * @suppress {checkTypes}
  * @override
  * @protected
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
- * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
- * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {string} blockName
+ * @param {string} blockBody
+ * @param {number} ind
+ * @param {boolean} canDirectLabel
  * @return {string}
  */
-Wasm2Lang.Backend.CsharpCodegen.prototype.emitLabeledBlock_ = function (state, nodeCtx, childResults) {
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
-  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
-  var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
-  var /** @const {number} */ ind = state.indent;
-  var /** @const {boolean} */ isFused = !!blockName && !!state.fusedBlockToLoop[blockName];
-  var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(
-      state.binaryen,
-      state.wasmModule,
-      expr,
-      childResults
+Wasm2Lang.Backend.CsharpCodegen.prototype.renderNamedBlockWrapper_ = function (
+  state,
+  blockName,
+  blockBody,
+  ind,
+  canDirectLabel
+) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const {string} */ exitLine = this.csExitLabelLine_(
+      /** @type {!Wasm2Lang.Backend.CsharpCodegen.EmitState_} */ (state),
+      blockName,
+      ind
     );
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(
-      childResults,
-      emitCount
-    );
-  var /** @const {boolean} */ needsWrapper = !!blockName && !this.canElideBlockWrapper_(blockName, childControl);
-  var /** @const {boolean} */ canDirectLabel = needsWrapper && this.canDirectLabelNamedBlock_(state.binaryen, expr);
-  var /** @const {number} */ childInd = needsWrapper && !isFused && !canDirectLabel ? ind + 1 : ind;
-  var /** @const {string} */ blockBody = A.assembleBlockChildren_(childResults, emitCount, childInd);
-  if (isFused) {
-    return blockBody;
+  if (canDirectLabel) {
+    return blockBody + exitLine;
   }
-  if (blockName) {
-    var /** @const {!Binaryen} */ binaryen = state.binaryen;
-    var /** @const {number} */ blockType = expr.type;
-    if (binaryen.none !== blockType && 0 !== blockType && binaryen.unreachable !== blockType) {
-      throw new Error(
-        "Wasm2Lang codegen: named block '" +
-          blockName +
-          '\' in function "' +
-          state.functionInfo.name +
-          '" has a value result type. ' +
-          'The target language cannot use labeled blocks as expressions. ' +
-          'Use binaryen:min normalization to flatten value-typed blocks before codegen.'
-      );
-    }
-    if (!needsWrapper) return blockBody;
-    var /** @const {string} */ exitLine = this.csExitLabelLine_(
-        /** @type {!Wasm2Lang.Backend.CsharpCodegen.EmitState_} */ (state),
-        blockName,
-        ind
-      );
-    if (canDirectLabel) {
-      return blockBody + exitLine;
-    }
-    return pad(ind) + '{\n' + blockBody + pad(ind) + '}\n' + exitLine;
-  }
-  return blockBody;
+  return pad(ind) + '{\n' + blockBody + pad(ind) + '}\n' + exitLine;
 };
 
 /**
@@ -238,9 +182,7 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitSimplifiedLoopFromIR_ = function (
  * @return {boolean}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.shouldEmitDropChild_ = function (binaryen, dropValuePtr) {
-  if (!dropValuePtr) return false;
-  var /** @const {number} */ childId = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, dropValuePtr).id;
-  return binaryen.CallId === childId || binaryen.CallIndirectId === childId;
+  return this.classShouldEmitDropChild_(binaryen, dropValuePtr);
 };
 
 /**
@@ -255,419 +197,236 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.shouldEmitDropChild_ = function (binar
  * @return {string}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.renderUnreachableStatement_ = function (indent, siteId) {
-  return this.renderCsharpTrapStatement_(indent, Wasm2Lang.Backend.TrapKind.UNREACHABLE, siteId);
+  return this.renderThrowTrapStatement_(indent, Wasm2Lang.Backend.TrapKind.UNREACHABLE, siteId);
 };
 
 /**
- * Renders a C# trap.  C# already separates {@code unreachable}
- * ({@code InvalidOperationException}) from arithmetic traps, so the message
- * adds the site id and pins the exact kind.
+ * The leave emitter is the shared class-backend body; everything C# spells
+ * differently arrives through the hooks below.
  *
- * @protected
- * @param {number} indent
- * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
- * @param {number} siteId
- * @return {string}
- */
-Wasm2Lang.Backend.CsharpCodegen.prototype.renderCsharpTrapStatement_ = function (indent, kind, siteId) {
-  var /** @const {string} */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_(indent);
-  if (!this.trapSitesEnabled_) {
-    return pad + 'throw new System.InvalidOperationException();\n';
-  }
-  return (
-    pad +
-    'throw new System.InvalidOperationException("' +
-    Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) +
-    '");\n'
-  );
-};
-
-/**
- * Renders a trap throw for a shared runtime helper body (no indent, no
- * trailing newline — helper templates place it inline after an `if`).
- *
- * Helpers raise {@code System.ArithmeticException}, which the runtime also
- * raises for {@code DivideByZeroException}'s base cases, so the payload is
- * what separates a failed truncation from an arithmetic trap.
- *
- * @protected
- * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
- * @param {string} helperName
- * @return {string}
- */
-Wasm2Lang.Backend.CsharpCodegen.prototype.renderHelperTrapThrow_ = function (kind, helperName) {
-  if (!this.trapSitesEnabled_) {
-    return 'throw new System.ArithmeticException();';
-  }
-  var /** @const {number} */ siteId = this.allocateHelperTrapSite_(kind, helperName);
-  return 'throw new System.ArithmeticException("' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");';
-};
-
-/**
  * @param {!Wasm2Lang.Backend.CsharpCodegen.EmitState_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
  * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.emitLeave_ = function (state, nodeCtx, childResults) {
+  return this.emitClassLeave_(state, nodeCtx, childResults);
+};
+
+/**
+ * @override
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} castBaseName
+ * @param {number} callType
+ * @param {string} valStr
+ * @param {number} valCat
+ * @return {{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.CsharpCodegen.prototype.renderClassCastImport_ = function (binaryen, castBaseName, callType, valStr, valCat) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  if (Wasm2Lang.Backend.ValueType.isI32(binaryen, callType)) {
+    // float → i32/u32: (int)(long) wraps like JS ~~x|0. Plain (int) would
+    // saturate (or throw in checked contexts) at INT_MAX/MIN.  The
+    // unchecked(...) keeps the same wrap when the operand is a constant
+    // expression the compiler folds in checked mode (CS0221).
+    return {
+      emittedString: 'unchecked((int)(long)' + A.Precedence_.wrap_(valStr, A.Precedence_.PREC_UNARY_, true) + ')',
+      resultCat: C.SIGNED
+    };
+  }
+  if (Wasm2Lang.Backend.ValueType.isI64(binaryen, callType)) {
+    // float → i64/u64: plain (long) cast, unchecked for folded constants.
+    return {
+      emittedString: 'unchecked((long)' + A.Precedence_.wrap_(valStr, A.Precedence_.PREC_UNARY_, true) + ')',
+      resultCat: A.CAT_I64
+    };
+  }
+  if (-1 !== castBaseName.indexOf('u32_to_f')) {
+    // u32 → float/double: unsigned reinterpretation via (uint).
+    return {
+      emittedString:
+        (Wasm2Lang.Backend.ValueType.isF32(binaryen, callType) ? '(float)' : '(double)') +
+        Wasm2Lang.Backend.CsharpCodegen.narrowingCast_('uint', valStr),
+      resultCat: A.catForCoercedType_(binaryen, callType)
+    };
+  }
+  // i32/i64/u64 → float/double: plain coercion.
+  return {
+    emittedString: this.coerceToType_(binaryen, valStr, valCat, callType),
+    resultCat: A.catForCoercedType_(binaryen, callType)
+  };
+};
+
+/**
+ * The continue label sits on the loop statement (goto re-enters the
+ * {@code for (;;)}); the exit label follows it.
+ *
+ * @override
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {string} loopName
+ * @param {number} ind
+ * @return {string}
+ */
+Wasm2Lang.Backend.CsharpCodegen.prototype.classRawLoopSuffix_ = function (state, loopName, ind) {
+  return this.csExitLabelLine_(/** @type {!Wasm2Lang.Backend.CsharpCodegen.EmitState_} */ (state), loopName, ind);
+};
+
+/**
+ * C#-specific leave cases: the SIMD lane operations in the
+ * {@code System.Runtime.Intrinsics.Vector128} vocabulary.
+ *
+ * @override
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {function(number): string} cr
+ * @param {function(number): number} cc
+ * @param {number} ind
+ * @return {?{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.CsharpCodegen.prototype.emitClassLeaveBackendCase_ = function (state, nodeCtx, childResults, cr, cc, ind) {
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {number} */ id = expr.id;
   var /** @const {!Binaryen} */ binaryen = state.binaryen;
-  var /** @const {number} */ ind = state.indent;
-  var /** @type {string} */ result = '';
   var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  var /** @type {number} */ resultCat = A.CAT_VOID;
-  var /** @type {boolean} */ resultTerminalOverride = false;
-  var /** @type {boolean} */ resultTerminalOverrideIsAuthoritative = false;
-
-  // Reset terminal flag for all non-Block expressions (Block propagates from
-  // its last child).  Terminal handlers (Return, unconditional Break, Switch
-  // with default) override to true so callers (e.g. SwitchId default-case
-  // detection) can suppress an unreachable trailing statement.
-  if (binaryen.BlockId !== id) {
-    state.lastExprIsTerminal = false;
-  }
-
-  var /** @const */ acc = A.makeChildAccessors_(childResults);
-  var /** @const {function(number): string} */ cr = acc.cr;
-  var /** @const {function(number): number} */ cc = acc.cc;
-
-  var /** @const {?Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ terminal = this.propagateTerminalChild_(
-      binaryen,
-      expr,
-      id,
-      childResults,
-      state.wasmModule,
-      ind
-    );
-  if (terminal) {
-    state.lastExprIsTerminal = true;
-    return {decisionValue: terminal};
-  }
-
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(childResults);
-  var /** @type {boolean} */ resultMayExitFunction = childControl.mayExitFunction;
-  var /** @type {!Array<string>} */ resultBranchTargets = childControl.branchTargets;
-
-  var /** @const */ common = this.emitLeaveCommonCase_(
-      binaryen,
-      expr,
-      id,
-      ind,
-      childResults,
-      state.wasmModule,
-      state.functionInfo
-    );
-  if (common) {
-    if (common.isTerminal) state.lastExprIsTerminal = true;
-    return A.buildLeaveResult_(
-      common.emittedString,
-      common.resultCat,
-      !!common.isTerminal,
-      resultMayExitFunction || !!common.mayExitFunction,
-      resultBranchTargets
-    );
-  }
 
   switch (id) {
-    case binaryen.GlobalGetId: {
-      var /** @const {string} */ globalGetName = /** @type {string} */ (expr.name);
-      var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
-      var /** @const {string} */ csStdlibGlobal = state.stdlibGlobals ? state.stdlibGlobals[globalGetName] || '' : '';
-      if ('' !== csStdlibGlobal) {
-        result = csStdlibGlobal;
-      } else {
-        var /** @const {string} */ csGlobalGetKey = '$g_' + this.safeName_(globalGetName);
-        this.markBinding_(csGlobalGetKey);
-        result = 'this.' + this.n_(csGlobalGetKey);
-      }
-      resultCat = A.catForCoercedType_(binaryen, globalGetType);
-      break;
-    }
-
-    case binaryen.LoadId: {
-      var /** @const {string} */ loadPtr = Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(
-          cr(0),
-          /** @type {number} */ (expr.offset)
-        );
-      var /** @const {number} */ loadType = expr.type;
-      result = this.renderLoad_(binaryen, loadPtr, loadType, /** @type {number} */ (expr.bytes), !!expr.isSigned);
-      resultCat = A.catForCoercedType_(binaryen, loadType);
-      break;
-    }
-    case binaryen.StoreId: {
-      var /** @const {number} */ storeType = /** @type {number} */ (expr.valueType) || binaryen.i32;
-      var /** @const {string} */ storePtr = Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(
-          cr(0),
-          /** @type {number} */ (expr.offset)
-        );
-      result =
-        pad(ind) + this.renderStore_(binaryen, storePtr, cr(1), storeType, /** @type {number} */ (expr.bytes), cc(1)) + '\n';
-      break;
-    }
-    case binaryen.GlobalSetId: {
-      var /** @const {string} */ globalName = /** @type {string} */ (expr.name);
-      var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
-      var /** @const {string} */ csGlobalSetKey = '$g_' + this.safeName_(globalName);
-      this.markBinding_(csGlobalSetKey);
-      result =
-        pad(ind) +
-        'this.' +
-        this.n_(csGlobalSetKey) +
-        ' = ' +
-        A.Precedence_.stripForAssignment(this.coerceToType_(binaryen, cr(0), cc(0), globalType)) +
-        ';\n';
-      break;
-    }
-    case binaryen.CallId: {
-      var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
-      var /** @const {number} */ callType = expr.type;
-
-      // Direct-cast imports: emit native language-level type cast instead of a call.
-      // No helpers, no range checks — just the raw target-language cast.
-      var /** @const {string|undefined} */ castBaseName = this.castNames_ ? this.castNames_[callTarget] : void 0;
-      if (void 0 !== castBaseName) {
-        if (Wasm2Lang.Backend.ValueType.isI32(binaryen, callType)) {
-          // float → i32/u32: (int)(long) wraps like JS ~~x|0. Plain (int) would
-          // saturate (or throw in checked contexts) at INT_MAX/MIN.  The
-          // unchecked(...) keeps the same wrap when the operand is a constant
-          // expression the compiler folds in checked mode (CS0221).
-          result = 'unchecked((int)(long)' + A.Precedence_.wrap_(cr(0), A.Precedence_.PREC_UNARY_, true) + ')';
-          resultCat = C.SIGNED;
-        } else if (Wasm2Lang.Backend.ValueType.isI64(binaryen, callType)) {
-          // float → i64/u64: plain (long) cast, unchecked for folded constants.
-          result = 'unchecked((long)' + A.Precedence_.wrap_(cr(0), A.Precedence_.PREC_UNARY_, true) + ')';
-          resultCat = A.CAT_I64;
-        } else if (-1 !== castBaseName.indexOf('u32_to_f')) {
-          // u32 → float/double: unsigned reinterpretation via (uint).
-          result =
-            (Wasm2Lang.Backend.ValueType.isF32(binaryen, callType) ? '(float)' : '(double)') +
-            Wasm2Lang.Backend.CsharpCodegen.narrowingCast_('uint', cr(0));
-          resultCat = A.catForCoercedType_(binaryen, callType);
-        } else {
-          // i32/i64/u64 → float/double: plain coercion.
-          result = this.coerceToType_(binaryen, cr(0), cc(0), callType);
-          resultCat = A.catForCoercedType_(binaryen, callType);
-        }
-        break;
-      }
-
-      var /** @const {string} */ csStdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
-      var /** @const {string} */ importBase = csStdlibName ? '' : state.importedNames[callTarget] || '';
-      var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
+    case binaryen.SIMDExtractId: {
+      var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneOpInfo} */ exOp = this.classifyLaneOpOrRefuse_(
+          Wasm2Lang.Backend.SIMDOps.classifyExtractOp,
           binaryen,
-          expr,
-          childResults,
-          state.functionSignatures
+          /** @type {number} */ (expr.op),
+          'extract_lane'
         );
-      var /** @type {string} */ callExpr;
-      if ('' !== csStdlibName) {
-        callExpr = csStdlibName + '(' + callArgs.join(', ') + ')';
-      } else if ('' !== importBase) {
-        this.markBinding_('$if_' + this.safeName_(importBase));
-        var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ impSig = state.functionSignatures[
-            callTarget
-          ] || {sigParams: [], sigRetType: callType};
-        callExpr = this.renderImportCallExpr_(binaryen, importBase, callArgs, callType, impSig.sigParams);
-      } else {
-        var /** @const {boolean} */ callIsExported = callTarget in state.exportNameMap;
-        var /** @const {string} */ resolvedName = callIsExported ? state.exportNameMap[callTarget] : callTarget;
-        var /** @const {string} */ callMethodName = callIsExported
-            ? this.safeName_(resolvedName)
-            : this.n_(this.safeName_(resolvedName));
-        callExpr = callMethodName + '(' + callArgs.join(', ') + ')';
-      }
-      if (binaryen.none === callType || 0 === callType) {
-        result = pad(ind) + callExpr + ';\n';
-      } else {
-        result = callExpr;
-        resultCat = A.catForCoercedType_(binaryen, callType);
-      }
-      break;
-    }
-    case binaryen.CallIndirectId: {
-      var /** @const {!Array<number>} */ ciParamTypes = binaryen.expandType(/** @type {number} */ (expr.params));
-      var /** @const {number} */ ciRetType = expr.type;
-      var /** @const {string} */ ciSigKey = A.buildSignatureKey_(binaryen, ciParamTypes, ciRetType);
-      var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
-      var /** @const {string} */ ciTableName = this.n_('$ftable_' + ciSigKey);
-      var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
-      var /** @type {string} */ ciCallExpr;
-      if (this.callIndirectNeedsOrderedEvaluation_(binaryen, expr, state.wasmModule)) {
-        ciArgs.push(ciIndexExpr);
-        ciCallExpr = 'this.' + this.n_(this.getOrderedCallIndirectWrapperName_(ciSigKey)) + '(' + ciArgs.join(', ') + ')';
-      } else {
-        ciCallExpr = 'this.' + ciTableName + '[' + ciIndexExpr + '](' + ciArgs.join(', ') + ')';
-      }
-      if (binaryen.none === ciRetType || 0 === ciRetType) {
-        result = pad(ind) + ciCallExpr + ';\n';
-      } else {
-        result = ciCallExpr;
-        resultCat = A.catForCoercedType_(binaryen, ciRetType);
-      }
-      break;
-    }
-    case binaryen.SelectId: {
-      var /** @const {number} */ selectType = expr.type;
-      if (this.selectNeedsEagerEvaluation_(binaryen, expr, state.wasmModule)) {
-        var /** @const {string} */ csSelectHelper = this.getEagerSelectHelperName_(binaryen, selectType);
-        this.markHelper_(csSelectHelper);
-        result =
-          this.n_(csSelectHelper) +
-          '(' +
-          this.coerceToType_(binaryen, cr(1), cc(1), selectType) +
+      // extract_lane_u reads the lane through the unsigned view so the widen
+      // to i32 zero-extends; extract_lane_s reads it signed.  Getting this
+      // backwards silently changes the value of every high-bit-set lane.
+      var /** @const {boolean} */ exUnsigned = 'extract_u' === exOp.kind;
+      return {
+        emittedString:
+          'System.Runtime.Intrinsics.Vector128.GetElement(' +
+          Wasm2Lang.Backend.CsharpCodegen.laneView_(cr(0), exOp.laneType, exUnsigned) +
           ', ' +
-          this.coerceToType_(binaryen, cr(2), cc(2), selectType) +
-          ', ' +
-          this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) +
-          ')';
-      } else {
-        var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-        var /** @type {string} */ selCondStr;
-        if (A.CAT_BOOL_I32 === cc(0)) {
-          selCondStr = Ps.wrap_(cr(0), Ps.PREC_CONDITIONAL_, false);
-        } else {
-          selCondStr = Ps.renderInfix(cr(0), '!=', '0', Ps.PREC_EQUALITY_);
-        }
-        result = '(' + selCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')';
-      }
-      resultCat = A.catForCoercedType_(binaryen, selectType);
-      break;
+          String(/** @type {number} */ (expr.index)) +
+          ')',
+        resultCat: A.catForCoercedType_(binaryen, expr.type)
+      };
     }
-    case binaryen.MemorySizeId:
-      result = 'this.' + this.n_('buffer') + '.Length / 65536';
-      resultCat = C.SIGNED;
-      break;
-
-    case binaryen.MemoryGrowId:
-      this.markHelper_('$w2l_memory_grow');
-      result = 'this.' + this.n_('$w2l_memory_grow') + '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ')';
-      resultCat = C.SIGNED;
-      break;
-
-    case binaryen.MemoryFillId:
-    case binaryen.MemoryCopyId:
-      result = this.renderMemoryBulkOp_(binaryen, id, ind, childResults, 'this.' + this.n_('buffer'));
-      break;
-
-    case binaryen.BlockId: {
-      var /** @const {?{w2lExprStr: string, w2lExprCat: number, w2lRootValueBlockPrefix: string}} */ rootValueShape =
-          A.tryEmitRootValueBlock_(state, nodeCtx, childResults);
-      if (rootValueShape) {
-        return /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ ({decisionValue: rootValueShape});
-      }
-      result = this.emitBlockDispatch_(state, nodeCtx, childResults);
-      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ blockControl = A.summarizeBlockControl_(
+    case binaryen.SIMDReplaceId: {
+      var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneOpInfo} */ rpOp = this.classifyLaneOpOrRefuse_(
+          Wasm2Lang.Backend.SIMDOps.classifyReplaceOp,
           binaryen,
-          state.wasmModule,
-          expr,
-          childResults
+          /** @type {number} */ (expr.op),
+          'replace_lane'
         );
-      resultTerminalOverride = blockControl.isTerminal;
-      resultTerminalOverrideIsAuthoritative = true;
-      resultMayExitFunction = blockControl.mayExitFunction;
-      resultBranchTargets = blockControl.branchTargets;
-      break;
+      var /** @const {string} */ rpElem = Wasm2Lang.Backend.CsharpCodegen.laneElemType_(rpOp.laneType, false);
+      var /** @const {string} */ rpValue = Wasm2Lang.Backend.SIMDOps.laneNeedsNarrowingCast(rpOp.laneType)
+          ? Wasm2Lang.Backend.CsharpCodegen.narrowingCast_(rpElem, cr(1))
+          : cr(1);
+      return {
+        emittedString: Wasm2Lang.Backend.CsharpCodegen.toCarrier_(
+          'System.Runtime.Intrinsics.Vector128.WithElement(' +
+            Wasm2Lang.Backend.CsharpCodegen.laneView_(cr(0), rpOp.laneType, false) +
+            ', ' +
+            String(/** @type {number} */ (expr.index)) +
+            ', ' +
+            rpValue +
+            ')'
+        ),
+        resultCat: A.CAT_V128
+      };
     }
-    case binaryen.LoopId: {
-      var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
-      var /** @type {?string} */ loopKind = null;
-      if ('' !== state.pendingLoopKind) {
-        loopKind = state.pendingLoopKind;
-        state.pendingLoopKind = '';
-      }
-      if (loopKind) {
-        result = this.emitSimplifiedLoopFromIR_(state, nodeCtx, loopKind);
-      } else {
-        // Raw loop fallback (unsimplified) — see the Java backend for the
-        // trailing-break rationale.  The continue label sits on the loop
-        // statement (goto re-enters the for (;;)); the exit label follows it.
-        var /** @const {!BinaryenExpressionInfo} */ loopBodyInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
-            binaryen,
-            /** @type {number} */ (expr.body)
-          );
-        var /** @const {boolean} */ needsTrailingBreak =
-            binaryen.unreachable !== loopBodyInfo.type && !A.getChildResultInfo_(childResults, 0).isTerminal;
-        var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
-        result =
-          this.emitRawInfiniteLoop_(ind, rawLabel, cr(0), needsTrailingBreak) + this.csExitLabelLine_(state, loopName, ind);
-      }
-      --state.breakableStack.length;
-      var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ loopControl = A.summarizeLoopControl_(
+    case binaryen.SIMDShiftId: {
+      var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneOpInfo} */ shOp = this.classifyLaneOpOrRefuse_(
+          Wasm2Lang.Backend.SIMDOps.classifyShiftOp,
           binaryen,
-          expr,
-          childResults
+          /** @type {number} */ (expr.op),
+          'shift'
         );
-      resultTerminalOverride = loopControl.isTerminal;
-      resultTerminalOverrideIsAuthoritative = true;
-      resultMayExitFunction = loopControl.mayExitFunction;
-      resultBranchTargets = loopControl.branchTargets;
-      break;
+      return {
+        emittedString: this.renderSIMDShift_(binaryen, shOp, cr(0), cr(1), cc(1)),
+        resultCat: A.CAT_V128
+      };
     }
-    case binaryen.IfId: {
-      var /** @const {number} */ ifType = expr.type;
-      if (binaryen.none !== ifType && binaryen.unreachable !== ifType && 0 !== ifType) {
-        var /** @const */ IfPs = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-        var /** @type {string} */ ifCondStr;
-        if (A.CAT_BOOL_I32 === cc(0)) {
-          ifCondStr = IfPs.wrap_(cr(0), IfPs.PREC_CONDITIONAL_, false);
-        } else {
-          ifCondStr = IfPs.renderInfix(cr(0), '!=', '0', IfPs.PREC_EQUALITY_);
-        }
-        result = '(' + ifCondStr + ' ? ' + cr(1) + ' : ' + cr(2) + ')';
-        resultCat = A.catForCoercedType_(binaryen, ifType);
-      } else {
-        result = this.emitIfStatement_(
-          ind,
-          cr(0),
-          cr(1),
-          /** @type {number} */ (expr.ifFalse),
-          childResults.length,
-          cr(2),
-          cc(0)
-        );
+    case binaryen.SIMDShuffleId: {
+      // This case did not exist.  i8x16.shuffle fell through to the default
+      // branch and emitted `/* unknown expr id=32 */` into EXPRESSION position —
+      // C# source that does not compile, produced with no diagnostic at all.  It
+      // survived because the only shuffle fixture in the suite was Java-only.
+      //
+      // wasm concatenates the two operands into 32 bytes and picks 16 of them by
+      // index.  Vector128.Shuffle takes one vector and yields ZERO for any index
+      // outside it (the same rule swizzle relies on above), so the two halves are
+      // selected independently and OR-ed: each mask is built so the indices that
+      // belong to the other operand fall out of range and contribute nothing.
+      // Each operand is named once, so this stays an expression.
+      var /** @const {!Array<number>} */ sfMask = /** @type {!Array<number>} */ (expr.mask);
+      var /** @const {!Array<string>} */ sfLeftIdx = [];
+      var /** @const {!Array<string>} */ sfRightIdx = [];
+      for (var /** @type {number} */ sfi = 0; sfi !== 16; ++sfi) {
+        var /** @const {number} */ sfByte = sfMask[sfi];
+        sfLeftIdx.push('(byte)' + (sfByte < 16 ? String(sfByte) : '255'));
+        sfRightIdx.push('(byte)' + (sfByte >= 16 ? String(sfByte - 16) : '255'));
       }
-      break;
+      var /** @const {string} */ sfV = 'System.Runtime.Intrinsics.Vector128';
+      return {
+        emittedString: Wasm2Lang.Backend.CsharpCodegen.toCarrier_(
+          sfV +
+            '.BitwiseOr(' +
+            sfV +
+            '.Shuffle(' +
+            Wasm2Lang.Backend.CsharpCodegen.laneView_(cr(0), 'i8x16', true) +
+            ', ' +
+            sfV +
+            '.Create(' +
+            sfLeftIdx.join(', ') +
+            ')), ' +
+            sfV +
+            '.Shuffle(' +
+            Wasm2Lang.Backend.CsharpCodegen.laneView_(cr(1), 'i8x16', true) +
+            ', ' +
+            sfV +
+            '.Create(' +
+            sfRightIdx.join(', ') +
+            ')))'
+        ),
+        resultCat: A.CAT_V128
+      };
     }
-    case binaryen.BreakId: {
-      var /** @const {string} */ brName = /** @type {string} */ (expr.name);
-      var /** @const */ brResult = this.emitBreakStatement_(
-          state,
-          ind,
-          brName,
-          /** @type {number} */ (expr.condition),
-          cr(0),
-          cc(0)
-        );
-      result = brResult.emittedString;
-      if (brResult.isTerminal) {
-        state.lastExprIsTerminal = true;
-      }
-      A.appendUniqueBranchTargets_(resultBranchTargets, [brName]);
-      break;
+    case binaryen.SIMDTernaryId: {
+      // The only SIMDTernary wasm defines is v128.bitselect(a, b, c), whose
+      // result is (a & c) | (b & ~c).  ConditionalSelect(mask, left, right)
+      // computes exactly that with mask = c, so the operands reorder rather
+      // than needing an AND/OR/NOT expansion.
+      return {
+        emittedString: Wasm2Lang.Backend.CsharpCodegen.toCarrier_(
+          'System.Runtime.Intrinsics.Vector128.ConditionalSelect(' + cr(2) + ', ' + cr(0) + ', ' + cr(1) + ')'
+        ),
+        resultCat: A.CAT_V128
+      };
     }
-    case binaryen.SwitchId: {
-      var /** @const {!Array<string>} */ swNames = /** @type {!Array<string>} */ (expr.names || []);
-      var /** @const {string} */ swDefault = /** @type {string} */ (expr.defaultName || '');
-      var /** @const */ swResult = this.emitSwitchStatement_(state, ind, cr(0), swNames, swDefault, cc(0));
-      result = swResult.emittedString;
-      state.lastExprIsTerminal = swResult.hasDefault;
-      A.appendUniqueBranchTargets_(resultBranchTargets, swNames);
-      if ('' !== swDefault) A.appendUniqueBranchTargets_(resultBranchTargets, [swDefault]);
-      break;
+    // Each of these reads FEWER than 16 bytes and then splats, extends or
+    // zero-fills, so none is a plain v128 load; rendering one as a full-width
+    // load returns the wrong 16 bytes.  The helper bodies are in
+    // emitSIMDMemoryHelpers_.  An op with no helper still refuses by name
+    // rather than reaching the default branch, whose `/* unknown expr id */`
+    // comment is not a diagnostic and does not even compile.  Both emitters are
+    // shared with java (see AbstractCodegen.emitSIMDLoad_); csharp's helpers are
+    // instance methods, so it takes the default empty receiver.
+    case binaryen.SIMDLoadId: {
+      return {emittedString: this.emitSIMDLoad_(binaryen, expr, cr(0)), resultCat: A.CAT_V128};
     }
-    default:
-      result = '/* unknown expr id=' + id + ' */';
-      break;
+    case binaryen.SIMDLoadStoreLaneId: {
+      var /** @const */ lsl = this.emitSIMDLoadStoreLane_(binaryen, expr, pad(ind), cr(0), cr(1));
+      return {emittedString: lsl.emittedString, resultCat: lsl.isStatement ? A.CAT_VOID : A.CAT_V128};
+    }
   }
-
-  var /** @const {boolean} */ resultIsTerminal = resultTerminalOverrideIsAuthoritative
-      ? resultTerminalOverride
-      : binaryen.unreachable === expr.type;
-  if (resultIsTerminal) state.lastExprIsTerminal = true;
-  return A.buildLeaveResult_(result, resultCat, resultIsTerminal, resultMayExitFunction, resultBranchTargets);
+  return null;
 };
 
 // ---------------------------------------------------------------------------
@@ -696,20 +455,29 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitFlatSwitchCaseBreak_ = function (l
 };
 
 /**
- * Emits a flat switch statement for a br_table dispatch block.
+ * Flat switches use the shared class-backend emitter; only the producer —
+ * the goto-exit-label variant below — is C#-specific.
  *
- * @suppress {accessControls, checkTypes}
  * @override
- * @param {!Wasm2Lang.Backend.CsharpCodegen.EmitState_} state
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  * @return {string}
  */
 Wasm2Lang.Backend.CsharpCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
-  state.breakableStack[state.breakableStack.length] = '*';
-  var /** @const */ fsResult = this.csEmitLabeledFlatSwitch_(state, nodeCtx);
-  --state.breakableStack.length;
-  state.lastExprIsTerminal = fsResult.hasDefault;
-  return fsResult.emittedString;
+  return this.emitClassFlatSwitch_(state, nodeCtx);
+};
+
+/**
+ * @suppress {checkTypes}
+ * @override
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {{emittedString: string, hasDefault: boolean}}
+ */
+Wasm2Lang.Backend.CsharpCodegen.prototype.labeledFlatSwitchResult_ = function (state, nodeCtx) {
+  return this.csEmitLabeledFlatSwitch_(/** @type {!Wasm2Lang.Backend.CsharpCodegen.EmitState_} */ (state), nodeCtx);
 };
 
 /**
@@ -738,71 +506,15 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.csEmitLabeledFlatSwitch_ = function (s
   // Register the outer name in the label map (alias targets below reuse its
   // sequence number, mirroring the shared emitter's bookkeeping).
   this.labelN_(state.labelMap, info.outerName);
-  var /** @const {!Array<string>} */ cn = info.chainNames;
-  var /** @const {number} */ cnLen = cn.length;
   var /** @const {boolean} */ hasEpilogue = info.epiloguePtrs.length > 0;
 
-  // Same three-way chain-name redirect bookkeeping as the shared emitter:
-  //  - labeled epilogue: chain breaks exit to just-after-the-switch (the
-  //    epilogue start), outer breaks past the epilogue;
-  //  - label required, no epilogue: chain breaks redirect to the outer name
-  //    (exit label after the switch);
-  //  - otherwise: redirect everything to the '*' switch sentinel so breaks
-  //    degrade to the unlabeled `break;` that exits the switch.
-  var /** @const {boolean} */ labeledEpilogue = hasEpilogue && info.requiresLabel;
-  var /** @type {string} */ innerChainName = '';
-  if (labeledEpilogue) {
-    for (var /** @type {number} */ fi = 0; fi < cnLen; ++fi) {
-      if (cn[fi] !== info.outerName) {
-        innerChainName = cn[fi];
-        break;
-      }
-    }
-    if ('' !== innerChainName) {
-      state.labelKinds[innerChainName] = 'block';
-      state.breakableStack[state.breakableStack.length] = innerChainName;
-      this.labelN_(state.labelMap, innerChainName);
-      var /** @const {number|void} */ innerMapSeq = state.labelMap[innerChainName];
-      for (var /** @type {number} */ ci = 0; ci < cnLen; ++ci) {
-        if (cn[ci] !== info.outerName && cn[ci] !== innerChainName) {
-          if (!(cn[ci] in state.labelMap)) {
-            state.labelMap[cn[ci]] = /** @type {number} */ (innerMapSeq);
-          }
-          if (!(cn[ci] in state.fusedBlockToLoop)) {
-            state.fusedBlockToLoop[cn[ci]] = innerChainName;
-          }
-        }
-      }
-    }
-  } else if (info.requiresLabel) {
-    var /** @const {number|void} */ outerSeq = state.labelMap[info.outerName];
-    for (var /** @type {number} */ ci2 = 0; ci2 < cnLen; ++ci2) {
-      if (cn[ci2] !== info.outerName) {
-        if (!(cn[ci2] in state.labelMap)) {
-          state.labelMap[cn[ci2]] = /** @type {number} */ (outerSeq);
-        }
-        if (!(cn[ci2] in state.fusedBlockToLoop)) {
-          state.fusedBlockToLoop[cn[ci2]] = info.outerName;
-        }
-      }
-    }
-  } else {
-    for (var /** @type {number} */ ci3 = 0; ci3 < cnLen; ++ci3) {
-      if (!(cn[ci3] in state.fusedBlockToLoop)) {
-        state.fusedBlockToLoop[cn[ci3]] = '*';
-      }
-    }
-  }
-
-  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ condResult = A.subWalkExpressionWithCategory_(
-      state,
-      info.conditionPtr
-    );
-  var /** @type {string} */ condInput = condResult.w2lExprStr;
-  if (A.CAT_BOOL_I32 === condResult.w2lExprCat) {
-    condInput = this.renderNumericComparisonResult_(condInput);
-  }
-  var /** @const {string} */ condStr = this.coerceSwitchCondition_(condInput);
+  // The three-way chain-name redirect bookkeeping is the shared
+  // {@code applyChainRedirects_}; only the label *placement* below (goto
+  // exit labels instead of labeled blocks) is C#-specific.
+  var /** @const */ redirects = S.applyChainRedirects_(this, state, info);
+  var /** @const {boolean} */ labeledEpilogue = redirects.labeledEpilogue;
+  var /** @const {string} */ innerChainName = redirects.innerChainName;
+  var /** @const {string} */ condStr = S.renderFlatSwitchCondition_(this, state, info.conditionPtr);
 
   var /** @const {!Array<string>} */ lines = [];
   lines.push(pad(ind) + 'switch (' + condStr + ') {\n');

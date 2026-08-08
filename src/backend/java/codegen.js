@@ -8,6 +8,19 @@ Wasm2Lang.Backend.JavaCodegen = function () {
   Wasm2Lang.Backend.AbstractCodegen.call(this);
   this.f32WidensToF64_ = true;
   this.reservedWords_ = Wasm2Lang.Backend.JavaCodegen.RESERVED_;
+  // Java spellings for the shared class-shell emitter (emitClassCode_).
+  this.classDeclPrefix_ = 'class ';
+  this.bufferTypeName_ = 'java.nio.ByteBuffer ';
+  this.importFieldTypeName_ = 'Object ';
+  this.classLambdaArrow_ = ' -> ';
+  this.tableEntryRefPrefix_ = 'this::';
+  this.tableInvokeOpen_ = '].call(';
+  this.classMemorySizeSuffix_ = '.capacity() / 65536';
+  // Java raises ArithmeticException both for a failed truncation and for a
+  // division by zero, so without a payload a host genuinely cannot tell the
+  // two apart.  That ambiguity is the reason --trap-sites exists.
+  this.trapThrowOpen_ = 'throw new ArithmeticException(';
+  this.helperTrapThrowOpen_ = 'throw new ArithmeticException(';
   var /** @const */ J = Wasm2Lang.Backend.JavaCodegen;
   var /** @const */ install = Wasm2Lang.Backend.AbstractCodegen.installBinaryRenderers_;
   install(

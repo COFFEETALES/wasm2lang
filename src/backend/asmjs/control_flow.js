@@ -361,8 +361,7 @@ Wasm2Lang.Backend.AsmjsCodegen.prototype.emitLeave_ = function (state, nodeCtx, 
       break;
     }
     default:
-      result = '/* unknown expr id=' + id + ' */';
-      break;
+      this.refuseExpressionId_(id);
   }
 
   return A.buildLeaveResult_(

@@ -111,15 +111,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.VARIANT_INFO_ = {
  * @param {number} conditionPtr
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.storePlan_ = function (state, variantInfo, loopName, conditionPtr) {
-  var /** @const {*} */ loopPlansRef = state.funcMetadata.loopPlans;
-  if (loopPlansRef) {
-    /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (loopPlansRef)[variantInfo[0] + loopName] =
-      /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ ({
-        simplifiedLoopKind: /** @type {string} */ (variantInfo[1]),
-        needsLabel: /** @type {boolean} */ (variantInfo[2]),
-        conditionPtr: conditionPtr
-      });
-  }
+  Wasm2Lang.Wasm.Tree.CustomPasses.recordMarkedEntry_(
+    state.funcMetadata.loopPlans,
+    /** @type {string} */ (variantInfo[0]),
+    loopName,
+    /** @type {!Wasm2Lang.Wasm.Tree.LoopPlan} */ ({
+      simplifiedLoopKind: /** @type {string} */ (variantInfo[1]),
+      needsLabel: /** @type {boolean} */ (variantInfo[2]),
+      conditionPtr: conditionPtr
+    })
+  );
 };
 
 /**
@@ -358,16 +359,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.LoopSimplificationPass.prototype.enter_ = funct
   if (binaryen.SwitchId === lastId) {
     var /** @const {!Array<string>} */ switchNames = /** @type {!Array<string>} */ (lastInfo.names || []);
     var /** @const {string} */ switchDefault = /** @type {string} */ (lastInfo.defaultName || '');
-    var /** @type {boolean} */ hasSelfContinue = false;
-    for (var /** @type {number} */ si = 0, /** @const {number} */ swNamesLen = switchNames.length; si < swNamesLen; ++si) {
-      if (switchNames[si] === loopName) {
-        hasSelfContinue = true;
-        break;
-      }
-    }
-    if (!hasSelfContinue && switchDefault === loopName) {
-      hasSelfContinue = true;
-    }
+    var /** @const {boolean} */ hasSelfContinue = Wasm2Lang.Wasm.Tree.CustomPasses.switchTargetsName_(
+        switchNames,
+        switchDefault,
+        loopName
+      );
     if (hasSelfContinue) {
       state.simplifiedLoops[loopName] = needsLabel ? 'lcs' : 'lfs';
     }

@@ -75,11 +75,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitHelpers_ = function (
     self.emitOrCollectHelper_(lines, name, null, 'function ' + n(name) + body);
   };
 
-  // Trap emitter for helper bodies: each call allocates its own --trap-sites id
-  // while the body string is being concatenated, so textual order is allocation
-  // order.  Without the flag it renders the historical bare throw.
+  // Trap emitter for helper bodies — see truncTrapThrow_ (numeric_ops.js) for
+  // the allocation-order contract it carries.
   var trapThrow = /** @param {string} helperName @return {string} */ function (helperName) {
-    return self.renderHelperTrapThrow_(Wasm2Lang.Backend.TrapKind.TRUNC_F2I_RANGE, helperName);
+    return self.truncTrapThrow_(helperName);
   };
 
   // Core coercion helpers (unconditional).  Skipped in collect mode: they

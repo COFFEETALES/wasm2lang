@@ -403,6 +403,44 @@ Wasm2Lang.Backend.AbstractCodegen.RootSwitchInfo_;
 Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_;
 
 /**
+ * State shape for the class-shaped backends (Java, C#): every
+ * {@code LabeledEmitState_} field plus the module-level lookup tables the
+ * shared class emitters read and the exit-label set C# writes.  This is the
+ * exact shape {@code emitClassMethod_} builds; JavaCodegen.EmitState_ and
+ * CsharpCodegen.EmitState_ are structural aliases of it.
+ *
+ * @protected
+ * @typedef {{
+ *   binaryen: !Binaryen,
+ *   indent: number,
+ *   wasmModule: !BinaryenModule,
+ *   functionInfo: !BinaryenFunctionInfo,
+ *   visitor: ?Wasm2Lang.Wasm.Tree.TraversalVisitor,
+ *   labelMap: !Object<string, number>,
+ *   labelKinds: !Object<string, string>,
+ *   fusedBlockToLoop: !Object<string, string>,
+ *   pendingBlockFusion: string,
+ *   currentLoopName: string,
+ *   rootSwitchExitMap: ?Object<string, !Array<number>>,
+ *   rootSwitchRsName: string,
+ *   rootSwitchLoopName: string,
+ *   breakableStack: !Array<string>,
+ *   usedLabels: !Object<string, boolean>,
+ *   usedExitLabels: !Object<string, boolean>,
+ *   lastExprIsTerminal: boolean,
+ *   pendingLoopKind: string,
+ *   functionSignatures: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_>,
+ *   globalTypes: !Object<string, number>,
+ *   functionTables: !Object<string, !Wasm2Lang.Backend.AbstractCodegen.FunctionTableDescriptor_>,
+ *   importedNames: !Object<string, string>,
+ *   stdlibNames: ?Object<string, string>,
+ *   stdlibGlobals: ?Object<string, string>,
+ *   exportNameMap: !Object<string, string>
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.ClassEmitState_;
+
+/**
  * Coerces the flat-switch condition expression before emission.
  * Default returns the expression unchanged; asm.js overrides to apply
  * signed coercion ({@code |0}).
@@ -416,8 +454,26 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceSwitchCondition_ = function (c
 };
 
 /**
- * Default flat-switch emitter for labeled-break backends.
- * Java overrides to also set {@code lastExprIsTerminal}.
+ * Produces the flat-switch text and default-case flag for a br_table
+ * dispatch block.  Default is the shared labeled emitter; C# overrides with
+ * its goto-exit-label variant.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {{emittedString: string, hasDefault: boolean}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.labeledFlatSwitchResult_ = function (state, nodeCtx) {
+  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch(this, state, nodeCtx);
+};
+
+/**
+ * Default flat-switch emitter for labeled-break backends.  The class-shaped
+ * backends install {@code emitClassFlatSwitch_} instead, which additionally
+ * records the default-case terminality; setting it here would flip
+ * {@code lastExprIsTerminal} for asm.js, which never writes it and whose
+ * shared {@code emitForLoopBody_} reads it to decide a trailing
+ * {@code break;}.
  *
  * @protected
  * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
@@ -426,13 +482,28 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceSwitchCondition_ = function (c
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitFlatSwitch_ = function (state, nodeCtx) {
   state.breakableStack[state.breakableStack.length] = '*';
-  var /** @const {string} */ r = Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.emitLabeledFlatSwitch(
-      this,
-      state,
-      nodeCtx
-    ).emittedString;
+  var /** @const {string} */ r = this.labeledFlatSwitchResult_(state, nodeCtx).emittedString;
   --state.breakableStack.length;
   return r;
+};
+
+/**
+ * Flat-switch emitter for the class-shaped backends (installed as
+ * {@code emitFlatSwitch_} by Java and C#): same push/produce/pop as the
+ * default, plus recording whether the switch carries a default case so an
+ * unreachable trailing statement can be suppressed.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitClassFlatSwitch_ = function (state, nodeCtx) {
+  state.breakableStack[state.breakableStack.length] = '*';
+  var /** @const */ fsResult = this.labeledFlatSwitchResult_(state, nodeCtx);
+  --state.breakableStack.length;
+  state.lastExprIsTerminal = fsResult.hasDefault;
+  return fsResult.emittedString;
 };
 
 /**
@@ -448,6 +519,31 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitFlatSwitch_ = function (state, n
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.shouldValidateSwitchDispatchStructure_ = function () {
   return false;
+};
+
+/**
+ * Whether a metadata-marked switch-dispatch block may take the flat-switch
+ * path.  Backends that validate pre-normalized descriptors
+ * ({@code shouldValidateSwitchDispatchStructure_}) accept only a block whose
+ * dispatch structure still extracts cleanly.  Metadata rebuilt from a
+ * pre-normalized binary can point at a block whose dispatch wrapper was
+ * flattened or otherwise drifted; on reject the caller falls back to the
+ * generic named-block path, which preserves semantics — forcing the
+ * flat-switch path would emit {@code switch (|0) {}} from the empty fallback
+ * descriptor returned by {@code extractStructure()}.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.acceptsFlatSwitchStructure_ = function (binaryen, nodeCtx) {
+  if (!this.shouldValidateSwitchDispatchStructure_()) {
+    return true;
+  }
+  var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ dispatchInfo =
+      Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure(binaryen, nodeCtx.expressionPointer);
+  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure(dispatchInfo);
 };
 
 /**
@@ -690,21 +786,10 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
       } else if (this.isBlockRootSwitch_(fName, bName)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else if (this.isBlockSwitchDispatch_(fName, bName)) {
-        if (!this.shouldValidateSwitchDispatchStructure_()) {
+        if (this.acceptsFlatSwitchStructure_(binaryen, nodeCtx)) {
           ++state.indent;
           return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
         }
-        var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ dispatchInfo =
-            Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure(binaryen, nodeCtx.expressionPointer);
-        if (Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure(dispatchInfo)) {
-          ++state.indent;
-          return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-        }
-        // Metadata rebuilt from a pre-normalized binary can point at a block
-        // whose dispatch wrapper was flattened or otherwise drifted.  Falling
-        // back to the generic named-block path preserves semantics; forcing
-        // the flat-switch path here would emit `switch (|0) {}` from the
-        // empty fallback descriptor returned by extractStructure().
       }
       if (!this.canDirectLabelNamedBlock_(binaryen, expr)) {
         ++state.indent;
@@ -1225,15 +1310,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state
       return this.emitRootSwitch_(state, nodeCtx);
     }
     if (this.isBlockSwitchDispatch_(fnName, blockName)) {
-      if (!this.shouldValidateSwitchDispatchStructure_()) {
-        return this.emitFlatSwitch_(state, nodeCtx);
-      }
-      var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ dispatchInfo =
-          Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure(
-            state.binaryen,
-            nodeCtx.expressionPointer
-          );
-      if (Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure(dispatchInfo)) {
+      if (this.acceptsFlatSwitchStructure_(state.binaryen, nodeCtx)) {
         return this.emitFlatSwitch_(state, nodeCtx);
       }
     }
@@ -1271,7 +1348,6 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.canElideBlockWrapper_ = function (bl
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state, nodeCtx, childResults) {
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ pad = A.pad_;
   var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   var /** @const {?string} */ blockName = /** @type {?string} */ (expr.name);
   var /** @const {number} */ ind = state.indent;
@@ -1298,29 +1374,69 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitLabeledBlock_ = function (state,
     return blockBody;
   }
   if (blockName) {
-    var /** @const {!Binaryen} */ binaryen = state.binaryen;
-    var /** @const {number} */ blockType = expr.type;
-    if (binaryen.none !== blockType && 0 !== blockType && binaryen.unreachable !== blockType) {
-      throw new Error(
-        "Wasm2Lang codegen: named block '" +
-          blockName +
-          '\' in function "' +
-          state.functionInfo.name +
-          '" has a value result type. ' +
-          'The target language cannot use labeled blocks as expressions. ' +
-          'Use binaryen:min normalization to flatten value-typed blocks before codegen.'
-      );
-    }
+    A.rejectValueTypedNamedBlock_(state.binaryen, expr.type, blockName, state.functionInfo.name);
     if (!needsWrapper) return blockBody;
-    var /** @const {string} */ labelHead = this.labelN_(state.labelMap, blockName) + ': ';
-    if (canDirectLabel) {
-      // Child statement was emitted at the same indent as this block, so
-      // the leading pad is replaced by the label prefix.
-      return pad(ind) + labelHead + blockBody.slice(pad(ind).length);
-    }
-    return pad(ind) + labelHead + '{\n' + blockBody + pad(ind) + '}\n';
+    return this.renderNamedBlockWrapper_(state, blockName, blockBody, ind, canDirectLabel);
   }
   return blockBody;
+};
+
+/**
+ * Refuses a named block that carries a value result type — no labeled-break
+ * target language can use a labeled block as an expression.  Shared by the
+ * labeled-break emitter above and the PHP do/while override.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} blockType
+ * @param {string} blockName
+ * @param {string} funcName
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.rejectValueTypedNamedBlock_ = function (binaryen, blockType, blockName, funcName) {
+  if (binaryen.none !== blockType && 0 !== blockType && binaryen.unreachable !== blockType) {
+    throw new Error(
+      "Wasm2Lang codegen: named block '" +
+        blockName +
+        '\' in function "' +
+        funcName +
+        '" has a value result type. ' +
+        'The target language cannot use labeled blocks as expressions. ' +
+        'Use binaryen:min normalization to flatten value-typed blocks before codegen.'
+    );
+  }
+};
+
+/**
+ * Renders the wrapper around a named block that could not be elided.  The
+ * default is the labeled-break shape (asm.js, JavaScript, Java); C#
+ * overrides with a plain brace block followed by a conditional goto exit
+ * label.  Called only after the fused / value-typed / elidable cases have
+ * been dispatched.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {string} blockName
+ * @param {string} blockBody
+ * @param {number} ind
+ * @param {boolean} canDirectLabel
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderNamedBlockWrapper_ = function (
+  state,
+  blockName,
+  blockBody,
+  ind,
+  canDirectLabel
+) {
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const {string} */ labelHead = this.labelN_(state.labelMap, blockName) + ': ';
+  if (canDirectLabel) {
+    // Child statement was emitted at the same indent as this block, so
+    // the leading pad is replaced by the label prefix.
+    return pad(ind) + labelHead + blockBody.slice(pad(ind).length);
+  }
+  return pad(ind) + labelHead + '{\n' + blockBody + pad(ind) + '}\n';
 };
 
 /**
@@ -1356,14 +1472,6 @@ Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, node
   var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
   var /** @const {number} */ emitCount = A.effectiveReachableBlockChildCount_(binaryen, state.wasmModule, expr, childResults);
   if (emitCount < 1) return null;
-  var /** @const */ pad = A.pad_;
-  var /** @const {number} */ childInd = state.indent;
-  var /** @const {!Array<string>} */ prefixLines = [];
-  for (var /** @type {number} */ i = 0; i < emitCount - 1; ++i) {
-    var /** @const {string} */ childCode = A.getChildResultInfo_(childResults, i).expressionString;
-    if ('' === childCode) continue;
-    prefixLines.push(-1 === childCode.indexOf('\n') ? pad(childInd) + childCode + ';\n' : childCode);
-  }
   var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ChildResultInfo_} */ tailInfo = A.getChildResultInfo_(
       childResults,
       emitCount - 1
@@ -1372,7 +1480,9 @@ Wasm2Lang.Backend.AbstractCodegen.tryEmitRootValueBlock_ = function (state, node
   return {
     w2lExprStr: tailInfo.expressionString,
     w2lExprCat: tailInfo.expressionCategory,
-    w2lRootValueBlockPrefix: prefixLines.join('')
+    // The prefix statements are the non-tail children, assembled exactly as a
+    // block body would be.
+    w2lRootValueBlockPrefix: A.assembleBlockChildren_(childResults, emitCount - 1, state.indent)
   };
 };
 
@@ -2469,4 +2579,617 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.shouldEmitDropChild_ = function (bin
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderUnreachableStatement_ = function (indent, siteId) {
   return '';
+};
+
+/**
+ * Renders a throw-shaped trap statement for the backends whose abort is a
+ * {@code throw} (Java, C#, PHP) — the throw is the abort, no host hook can
+ * skip it, and under {@code --trap-sites} it carries the kind and site id in
+ * the stable {@code w2l trap kind=<n> site=<n>} message shape that
+ * {@code selectLiveTrapSites_} greps for.  Only the exception-constructor
+ * spelling ({@code trapThrowOpen_}) differs per backend; the flag-off branch
+ * returns the exact historical string, which is what keeps a no-flag build
+ * byte-identical.
+ *
+ * @protected
+ * @param {number} indent
+ * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
+ * @param {number} siteId
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderThrowTrapStatement_ = function (indent, kind, siteId) {
+  var /** @const {string} */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_(indent);
+  if (!this.trapSitesEnabled_) {
+    return pad + this.trapThrowOpen_ + ');\n';
+  }
+  return pad + this.trapThrowOpen_ + '"' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");\n';
+};
+
+/**
+ * Renders a trap throw for a shared runtime helper body — no indent and no
+ * trailing newline, because helper templates place it inline after an `if`.
+ * Same contract as {@code renderThrowTrapStatement_}, with the helper's own
+ * exception spelling ({@code helperTrapThrowOpen_}) and a site id allocated
+ * against the helper name.  Only the throw backends (Java, C#, PHP) reach
+ * it; asm.js and JavaScript route helper traps through
+ * {@code renderHelperTrapCall_} instead.
+ *
+ * @protected
+ * @param {number} kind  A {@code Wasm2Lang.Backend.TrapKind} value.
+ * @param {string} helperName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderHelperTrapThrow_ = function (kind, helperName) {
+  if (!this.trapSitesEnabled_) {
+    return this.helperTrapThrowOpen_ + ');';
+  }
+  var /** @const {number} */ siteId = this.allocateHelperTrapSite_(kind, helperName);
+  return this.helperTrapThrowOpen_ + '"' + Wasm2Lang.Backend.AbstractCodegen.trapMessage_(kind, siteId) + '");';
+};
+
+// ---------------------------------------------------------------------------
+// Shared class-backend leave emitter.
+//
+// Java and C# render the same expression cases in two alphabets; the shared
+// emitLeave_ body lives here (installed by both backends as emitLeave_) and
+// every real divergence goes through one of the hooks below.  The SIMD lane
+// cases and Java's v128 store-copy optimization are genuinely different per
+// backend and stay in emitClassLeaveBackendCase_; everything else is one
+// spelling.  Hook defaults follow the classTypeName_ convention: unreachable
+// for non-class backends, present so this file type-checks.
+// ---------------------------------------------------------------------------
+
+/**
+ * Renders a ternary condition from a child expression string and category:
+ * an already-boolean i32 needs only precedence wrapping, anything else
+ * compares against zero.
+ *
+ * @protected
+ * @param {string} condStr
+ * @param {number} condCat
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.renderClassTernaryCondition_ = function (condStr, condCat) {
+  var /** @const */ Ps = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  if (Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32 === condCat) {
+    return Ps.wrap_(condStr, Ps.PREC_CONDITIONAL_, false);
+  }
+  return Ps.renderInfix(condStr, '!=', '0', Ps.PREC_EQUALITY_);
+};
+
+/**
+ * Renders a direct-cast import call ({@code castNames_} entry) — the
+ * language-level cast ladder each class backend spells its own way.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} castBaseName
+ * @param {number} callType
+ * @param {string} valStr
+ * @param {number} valCat
+ * @return {{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderClassCastImport_ = function (
+  binaryen,
+  castBaseName,
+  callType,
+  valStr,
+  valCat
+) {
+  return {emittedString: '', resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_VOID};
+};
+
+/**
+ * Text appended after a raw (unsimplified) infinite loop.  Default none;
+ * C# appends the conditional goto exit label.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.LabeledEmitState_} state
+ * @param {string} loopName
+ * @param {number} ind
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.classRawLoopSuffix_ = function (state, loopName, ind) {
+  return '';
+};
+
+/**
+ * Renders a call to an imported function.  Each class backend chooses its
+ * own invocation vehicle (Java functional interfaces, C# delegate casts);
+ * the default is unreachable and exists so the shared leave emitter
+ * type-checks (same note as classTypeName_).
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {string} importBaseName
+ * @param {!Array<string>} callArgs
+ * @param {number} callType
+ * @param {!Array<number>=} opt_paramTypes
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderImportCallExpr_ = function (
+  binaryen,
+  importBaseName,
+  callArgs,
+  callType,
+  opt_paramTypes
+) {
+  return '';
+};
+
+/**
+ * Typed delegate onto the backend's {@code renderLoad_}.  Every backend
+ * defines one, but no shared declaration can exist: the JS-family signature
+ * carries a required trailing {@code align} parameter the class backends do
+ * not take, so a base stub would make one family or the other an invalid
+ * override.  Hence the narrow suppression here — the cast pins the return
+ * type, and the shared leave emitter stays fully checked.
+ *
+ * @protected
+ * @suppress {strictMissingProperties, missingProperties, reportUnknownTypes}
+ * @param {!Binaryen} binaryen
+ * @param {string} ptrExpr
+ * @param {number} wasmType
+ * @param {number} bytes
+ * @param {boolean} isSigned
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.classRenderLoad_ = function (binaryen, ptrExpr, wasmType, bytes, isSigned) {
+  return /** @type {string} */ (this.renderLoad_(binaryen, ptrExpr, wasmType, bytes, isSigned));
+};
+
+/**
+ * Typed delegate onto the backend's {@code renderStore_} — same rationale
+ * and same narrow suppression as {@code classRenderLoad_} above.
+ *
+ * @protected
+ * @suppress {strictMissingProperties, missingProperties, reportUnknownTypes}
+ * @param {!Binaryen} binaryen
+ * @param {string} ptrExpr
+ * @param {string} valueExpr
+ * @param {number} wasmType
+ * @param {number} bytes
+ * @param {number} valueCat
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.classRenderStore_ = function (
+  binaryen,
+  ptrExpr,
+  valueExpr,
+  wasmType,
+  bytes,
+  valueCat
+) {
+  return /** @type {string} */ (this.renderStore_(binaryen, ptrExpr, valueExpr, wasmType, bytes, valueCat));
+};
+
+/**
+ * Backend-specific leave cases consulted before the shared switch: the SIMD
+ * lane operations (both backends, each in its own intrinsics vocabulary) and
+ * Java's v128 store-copy optimization.  Returns null to fall through to the
+ * shared cases; an id neither handles ends at {@code refuseExpressionId_}.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.ClassEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @param {function(number): string} cr
+ * @param {function(number): number} cc
+ * @param {number} ind
+ * @return {?{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitClassLeaveBackendCase_ = function (state, nodeCtx, childResults, cr, cc, ind) {
+  return null;
+};
+
+/**
+ * Post-processes the built leave result.  Default no-op; Java attaches the
+ * v128 load-pointer metadata a containing store's copy optimization reads.
+ *
+ * @protected
+ * @param {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} leaveResult
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.ClassEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {function(number): string} cr
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.augmentClassLeaveResult_ = function (leaveResult, state, nodeCtx, cr) {};
+
+/**
+ * Java and C# only allow method calls, assignments, etc. as expression
+ * statements.  Restrict drop emission to call children (the side-effectful
+ * case); pure expressions are dropped silently.  Installed by both backends
+ * as {@code shouldEmitDropChild_}.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} dropValuePtr
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.classShouldEmitDropChild_ = function (binaryen, dropValuePtr) {
+  if (!dropValuePtr) return false;
+  var /** @const {number} */ childId = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, dropValuePtr).id;
+  return binaryen.CallId === childId || binaryen.CallIndirectId === childId;
+};
+
+/**
+ * The shared emitLeave_ body for the class-shaped backends.  Installed as
+ * {@code emitLeave_} by Java and C#.
+ *
+ * @protected
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.ClassEmitState_} state
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
+ * @param {!Wasm2Lang.Wasm.Tree.TraversalChildResultList} childResults
+ * @return {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitClassLeave_ = function (state, nodeCtx, childResults) {
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
+  var /** @const {number} */ id = expr.id;
+  var /** @const {!Binaryen} */ binaryen = state.binaryen;
+  var /** @const {number} */ ind = state.indent;
+  var /** @type {string} */ result = '';
+  var /** @const */ pad = Wasm2Lang.Backend.AbstractCodegen.pad_;
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
+  var /** @type {number} */ resultCat = A.CAT_VOID;
+  var /** @type {boolean} */ resultTerminalOverride = false;
+  var /** @type {boolean} */ resultTerminalOverrideIsAuthoritative = false;
+
+  // Reset terminal flag for all non-Block expressions (Block propagates from
+  // its last child).  Terminal handlers (Return, unconditional Break, Switch
+  // with default) override to true so callers (e.g. SwitchId default-case
+  // detection) can suppress an unreachable trailing statement.
+  if (binaryen.BlockId !== id) {
+    state.lastExprIsTerminal = false;
+  }
+
+  var /** @const */ acc = A.makeChildAccessors_(childResults);
+  var /** @const {function(number): string} */ cr = acc.cr;
+  var /** @const {function(number): number} */ cc = acc.cc;
+
+  var /** @const {?Wasm2Lang.Backend.AbstractCodegen.TypedExpr_} */ terminal = this.propagateTerminalChild_(
+      binaryen,
+      expr,
+      id,
+      childResults,
+      state.wasmModule,
+      ind
+    );
+  if (terminal) {
+    state.lastExprIsTerminal = true;
+    return {decisionValue: terminal};
+  }
+
+  var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ childControl = A.mergeChildControl_(childResults);
+  var /** @type {boolean} */ resultMayExitFunction = childControl.mayExitFunction;
+  var /** @type {!Array<string>} */ resultBranchTargets = childControl.branchTargets;
+
+  var /** @const */ common = this.emitLeaveCommonCase_(
+      binaryen,
+      expr,
+      id,
+      ind,
+      childResults,
+      state.wasmModule,
+      state.functionInfo
+    );
+  if (common) {
+    if (common.isTerminal) state.lastExprIsTerminal = true;
+    return A.buildLeaveResult_(
+      common.emittedString,
+      common.resultCat,
+      !!common.isTerminal,
+      resultMayExitFunction || !!common.mayExitFunction,
+      resultBranchTargets
+    );
+  }
+
+  var /** @const {?{emittedString: string, resultCat: number}} */ backendCase = this.emitClassLeaveBackendCase_(
+      state,
+      nodeCtx,
+      childResults,
+      cr,
+      cc,
+      ind
+    );
+  if (backendCase) {
+    result = backendCase.emittedString;
+    resultCat = backendCase.resultCat;
+  } else {
+    switch (id) {
+      case binaryen.GlobalGetId: {
+        var /** @const {string} */ globalGetName = /** @type {string} */ (expr.name);
+        var /** @const {number} */ globalGetType = state.globalTypes[globalGetName] || binaryen.i32;
+        var /** @const {string} */ stdlibGlobal = state.stdlibGlobals ? state.stdlibGlobals[globalGetName] || '' : '';
+        if ('' !== stdlibGlobal) {
+          result = stdlibGlobal;
+        } else {
+          var /** @const {string} */ globalGetKey = '$g_' + this.safeName_(globalGetName);
+          this.markBinding_(globalGetKey);
+          result = 'this.' + this.n_(globalGetKey);
+        }
+        resultCat = A.catForCoercedType_(binaryen, globalGetType);
+        break;
+      }
+
+      case binaryen.LoadId: {
+        var /** @const {string} */ loadPtr = Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(
+            cr(0),
+            /** @type {number} */ (expr.offset)
+          );
+        var /** @const {number} */ loadType = expr.type;
+        result = this.classRenderLoad_(binaryen, loadPtr, loadType, /** @type {number} */ (expr.bytes), !!expr.isSigned);
+        resultCat = A.catForCoercedType_(binaryen, loadType);
+        break;
+      }
+      case binaryen.StoreId: {
+        var /** @const {number} */ storeType = /** @type {number} */ (expr.valueType) || binaryen.i32;
+        var /** @const {string} */ storePtr = Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(
+            cr(0),
+            /** @type {number} */ (expr.offset)
+          );
+        result =
+          pad(ind) +
+          this.classRenderStore_(binaryen, storePtr, cr(1), storeType, /** @type {number} */ (expr.bytes), cc(1)) +
+          '\n';
+        break;
+      }
+      case binaryen.GlobalSetId: {
+        var /** @const {string} */ globalName = /** @type {string} */ (expr.name);
+        var /** @const {number} */ globalType = state.globalTypes[globalName] || binaryen.i32;
+        var /** @const {string} */ globalSetKey = '$g_' + this.safeName_(globalName);
+        this.markBinding_(globalSetKey);
+        result =
+          pad(ind) +
+          'this.' +
+          this.n_(globalSetKey) +
+          ' = ' +
+          A.Precedence_.stripForAssignment(this.coerceToType_(binaryen, cr(0), cc(0), globalType)) +
+          ';\n';
+        break;
+      }
+      case binaryen.CallId: {
+        var /** @const {string} */ callTarget = /** @type {string} */ (expr.target);
+        var /** @const {number} */ callType = expr.type;
+
+        // Direct-cast imports: emit native language-level type cast instead of a call.
+        // No helpers, no range checks — just the raw target-language cast.
+        var /** @const {string|undefined} */ castBaseName = this.castNames_ ? this.castNames_[callTarget] : void 0;
+        if (void 0 !== castBaseName) {
+          var /** @const */ castResult = this.renderClassCastImport_(binaryen, castBaseName, callType, cr(0), cc(0));
+          result = castResult.emittedString;
+          resultCat = castResult.resultCat;
+          break;
+        }
+
+        var /** @const {string} */ stdlibName = state.stdlibNames ? state.stdlibNames[callTarget] || '' : '';
+        var /** @const {string} */ importBase = stdlibName ? '' : state.importedNames[callTarget] || '';
+        var /** @const {!Array<string>} */ callArgs = this.buildCoercedCallArgs_(
+            binaryen,
+            expr,
+            childResults,
+            state.functionSignatures
+          );
+        var /** @type {string} */ callExpr;
+        if ('' !== stdlibName) {
+          callExpr = stdlibName + '(' + callArgs.join(', ') + ')';
+        } else if ('' !== importBase) {
+          this.markBinding_('$if_' + this.safeName_(importBase));
+          var /** @const {!Wasm2Lang.Backend.AbstractCodegen.FunctionSignature_} */ impSig = state.functionSignatures[
+              callTarget
+            ] || {sigParams: [], sigRetType: callType};
+          callExpr = this.renderImportCallExpr_(binaryen, importBase, callArgs, callType, impSig.sigParams);
+        } else {
+          var /** @const {boolean} */ callIsExported = callTarget in state.exportNameMap;
+          var /** @const {string} */ resolvedName = callIsExported ? state.exportNameMap[callTarget] : callTarget;
+          var /** @const {string} */ callMethodName = callIsExported
+              ? this.safeName_(resolvedName)
+              : this.n_(this.safeName_(resolvedName));
+          callExpr = callMethodName + '(' + callArgs.join(', ') + ')';
+        }
+        if (binaryen.none === callType || 0 === callType) {
+          result = pad(ind) + callExpr + ';\n';
+        } else {
+          result = callExpr;
+          resultCat = A.catForCoercedType_(binaryen, callType);
+        }
+        break;
+      }
+      case binaryen.CallIndirectId: {
+        var /** @const {!Array<number>} */ ciParamTypes = binaryen.expandType(/** @type {number} */ (expr.params));
+        var /** @const {number} */ ciRetType = expr.type;
+        var /** @const {string} */ ciSigKey = A.buildSignatureKey_(binaryen, ciParamTypes, ciRetType);
+        var /** @const {!Array<string>} */ ciArgs = this.buildCoercedCallIndirectArgs_(binaryen, expr, childResults);
+        var /** @const {string} */ ciTableName = this.n_('$ftable_' + ciSigKey);
+        var /** @const {string} */ ciIndexExpr = this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32);
+        var /** @type {string} */ ciCallExpr;
+        if (this.callIndirectNeedsOrderedEvaluation_(binaryen, expr, state.wasmModule)) {
+          ciArgs.push(ciIndexExpr);
+          ciCallExpr = 'this.' + this.n_(this.getOrderedCallIndirectWrapperName_(ciSigKey)) + '(' + ciArgs.join(', ') + ')';
+        } else {
+          ciCallExpr = 'this.' + ciTableName + '[' + ciIndexExpr + this.tableInvokeOpen_ + ciArgs.join(', ') + ')';
+        }
+        if (binaryen.none === ciRetType || 0 === ciRetType) {
+          result = pad(ind) + ciCallExpr + ';\n';
+        } else {
+          result = ciCallExpr;
+          resultCat = A.catForCoercedType_(binaryen, ciRetType);
+        }
+        break;
+      }
+      case binaryen.SelectId: {
+        var /** @const {number} */ selectType = expr.type;
+        if (this.selectNeedsEagerEvaluation_(binaryen, expr, state.wasmModule)) {
+          var /** @const {string} */ selectHelper = this.getEagerSelectHelperName_(binaryen, selectType);
+          this.markHelper_(selectHelper);
+          result =
+            this.n_(selectHelper) +
+            '(' +
+            this.coerceToType_(binaryen, cr(1), cc(1), selectType) +
+            ', ' +
+            this.coerceToType_(binaryen, cr(2), cc(2), selectType) +
+            ', ' +
+            this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) +
+            ')';
+        } else {
+          var /** @const {string} */ selCondStr = A.renderClassTernaryCondition_(cr(0), cc(0));
+          // Coerce BOTH arms to the select's value type.  Java: its
+          // conditional-expression typing would otherwise widen the arms.
+          // C#: a bare relational arm is a bool, and a ternary mixing bool
+          // and int does not compile (CS0029/CS0173) — the select's declared
+          // result category is integer, so the coercion materializes the
+          // {@code ? 1 : 0}.
+          var /** @const {string} */ selTrueStr = this.coerceToType_(binaryen, cr(1), cc(1), selectType);
+          var /** @const {string} */ selFalseStr = this.coerceToType_(binaryen, cr(2), cc(2), selectType);
+          result = '(' + selCondStr + ' ? ' + selTrueStr + ' : ' + selFalseStr + ')';
+        }
+        resultCat = A.catForCoercedType_(binaryen, selectType);
+        break;
+      }
+      case binaryen.MemorySizeId:
+        result = 'this.' + this.n_('buffer') + this.classMemorySizeSuffix_;
+        resultCat = C.SIGNED;
+        break;
+
+      case binaryen.MemoryGrowId:
+        this.markHelper_('$w2l_memory_grow');
+        result = 'this.' + this.n_('$w2l_memory_grow') + '(' + this.coerceToType_(binaryen, cr(0), cc(0), binaryen.i32) + ')';
+        resultCat = C.SIGNED;
+        break;
+
+      case binaryen.MemoryFillId:
+      case binaryen.MemoryCopyId:
+        result = this.renderMemoryBulkOp_(binaryen, id, ind, childResults, 'this.' + this.n_('buffer'));
+        break;
+
+      case binaryen.BlockId: {
+        var /** @const {?{w2lExprStr: string, w2lExprCat: number, w2lRootValueBlockPrefix: string}} */ rootValueShape =
+            A.tryEmitRootValueBlock_(state, nodeCtx, childResults);
+        if (rootValueShape) {
+          return /** @type {!Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ ({decisionValue: rootValueShape});
+        }
+        result = this.emitBlockDispatch_(state, nodeCtx, childResults);
+        var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ blockControl = A.summarizeBlockControl_(
+            binaryen,
+            state.wasmModule,
+            expr,
+            childResults
+          );
+        resultTerminalOverride = blockControl.isTerminal;
+        resultTerminalOverrideIsAuthoritative = true;
+        resultMayExitFunction = blockControl.mayExitFunction;
+        resultBranchTargets = blockControl.branchTargets;
+        break;
+      }
+      case binaryen.LoopId: {
+        var /** @const {string} */ loopName = /** @type {string} */ (expr.name);
+        var /** @type {?string} */ loopKind = null;
+        if ('' !== state.pendingLoopKind) {
+          loopKind = state.pendingLoopKind;
+          state.pendingLoopKind = '';
+        }
+        if (loopKind) {
+          result = this.emitSimplifiedLoopFromIR_(state, nodeCtx, loopKind);
+        } else {
+          // Raw loop fallback (unsimplified): the body's static wasm type
+          // determines whether the for(;;) needs an explicit trailing
+          // {@code break;}.  Body type {@code none} means the body can fall
+          // through (either by reaching its end naturally, or by exiting a
+          // named child block via label-break).  The language requires the
+          // trailing break to escape the for(;;) on that fall-through path.
+          // Body type {@code unreachable} means every path inside the body
+          // either continues the loop ({@code br $label}) or breaks to an
+          // outer scope, so the trailing break would itself be unreachable.
+          var /** @const {!BinaryenExpressionInfo} */ loopBodyInfo = Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(
+              binaryen,
+              /** @type {number} */ (expr.body)
+            );
+          var /** @const {boolean} */ needsTrailingBreak =
+              binaryen.unreachable !== loopBodyInfo.type && !A.getChildResultInfo_(childResults, 0).isTerminal;
+          var /** @const {string} */ rawLabel = state.usedLabels[loopName] ? this.labelN_(state.labelMap, loopName) + ': ' : '';
+          result =
+            this.emitRawInfiniteLoop_(ind, rawLabel, cr(0), needsTrailingBreak) +
+            this.classRawLoopSuffix_(state, loopName, ind);
+        }
+        --state.breakableStack.length;
+        var /** @const {!Wasm2Lang.Backend.AbstractCodegen.ControlSummary_} */ loopControl = A.summarizeLoopControl_(
+            binaryen,
+            expr,
+            childResults
+          );
+        resultTerminalOverride = loopControl.isTerminal;
+        resultTerminalOverrideIsAuthoritative = true;
+        resultMayExitFunction = loopControl.mayExitFunction;
+        resultBranchTargets = loopControl.branchTargets;
+        break;
+      }
+      case binaryen.IfId: {
+        var /** @const {number} */ ifType = expr.type;
+        if (binaryen.none !== ifType && binaryen.unreachable !== ifType && 0 !== ifType) {
+          var /** @const {string} */ ifCondStr = A.renderClassTernaryCondition_(cr(0), cc(0));
+          // Both arms coerced for the same reason as the lazy select above —
+          // a bool-categorized arm in a C# value ternary is a compile error,
+          // and Java would widen unmatched arms.
+          var /** @const {string} */ ifTrueStr = this.coerceToType_(binaryen, cr(1), cc(1), ifType);
+          var /** @const {string} */ ifFalseStr = this.coerceToType_(binaryen, cr(2), cc(2), ifType);
+          result = '(' + ifCondStr + ' ? ' + ifTrueStr + ' : ' + ifFalseStr + ')';
+          resultCat = A.catForCoercedType_(binaryen, ifType);
+        } else {
+          result = this.emitIfStatement_(
+            ind,
+            cr(0),
+            cr(1),
+            /** @type {number} */ (expr.ifFalse),
+            childResults.length,
+            cr(2),
+            cc(0)
+          );
+        }
+        break;
+      }
+      case binaryen.BreakId: {
+        var /** @const {string} */ brName = /** @type {string} */ (expr.name);
+        var /** @const */ brResult = this.emitBreakStatement_(
+            state,
+            ind,
+            brName,
+            /** @type {number} */ (expr.condition),
+            cr(0),
+            cc(0)
+          );
+        result = brResult.emittedString;
+        if (brResult.isTerminal) {
+          state.lastExprIsTerminal = true;
+        }
+        A.appendUniqueBranchTargets_(resultBranchTargets, [brName]);
+        break;
+      }
+      case binaryen.SwitchId: {
+        var /** @const {!Array<string>} */ swNames = /** @type {!Array<string>} */ (expr.names || []);
+        var /** @const {string} */ swDefault = /** @type {string} */ (expr.defaultName || '');
+        var /** @const */ swResult = this.emitSwitchStatement_(state, ind, cr(0), swNames, swDefault, cc(0));
+        result = swResult.emittedString;
+        state.lastExprIsTerminal = swResult.hasDefault;
+        A.appendUniqueBranchTargets_(resultBranchTargets, swNames);
+        if ('' !== swDefault) A.appendUniqueBranchTargets_(resultBranchTargets, [swDefault]);
+        break;
+      }
+      default:
+        this.refuseExpressionId_(id);
+    }
+  }
+
+  var /** @const {boolean} */ resultIsTerminal = resultTerminalOverrideIsAuthoritative
+      ? resultTerminalOverride
+      : binaryen.unreachable === expr.type;
+  if (resultIsTerminal) state.lastExprIsTerminal = true;
+  var /** @const {?Wasm2Lang.Wasm.Tree.TraversalDecisionInput} */ leaveResult = A.buildLeaveResult_(
+      result,
+      resultCat,
+      resultIsTerminal,
+      resultMayExitFunction,
+      resultBranchTargets
+    );
+  this.augmentClassLeaveResult_(leaveResult, state, nodeCtx, cr);
+  return leaveResult;
 };

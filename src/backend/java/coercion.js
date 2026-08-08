@@ -42,19 +42,7 @@ Wasm2Lang.Backend.JavaCodegen.prototype.renderI64Const_ = function (binaryen, va
  * @return {string}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.renderLocalInit_ = function (binaryen, wasmType) {
-  if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) {
-    return '0L';
-  }
-  if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) {
-    return '0.0f';
-  }
-  if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) {
-    return '0.0';
-  }
-  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
-    return 'IntVector.zero(IntVector.SPECIES_128)';
-  }
-  return '0';
+  return this.renderManagedLocalInit_(binaryen, wasmType, 'IntVector.zero(IntVector.SPECIES_128)');
 };
 
 /**
@@ -144,6 +132,42 @@ Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_CASTS_ = /** @type {!Object<number,
 );
 
 /**
+ * i32 width spec for the shared {@code emitManagedIntUnary_} dispatch.
+ * {@code bitOpArgType} is unused on Java — the default
+ * {@code renderUnaryBitOpArg_} passes the operand bare.
+ *
+ * @const {!Wasm2Lang.Backend.AbstractCodegen.ManagedUnarySpec_}
+ * @private
+ */
+Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_SPEC_ = {
+  eqzCat: Wasm2Lang.Backend.I32Coercion.UNARY_EQZ,
+  zeroLit: '0',
+  methods: Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_METHODS_,
+  casts: Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_CASTS_,
+  bitOpArgType: '',
+  widenPrefix: '',
+  resultCat: Wasm2Lang.Backend.I32Coercion.SIGNED
+};
+
+/**
+ * i64 width spec for the shared {@code emitManagedIntUnary_} dispatch.  The
+ * {@code (long)} widen prefix makes the narrowing casts' implicit widening
+ * explicit so the result category stays CAT_I64-truthful.
+ *
+ * @const {!Wasm2Lang.Backend.AbstractCodegen.ManagedUnarySpec_}
+ * @private
+ */
+Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_SPEC_ = {
+  eqzCat: Wasm2Lang.Backend.I64Coercion.UNARY_EQZ,
+  zeroLit: '0L',
+  methods: Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_METHODS_,
+  casts: Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_CASTS_,
+  bitOpArgType: '',
+  widenPrefix: '(long)',
+  resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_I64
+};
+
+/**
  * @override
  * @protected
  * @param {!Binaryen} binaryen
@@ -152,19 +176,7 @@ Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_CASTS_ = /** @type {!Object<number,
  * @return {?{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitI32Unary_ = function (binaryen, unaryCategory, operandExpr) {
-  var /** @const */ C = Wasm2Lang.Backend.I32Coercion;
-  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
-  if (C.UNARY_EQZ === unaryCategory) {
-    return {
-      emittedString: P.renderInfix(operandExpr, '==', '0', P.PREC_EQUALITY_),
-      resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_BOOL_I32
-    };
-  }
-  var /** @const {string|undefined} */ method = Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_METHODS_[unaryCategory];
-  if (method) return {emittedString: method + '(' + operandExpr + ')', resultCat: C.SIGNED};
-  var /** @const {string|undefined} */ cast = Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_CASTS_[unaryCategory];
-  if (cast) return {emittedString: '(' + cast + ')' + P.wrap_(operandExpr, P.PREC_UNARY_, true), resultCat: C.SIGNED};
-  return null;
+  return this.emitManagedIntUnary_(unaryCategory, operandExpr, Wasm2Lang.Backend.JavaCodegen.JAVA_I32_UNARY_SPEC_);
 };
 
 /**
@@ -176,18 +188,5 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitI32Unary_ = function (binaryen, unar
  * @return {?{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.JavaCodegen.prototype.emitI64Unary_ = function (binaryen, unaryCategory, operandExpr) {
-  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
-  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
-  var /** @const */ P = A.Precedence_;
-  if (I.UNARY_EQZ === unaryCategory) {
-    return {
-      emittedString: P.renderInfix(operandExpr, '==', '0L', P.PREC_EQUALITY_),
-      resultCat: A.CAT_BOOL_I32
-    };
-  }
-  var /** @const {string|undefined} */ method = Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_METHODS_[unaryCategory];
-  if (method) return {emittedString: '(long)' + method + '(' + operandExpr + ')', resultCat: A.CAT_I64};
-  var /** @const {string|undefined} */ cast = Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_CASTS_[unaryCategory];
-  if (cast) return {emittedString: '(long)(' + cast + ')' + P.wrap_(operandExpr, P.PREC_UNARY_, true), resultCat: A.CAT_I64};
-  return null;
+  return this.emitManagedIntUnary_(unaryCategory, operandExpr, Wasm2Lang.Backend.JavaCodegen.JAVA_I64_UNARY_SPEC_);
 };

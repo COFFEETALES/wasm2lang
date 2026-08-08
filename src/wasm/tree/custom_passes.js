@@ -107,6 +107,9 @@ Wasm2Lang.Wasm.Tree.CustomPasses.NONFUSED_BLOCK_SKIP_PREFIXES = ['w2l_switch$', 
  * Convenience wrapper that extracts binaryen/module/expr from a traversal
  * node context and delegates to {@code applyMarkerRenaming_}.  Used by
  * leave_ callbacks that only need marker renaming (no additional logic).
+ * Reads {@code nodeCtx.expression} directly: the kernel re-fetches it after
+ * walking children and before every leave callback, so no defensive
+ * re-fetch is needed.
  *
  * @param {string} marker
  * @param {!Object<string, boolean>} targetSet
@@ -118,10 +121,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyLeaveRenaming_ = function (marker, targetS
   var /** @const {!Binaryen} */ binaryen = nodeCtx.binaryen;
   // prettier-ignore
   var /** @const {!BinaryenModule} */ module = /** @type {!BinaryenModule} */ (nodeCtx.treeModule);
-  // prettier-ignore
-  var /** @const {!BinaryenExpressionInfo} */ expr = /** @type {!BinaryenExpressionInfo} */ (
-    Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen,nodeCtx.expressionPointer)
-  );
+  var /** @const {!BinaryenExpressionInfo} */ expr = nodeCtx.expression;
   return Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_(marker, targetSet, exclusionSet, binaryen, module, expr);
 };
 
@@ -223,6 +223,23 @@ Wasm2Lang.Wasm.Tree.CustomPasses.applyMarkerRenaming_ = function (marker, target
     module,
     expr
   );
+};
+
+/**
+ * Guarded funcMetadata map write: when {@code mapRef} is present, stores
+ * {@code value} under the marker-prefixed name.  Shared by the normalize
+ * passes' marker-recording sites.
+ *
+ * @param {*} mapRef
+ * @param {string} marker
+ * @param {string} name
+ * @param {*} value
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.recordMarkedEntry_ = function (mapRef, marker, name, value) {
+  if (mapRef) {
+    /** @type {!Object} */ (mapRef)[marker + name] = value;
+  }
 };
 
 // ---------------------------------------------------------------------------
@@ -438,7 +455,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.declareFunctionFieldAccessor_ = function (exter
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true when {@code testFn} matches any expression in a subtree.
+ * Returns the pointer of the first expression in a subtree for which
+ * {@code testFn} matches, or 0 when none does.
  * Traversal goes exclusively through the shared kernel, so every registered
  * NodeSchema edge is covered.  Once a match is found, later sibling roots are
  * still entered because the kernel has no global abort action, but each of
@@ -448,12 +466,12 @@ Wasm2Lang.Wasm.Tree.CustomPasses.declareFunctionFieldAccessor_ = function (exter
  * @param {!BinaryenModule} wasmModule
  * @param {number} ptr
  * @param {function(!BinaryenExpressionInfo, number): boolean} testFn
- * @return {boolean}
+ * @return {number}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.containsExpression_ = function (binaryen, wasmModule, ptr, testFn) {
-  if (!ptr) return false;
+Wasm2Lang.Wasm.Tree.CustomPasses.findExpressionPtr_ = function (binaryen, wasmModule, ptr, testFn) {
+  if (!ptr) return 0;
 
-  var /** @type {boolean} */ found = false;
+  var /** @type {number} */ found = 0;
   var /** @const {string} */ SKIP = Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE;
   Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
     binaryen,
@@ -463,13 +481,45 @@ Wasm2Lang.Wasm.Tree.CustomPasses.containsExpression_ = function (binaryen, wasmM
       if (found) return SKIP;
       var /** @const {!BinaryenExpressionInfo} */ info = nodeCtx.expression;
       if (testFn(info, info.id)) {
-        found = true;
+        found = nodeCtx.expressionPointer;
         return SKIP;
       }
       return undefined;
     }
   );
   return found;
+};
+
+/**
+ * Returns true when {@code testFn} matches any expression in a subtree.
+ * Delegates to {@code findExpressionPtr_} for the first-match kernel walk.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
+ * @param {number} ptr
+ * @param {function(!BinaryenExpressionInfo, number): boolean} testFn
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.containsExpression_ = function (binaryen, wasmModule, ptr, testFn) {
+  return 0 !== Wasm2Lang.Wasm.Tree.CustomPasses.findExpressionPtr_(binaryen, wasmModule, ptr, testFn);
+};
+
+/**
+ * Returns true when a br_table targets {@code target} through its arm list
+ * or its default.  Shared scan-names-then-default predicate; {@code target}
+ * is always a real (nonempty) label at every call site, so the empty-default
+ * guard only prevents a vacuous {@code '' === ''} match.
+ *
+ * @param {!Array<string>} names
+ * @param {string} defaultName
+ * @param {string} target
+ * @return {boolean}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.switchTargetsName_ = function (names, defaultName, target) {
+  for (var /** @type {number} */ i = 0, /** @const {number} */ n = names.length; i < n; ++i) {
+    if (names[i] === target) return true;
+  }
+  return '' !== defaultName && defaultName === target;
 };
 
 /**
@@ -492,11 +542,11 @@ Wasm2Lang.Wasm.Tree.CustomPasses.hasReference = function (binaryen, wasmModule, 
         return /** @type {?string} */ (info.name) === targetName;
       }
       if (binaryen.SwitchId === id) {
-        var /** @const {!Array<string>} */ sn = /** @type {!Array<string>} */ (info.names || []);
-        for (var /** @type {number} */ si = 0, /** @const {number} */ snLen = sn.length; si < snLen; ++si) {
-          if (sn[si] === targetName) return true;
-        }
-        return /** @type {string} */ (info.defaultName || '') === targetName;
+        return Wasm2Lang.Wasm.Tree.CustomPasses.switchTargetsName_(
+          /** @type {!Array<string>} */ (info.names || []),
+          /** @type {string} */ (info.defaultName || ''),
+          targetName
+        );
       }
       return false;
     }

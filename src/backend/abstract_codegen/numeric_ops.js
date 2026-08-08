@@ -141,6 +141,35 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.renderLocalInit_ = function (binarye
 };
 
 /**
+ * Shared local-init ladder for the class-shaped backends: java and csharp
+ * spell every scalar zero identically ({@code 0L} / {@code 0.0f} /
+ * {@code 0.0} / {@code 0}) and differ only in the v128 zero expression,
+ * which each backend's {@code renderLocalInit_} passes in.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {number} wasmType
+ * @param {string} v128ZeroExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderManagedLocalInit_ = function (binaryen, wasmType, v128ZeroExpr) {
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
+  if (V.isI64(binaryen, wasmType)) {
+    return '0L';
+  }
+  if (V.isF32(binaryen, wasmType)) {
+    return '0.0f';
+  }
+  if (V.isF64(binaryen, wasmType)) {
+    return '0.0';
+  }
+  if (V.isV128(binaryen, wasmType)) {
+    return v128ZeroExpr;
+  }
+  return '0';
+};
+
+/**
  * Coerces {@code expr} to {@code wasmType}, skipping the coercion when
  * {@code cat} indicates the expression already satisfies the target type.
  *
@@ -191,6 +220,31 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceAtBoundary_ = function (binary
 };
 
 /**
+ * Renders a helper call with no result coercion — {@code name(args)} — and
+ * marks the helper used.  This is the whole call assembly, stated once:
+ * backends whose helpers already return fully-typed values install it as
+ * their {@code renderHelperCall_} directly (javascript, php64 — each for its
+ * own reason, documented at the install site), and the coercing default
+ * below wraps it in {@code renderCoercionByType_}.
+ *
+ * Deliberately not {@code @protected}, for the same reason as
+ * {@code formatTypedCondition_} (precedence.js): the installing backends
+ * reference it by direct prototype assignment rather than through
+ * {@code this}, and Closure rejects a protected access made outside the
+ * declaring class's own methods.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {string} helperName
+ * @param {!Array<string>} args
+ * @param {number} resultType
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderBareHelperCall_ = function (binaryen, helperName, args, resultType) {
+  this.markHelper_(helperName);
+  return this.n_(helperName) + '(' + args.join(', ') + ')';
+};
+
+/**
  * Shared typed helper-call rendering for string-expression backends.
  *
  * @protected
@@ -201,9 +255,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.coerceAtBoundary_ = function (binary
  * @return {string}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.renderHelperCall_ = function (binaryen, helperName, args, resultType) {
-  this.markHelper_(helperName);
-  var /** @const {string} */ callName = this.n_(helperName);
-  return this.renderCoercionByType_(binaryen, callName + '(' + args.join(', ') + ')', resultType);
+  return this.renderCoercionByType_(binaryen, this.renderBareHelperCall_(binaryen, helperName, args, resultType), resultType);
 };
 
 /**
@@ -466,6 +518,38 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
 };
 
 /**
+ * Refuses a SIMD operation this backend cannot express.
+ *
+ * The default used to return {@code '/* unsupported SIMD … *␘/'} as the
+ * expression, which is the same mistake {@code __unknown_i64_binop} was: the
+ * comment is spliced into *expression* position, so the emitted module either
+ * fails to parse or — worse, where the slot tolerates it — carries on with a
+ * missing value.  Either way the operand had a defined meaning in the input
+ * and the output silently lost it.  A recognized opcode must never reach the
+ * artifact half-implemented, so this stops the build instead.
+ *
+ * @protected
+ * @param {string} kind  {@code 'binary'} or {@code 'unary'}.
+ * @param {string} opName
+ * @param {string} laneType
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.refuseSIMDOp_ = function (kind, opName, laneType) {
+  throw new Error(
+    'Wasm2Lang codegen: this backend cannot express the SIMD ' +
+      kind +
+      ' operation "' +
+      opName +
+      '" on lane type "' +
+      laneType +
+      '". The operation is recognized by Wasm2Lang.Backend.SIMDOps, so the input is valid and ' +
+      'the gap is in this backend. Emitting a placeholder here would produce a module that has ' +
+      'silently lost the operation, so the build stops instead. Implement the op in the ' +
+      "backend's simd_ops.js, or select a --language-out that supports it."
+  );
+};
+
+/**
  * Backend hook for SIMD binary operations.  Returns the rendered expression
  * and category.  Concrete backends override this.
  *
@@ -477,10 +561,8 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.buildCoercedCallArgs_ = function (
  * @return {{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDBinaryOp_ = function (binaryen, info, L, R) {
-  return {
-    emittedString: '/* unsupported SIMD binary: ' + info.opName + '(' + L + ', ' + R + ') */',
-    resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_V128
-  };
+  this.refuseSIMDOp_('binary', info.opName, info.laneType);
+  return {emittedString: '', resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_V128};
 };
 
 /**
@@ -494,10 +576,154 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDBinaryOp_ = function (binary
  * @return {{emittedString: string, resultCat: number}}
  */
 Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDUnaryOp_ = function (binaryen, info, operandExpr) {
-  return {
-    emittedString: '/* unsupported SIMD unary: ' + info.opName + '(' + operandExpr + ') */',
-    resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_V128
-  };
+  this.refuseSIMDOp_('unary', info.opName, info.laneType);
+  return {emittedString: '', resultCat: Wasm2Lang.Backend.AbstractCodegen.CAT_V128};
+};
+
+/**
+ * Classifies a lane-carrying SIMD opcode, refusing rather than returning null.
+ *
+ * The three lines this replaces — classify, refuse if null, cast the result
+ * non-null — appeared five times in each of the two backends that render v128,
+ * in two different spellings of the refusal, and every copy carried the same
+ * Closure cast.  Ten statements of one idea, and the cast is the reason they
+ * could not just be inlined: {@code refuseSIMDOp_} throws, but its signature
+ * says {@code void}, so the compiler cannot see that the null branch does not
+ * return.  Stating that once here is what makes the callers read as the single
+ * expression they are.
+ *
+ * {@code classify} is one of the {@code SIMDOps.classify*Op} functions; passing
+ * it in rather than branching on a name keeps this ignorant of which families
+ * exist.
+ *
+ * @protected
+ * @param {function(!Binaryen, number): ?Wasm2Lang.Backend.SIMDOps.LaneOpInfo} classify
+ * @param {!Binaryen} binaryen
+ * @param {number} op
+ * @param {string} kind  The wasm op family, for the refusal message.
+ * @return {!Wasm2Lang.Backend.SIMDOps.LaneOpInfo}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.classifyLaneOpOrRefuse_ = function (classify, binaryen, op, kind) {
+  var /** @const {?Wasm2Lang.Backend.SIMDOps.LaneOpInfo} */ info = classify(binaryen, op);
+  if (!info) this.refuseSIMDOp_(kind, 'op#' + op, '?');
+  return /** @type {!Wasm2Lang.Backend.SIMDOps.LaneOpInfo} */ (info);
+};
+
+/**
+ * The argument every SIMD memory helper takes ahead of the pointer, already
+ * terminated by {@code ', '}, or {@code ''} when it takes none.
+ *
+ * This is the ONLY difference between the two backends' SIMDLoad and
+ * SIMDLoadStoreLane emitters: java's helpers are static and receive the
+ * {@code ByteBuffer} field explicitly, csharp's are instance methods that reach
+ * the buffer through {@code this}.  Everything else — the classification, the
+ * helper name, the binding mark, the pointer-with-offset rendering, the
+ * statement-vs-expression split on {@code store} — was written twice.
+ *
+ * @protected
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.simdMemoryHelperReceiver_ = function () {
+  return '';
+};
+
+/**
+ * Emits a {@code v128.load*_splat} / {@code load*x*_s|u} / {@code load*_zero}.
+ *
+ * None of these is a plain v128 load: each reads FEWER than 16 bytes and then
+ * splats, sign/zero-extends or zero-fills, so rendering one as a full-width load
+ * silently returns the wrong 16 bytes.  The helper bodies live in each backend's
+ * {@code emitSIMDMemoryHelpers_}; an opcode with no helper refuses by name
+ * rather than reaching the default arm.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} expr
+ * @param {string} ptrExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDLoad_ = function (binaryen, expr, ptrExpr) {
+  var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneOpInfo} */ info = this.classifyLaneOpOrRefuse_(
+      Wasm2Lang.Backend.SIMDOps.classifyLoadOp,
+      binaryen,
+      /** @type {number} */ (expr.op),
+      'load'
+    );
+  this.markBinding_('$v128');
+  var /** @const {string} */ helper = '$w2l_v128_' + info.kind;
+  this.markHelper_(helper);
+  return (
+    this.n_(helper) +
+    '(' +
+    this.simdMemoryHelperReceiver_() +
+    Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(ptrExpr, /** @type {number} */ (expr.offset)) +
+    ')'
+  );
+};
+
+/**
+ * Emits a {@code v128.load*_lane} / {@code v128.store*_lane}.
+ *
+ * The lane index counts in the op's OWN lane width — an 8-bit lane op indexes 16
+ * lanes, a 64-bit one indexes 2 — so a fixed 32-bit rendering is wrong for three
+ * of the four widths, in both the index and the number of bytes moved.
+ *
+ * {@code isStatement} is true for the store forms, which produce a full
+ * statement (indented, terminated) and therefore leave the caller's result
+ * category alone; the load forms are expressions of category v128.
+ *
+ * @protected
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenExpressionInfo} expr
+ * @param {string} indent  Leading whitespace for the statement form.
+ * @param {string} ptrExpr
+ * @param {string} valueExpr
+ * @return {{emittedString: string, isStatement: boolean}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitSIMDLoadStoreLane_ = function (binaryen, expr, indent, ptrExpr, valueExpr) {
+  var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneOpInfo} */ info = this.classifyLaneOpOrRefuse_(
+      Wasm2Lang.Backend.SIMDOps.classifyLoadStoreLaneOp,
+      binaryen,
+      /** @type {number} */ (expr.op),
+      'load/store lane'
+    );
+  this.markBinding_('$v128');
+  var /** @const {string} */ helper = '$w2l_v128_' + info.kind;
+  this.markHelper_(helper);
+  var /** @const {string} */ args =
+      this.simdMemoryHelperReceiver_() +
+      Wasm2Lang.Backend.AbstractCodegen.renderPtrWithOffset_(ptrExpr, /** @type {number} */ (expr.offset)) +
+      ', ' +
+      valueExpr +
+      ', ' +
+      String(expr.index);
+  if (0 === info.kind.indexOf('store')) {
+    return {emittedString: indent + this.n_(helper) + '(' + args + ');\n', isStatement: true};
+  }
+  return {emittedString: this.n_(helper) + '(' + args + ')', isStatement: false};
+};
+
+/**
+ * Renders the shift count of a lane-typed vector shift.
+ *
+ * wasm reduces the count modulo the lane bit width; neither the Vector API's
+ * lanewise shifts nor {@code Vector128.ShiftLeft} does, so a count at or above
+ * the width would produce a value from the wrong lane geometry entirely.  Both
+ * backends had the reduction written out, with the same constant-folding
+ * shortcut so the common case stays a literal — the only thing that differed
+ * was the method name wrapped around the result, which stays where it is.
+ *
+ * @param {string} laneType
+ * @param {string} countExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.renderLaneShiftCount_ = function (laneType, countExpr) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  var /** @const {number} */ laneBits = Wasm2Lang.Backend.SIMDOps.laneInfo(laneType).laneBits;
+  if (Wasm2Lang.Backend.I32Coercion.isConstant(countExpr)) {
+    return String(Number(countExpr) & (laneBits - 1));
+  }
+  return P.renderInfix(countExpr, '&', String(laneBits - 1), P.PREC_BIT_AND_, true);
 };
 
 /**
@@ -672,6 +898,93 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitI64Unary_ = function (binaryen, 
 };
 
 /**
+ * Width spec consumed by {@link emitManagedIntUnary_}: the data that
+ * distinguishes the four java/csharp integer-unary dispatch bodies.  The two
+ * backends share the dispatch skeleton verbatim; everything that varies by
+ * WIDTH lives in a spec, and the two spellings that vary by BACKEND are the
+ * {@code renderUnaryBitOpArg_} / {@code renderUnaryExtendCast_} hooks.
+ *
+ * @typedef {{
+ *   eqzCat: number,
+ *   zeroLit: string,
+ *   methods: !Object<number, string>,
+ *   casts: !Object<number, string>,
+ *   bitOpArgType: string,
+ *   widenPrefix: string,
+ *   resultCat: number
+ * }}
+ */
+Wasm2Lang.Backend.AbstractCodegen.ManagedUnarySpec_;
+
+/**
+ * Renders the operand of a bit-counting unary method call
+ * ({@code clz} / {@code ctz} / {@code popcnt}).  Java's {@code Integer} /
+ * {@code Long} statics take the operand as-is (the default); C# overrides to
+ * route it through {@code narrowingCast_}, because {@code BitOperations}
+ * overloads on the unsigned types.
+ *
+ * @protected
+ * @param {string} operandExpr
+ * @param {string} unsignedType  The C# unsigned parameter type
+ *     ({@code 'uint'} / {@code 'ulong'}); unused by the default.
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderUnaryBitOpArg_ = function (operandExpr, unsignedType) {
+  return operandExpr;
+};
+
+/**
+ * Renders a sign-extend narrowing cast.  Java spells it as a plain prefix
+ * cast (the default); C# overrides to {@code narrowingCast_}, which wraps
+ * constant operands that would overflow in {@code unchecked(...)}.
+ *
+ * @protected
+ * @param {string} castType
+ * @param {string} operandExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderUnaryExtendCast_ = function (castType, operandExpr) {
+  var /** @const */ P = Wasm2Lang.Backend.AbstractCodegen.Precedence_;
+  return '(' + castType + ')' + P.wrap_(operandExpr, P.PREC_UNARY_, true);
+};
+
+/**
+ * Shared java/csharp integer-unary dispatch: EQZ special case, bit-op
+ * method-table lookup, sign-extend cast-table lookup, {@code null} for
+ * anything else.  The four per-backend bodies this replaces differed only in
+ * the two cast spellings hooked above and the per-width data carried by
+ * {@code spec}.
+ *
+ * @protected
+ * @param {number} unaryCategory
+ * @param {string} operandExpr
+ * @param {!Wasm2Lang.Backend.AbstractCodegen.ManagedUnarySpec_} spec
+ * @return {?{emittedString: string, resultCat: number}}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitManagedIntUnary_ = function (unaryCategory, operandExpr, spec) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ P = A.Precedence_;
+  if (spec.eqzCat === unaryCategory) {
+    return {
+      emittedString: P.renderInfix(operandExpr, '==', spec.zeroLit, P.PREC_EQUALITY_),
+      resultCat: A.CAT_BOOL_I32
+    };
+  }
+  var /** @const {string|undefined} */ method = spec.methods[unaryCategory];
+  if (method) {
+    return {
+      emittedString: spec.widenPrefix + method + '(' + this.renderUnaryBitOpArg_(operandExpr, spec.bitOpArgType) + ')',
+      resultCat: spec.resultCat
+    };
+  }
+  var /** @const {string|undefined} */ cast = spec.casts[unaryCategory];
+  if (cast) {
+    return {emittedString: spec.widenPrefix + this.renderUnaryExtendCast_(cast, operandExpr), resultCat: spec.resultCat};
+  }
+  return null;
+};
+
+/**
  * Shared UnaryId dispatch.  Classifies as i32 unary, numeric unary,
  * or unknown; renders accordingly.
  *
@@ -738,7 +1051,12 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitUnaryId_ = function (binaryen, u
     this.markBinding_('$v128');
     return this.emitSIMDUnaryOp_(binaryen, simdUnInfo, operandExpr);
   }
-  return {emittedString: '0 /* unknown unop ' + unaryOp + ' */', resultCat: A.CAT_RAW};
+  throw new Error(
+    'Wasm2Lang codegen: this backend has no emitter for unary op ' +
+      unaryOp +
+      '. The previous behaviour emitted the literal 0 with a comment, which is a ' +
+      'wrong value that looks like a right one; the build stops instead.'
+  );
 };
 
 /**
@@ -882,5 +1200,444 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBinaryId_ = function (binaryen, 
     this.markBinding_('$v128');
     return this.emitSIMDBinaryOp_(binaryen, simdInfo, L, R);
   }
-  return {emittedString: '0 /* unknown binop ' + binaryOp + ' */', resultCat: A.CAT_RAW};
+  throw new Error(
+    'Wasm2Lang codegen: this backend has no emitter for binary op ' +
+      binaryOp +
+      '. The previous behaviour emitted the literal 0 with a comment, which is a ' +
+      'wrong value that looks like a right one; the build stops instead.'
+  );
+};
+
+/**
+ * Finds the first place a module uses a value type the backend cannot express,
+ * and describes it well enough to act on.
+ *
+ * Shared by every whole-module type refusal, because they all need the same
+ * four places and getting one of them wrong is what made the per-renderer
+ * refusals leaky: a type enters a module through a VALUE, not only through an
+ * opcode, so the scan has to cover global types, function params, results and
+ * locals, and the type of every expression - the last through the one shared
+ * walker, per CLAUDE.md's traversal rule.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
+ * @param {function(number): boolean} isMatch  tests one (possibly tuple) type
+ * @return {string}  a human-readable location, or '' when the type is absent
+ */
+Wasm2Lang.Backend.AbstractCodegen.findValueTypeUse_ = function (binaryen, wasmModule, isMatch) {
+  var /** @type {string} */ where = '';
+  var matches = /** @param {number} t @return {boolean} */ function (t) {
+    if (isMatch(t)) return true;
+    // A multi-value result is an expanded tuple type; expandType reports its
+    // members, and a single non-tuple type expands to itself.
+    var /** @const {!Array<number>} */ parts = binaryen.expandType(t);
+    for (var pi = 0; pi !== parts.length; ++pi) {
+      if (isMatch(parts[pi])) return true;
+    }
+    return false;
+  };
+
+  var /** @const {number} */ globalCount = wasmModule.getNumGlobals();
+  for (var g = 0; !where && g !== globalCount; ++g) {
+    var /** @const {!BinaryenGlobalInfo} */ gInfo = binaryen.getGlobalInfo(wasmModule.getGlobalByIndex(g));
+    if (matches(gInfo.type)) where = 'global "' + gInfo.name + '"';
+  }
+
+  var /** @const {number} */ funcCount = wasmModule.getNumFunctions();
+  for (var f = 0; !where && f !== funcCount; ++f) {
+    var /** @const {!BinaryenFunctionInfo} */ fInfo = binaryen.getFunctionInfo(wasmModule.getFunctionByIndex(f));
+    if (matches(fInfo.params)) where = 'a parameter of function "' + fInfo.name + '"';
+    else if (matches(fInfo.results)) where = 'the result of function "' + fInfo.name + '"';
+    if (!where) {
+      for (var v = 0; v !== fInfo.vars.length; ++v) {
+        if (matches(fInfo.vars[v])) {
+          where = 'a local of function "' + fInfo.name + '"';
+          break;
+        }
+      }
+    }
+    if (!where && fInfo.body) {
+      var /** @const {string} */ fName = fInfo.name;
+      Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(binaryen, wasmModule, fInfo.body, function (nodeCtx) {
+        if (where) return 'skip-subtree';
+        var /** @const {!BinaryenExpressionInfo} */ info = nodeCtx.expression;
+        if (matches(info.type)) {
+          where = 'an expression in function "' + fName + '"';
+          return 'skip-subtree';
+        }
+        return undefined;
+      });
+    }
+  }
+  return where;
+};
+
+/**
+ * Refuses an expression kind this backend has no emitter for.
+ *
+ * One shared throw rather than a copy per backend: the four {@code emitLeave_}
+ * switches had byte-identical default arms, which is the shape that drifts -
+ * the next backend to gain a case updates its own copy of the message and the
+ * others quietly disagree about what the rule is.
+ *
+ * The rule itself is not negotiable, which is why it is worth centralising.  A
+ * placeholder here (the arm used to assign {@code '/* unknown expr id=N *' + '/'})
+ * is spliced into expression position and produces a module that PARSES and
+ * computes the wrong value.  Measured on asm.js 2026-08-03: an unhandled
+ * {@code i8x16.swizzle} left its 16 mask bytes as 16 arguments to a
+ * one-parameter function and the artifact still ran.  Same ban as
+ * {@code __unknown_i64_binop}: stop instead.
+ *
+ * @protected
+ * @param {number} id
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.refuseExpressionId_ = function (id) {
+  throw new Error(
+    'Wasm2Lang codegen: this backend has no emitter for expression id ' +
+      id +
+      '. Emitting a placeholder would produce a module that parses and silently ' +
+      'computes the wrong value, so the build stops instead.'
+  );
+};
+
+/**
+ * Whether this backend expresses v128 in the target language at all.
+ *
+ * Two backends do: java through {@code jdk.incubator.vector} and csharp through
+ * {@code System.Runtime.Intrinsics.Vector128}.  For the other three there is no
+ * SIMD type to map onto, and wasm2lang deliberately does NOT emulate one - a
+ * four-word software carrier is not a transpilation of v128, it is a
+ * reimplementation of it, which is the input compiler's job and not this one's.
+ *
+ * A backend that answers false must never reach a v128 renderer.  The processor
+ * rejects the module up front (see {@code rejectUnsupportedTypes_}); this
+ * predicate is what it asks.
+ *
+ * @protected
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.supportsSIMD_ = function () {
+  return false;
+};
+
+/**
+ * Stops the build when a module carries a value type the selected backend
+ * cannot express.  Two cases today, and they are the same defect twice.
+ *
+ * WHY THIS IS A WHOLE-MODULE CHECK, AND WHY IT IS UP FRONT.  Refusing at each
+ * renderer is what the code used to do, and it left a hole big enough to ship
+ * through, in both dimensions:
+ *
+ *   v128 - only SIMD *binary* and *unary* ops reached a refusal, so a module
+ *   whose SIMD is pure data movement (shuffle, swizzle, extract, replace,
+ *   load/store lane, a v128 constant, a v128 global) emitted a complete,
+ *   syntactically valid artifact with the operations silently dropped.
+ *   Measured on asm.js 2026-08-03: an {@code i8x16.swizzle} module compiled to
+ *   a call passing the 16 mask bytes as 16 arguments to a one-parameter
+ *   function, plus calls to {@code $w2l_store_i128_a1}, which nothing defines.
+ *
+ *   i64 on a lowering backend - only {@code renderI64BinaryOp_} refuses, so a
+ *   module with i64 values and no i64 *binary* op emitted just as quietly.
+ *   Measured the same day, asm.js, {@code binaryen:none}: an
+ *   {@code (i64.store (local.get $p) (global.get $g))} became
+ *   {@code HEAP8[0] = $g_g;} - the pointer operand gone and an eight-byte
+ *   access reduced to one - and an i64 parameter annotation came out as
+ *   {@code $l0 = $l0;}, which asm.js does not accept.  That path is reachable
+ *   through a flow CLAUDE.md documents as supported: normalize for a
+ *   native-i64 target, then emit as asmjs or php64 with {@code --pre-normalized}.
+ *
+ * Both are the failure class the {@code __unknown_i64_binop} ban exists to
+ * prevent, so both stop here rather than at whichever renderer happens to be
+ * reached first.
+ *
+ * The check is deliberately conservative: a module that merely DECLARES the
+ * type somewhere unreachable is still refused.  Emitting most of it and hoping
+ * the path is dead would put the burden of that judgement on the user at run
+ * time, which is the trade this project consistently refuses.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Wasm2Lang.Backend.AbstractCodegen} codegen
+ * @param {string} languageOut
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.rejectUnsupportedTypes_ = function (binaryen, wasmModule, codegen, languageOut) {
+  var /** @const */ A = Wasm2Lang.Backend.AbstractCodegen;
+  var /** @const */ V = Wasm2Lang.Backend.ValueType;
+
+  if (!codegen.supportsSIMD_()) {
+    var /** @const {string} */ v128Where = A.findValueTypeUse_(binaryen, wasmModule, function (t) {
+        return V.isV128(binaryen, t);
+      });
+    if (v128Where) {
+      throw new Error(
+        'Wasm2Lang codegen: --language-out ' +
+          languageOut +
+          ' cannot express v128 - the target language has no SIMD type - but the module uses it (' +
+          v128Where +
+          '). wasm2lang maps wasm SIMD onto a language primitive where one exists (java: jdk.incubator.vector, ' +
+          'csharp: System.Runtime.Intrinsics.Vector128) and refuses otherwise; it does not emulate v128 in ' +
+          'software, because a lane-by-lane reimplementation is optimizer work the input compiler already owns. ' +
+          'Emit for java or csharp, or rebuild the input without SIMD (clang: drop -msimd128; rustc: drop ' +
+          'target-feature=+simd128).'
+      );
+    }
+  }
+
+  if (codegen.needsI64Lowering()) {
+    var /** @const {string} */ i64Where = A.findValueTypeUse_(binaryen, wasmModule, function (t) {
+        return V.isI64(binaryen, t);
+      });
+    if (i64Where) {
+      throw new Error(
+        'Wasm2Lang codegen: this backend cannot express the i64 operation type, because the module still ' +
+          'contains i64 (' +
+          i64Where +
+          ') that i64-to-i32-lowering should have removed. The lowering runs during normalization and is ' +
+          'selected from --language-out, so --normalize-wasm binaryen:none skips it and a module normalized ' +
+          'for a native-i64 target keeps its i64. Re-normalize the input for THIS backend (--language-out ' +
+          languageOut +
+          '), or normalize for asmjs/php64, whose lowered output every backend can consume.'
+      );
+    }
+  }
+};
+
+/**
+ * Trap emitter for helper bodies: each call allocates its own --trap-sites id
+ * while the body string is being concatenated, so textual order is allocation
+ * order.  Without the flag it renders the historical bare throw.  One
+ * definition instead of the closure that used to be repeated verbatim in the
+ * java, csharp and php64 helper emitters.
+ *
+ * @protected
+ * @param {string} helperName
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.truncTrapThrow_ = function (helperName) {
+  return this.renderHelperTrapThrow_(Wasm2Lang.Backend.TrapKind.TRUNC_F2I_RANGE, helperName);
+};
+
+/**
+ * Opening text of the NaN test in the shared truncation helper bodies, up to
+ * and including the opening parenthesis.  The default is the Java spelling;
+ * C# overrides.
+ *
+ * @protected
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.truncNanCheckOpen_ = function () {
+  return 'Double.isNaN(';
+};
+
+/**
+ * The round-toward-zero expression the shared truncation helper bodies assign
+ * back to their parameter.  Java routes through its {@code $w2l_trunc_f64}
+ * helper (whose emission the {@code HELPER_DEPS_} entries keep alive); C#
+ * overrides to {@code System.Math.Truncate}.
+ *
+ * @protected
+ * @param {string} operandExpr
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderTruncF64Ref_ = function (operandExpr) {
+  return this.n_('$w2l_trunc_f64') + '(' + operandExpr + ')';
+};
+
+/**
+ * Positive saturation clamp literal per width suffix ({@code 'i32'} /
+ * {@code 'i64'}).  Java spells the i32 clamp as a plain literal and the i64
+ * clamp through {@code Long}; C# overrides with {@code int.MaxValue}-style
+ * names.
+ *
+ * @protected
+ * @param {string} suffix
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.truncSatMaxLit_ = function (suffix) {
+  return 'i32' === suffix ? '2147483647' : 'Long.MAX_VALUE';
+};
+
+/**
+ * Negative saturation clamp literal per width suffix; see
+ * {@link truncSatMaxLit_}.
+ *
+ * @protected
+ * @param {string} suffix
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.truncSatMinLit_ = function (suffix) {
+  return 'i32' === suffix ? '-2147483648' : 'Long.MIN_VALUE';
+};
+
+/**
+ * The statement line(s) returning the unsigned truncation result once the
+ * value is known to be inside unsigned range.  Java has no unsigned
+ * primitive, so it branches to fold the high half into the sign bit; C#
+ * overrides with a single cast through the unsigned type.
+ *
+ * @protected
+ * @param {string} suffix  Width suffix: {@code 'i32'} or {@code 'i64'}.
+ * @param {string} pad2
+ * @param {string} l0
+ * @return {string}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.renderTruncUnsignedTail_ = function (suffix, pad2, l0) {
+  if ('i32' === suffix) {
+    return (
+      pad2 +
+      'if (' +
+      l0 +
+      ' >= 2147483648.0) return (int)(' +
+      l0 +
+      ' - 2147483648.0) + -2147483648;\n' +
+      pad2 +
+      'return (int)' +
+      l0 +
+      ';\n'
+    );
+  }
+  return (
+    pad2 +
+    'if (' +
+    l0 +
+    ' >= 9.223372036854776E18) return (long)(' +
+    l0 +
+    ' - 9.223372036854776E18) + Long.MIN_VALUE;\n' +
+    pad2 +
+    'return (long)' +
+    l0 +
+    ';\n'
+  );
+};
+
+/**
+ * Emits one width of the trapping / saturating f64→int truncation helper
+ * family for the class-shaped backends — {@code trunc_s}, {@code trunc_u},
+ * {@code trunc_sat_s}, {@code trunc_sat_u}, in that order.  Java and C#
+ * spell the control shape and every range literal identically; what differs
+ * is confined to the spelling hooks above.
+ *
+ * Each name reaches {@code emitOrCollectHelper_} exactly where the unrolled
+ * calls used to — Java keeps its interleaved {@code convert_u} helpers
+ * between the i32 and i64 batches — so the collect-pass roster, and with it
+ * every encoder slot {@code precomputeMangledNames_} assigns positionally,
+ * is unchanged.  The {@code truncTrapThrow_} calls fire in body-text order
+ * during concatenation, so {@code --trap-sites} ids are allocated in the
+ * same order as before.
+ *
+ * @protected
+ * @param {function(string, string): void} emitHelper  The backend's local
+ *     {@code h(name, body)} closure.
+ * @param {string} pad1
+ * @param {string} pad2
+ * @param {string} suffix  Width suffix: {@code 'i32'} or {@code 'i64'}.
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitTruncF64HelperFamily_ = function (emitHelper, pad1, pad2, suffix) {
+  var /** @const */ self = this;
+  var /** @const {string} */ l0 = this.localN_(0);
+  var /** @const {boolean} */ isI32 = 'i32' === suffix;
+  var /** @const {string} */ retType = isI32 ? 'int' : 'long';
+  var /** @const {string} */ retCast = isI32 ? '(int)' : '(long)';
+  var /** @const {string} */ zeroLit = isI32 ? '0' : '0L';
+  var /** @const {string} */ minusOneLit = isI32 ? '-1' : '-1L';
+  var /** @const {string} */ signedBound = isI32 ? '2147483648.0' : '9.223372036854776E18';
+  var /** @const {string} */ signedNegBound = isI32 ? '-2147483648.0' : '-9.223372036854776E18';
+  var /** @const {string} */ unsignedBound = isI32 ? '4294967296.0' : '1.8446744073709552E19';
+  var /** @const {string} */ satMinGuard = isI32 ? '-2147483649.0' : '-9.223372036854776E18';
+  var /** @const {string} */ nanOpen = this.truncNanCheckOpen_();
+  var /** @const {string} */ truncLine = pad2 + l0 + ' = ' + this.renderTruncF64Ref_(l0) + ';\n';
+  var head = /** @param {string} name @return {string} */ function (name) {
+    return pad1 + 'static ' + retType + ' ' + self.n_(name) + '(double ' + l0 + ') {\n';
+  };
+
+  var /** @const {string} */ sName = '$w2l_trunc_s_f64_to_' + suffix;
+  // prettier-ignore
+  emitHelper(sName,
+    head(sName) +
+    pad2 + 'if (' + nanOpen + l0 + ')) ' + this.truncTrapThrow_(sName) + '\n' +
+    truncLine +
+    pad2 + 'if (' + l0 + ' >= ' + signedBound + ' || ' + l0 + ' < ' + signedNegBound + ') ' + this.truncTrapThrow_(sName) + '\n' +
+    pad2 + 'return ' + retCast + l0 + ';\n' +
+    pad1 + '}');
+
+  var /** @const {string} */ uName = '$w2l_trunc_u_f64_to_' + suffix;
+  // prettier-ignore
+  emitHelper(uName,
+    head(uName) +
+    pad2 + 'if (' + nanOpen + l0 + ')) ' + this.truncTrapThrow_(uName) + '\n' +
+    truncLine +
+    pad2 + 'if (' + l0 + ' >= ' + unsignedBound + ' || ' + l0 + ' < 0.0) ' + this.truncTrapThrow_(uName) + '\n' +
+    this.renderTruncUnsignedTail_(suffix, pad2, l0) +
+    pad1 + '}');
+
+  var /** @const {string} */ ssName = '$w2l_trunc_sat_s_f64_to_' + suffix;
+  // prettier-ignore
+  emitHelper(ssName,
+    head(ssName) +
+    pad2 + 'if (' + nanOpen + l0 + ')) return ' + zeroLit + ';\n' +
+    truncLine +
+    pad2 + 'if (' + l0 + ' >= ' + signedBound + ') return ' + this.truncSatMaxLit_(suffix) + ';\n' +
+    pad2 + 'if (' + l0 + ' <= ' + satMinGuard + ') return ' + this.truncSatMinLit_(suffix) + ';\n' +
+    pad2 + 'return ' + retCast + l0 + ';\n' +
+    pad1 + '}');
+
+  var /** @const {string} */ suName = '$w2l_trunc_sat_u_f64_to_' + suffix;
+  // prettier-ignore
+  emitHelper(suName,
+    head(suName) +
+    pad2 + 'if (' + nanOpen + l0 + ')) return ' + zeroLit + ';\n' +
+    truncLine +
+    pad2 + 'if (' + l0 + ' >= ' + unsignedBound + ') return ' + minusOneLit + ';\n' +
+    pad2 + 'if (' + l0 + ' < 0.0) return ' + zeroLit + ';\n' +
+    this.renderTruncUnsignedTail_(suffix, pad2, l0) +
+    pad1 + '}');
+};
+
+/**
+ * Emits the f32→f64 cast-and-delegate stubs shared by the class-shaped
+ * backends.  Each name's f64 twin is derived by substring replacement, the
+ * return type from the name's target suffix, and the {@code (float)}
+ * re-narrowing cast applies only to the float-returning {@code $w2l_trunc_f32}
+ * — which only Java registers, so for every int/long-returning stub the cast
+ * prefix is empty and C#'s names produce the same text they always did.
+ *
+ * Each backend passes its own name array, in its existing order, from its
+ * existing call position: {@code precomputeMangledNames_} assigns encoder
+ * slots positionally over the collect-pass order, so the array contents and
+ * order are part of the mangler contract.
+ *
+ * @protected
+ * @param {function(string, string): void} emitHelper  The backend's local
+ *     {@code h(name, body)} closure.
+ * @param {!Array<string>} names
+ * @param {string} pad1
+ * @param {string} pad2
+ * @return {void}
+ */
+Wasm2Lang.Backend.AbstractCodegen.prototype.emitF32DelegateFamily_ = function (emitHelper, names, pad1, pad2) {
+  var /** @const {string} */ l0 = this.localN_(0);
+  for (var /** @type {number} */ di = 0; di < names.length; ++di) {
+    var /** @const {string} */ dName = names[di];
+    var /** @const {string} */ dTarget = dName.replace('_f32', '_f64');
+    var /** @type {string} */ dRet;
+    var /** @type {string} */ dCast;
+    if (dName.indexOf('_to_i64') !== -1) {
+      dRet = 'long';
+      dCast = '';
+    } else if (dName.indexOf('_to_i32') !== -1) {
+      dRet = 'int';
+      dCast = '';
+    } else {
+      dRet = 'float';
+      dCast = '(float)';
+    }
+    // prettier-ignore
+    emitHelper(dName,
+      pad1 + 'static ' + dRet + ' ' + this.n_(dName) + '(float ' + l0 + ') {\n' +
+      pad2 + 'return ' + dCast + this.n_(dTarget) + '((double)' + l0 + ');\n' +
+      pad1 + '}');
+  }
 };

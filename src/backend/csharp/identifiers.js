@@ -117,8 +117,37 @@ Wasm2Lang.Backend.CsharpCodegen.csharpTypeName_ = function (binaryen, wasmType) 
   if (Wasm2Lang.Backend.ValueType.isI64(binaryen, wasmType)) return 'long';
   if (Wasm2Lang.Backend.ValueType.isF32(binaryen, wasmType)) return 'float';
   if (Wasm2Lang.Backend.ValueType.isF64(binaryen, wasmType)) return 'double';
+  if (Wasm2Lang.Backend.ValueType.isV128(binaryen, wasmType)) {
+    return Wasm2Lang.Backend.CsharpCodegen.V128_TYPE_;
+  }
   return 'void';
 };
+
+/**
+ * Carrier type for a wasm {@code v128}.
+ *
+ * wasm v128 is 128 untyped bits that each instruction reinterprets as its own
+ * lane geometry, so the carrier is the byte view and every op reinterprets
+ * into the lane type it needs via {@code As*()} — which is free, it is a
+ * bit-preserving view change.  Picking one fixed lane width as the carrier is
+ * what made the Java backend wrong: it carried everything as 4x32 and never
+ * reinterpreted, so byte and float ops operated on the wrong lanes.
+ *
+ * Fully qualified because the emitted compilation unit deliberately carries no
+ * using directives (see emitCode), so code and metadata stay concatenation-safe.
+ *
+ * @const {string}
+ */
+Wasm2Lang.Backend.CsharpCodegen.V128_TYPE_ = 'System.Runtime.Intrinsics.Vector128<byte>';
+
+/**
+ * Open form of the carrier type, for naming {@code Vector128<T>.Zero} in a lane
+ * view other than the carrier's.  Kept beside {@code V128_TYPE_} so the fully
+ * qualified name exists once; the two must not drift.
+ *
+ * @const {string}
+ */
+Wasm2Lang.Backend.CsharpCodegen.V128_OF_ = 'System.Runtime.Intrinsics.Vector128<';
 
 /**
  * Formats a float literal for C# (appends {@code f} suffix for f32).

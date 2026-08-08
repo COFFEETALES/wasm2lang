@@ -246,16 +246,8 @@ Wasm2Lang.Backend.Php64Codegen.prototype.renderCoercionByType_ = function (binar
  *
  * @override
  * @protected
- * @param {!Binaryen} binaryen
- * @param {string} helperName
- * @param {!Array<string>} args
- * @param {number} resultType
- * @return {string}
  */
-Wasm2Lang.Backend.Php64Codegen.prototype.renderHelperCall_ = function (binaryen, helperName, args, resultType) {
-  this.markHelper_(helperName);
-  return this.n_(helperName) + '(' + args.join(', ') + ')';
-};
+Wasm2Lang.Backend.Php64Codegen.prototype.renderHelperCall_ = Wasm2Lang.Backend.AbstractCodegen.prototype.renderBareHelperCall_;
 
 /**
  * @override

@@ -68,6 +68,7 @@ if [ ${#0} -ne ${#prefix} ]; then
         "../wasm2lang.js"                         \
         --normalize-wasm "$codegen_normalize"     \
         $mangler_flag                             \
+        $extra_emit_flags                         \
         --language-out "$1"                       \
         --define "$3=$((65536 * 8))"              \
         --emit-metadata=memBuffer                 \

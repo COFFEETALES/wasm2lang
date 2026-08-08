@@ -138,7 +138,21 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.deserializeFromBinary = functio
         try {
           return /** @type {!Object} */ (JSON.parse(jsonStr));
         } catch (e) {
-          return null;
+          // Loud, for the same reason the version check below is loud: a null
+          // here is indistinguishable from "no section", so the caller in
+          // 1-processor.js skips rebuildPassRunResult entirely and the codegen
+          // emits valid-looking source that has quietly lost every switch
+          // dispatch, root switch, fused block and loop plan the module had.
+          // A present-but-unreadable section is a broken artifact, not an
+          // absent one, and the two must not report the same way.
+          throw new Error(
+            'Wasm2Lang: the ' +
+              targetName +
+              ' custom section is present but its payload (' +
+              payloadLen +
+              ' bytes' +
+              ') is not valid JSON. Regenerate the binary by re-running the wasm2lang:codegen normalization step.'
+          );
         }
       }
     }
@@ -189,7 +203,8 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult = function
 
 /**
  * Finds the Loop expression with the given name within a function body.
- * Driven by the shared traversal kernel; early-terminates via skip-subtree
+ * Driven by the shared traversal kernel via
+ * {@code CustomPasses.findExpressionPtr_}; early-terminates via skip-subtree
  * once the match is captured.
  *
  * @private
@@ -200,24 +215,14 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildPassRunResult = function
  * @return {number}  Expression pointer to the Loop, or 0 if not found.
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.findLoopByName_ = function (wasmModule, binaryen, rootPtr, loopName) {
-  if (0 === rootPtr) return 0;
-  var /** @type {number} */ found = 0;
-  Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
+  return Wasm2Lang.Wasm.Tree.CustomPasses.findExpressionPtr_(
     binaryen,
     wasmModule,
     rootPtr,
-    /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
-        @return {(string|undefined)} */ function (nodeCtx) {
-      if (found) return 'skip-subtree';
-      var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (nodeCtx.expression);
-      if (binaryen.LoopId === info.id && /** @type {?string} */ (info.name) === loopName) {
-        found = /** @type {number} */ (nodeCtx.expressionPointer);
-        return 'skip-subtree';
-      }
-      return undefined;
+    /** @param {!BinaryenExpressionInfo} info @param {number} id @return {boolean} */ function (info, id) {
+      return binaryen.LoopId === id && /** @type {?string} */ (info.name) === loopName;
     }
   );
-  return found;
 };
 
 /**
@@ -555,32 +560,25 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildWithAnchorsV3_ = functio
       if (binaryen.BlockId !== parentInfo.id) return;
 
       var /** @const {string} */ name = /** @type {string} */ (entry['n']);
-      // Always restore the original w2l_-prefixed name.  Binary round-trip
-      // renames non-target blocks to synthetic identifiers like $block, $block1
-      // (NOT null), so checking for missing name would skip the restore and
-      // the codegen's prefix-based dispatch detection would silently miss it.
-      var /** @const {?string} */ oldName = /** @type {?string} */ (parentInfo.name);
-      if (oldName !== name) {
-        binaryen.Block.setName(parentPtr, name);
-        // br/br_table targets that previously pointed at oldName are now
-        // dangling — rewrite them to the restored label so the IR stays
-        // self-consistent for codegen and validation.
-        if (oldName) {
-          MS.renameLabelRefs_(
-            wasmModule,
-            binaryen,
-            /** @type {number} */ (binaryen.getFunctionInfo(funcPtr).body),
-            oldName,
-            name
-          );
-        }
-      }
+      // Restore the original w2l_-prefixed name and patch dangling
+      // references; the round-trip rationale lives on the helper.
+      MS.restoreNameAndRefs_(
+        wasmModule,
+        binaryen,
+        binaryen.Block,
+        parentPtr,
+        /** @type {?string} */ (parentInfo.name),
+        name,
+        /** @type {number} */ (binaryen.getFunctionInfo(funcPtr).body)
+      );
 
-      var /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm = fmByName[fname];
-      if (!fm) {
-        fm = MS.makeFreshPassMetadata_(funcPtr, funcInfo, wasmModule);
-        fmByName[fname] = fm;
-      }
+      var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ fm = MS.getOrCreateFm_(
+          fmByName,
+          fname,
+          funcPtr,
+          funcInfo,
+          wasmModule
+        );
       var /** @const {string} */ etype = /** @type {string} */ (entry['t']);
       if (MS.TYPE_SWITCH_DISPATCH_ === etype) {
         if (!fm.switchDispatchNames) fm.switchDispatchNames = /** @type {!Object<string, boolean>} */ (Object.create(null));
@@ -615,11 +613,13 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildWithAnchorsV3_ = functio
     if ('' !== funcInfo2.base) continue;
     var /** @const {number} */ bodyPtr2 = funcInfo2.body;
     if (!bodyPtr2) continue;
-    var /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm2 = fmByName[fnKey];
-    if (!fm2) {
-      fm2 = MS.makeFreshPassMetadata_(funcPtr2, funcInfo2, wasmModule);
-      fmByName[fnKey] = fm2;
-    }
+    var /** @const {!Wasm2Lang.Wasm.Tree.PassMetadata} */ fm2 = MS.getOrCreateFm_(
+        fmByName,
+        fnKey,
+        funcPtr2,
+        funcInfo2,
+        wasmModule
+      );
     var /** @const {!Array<number>} */ loopPtrList = MS.buildLoopPositionToPtrList_(wasmModule, binaryen, bodyPtr2);
     for (var /** @type {number} */ bi = 0; bi !== fdata2.byName.length; ++bi) {
       var /** @const {!Object} */ bne = fdata2.byName[bi];
@@ -634,13 +634,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.rebuildWithAnchorsV3_ = functio
             binaryen,
             loopPtr
           );
-        var /** @const {?string} */ loopOldName = /** @type {?string} */ (loopFi.name);
-        if (loopOldName !== loopName) {
-          binaryen.Loop.setName(loopPtr, loopName);
-          if (loopOldName) {
-            MS.renameLabelRefs_(wasmModule, binaryen, bodyPtr2, loopOldName, loopName);
-          }
-        }
+        MS.restoreNameAndRefs_(
+          wasmModule,
+          binaryen,
+          binaryen.Loop,
+          loopPtr,
+          /** @type {?string} */ (loopFi.name),
+          loopName,
+          bodyPtr2
+        );
       }
       if (!fm2.loopPlans) fm2.loopPlans = /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (Object.create(null));
       /** @type {!Object<string, !Wasm2Lang.Wasm.Tree.LoopPlan>} */ (fm2.loopPlans)[loopName] =
@@ -695,13 +697,69 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.makeFreshPassMetadata_ = functi
 };
 
 /**
- * Walks the function body in DFS pre-order via the shared traversal kernel
- * and assigns sequential indices to every Loop node.  Returns name→position
- * for currently-named loops; the inverse (position→ptr) is built on the
- * deserialize side via {@code buildLoopPositionToPtrList_}.  The shared
- * kernel uses {@code NodeSchema.expressionEdgeSpecs_} to cover every
- * expression slot consistently — no need to enumerate IfId / DropId / etc.
- * locally.
+ * Restores a node's original w2l_-prefixed label and patches its references.
+ * Always restore the original name when the current one differs: binary
+ * round-trip renames non-target blocks to synthetic identifiers like $block,
+ * $block1 (NOT null), so checking for a missing name would skip the restore
+ * and the codegen's prefix-based dispatch detection would silently miss it.
+ * br/br_table targets that previously pointed at {@code oldName} are then
+ * dangling — rewrite them to the restored label so the IR stays
+ * self-consistent for codegen and validation.
+ *
+ * @private
+ * @param {!BinaryenModule} wasmModule
+ * @param {!Binaryen} binaryen
+ * @param {{setName: function(number, string): void}} nodeApi  {@code binaryen.Block} or {@code binaryen.Loop}.
+ * @param {number} ptr
+ * @param {?string} oldName
+ * @param {string} newName
+ * @param {number} bodyPtr  Function body pointer for the reference rewrite.
+ * @return {void}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.restoreNameAndRefs_ = function (
+  wasmModule,
+  binaryen,
+  nodeApi,
+  ptr,
+  oldName,
+  newName,
+  bodyPtr
+) {
+  if (oldName !== newName) {
+    nodeApi.setName(ptr, newName);
+    if (oldName) {
+      Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.renameLabelRefs_(wasmModule, binaryen, bodyPtr, oldName, newName);
+    }
+  }
+};
+
+/**
+ * Returns the PassMetadata for {@code name}, lazily creating and caching a
+ * fresh one when absent.
+ *
+ * @private
+ * @param {!Object<string, !Wasm2Lang.Wasm.Tree.PassMetadata>} fmByName
+ * @param {string} name
+ * @param {number} funcPtr
+ * @param {!BinaryenFunctionInfo} funcInfo
+ * @param {!BinaryenModule} wasmModule
+ * @return {!Wasm2Lang.Wasm.Tree.PassMetadata}
+ */
+Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.getOrCreateFm_ = function (fmByName, name, funcPtr, funcInfo, wasmModule) {
+  var /** @type {!Wasm2Lang.Wasm.Tree.PassMetadata|void} */ fm = fmByName[name];
+  if (!fm) {
+    fm = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.makeFreshPassMetadata_(funcPtr, funcInfo, wasmModule);
+    fmByName[name] = fm;
+  }
+  return fm;
+};
+
+/**
+ * Returns name→position for currently-named loops, where position is the
+ * DFS pre-order Loop index.  Derived from {@code buildLoopPositionToPtrList_}
+ * — the single owner of the kernel walk — so both sides of the round-trip
+ * share one definition of "position" by construction; the inverse
+ * (position→ptr) list is used as-is on the deserialize side.
  *
  * @private
  * @param {!BinaryenModule} wasmModule
@@ -711,29 +769,29 @@ Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.makeFreshPassMetadata_ = functi
  */
 Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildLoopPositionMap_ = function (wasmModule, binaryen, rootPtr) {
   var /** @const {!Object<string, number>} */ out = /** @type {!Object<string, number>} */ (Object.create(null));
-  var /** @type {number} */ counter = 0;
-  Wasm2Lang.Wasm.Tree.TraversalKernel.forEachExpression(
-    binaryen,
-    wasmModule,
-    rootPtr,
-    /** @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
-        @return {(string|undefined)} */ function (nodeCtx) {
-      var /** @const {!BinaryenExpressionInfo} */ info = /** @type {!BinaryenExpressionInfo} */ (nodeCtx.expression);
-      if (binaryen.LoopId === info.id) {
-        var /** @const {?string} */ ln = /** @type {?string} */ (info.name);
-        if (ln) out[ln] = counter;
-        counter++;
-      }
-      return undefined;
-    }
-  );
+  var /** @const {!Array<number>} */ list = Wasm2Lang.Wasm.Tree.CustomPasses.MetadataSection.buildLoopPositionToPtrList_(
+      wasmModule,
+      binaryen,
+      rootPtr
+    );
+  for (var /** @type {number} */ i = 0, /** @const {number} */ listLen = list.length; i !== listLen; ++i) {
+    var /** @const {?string} */ ln = /** @type {?string} */ (
+        Wasm2Lang.Wasm.Tree.NodeSchema.safeGetExpressionInfo(binaryen, list[i]).name
+      );
+    if (ln) out[ln] = i;
+  }
   return out;
 };
 
 /**
- * Same DFS pre-order walk as {@code buildLoopPositionMap_}, but produces
- * the position-indexed list of Loop pointers — the inverse needed at
- * deserialize time when names may have been stripped.
+ * Walks the function body in DFS pre-order via the shared traversal kernel
+ * and assigns sequential indices to every Loop node, producing the
+ * position-indexed list of Loop pointers needed at deserialize time when
+ * names may have been stripped ({@code buildLoopPositionMap_} derives the
+ * serialize-side name→position map from the same list).  The shared
+ * kernel uses {@code NodeSchema.expressionEdgeSpecs_} to cover every
+ * expression slot consistently — no need to enumerate IfId / DropId / etc.
+ * locally.
  *
  * @private
  * @param {!BinaryenModule} wasmModule

@@ -8,6 +8,21 @@ Wasm2Lang.Backend.CsharpCodegen = function () {
   Wasm2Lang.Backend.AbstractCodegen.call(this);
   this.f32WidensToF64_ = true;
   this.exportedMethodVisibility_ = 'public ';
+  // C# spellings for the shared class-shell emitter (emitClassCode_).
+  this.classDeclPrefix_ = 'public class ';
+  this.bufferTypeName_ = 'byte[] ';
+  this.importFieldTypeName_ = 'object ';
+  this.classLambdaArrow_ = ' => ';
+  this.tableEntryRefPrefix_ = 'this.';
+  this.tableInvokeOpen_ = '](';
+  this.classMemorySizeSuffix_ = '.Length / 65536';
+  // C# keeps its existing exception split: unreachable raises
+  // System.InvalidOperationException while helpers raise
+  // System.ArithmeticException, which the runtime also raises for
+  // DivideByZeroException's base cases, so the payload is what separates a
+  // failed truncation from an arithmetic trap.
+  this.trapThrowOpen_ = 'throw new System.InvalidOperationException(';
+  this.helperTrapThrowOpen_ = 'throw new System.ArithmeticException(';
   this.reservedWords_ = Wasm2Lang.Backend.CsharpCodegen.RESERVED_;
   this.preSanitizeRegex_ = /\$/g;
   var /** @const */ Cs = Wasm2Lang.Backend.CsharpCodegen;

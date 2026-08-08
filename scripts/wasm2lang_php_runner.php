@@ -137,7 +137,18 @@ $exports = $module($__w2l_foreign, $memBuffer);
 // the same string that the module closures mutate via &$buffer.
 $instanceMemoryBuffer = &$memBuffer;
 
-if (isset($runTest)) {
+if (!isset($runTest)) {
+    // A missing harness used to be silent: the runner emitted the CRC line and
+    // nothing else, so a test whose PHP artifact was never exercised produced
+    // output that looked like a result — indistinguishable from a pass when PHP
+    // is the only language a test emits.  It cost a full suite run to find.
+    // Fail loudly instead; every test that emits a `.php` has a harness, so this
+    // cannot fire on a healthy tree.
+    fwrite(STDERR, 'No harness for ' . $testName . ': expected ' . $harnessPath . PHP_EOL);
+    exit(1);
+}
+
+{
     $sharedData = null;
     $testBase = preg_replace('/_(baseline|codegen|none|prenorm|nopre|nomangle|codegen_max|prenorm_max)$/', '', basename($testName));
     $dataPath = __DIR__ . '/' . $testBase . '.shared.data.json';

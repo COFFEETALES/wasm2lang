@@ -488,7 +488,6 @@ const validateCode = function (code, testName) {
         check('eqzNegateNumericComparison', false, 'function body not found');
       }
     }
-
   }
 
   // -- local init folding (requires pass metadata; only active under

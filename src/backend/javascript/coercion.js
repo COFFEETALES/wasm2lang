@@ -204,16 +204,9 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderCoercionByType_ = function (
  *
  * @override
  * @protected
- * @param {!Binaryen} binaryen
- * @param {string} helperName
- * @param {!Array<string>} args
- * @param {number} resultType
- * @return {string}
  */
-Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHelperCall_ = function (binaryen, helperName, args, resultType) {
-  this.markHelper_(helperName);
-  return this.n_(helperName) + '(' + args.join(', ') + ')';
-};
+Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderHelperCall_ =
+  Wasm2Lang.Backend.AbstractCodegen.prototype.renderBareHelperCall_;
 
 /**
  * JavaScript call-site results carry their declared wasm type without an
@@ -367,14 +360,13 @@ Wasm2Lang.Backend.JavaScriptCodegen.prototype.renderCastImportInline_ = function
  * @const {!Object<number, string>}
  * @private
  */
-Wasm2Lang.Backend.JavaScriptCodegen.JS_I64_UNARY_HELPERS_ = /** @return {!Object<number, string>} */ (function () {
-  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
-  var /** @const {!Object<number, string>} */ table = {};
-  table[I.UNARY_CLZ] = '$w2l_i64_clz';
-  table[I.UNARY_CTZ] = '$w2l_i64_ctz';
-  table[I.UNARY_POPCNT] = '$w2l_i64_popcnt';
-  return table;
-})();
+Wasm2Lang.Backend.JavaScriptCodegen.JS_I64_UNARY_HELPERS_ = /** @type {!Object<number, string>} */ (
+  Wasm2Lang.Backend.I32Coercion.buildKeyedTable([
+    [Wasm2Lang.Backend.I64Coercion.UNARY_CLZ, '$w2l_i64_clz'],
+    [Wasm2Lang.Backend.I64Coercion.UNARY_CTZ, '$w2l_i64_ctz'],
+    [Wasm2Lang.Backend.I64Coercion.UNARY_POPCNT, '$w2l_i64_popcnt']
+  ])
+);
 
 /**
  * Bit width to pass to {@code BigInt.asIntN} for each sign-extend
@@ -383,14 +375,13 @@ Wasm2Lang.Backend.JavaScriptCodegen.JS_I64_UNARY_HELPERS_ = /** @return {!Object
  * @const {!Object<number, number>}
  * @private
  */
-Wasm2Lang.Backend.JavaScriptCodegen.JS_I64_UNARY_EXTEND_WIDTHS_ = /** @return {!Object<number, number>} */ (function () {
-  var /** @const */ I = Wasm2Lang.Backend.I64Coercion;
-  var /** @const {!Object<number, number>} */ table = {};
-  table[I.UNARY_EXTEND8_S] = 8;
-  table[I.UNARY_EXTEND16_S] = 16;
-  table[I.UNARY_EXTEND32_S] = 32;
-  return table;
-})();
+Wasm2Lang.Backend.JavaScriptCodegen.JS_I64_UNARY_EXTEND_WIDTHS_ = /** @type {!Object<number, number>} */ (
+  Wasm2Lang.Backend.I32Coercion.buildKeyedTable([
+    [Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND8_S, 8],
+    [Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND16_S, 16],
+    [Wasm2Lang.Backend.I64Coercion.UNARY_EXTEND32_S, 32]
+  ])
+);
 
 /**
  * BigInt-based i64 unary operations (eqz, clz, ctz, popcnt, sign-extend).

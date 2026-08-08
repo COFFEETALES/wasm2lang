@@ -25,7 +25,20 @@ if [ ${#0} -ne ${#prefix} ]; then
     # Fail the current test if file $1 (a runtime `.out`) differs from the
     # canonical V8 WASM output.  Silently passes when $1 doesn't exist
     # (e.g. the runtime was skipped).
+    #
+    # An EMPTY oracle is a hard failure, not a pass.  The V8 wasm run is teed
+    # into the .out without checking its exit status, so a runner that dies
+    # early — a missing .harness.mjs makes its `await import` reject — writes
+    # zero bytes, every comparison then diffs empty against empty, and the test
+    # reports PASSED having executed nothing.  That is the same silent-vacuous
+    # shape the php runner's missing-harness guard closes, except here it hides
+    # across all five languages at once.
     compare_to_wasm_out() {
+      if [ ! -s "${filebase}".v8.wasm.out ]; then
+        echo "MISSING ORACLE: ${filebase}.v8.wasm.out is empty or absent — the wasm run produced nothing"
+        tmpretcode=1
+        return 0
+      fi
       [ -f "$1" ] || return 0
       diff -qs "${filebase}".v8.wasm.out "$1"
       [ $? -eq 0 ] || tmpretcode=1

@@ -311,3 +311,390 @@ Wasm2Lang.Backend.SIMDOps.classifyUnaryOp = function (binaryen, op) {
   }
   return S.unaryOpMap_[op] || null;
 };
+
+// ---------------------------------------------------------------------------
+// Lane-type metadata.
+//
+// Every backend that renders v128 needs the same four facts about a lane type,
+// and getting any of them wrong is the failure mode that made the Java backend
+// silently incorrect for years: it rendered every op against a 4-lane 32-bit
+// species regardless of laneType, so an i8x16 add carried across byte
+// boundaries and an f32x4 add added bit patterns as integers.  The table lives
+// here, next to the classifier that produces the laneType strings, so a new
+// lane type cannot be added to one without the other noticing.
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {{
+ *   laneCount: number,
+ *   laneBits: number,
+ *   isFloat: boolean
+ * }}
+ */
+Wasm2Lang.Backend.SIMDOps.LaneInfo;
+
+/**
+ * @private
+ * @const {!Object<string, !Wasm2Lang.Backend.SIMDOps.LaneInfo>}
+ */
+Wasm2Lang.Backend.SIMDOps.LANE_INFO_ = {
+  'i8x16': {laneCount: 16, laneBits: 8, isFloat: false},
+  'i16x8': {laneCount: 8, laneBits: 16, isFloat: false},
+  'i32x4': {laneCount: 4, laneBits: 32, isFloat: false},
+  'i64x2': {laneCount: 2, laneBits: 64, isFloat: false},
+  'f32x4': {laneCount: 4, laneBits: 32, isFloat: true},
+  'f64x2': {laneCount: 2, laneBits: 64, isFloat: true},
+  // 'v128' is the whole-vector bitwise view: 128 bits, no lane structure.
+  'v128': {laneCount: 1, laneBits: 128, isFloat: false}
+};
+
+/**
+ * Returns the lane geometry for a {@code laneType} string as produced by
+ * {@code classifyBinaryOp} / {@code classifyUnaryOp}.  Throws on an unknown
+ * lane type rather than guessing: a silently wrong lane count is exactly the
+ * defect this table exists to prevent.
+ *
+ * @param {string} laneType
+ * @return {!Wasm2Lang.Backend.SIMDOps.LaneInfo}
+ */
+Wasm2Lang.Backend.SIMDOps.laneInfo = function (laneType) {
+  var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneInfo|undefined} */ info = Wasm2Lang.Backend.SIMDOps.LANE_INFO_[laneType];
+  if (!info) {
+    throw new Error('Wasm2Lang codegen: unknown SIMD lane type "' + laneType + '".');
+  }
+  return info;
+};
+
+/**
+ * The lane type of a given element width and floatness, or {@code ''} when the
+ * table has none.
+ *
+ * {@code 'v128'} is skipped deliberately: it is the whole-vector bitwise view,
+ * not a lane geometry, and it is the only 128-bit row.  Without the skip,
+ * "twice as wide as i64x2" would answer {@code 'v128'} — a string every caller
+ * would then feed to {@code laneView_} as though it named 2x128-bit lanes.
+ *
+ * @private
+ * @param {number} laneBits
+ * @param {boolean} isFloat
+ * @return {string}
+ */
+Wasm2Lang.Backend.SIMDOps.laneOfWidth_ = function (laneBits, isFloat) {
+  var /** @const */ table = Wasm2Lang.Backend.SIMDOps.LANE_INFO_;
+  for (var /** @type {string} */ k in table) {
+    if ('v128' === k) continue;
+    var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneInfo} */ info = table[k];
+    if (info.laneBits === laneBits && info.isFloat === isFloat) return k;
+  }
+  return '';
+};
+
+/**
+ * The lane type twice as wide as {@code laneType}, or {@code ''} when none
+ * exists.  This is the relation the widening ops move along: extend, extmul and
+ * extadd_pairwise all read a source lane and produce the next one up, and narrow
+ * reads this relation backwards.
+ *
+ * Both backends restated it by hand — csharp as two tables plus two ternaries,
+ * java as a third ternary — and the geometry it encodes is already in
+ * {@code LANE_INFO_}, one file away from the classifier that names the lanes.
+ * Deriving it means a new lane type cannot arrive with the relation missing.
+ *
+ * The derived relation is one row wider than either hand table was: it also
+ * answers f32x4 -> f64x2 (and, backwards, f64x2 -> f32x4), which is correct and
+ * unreached — the ops that ask are all integer-lane ops.
+ *
+ * @param {string} laneType
+ * @return {string}
+ */
+Wasm2Lang.Backend.SIMDOps.widerLane = function (laneType) {
+  var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneInfo} */ info = Wasm2Lang.Backend.SIMDOps.laneInfo(laneType);
+  return Wasm2Lang.Backend.SIMDOps.laneOfWidth_(2 * info.laneBits, info.isFloat);
+};
+
+/**
+ * The lane type half as wide as {@code laneType}, or {@code ''} when none
+ * exists.  The inverse of {@code widerLane}; both directions are needed because
+ * the shared classifier reports the SOURCE lane for some widening ops
+ * (extadd_pairwise, extend) and the RESULT lane for others (extmul).
+ *
+ * @param {string} laneType
+ * @return {string}
+ */
+Wasm2Lang.Backend.SIMDOps.narrowerLane = function (laneType) {
+  var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneInfo} */ info = Wasm2Lang.Backend.SIMDOps.laneInfo(laneType);
+  return Wasm2Lang.Backend.SIMDOps.laneOfWidth_(info.laneBits / 2, info.isFloat);
+};
+
+/**
+ * Whether the scalar operand of {@code splat} / {@code replace_lane} has to be
+ * narrowed to the lane element type before it is written.
+ *
+ * wasm hands both ops an i32 for every integer lane type, so the value has to be
+ * truncated exactly for the lanes narrower than that scalar — i8x16 and i16x8.
+ * The wider lanes (i32x4, i64x2) and the float lanes receive a scalar of their
+ * own width and must NOT be cast, which is what makes this a predicate rather
+ * than an unconditional cast.
+ *
+ * Both backends asked the question by spelling out their own element-type names
+ * ({@code 'int' === elem || 'long' === elem || …}), four times between them.
+ * That reads as a fact about C# and Java type names; it is a fact about lane
+ * geometry, and {@code laneInfo} already holds it.
+ *
+ * @param {string} laneType
+ * @return {boolean}
+ */
+Wasm2Lang.Backend.SIMDOps.laneNeedsNarrowingCast = function (laneType) {
+  var /** @const {!Wasm2Lang.Backend.SIMDOps.LaneInfo} */ info = Wasm2Lang.Backend.SIMDOps.laneInfo(laneType);
+  return !info.isFloat && info.laneBits < 32;
+};
+
+/**
+ * Looks up a backend's lane-view row, throwing rather than handing back
+ * {@code undefined}.
+ *
+ * Each backend keeps its own table — java names vector classes and reinterpret
+ * methods, csharp names {@code As*} views — but the lookup and its failure are
+ * the same in both, and were written three times (java once, csharp twice,
+ * inline in {@code laneView_} and {@code laneElemType_}).  The failure matters
+ * more than the lookup: returning {@code undefined} would index into it and
+ * splice {@code "undefined"} into emitted source, which is the same class of
+ * defect as a placeholder emitter.
+ *
+ * {@code language} is the only thing that differs, and it is a message word, not
+ * a switch.
+ *
+ * @param {!Object<string, !Array<string>>} table
+ * @param {string} laneType
+ * @param {string} language  Backend name as it should read in the message.
+ * @return {!Array<string>}
+ */
+Wasm2Lang.Backend.SIMDOps.laneViewRow = function (table, laneType, language) {
+  var /** @const {!Array<string>|undefined} */ row = table[laneType];
+  if (!row) {
+    throw new Error('Wasm2Lang codegen: no ' + language + ' SIMD lane view for lane type "' + laneType + '".');
+  }
+  return row;
+};
+
+// ---------------------------------------------------------------------------
+// Node-kind op classification.
+//
+// SIMDShift / SIMDExtract / SIMDReplace carry a binaryen op constant that
+// encodes both the lane type and the variant.  Every backend needs the same
+// decomposition, and getting the lane type wrong here is the same silent-
+// corruption failure the LANE_INFO_ table above exists to prevent, so the
+// mapping lives once, next to the other classifiers.
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {{
+ *   laneType: string,
+ *   kind: string
+ * }}
+ */
+Wasm2Lang.Backend.SIMDOps.LaneOpInfo;
+
+/**
+ * @private
+ * @type {?Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>}
+ */
+Wasm2Lang.Backend.SIMDOps.shiftOpMap_ = null;
+
+/**
+ * @private
+ * @type {?Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>}
+ */
+Wasm2Lang.Backend.SIMDOps.extractOpMap_ = null;
+
+/**
+ * @private
+ * @type {?Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>}
+ */
+Wasm2Lang.Backend.SIMDOps.replaceOpMap_ = null;
+
+/**
+ * @private
+ * @type {?Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>}
+ */
+Wasm2Lang.Backend.SIMDOps.loadOpMap_ = null;
+
+/**
+ * @private
+ * @type {?Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>}
+ */
+Wasm2Lang.Backend.SIMDOps.loadStoreLaneOpMap_ = null;
+
+/**
+ * @private
+ * @param {string} laneType
+ * @param {string} kind
+ * @return {!Wasm2Lang.Backend.SIMDOps.LaneOpInfo}
+ */
+Wasm2Lang.Backend.SIMDOps.laneOp_ = function (laneType, kind) {
+  return {laneType: laneType, kind: kind};
+};
+
+/**
+ * Classifies a SIMDShift op.  {@code kind} is 'shl', 'shr_s' or 'shr_u'.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} op
+ * @return {?Wasm2Lang.Backend.SIMDOps.LaneOpInfo}
+ */
+Wasm2Lang.Backend.SIMDOps.classifyShiftOp = function (binaryen, op) {
+  var /** @const */ S = Wasm2Lang.Backend.SIMDOps;
+  if (!S.shiftOpMap_) {
+    var /** @const */ o = S.laneOp_;
+    var /** @const {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */
+      m = /** @type {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */ (Object.create(null));
+    m[binaryen.ShlVecI8x16] = o('i8x16', 'shl');
+    m[binaryen.ShrSVecI8x16] = o('i8x16', 'shr_s');
+    m[binaryen.ShrUVecI8x16] = o('i8x16', 'shr_u');
+    m[binaryen.ShlVecI16x8] = o('i16x8', 'shl');
+    m[binaryen.ShrSVecI16x8] = o('i16x8', 'shr_s');
+    m[binaryen.ShrUVecI16x8] = o('i16x8', 'shr_u');
+    m[binaryen.ShlVecI32x4] = o('i32x4', 'shl');
+    m[binaryen.ShrSVecI32x4] = o('i32x4', 'shr_s');
+    m[binaryen.ShrUVecI32x4] = o('i32x4', 'shr_u');
+    m[binaryen.ShlVecI64x2] = o('i64x2', 'shl');
+    m[binaryen.ShrSVecI64x2] = o('i64x2', 'shr_s');
+    m[binaryen.ShrUVecI64x2] = o('i64x2', 'shr_u');
+    S.shiftOpMap_ = m;
+  }
+  return S.shiftOpMap_[op] || null;
+};
+
+/**
+ * Classifies a SIMDExtract op.  {@code kind} is 'extract_s', 'extract_u' or
+ * 'extract' — the signed/unsigned split exists only for the narrow lane types,
+ * where wasm defines both a sign-extending and a zero-extending extract.
+ *
+ * Extract, Replace and Shift each have their OWN binaryen enumeration starting
+ * at 0, so their constants collide numerically: measured on binaryen 131,
+ * {@code ExtractLaneUVecI16x8} and {@code ReplaceLaneVecI64x2} are both 3.
+ * Keying one map by op number therefore silently returns the wrong lane type
+ * for whichever family was registered first — which is exactly the bug this
+ * split fixes.  Never merge these maps.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} op
+ * @return {?Wasm2Lang.Backend.SIMDOps.LaneOpInfo}
+ */
+Wasm2Lang.Backend.SIMDOps.classifyExtractOp = function (binaryen, op) {
+  var /** @const */ S = Wasm2Lang.Backend.SIMDOps;
+  if (!S.extractOpMap_) {
+    var /** @const */ o = S.laneOp_;
+    var /** @const {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */
+      m = /** @type {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */ (Object.create(null));
+    m[binaryen.ExtractLaneSVecI8x16] = o('i8x16', 'extract_s');
+    m[binaryen.ExtractLaneUVecI8x16] = o('i8x16', 'extract_u');
+    m[binaryen.ExtractLaneSVecI16x8] = o('i16x8', 'extract_s');
+    m[binaryen.ExtractLaneUVecI16x8] = o('i16x8', 'extract_u');
+    m[binaryen.ExtractLaneVecI32x4] = o('i32x4', 'extract');
+    m[binaryen.ExtractLaneVecI64x2] = o('i64x2', 'extract');
+    m[binaryen.ExtractLaneVecF32x4] = o('f32x4', 'extract');
+    m[binaryen.ExtractLaneVecF64x2] = o('f64x2', 'extract');
+    S.extractOpMap_ = m;
+  }
+  return S.extractOpMap_[op] || null;
+};
+
+/**
+ * Classifies a SIMDReplace op.  See {@code classifyExtractOp} for why this is
+ * a separate map rather than a shared one.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} op
+ * @return {?Wasm2Lang.Backend.SIMDOps.LaneOpInfo}
+ */
+Wasm2Lang.Backend.SIMDOps.classifyReplaceOp = function (binaryen, op) {
+  var /** @const */ S = Wasm2Lang.Backend.SIMDOps;
+  if (!S.replaceOpMap_) {
+    var /** @const */ o = S.laneOp_;
+    var /** @const {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */
+      m = /** @type {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */ (Object.create(null));
+    m[binaryen.ReplaceLaneVecI8x16] = o('i8x16', 'replace');
+    m[binaryen.ReplaceLaneVecI16x8] = o('i16x8', 'replace');
+    m[binaryen.ReplaceLaneVecI32x4] = o('i32x4', 'replace');
+    m[binaryen.ReplaceLaneVecI64x2] = o('i64x2', 'replace');
+    m[binaryen.ReplaceLaneVecF32x4] = o('f32x4', 'replace');
+    m[binaryen.ReplaceLaneVecF64x2] = o('f64x2', 'replace');
+    S.replaceOpMap_ = m;
+  }
+  return S.replaceOpMap_[op] || null;
+};
+
+/**
+ * Classifies a SIMDLoad op — the {@code v128.load*_splat},
+ * {@code v128.load*x*_s/_u} and {@code v128.load*_zero} family.  {@code kind}
+ * is the wasm mnemonic without the {@code v128.} prefix; {@code laneType} is
+ * the lane geometry the loaded bits are placed in.
+ *
+ * These are NOT plain v128 loads.  Each reads FEWER than 16 bytes and then
+ * splats, sign/zero-extends, or zero-fills to fill the vector, so rendering
+ * any of them as a full-width load silently returns the wrong 16 bytes — which
+ * is exactly what the Java backend did for every one of them until 2026-08-02
+ * (measured: 21 of 25 probe functions wrong, with no diagnostic, because the
+ * emitter ignored {@code expr.op} entirely).  A backend that cannot express a
+ * form must refuse it rather than fall back to a full-width load.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} op
+ * @return {?Wasm2Lang.Backend.SIMDOps.LaneOpInfo}
+ */
+Wasm2Lang.Backend.SIMDOps.classifyLoadOp = function (binaryen, op) {
+  var /** @const */ S = Wasm2Lang.Backend.SIMDOps;
+  if (!S.loadOpMap_) {
+    var /** @const */ o = S.laneOp_;
+    var /** @const {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */
+      m = /** @type {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */ (Object.create(null));
+    m[binaryen.Load8SplatVec128] = o('i8x16', 'load8_splat');
+    m[binaryen.Load16SplatVec128] = o('i16x8', 'load16_splat');
+    m[binaryen.Load32SplatVec128] = o('i32x4', 'load32_splat');
+    m[binaryen.Load64SplatVec128] = o('i64x2', 'load64_splat');
+    m[binaryen.Load8x8SVec128] = o('i16x8', 'load8x8_s');
+    m[binaryen.Load8x8UVec128] = o('i16x8', 'load8x8_u');
+    m[binaryen.Load16x4SVec128] = o('i32x4', 'load16x4_s');
+    m[binaryen.Load16x4UVec128] = o('i32x4', 'load16x4_u');
+    m[binaryen.Load32x2SVec128] = o('i64x2', 'load32x2_s');
+    m[binaryen.Load32x2UVec128] = o('i64x2', 'load32x2_u');
+    m[binaryen.Load32ZeroVec128] = o('i32x4', 'load32_zero');
+    m[binaryen.Load64ZeroVec128] = o('i64x2', 'load64_zero');
+    S.loadOpMap_ = m;
+  }
+  return S.loadOpMap_[op] || null;
+};
+
+/**
+ * Classifies a SIMDLoadStoreLane op.  {@code kind} is the wasm mnemonic and
+ * {@code laneType} the lane geometry the index counts in — an 8-bit lane op
+ * indexes 16 lanes, a 64-bit one indexes 2.
+ *
+ * Rendering these against a fixed 32-bit lane width is wrong for three of the
+ * four widths, in both the index it applies and the number of bytes it moves;
+ * the Java backend did exactly that (hardcoded {@code getInt}/{@code putInt}
+ * and {@code .lane(n)}) for every width until 2026-08-02.
+ *
+ * @param {!Binaryen} binaryen
+ * @param {number} op
+ * @return {?Wasm2Lang.Backend.SIMDOps.LaneOpInfo}
+ */
+Wasm2Lang.Backend.SIMDOps.classifyLoadStoreLaneOp = function (binaryen, op) {
+  var /** @const */ S = Wasm2Lang.Backend.SIMDOps;
+  if (!S.loadStoreLaneOpMap_) {
+    var /** @const */ o = S.laneOp_;
+    var /** @const {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */
+      m = /** @type {!Object<number, !Wasm2Lang.Backend.SIMDOps.LaneOpInfo>} */ (Object.create(null));
+    m[binaryen.Load8LaneVec128] = o('i8x16', 'load8_lane');
+    m[binaryen.Load16LaneVec128] = o('i16x8', 'load16_lane');
+    m[binaryen.Load32LaneVec128] = o('i32x4', 'load32_lane');
+    m[binaryen.Load64LaneVec128] = o('i64x2', 'load64_lane');
+    m[binaryen.Store8LaneVec128] = o('i8x16', 'store8_lane');
+    m[binaryen.Store16LaneVec128] = o('i16x8', 'store16_lane');
+    m[binaryen.Store32LaneVec128] = o('i32x4', 'store32_lane');
+    m[binaryen.Store64LaneVec128] = o('i64x2', 'store64_lane');
+    S.loadStoreLaneOpMap_ = m;
+  }
+  return S.loadStoreLaneOpMap_[op] || null;
+};
