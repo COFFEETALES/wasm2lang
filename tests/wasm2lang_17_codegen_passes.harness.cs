@@ -546,6 +546,12 @@ public static class W2lHarness {
       mod.exerciseEqzNegateNumericComparison((int)v);
     }
 
+    foreach (var row in W2l.Nested("switch_shared_suffix_cases")) {
+      if (mod.switchSharedSuffix((int)row[0], (int)row[1]) != (int)row[2]) {
+        throw new System.InvalidOperationException("Internal switch branch skipped its shared suffix");
+      }
+    }
+
     W2l.DumpCRC(memBuffer);
   }
 }

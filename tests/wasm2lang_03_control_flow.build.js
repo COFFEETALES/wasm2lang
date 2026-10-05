@@ -391,7 +391,8 @@
     // -----------------------------------------------------------------
     // exerciseNestedSwitch: two independent br_table dispatches — an
     // inner dispatch lives inside outer case 0.  Tests that the
-    // detection pass scopes nested dispatch blocks correctly.
+    // detection pass scopes nested dispatch blocks correctly. Inner case 2
+    // leaves the OUTER dispatch directly; its trailing marker must not run.
     // Params: (outerIndex, innerIndex)
     // -----------------------------------------------------------------
     module.addFunction(
@@ -420,7 +421,7 @@
                 module.block('nestedSwitchInnerCaseZero', [
                   module.block('nestedSwitchInnerDefaultCase', [
                     module.switch(
-                      ['nestedSwitchInnerCaseZero', 'nestedSwitchInnerCaseOne'],
+                      ['nestedSwitchInnerCaseZero', 'nestedSwitchInnerCaseOne', 'nestedSwitchDispatchCompleted'],
                       'nestedSwitchInnerDefaultCase',
                       module.local.get(1, binaryen.i32)
                     )
@@ -436,6 +437,7 @@
               // inner case 1
               storeI32(module.i32.const(0xde000011 | 0))
             ]),
+            storeI32(module.i32.const(0xde000012 | 0)),
             module.break('nestedSwitchDispatchCompleted')
           ]),
           // outer case 1

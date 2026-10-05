@@ -529,6 +529,12 @@ int w2lCountSimplifiedWhile(String body) {
         mod.exerciseEqzNegateNumericComparison(v.intValue());
     }
 
+    for (java.util.List<Double> row : w2lNested(_data, "switch_shared_suffix_cases")) {
+        if (mod.switchSharedSuffix(row.get(0).intValue(), row.get(1).intValue()) != row.get(2).intValue()) {
+            throw new IllegalStateException("Internal switch branch skipped its shared suffix");
+        }
+    }
+
     w2lDumpCRC(memBuffer);
 }
 

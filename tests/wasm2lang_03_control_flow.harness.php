@@ -30,7 +30,7 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ([0, 1, 2, 3, 4, 5, -1, 99] as $index) {
         $exports['exerciseBrTableMultiTarget']($index);
     }
-    foreach ([[0, 0], [0, 1], [0, -1], [0, 5], [1, 0], [2, 0], [-1, 0], [9, 0]] as $scenario) {
+    foreach ([[0, 0], [0, 1], [0, 2], [0, -1], [0, 5], [1, 0], [2, 0], [-1, 0], [9, 0]] as $scenario) {
         $exports['exerciseNestedSwitch']($scenario[0], $scenario[1]);
     }
     foreach ([0, 1, 2, 3, -1, 99] as $index) {

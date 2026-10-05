@@ -36,6 +36,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup;
  *   defaultGroup: ?Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup,
  *   requiresLabel: boolean,
  *   chainNames: !Array<string>,
+ *   exitNames: !Array<string>,
  *   epiloguePtrs: !Array<number>
  * }}
  */
@@ -75,13 +76,34 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.isBlockRootSwitch =
  * Returns true when {@code extractStructure()} recovered a usable flat-switch
  * descriptor. Metadata rebuilt from pre-normalized binaries can drift onto an
  * ordinary block after binary round-trip; callers must validate the recovered
- * shape before replacing the subtree with flat-switch emission.
+ * shape before replacing the subtree with flat-switch emission. Case actions
+ * may only branch to the common switch exit: an internal chain target resumes
+ * at another case's suffix, which cannot be replaced with a switch break.
  *
+ * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} info
  * @return {boolean}
  */
-Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure = function (info) {
-  return 0 !== info.conditionPtr && (0 !== info.caseGroups.length || null !== info.defaultGroup);
+Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure = function (binaryen, wasmModule, info) {
+  if (0 === info.conditionPtr || (0 === info.caseGroups.length && null === info.defaultGroup)) return false;
+  var /** @const {!Array<string>} */ names = info.chainNames;
+  var /** @const {!Array<!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchCaseGroup>} */ groups =
+      info.defaultGroup ? info.caseGroups.concat([info.defaultGroup]) : info.caseGroups;
+  for (var /** @type {number} */ gi = 0; gi < groups.length; ++gi) {
+    var /** @const {!Array<number>} */ actions = groups[gi].actionPtrs;
+    for (var /** @type {number} */ ai = 0; ai < actions.length; ++ai) {
+      for (var /** @type {number} */ ni = 0; ni < names.length; ++ni) {
+        if (
+          info.exitNames.indexOf(names[ni]) < 0 &&
+          Wasm2Lang.Wasm.Tree.CustomPasses.hasReference(binaryen, wasmModule, actions[ai], names[ni])
+        ) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
 };
 
 // ---------------------------------------------------------------------------
@@ -126,9 +148,15 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasChainBreakThroughL
     return false;
   }
   if (binaryen.SwitchId === id) {
-    // SwitchId (br_table) becomes a JS switch statement — itself a breakable
-    // scope — so its branch targets always get explicit labels regardless.
-    // The outer flat-switch label is NOT needed for these.
+    // A nested br_table emits another switch. A branch to this dispatch's
+    // chain must leave that inner switch AND the outer dispatch, so preserve
+    // the actual outer label. Redirecting it to '*' produces an undefined
+    // label (C#: goto __brk), while a plain break would exit the wrong scope.
+    var /** @const {!Array<string>} */ targets = /** @type {!Array<string>} */ (info.names || []);
+    var /** @const {string} */ defaultTarget = /** @type {string} */ (info.defaultName || '');
+    for (var /** @type {number} */ ti = 0, /** @const {number} */ targetCount = chainNames.length; ti < targetCount; ++ti) {
+      if (Wasm2Lang.Wasm.Tree.CustomPasses.switchTargetsName_(targets, defaultTarget, chainNames[ti])) return true;
+    }
     return false;
   }
   var /** @const {function(!Binaryen, number, !Array<string>, boolean): boolean} */ check =
@@ -231,6 +259,16 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
             : /** @type {!Array<number>} */ (chain[0][1]).slice(1);
         var /** @const {boolean} */ isWrappedStructure = chain.length > 2 && wrapperTrail.length > 0;
         var /** @type {!Array<number>} */ epilogue = isWrappedStructure ? wrapperTrail : [];
+
+        // Empty outer wrappers have the same continuation as their first
+        // child. Binary round-trip can introduce such a wrapper around a
+        // non-wrapping dispatch. Preserve these true exit aliases, but stop
+        // before a chain level whose trailing actions form a shared suffix.
+        var /** @type {number} */ exitIndex = isWrappedStructure ? 1 : 0;
+        var /** @const {!Array<string>} */ exitNames = [chain[exitIndex][0]];
+        while (exitIndex + 1 < chain.length && 1 === /** @type {!Array<number>} */ (chain[exitIndex][1]).length) {
+          exitNames.push(chain[++exitIndex][0]);
+        }
 
         // prettier-ignore
         var /** @const */ buildGroup =
@@ -354,6 +392,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
           defaultGroup: defaultGroup,
           requiresLabel: needsLabel,
           chainNames: chainNames,
+          exitNames: exitNames,
           epiloguePtrs: epilogue
         });
       }
@@ -370,6 +409,7 @@ Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure = fu
     defaultGroup: null,
     requiresLabel: true,
     chainNames: Object.keys(nameToIdx),
+    exitNames: [],
     epiloguePtrs: []
   });
 };

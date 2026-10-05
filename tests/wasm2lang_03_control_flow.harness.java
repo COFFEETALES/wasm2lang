@@ -28,7 +28,7 @@
     for (int index : new int[] {0, 1, 2, 3, 4, 5, -1, 99}) {
         mod.exerciseBrTableMultiTarget(index);
     }
-    for (int[] scenario : new int[][] {{0, 0}, {0, 1}, {0, -1}, {0, 5}, {1, 0}, {2, 0}, {-1, 0}, {9, 0}}) {
+    for (int[] scenario : new int[][] {{0, 0}, {0, 1}, {0, 2}, {0, -1}, {0, 5}, {1, 0}, {2, 0}, {-1, 0}, {9, 0}}) {
         mod.exerciseNestedSwitch(scenario[0], scenario[1]);
     }
     for (int index : new int[] {0, 1, 2, 3, -1, 99}) {

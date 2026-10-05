@@ -168,6 +168,11 @@ const runTest = function (buff, out, exports, data) {
   for (const v of data.eqz_negate_numeric_comparison_values) {
     exports.exerciseEqzNegateNumericComparison(v);
   }
+  for (const row of data.switch_shared_suffix_cases) {
+    if (exports.switchSharedSuffix(row[0], row[1]) !== row[2]) {
+      throw new Error('Internal switch branch skipped its shared suffix: ' + row);
+    }
+  }
 };
 
 /**

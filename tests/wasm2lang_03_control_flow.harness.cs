@@ -54,7 +54,7 @@ public static class W2lHarness {
     }
 
     // Nested switches
-    foreach (var scenario in new int[][] { new int[] {0, 0}, new int[] {0, 1}, new int[] {0, -1}, new int[] {0, 5}, new int[] {1, 0}, new int[] {2, 0}, new int[] {-1, 0}, new int[] {9, 0} }) {
+    foreach (var scenario in new int[][] { new int[] {0, 0}, new int[] {0, 1}, new int[] {0, 2}, new int[] {0, -1}, new int[] {0, 5}, new int[] {1, 0}, new int[] {2, 0}, new int[] {-1, 0}, new int[] {9, 0} }) {
       mod.exerciseNestedSwitch(scenario[0], scenario[1]);
     }
 

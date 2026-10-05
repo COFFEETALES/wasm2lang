@@ -40,6 +40,10 @@ public static class W2lHarness {
     System.Console.WriteLine("extract_u16=" + mod.extract_u16());
     System.Console.WriteLine("extract_hi_lane=" + mod.extract_hi_lane());
     System.Console.WriteLine("replace8_narrows=" + mod.replace8_narrows());
+    System.Console.WriteLine("replace16_cmp_ne=" + mod.replace16_cmp_ne());
+    System.Console.WriteLine("replace16_cmp_eqz=" + mod.replace16_cmp_eqz());
+    System.Console.WriteLine("replace8_cmp_lt=" + mod.replace8_cmp_lt());
+    System.Console.WriteLine("replace32_cmp_gt_u=" + mod.replace32_cmp_gt_u());
     System.Console.WriteLine("i8x16_shl=" + mod.i8x16_shl());
     System.Console.WriteLine("i8x16_shl_mod=" + mod.i8x16_shl_mod());
     System.Console.WriteLine("i8x16_shr_s=" + mod.i8x16_shr_s());

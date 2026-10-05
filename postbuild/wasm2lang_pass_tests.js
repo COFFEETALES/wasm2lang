@@ -9,11 +9,13 @@
  *
  * Usage:
  *   node wasm2lang_pass_tests.js --artifact <path-to-wasmxlang.js>
+ * PHP execution uses PHP_CLI, or php on PATH when it is unset.
  */
 
 var fs = require('fs');
 var path = require('path');
 var url = require('url');
+var childProcess = require('child_process');
 
 // ---------------------------------------------------------------------------
 // CLI arguments
@@ -1268,7 +1270,200 @@ var simdVectorPathOperands = new EmissionFamily(
   {}
 );
 
+// A nested br_table targeting the outer dispatch needs a real exit label.
+// Source label checks cover C#'s CS0159; execution distinguishes an outer
+// exit from an incorrectly substituted innermost `break`.
+var nestedSwitchOuterExitCsharp = new EmissionFamily(
+  'nested-switch-outer-exit-csharp',
+  'nested_switch_outer_exit.wast',
+  'csharp',
+  function (code) {
+    assert((code.match(/switch\s*\(/g) || []).length >= 2, 'fixture lost its nested switches');
+    assert(!/goto\s+__brk\s*;/.test(code), 'switch sentinel emitted as an undefined C# exit label');
+    var jumps = code.match(/goto\s+[A-Za-z_][A-Za-z_0-9]*\s*;/g) || [];
+    assert(jumps.length > 0, 'fixture must exercise a nonlocal exit');
+    jumps.forEach(function (jump) {
+      var label = jump.replace(/^goto\s+|\s*;$/g, '');
+      assert(new RegExp('\\b' + label + '\\s*:').test(code), 'missing C# label ' + label);
+    });
+  },
+  ['binaryen:none', 'wasm2lang:codegen']
+);
+var nestedSwitchOuterExitJavascript = new EmissionFamily(
+  'nested-switch-outer-exit-javascript',
+  'nested_switch_outer_exit.wast',
+  'javascript',
+  function (code) {
+    var factory = eval(code + '\nmodule');
+    var instance = factory(globalThis, {}, new ArrayBuffer(65536));
+    [
+      [0, 0, 110],
+      [1, 0, 125],
+      [1, 1, 135],
+      [1, 2, 101],
+      [1, -1, 101],
+      [2, 0, 101]
+    ].forEach(function (row) {
+      assertEqual(instance.nestedSwitchOuterExit(row[0], row[1]), row[2], 'nested switch exit semantics');
+    });
+  },
+  ['binaryen:none', 'wasm2lang:codegen']
+);
+var nestedSwitchOuterExitPhp64 = new EmissionFamily(
+  'nested-switch-outer-exit-php64',
+  'nested_switch_outer_exit.wast',
+  'php64',
+  function (code) {
+    var rows = [
+      [0, 0, 110],
+      [1, 0, 125],
+      [1, 1, 135],
+      [1, 2, 101],
+      [1, -1, 101],
+      [2, 0, 101]
+    ];
+    var harness = '\n$testBuffer = str_repeat(chr(0), 65536);\n$testModule = $module([], $testBuffer);\n';
+    rows.forEach(function (row) {
+      harness += 'echo $testModule["nestedSwitchOuterExit"](' + row[0] + ', ' + row[1] + '), "\\n";\n';
+    });
+    var execution = childProcess.spawnSync(process.env.PHP_CLI || 'php', [], {
+      input: '<?php\n' + code + harness,
+      encoding: 'utf8',
+      timeout: 10000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true
+    });
+    assert(!execution.error, 'PHP execution failed (set PHP_CLI): ' + execution.error);
+    assertEqual(execution.status, 0, 'PHP execution failed: ' + execution.stderr);
+    assertEqual(execution.stderr, '', 'PHP emitted diagnostics');
+    assertEqual(
+      execution.stdout,
+      rows
+        .map(function (row) {
+          return row[2];
+        })
+        .join('\n') + '\n',
+      'PHP internal exits must run the inner epilogue; outer exits must skip it'
+    );
+  },
+  ['binaryen:none', 'wasm2lang:codegen']
+);
+
+function sharedSuffixFamily(language) {
+  return new EmissionFamily(
+    'switch-shared-suffix-' + language,
+    'switch_shared_suffix.wast',
+    language,
+    function (code) {
+      var rows = [
+        [0, 0, 10],
+        [0, 1, 101],
+        [1, 0, 20],
+        [1, 1, 120],
+        [2, 0, 101],
+        [2, 1, 101],
+        [-1, 0, 101],
+        [-1, 1, 101]
+      ];
+      if ('php64' === language) {
+        var harness = '\n$testBuffer = str_repeat(chr(0), 65536);\n$testModule = $module([], $testBuffer);\n';
+        rows.forEach(function (row) {
+          harness += 'echo $testModule["common_suffix"](' + row[0] + ', ' + row[1] + '), "\\n";\n';
+        });
+        var execution = childProcess.spawnSync(process.env.PHP_CLI || 'php', [], {
+          input: '<?php\n' + code + harness,
+          encoding: 'utf8',
+          timeout: 10000,
+          maxBuffer: 1024 * 1024,
+          windowsHide: true
+        });
+        assert(!execution.error, 'PHP execution failed (set PHP_CLI): ' + execution.error);
+        assertEqual(execution.status, 0, 'PHP shared suffix failed: ' + execution.stderr);
+        assertEqual(execution.stderr, '', 'PHP emitted diagnostics');
+        assertEqual(
+          execution.stdout,
+          rows
+            .map(function (row) {
+              return row[2];
+            })
+            .join('\n') + '\n',
+          'internal dispatch branches must execute the shared suffix'
+        );
+      } else {
+        var factory = eval(code + '\nmodule');
+        var instance = factory(globalThis, {}, new ArrayBuffer(65536));
+        rows.forEach(function (row) {
+          assertEqual(instance.common_suffix(row[0], row[1]), row[2], 'internal dispatch shared suffix');
+        });
+      }
+    },
+    ['binaryen:none', 'wasm2lang:codegen']
+  );
+}
+
+function sameSelectArmsFamily(language, normalization) {
+  return new EmissionFamily(
+    'select-same-arms-' + normalization + '-' + language,
+    'select_same_arms.wast',
+    language,
+    function (code) {
+      var rows = [
+        ['same_select_load', 16, 4096],
+        ['same_select_load', 20, 4096]
+      ];
+      [0, 1, -1, -2147483648].forEach(function (condition) {
+        rows.push(['same_select_store', condition, 124096]);
+        rows.push(['same_select_argument', condition, 1230801]);
+      });
+      if ('php64' === language) {
+        var harness = '\n$testBuffer = str_repeat(chr(0), 65536);\n$testModule = $module([], $testBuffer);\n';
+        rows.forEach(function (row) {
+          harness += 'echo $testModule["' + row[0] + '"](' + row[1] + '), "\\n";\n';
+        });
+        var execution = childProcess.spawnSync(process.env.PHP_CLI || 'php', [], {
+          input: '<?php\n' + code + harness,
+          encoding: 'utf8',
+          timeout: 10000,
+          maxBuffer: 1024 * 1024,
+          windowsHide: true
+        });
+        assert(!execution.error, 'PHP execution failed (set PHP_CLI): ' + execution.error);
+        assertEqual(execution.status, 0, 'PHP nested select value failed: ' + execution.stderr);
+        assertEqual(execution.stderr, '', 'PHP emitted diagnostics');
+        assertEqual(
+          execution.stdout,
+          rows
+            .map(function (row) {
+              return row[2];
+            })
+            .join('\n') + '\n',
+          'select condition and neighbouring operands must run exactly once in order'
+        );
+      } else {
+        var factory = eval(code + '\nmodule');
+        var instance = factory(globalThis, {}, new ArrayBuffer(65536));
+        rows.forEach(function (row) {
+          assertEqual(instance[row[0]](row[1]), row[2], 'nested select value and operand order');
+        });
+      }
+    },
+    ['binaryen:' + normalization, 'wasm2lang:codegen']
+  );
+}
+
 var emissionFamilies = [
+  sameSelectArmsFamily('asmjs', 'min'),
+  sameSelectArmsFamily('javascript', 'min'),
+  sameSelectArmsFamily('php64', 'min'),
+  sameSelectArmsFamily('asmjs', 'max'),
+  sameSelectArmsFamily('javascript', 'max'),
+  sameSelectArmsFamily('php64', 'max'),
+  sharedSuffixFamily('asmjs'),
+  sharedSuffixFamily('javascript'),
+  sharedSuffixFamily('php64'),
+  nestedSwitchOuterExitCsharp,
+  nestedSwitchOuterExitJavascript,
+  nestedSwitchOuterExitPhp64,
   eqzOrCompoundNegation,
   kernelLeaveFreshness,
   simdVectorPathOperands,

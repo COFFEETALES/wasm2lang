@@ -132,6 +132,33 @@
   fn('extract_u16', module.i16x8.extract_lane_u(v(i16(0xffff)), 0));
   fn('extract_hi_lane', module.i8x16.extract_lane_u(v(i8(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x7e)), 15));
   fn('replace8_narrows', module.i8x16.extract_lane_u(module.i8x16.replace_lane(v(i8(0)), 1, module.i32.const(0x1ff)), 1));
+  // A comparison as the lane value: C# and Java render it as a boolean, which
+  // must become an integer before the lane cast (`(short)(a != 0)` is CS0030
+  // in C#, a type error in Java; found by a Blackwell generator kernel).  The
+  // load keeps the comparison out of constant folding; memory there is zero.
+  const zeroWord = () => module.i32.load(0, 4, module.i32.const(8192));
+  fn(
+    'replace16_cmp_ne',
+    module.i16x8.extract_lane_u(
+      module.i16x8.replace_lane(v(i16(7, 7, 7, 7)), 3, module.i32.ne(zeroWord(), module.i32.const(0))),
+      3
+    )
+  );
+  fn(
+    'replace16_cmp_eqz',
+    module.i16x8.extract_lane_u(module.i16x8.replace_lane(v(i16(7, 7, 7, 7)), 3, module.i32.eqz(zeroWord())), 3)
+  );
+  fn(
+    'replace8_cmp_lt',
+    module.i8x16.extract_lane_u(module.i8x16.replace_lane(v(i8(9)), 0, module.i32.lt_s(zeroWord(), module.i32.const(1))), 0)
+  );
+  fn(
+    'replace32_cmp_gt_u',
+    module.i32x4.extract_lane(
+      module.i32x4.replace_lane(v(i32v(9, 9, 9, 9)), 2, module.i32.gt_u(zeroWord(), module.i32.const(0))),
+      2
+    )
+  );
 
   // --- shifts: count is taken modulo the lane width ------------------------
   fn('i8x16_shl', word0(module.i8x16.shl(v(i8(1, 1, 1, 1)), module.i32.const(4))));

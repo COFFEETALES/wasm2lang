@@ -325,9 +325,15 @@ Wasm2Lang.Backend.CsharpCodegen.prototype.emitClassLeaveBackendCase_ = function 
           'replace_lane'
         );
       var /** @const {string} */ rpElem = Wasm2Lang.Backend.CsharpCodegen.laneElemType_(rpOp.laneType, false);
+      // A comparison child renders as a C# bool, but a lane value is an
+      // integer: materialize it first, exactly as the scalar unary/binary
+      // paths do.  Casting the bool directly emitted `(short)(a != 0)`, which
+      // Roslyn refuses (CS0030) — found by the Blackwell ZWAY generator's SIMD
+      // kernel, revision 36 (an i16x8.replace_lane fed by i32.ne).
+      var /** @const {string} */ rpScalar = A.CAT_BOOL_I32 === cc(1) ? this.coerceBooleanOperand_(cr(1)) : cr(1);
       var /** @const {string} */ rpValue = Wasm2Lang.Backend.SIMDOps.laneNeedsNarrowingCast(rpOp.laneType)
-          ? Wasm2Lang.Backend.CsharpCodegen.narrowingCast_(rpElem, cr(1))
-          : cr(1);
+          ? Wasm2Lang.Backend.CsharpCodegen.narrowingCast_(rpElem, rpScalar)
+          : rpScalar;
       return {
         emittedString: Wasm2Lang.Backend.CsharpCodegen.toCarrier_(
           'System.Runtime.Intrinsics.Vector128.WithElement(' +

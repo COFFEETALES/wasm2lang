@@ -218,10 +218,13 @@ Wasm2Lang.Backend.JavaCodegen.prototype.emitClassLeaveBackendCase_ = function (s
         );
       var /** @const {string} */ srElem = Wasm2Lang.Backend.JavaCodegen.simdView_(srOp.laneType)[2];
       // wasm narrows the scalar to the lane width; without the cast a value
-      // wider than the lane silently keeps its high bits.
+      // wider than the lane silently keeps its high bits.  A comparison child
+      // renders as a Java boolean: materialize it first (a boolean neither
+      // casts to short/byte nor converts to int).
+      var /** @const {string} */ srScalar = A.CAT_BOOL_I32 === cc(1) ? this.coerceBooleanOperand_(cr(1)) : cr(1);
       var /** @const {string} */ srValue = Wasm2Lang.Backend.SIMDOps.laneNeedsNarrowingCast(srOp.laneType)
-          ? '(' + srElem + ')' + A.Precedence_.wrap_(cr(1), A.Precedence_.PREC_UNARY_, true)
-          : cr(1);
+          ? '(' + srElem + ')' + A.Precedence_.wrap_(srScalar, A.Precedence_.PREC_UNARY_, true)
+          : srScalar;
       return {
         emittedString: Wasm2Lang.Backend.JavaCodegen.toCarrier_(
           Wasm2Lang.Backend.JavaCodegen.laneView_(cr(0), srOp.laneType) +

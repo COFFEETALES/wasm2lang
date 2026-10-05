@@ -507,25 +507,9 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitClassFlatSwitch_ = function (sta
 };
 
 /**
- * Returns true when this backend must validate pre-normalized flat-switch
- * descriptors before replacing a block with custom switch emission.
- *
- * The asm.js release pipeline is sensitive to stale switch-dispatch metadata
- * rebuilt from binary-only normalized input. Other backends keep their
- * historical behavior unless they opt in explicitly.
- *
- * @protected
- * @return {boolean}
- */
-Wasm2Lang.Backend.AbstractCodegen.prototype.shouldValidateSwitchDispatchStructure_ = function () {
-  return false;
-};
-
-/**
  * Whether a metadata-marked switch-dispatch block may take the flat-switch
- * path.  Backends that validate pre-normalized descriptors
- * ({@code shouldValidateSwitchDispatchStructure_}) accept only a block whose
- * dispatch structure still extracts cleanly.  Metadata rebuilt from a
+ * path. Every backend requires an intact descriptor and equivalent branch
+ * targets before collapsing the block chain. Metadata rebuilt from a
  * pre-normalized binary can point at a block whose dispatch wrapper was
  * flattened or otherwise drifted; on reject the caller falls back to the
  * generic named-block path, which preserves semantics — forcing the
@@ -534,16 +518,14 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.shouldValidateSwitchDispatchStructur
  *
  * @protected
  * @param {!Binaryen} binaryen
+ * @param {!BinaryenModule} wasmModule
  * @param {!Wasm2Lang.Wasm.Tree.TraversalNodeContext} nodeCtx
  * @return {boolean}
  */
-Wasm2Lang.Backend.AbstractCodegen.prototype.acceptsFlatSwitchStructure_ = function (binaryen, nodeCtx) {
-  if (!this.shouldValidateSwitchDispatchStructure_()) {
-    return true;
-  }
+Wasm2Lang.Backend.AbstractCodegen.prototype.acceptsFlatSwitchStructure_ = function (binaryen, wasmModule, nodeCtx) {
   var /** @const {!Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.SwitchDispatchInfo} */ dispatchInfo =
       Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.extractStructure(binaryen, nodeCtx.expressionPointer);
-  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure(dispatchInfo);
+  return Wasm2Lang.Wasm.Tree.CustomPasses.SwitchDispatchApplication.hasValidStructure(binaryen, wasmModule, dispatchInfo);
 };
 
 /**
@@ -786,7 +768,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitEnter_ = function (state, nodeCt
       } else if (this.isBlockRootSwitch_(fName, bName)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
       } else if (this.isBlockSwitchDispatch_(fName, bName)) {
-        if (this.acceptsFlatSwitchStructure_(binaryen, nodeCtx)) {
+        if (this.acceptsFlatSwitchStructure_(binaryen, state.wasmModule, nodeCtx)) {
           ++state.indent;
           return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
         }
@@ -1310,7 +1292,7 @@ Wasm2Lang.Backend.AbstractCodegen.prototype.emitBlockDispatch_ = function (state
       return this.emitRootSwitch_(state, nodeCtx);
     }
     if (this.isBlockSwitchDispatch_(fnName, blockName)) {
-      if (this.acceptsFlatSwitchStructure_(state.binaryen, nodeCtx)) {
+      if (this.acceptsFlatSwitchStructure_(state.binaryen, state.wasmModule, nodeCtx)) {
         return this.emitFlatSwitch_(state, nodeCtx);
       }
     }

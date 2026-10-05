@@ -1911,6 +1911,34 @@
   // ═══════════════════════════════════════════════════════════════════
   // Exports
   // ═══════════════════════════════════════════════════════════════════
+  // Internal dispatch targets resume at shared code, not at the switch exit.
+  // Mirrors the reduced master-image validator regression in postbuild.
+  module.addFunction(
+    'switchSharedSuffix',
+    binaryen.createType([binaryen.i32, binaryen.i32]),
+    binaryen.i32,
+    [binaryen.i32],
+    module.block(null, [
+      module.local.set(2, i32(1)),
+      module.block('suffixDone', [
+        module.block('suffixShared', [
+          module.block('suffixLegacy', [
+            module.block('suffixBirth', [module.switch(['suffixBirth', 'suffixLegacy'], 'suffixShared', p(0))]),
+            module.br('suffixShared', p(1)),
+            module.local.set(2, i32(10)),
+            module.br('suffixDone')
+          ]),
+          module.local.set(2, i32(20)),
+          module.br('suffixShared', p(1)),
+          module.br('suffixDone')
+        ]),
+        module.local.set(2, module.i32.add(p(2), i32(100)))
+      ]),
+      module.return(p(2))
+    ])
+  );
+  module.addFunctionExport('switchSharedSuffix', 'switchSharedSuffix');
+
   module.addFunctionExport('fusedWhileSum', 'fusedWhileSum');
   module.addFunctionExport('exerciseFusedWhile', 'exerciseFusedWhile');
   module.addFunctionExport('fusedBreakFromNestedIf', 'fusedBreakFromNestedIf');
@@ -2394,6 +2422,17 @@
       return common.rand.smallI32();
     })
   );
+
+  data.switch_shared_suffix_cases = [
+    [0, 0, 10],
+    [0, 1, 101],
+    [1, 0, 20],
+    [1, 1, 120],
+    [2, 0, 101],
+    [2, 1, 101],
+    [-1, 0, 101],
+    [-1, 1, 101]
+  ];
 
   common.emitSharedData(data);
 })();

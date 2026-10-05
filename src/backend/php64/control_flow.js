@@ -8,7 +8,8 @@
  * @typedef {{
  *   lbl: string,
  *   lk: string,
- *   alias: (string|undefined)
+ *   alias: (string|undefined),
+ *   aliases: (!Array<string>|undefined)
  * }}
  */
 Wasm2Lang.Backend.Php64Codegen.LabelEntry_;
@@ -74,7 +75,7 @@ Wasm2Lang.Backend.Php64Codegen.resolveLabelDepth_ = function (labelStack, target
     if (labelStack[i].lbl === targetName) {
       return {resolvedDepth: depth, resolvedLabelKind: labelStack[i].lk};
     }
-    if (labelStack[i].alias === targetName) {
+    if (labelStack[i].alias === targetName || (labelStack[i].aliases && -1 !== labelStack[i].aliases.indexOf(targetName))) {
       return {resolvedDepth: depth, resolvedLabelKind: 'block'};
     }
   }
@@ -809,9 +810,9 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitPhpFlatSwitchGroupBody_ = function 
 /**
  * Emits a flat switch for a br_table dispatch block (PHP variant).
  *
- * PHP uses {@code break N} (numeric depth) instead of labeled breaks.  The
- * outer block becomes {@code do { switch (...) { ... } } while (false);} so
- * that {@code break 2;} inside a case exits both the switch and the do-while.
+ * PHP uses {@code break N} (numeric depth) instead of labeled breaks. Each
+ * stack entry represents one emitted breakable scope; flattened chain names
+ * alias that entry without increasing the depth.
  *
  * @suppress {checkTypes}
  * @override
@@ -834,25 +835,18 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitFlatSwitch_ = function (state, node
       SDA.extractStructure(binaryen, nodeCtx.expressionPointer)
     );
 
-  // The leave wrapper already popped the outer block from labelStack.
-  // Re-push it as a single entry so that breaks targeting the outer name
-  // resolve to depth 1 (= exit the switch).
-  //
-  // In the wrapping scenario (epilogue exists), action code breaks target
-  // the original chain outer name (e.g. "swLabelExit"), not the sw$-prefixed
-  // wrapper.  Push the original name so label resolution finds it.
+  // The leave wrapper already popped the outer block. Reconstruct only the
+  // switch frame with every equivalent chain name. When an epilogue follows
+  // the switch, its wrapper name is not an alias for the switch exit.
   var /** @const {boolean} */ hasEpilogue = info.epiloguePtrs.length > 0;
-  var /** @type {string} */ breakTargetName = info.outerName;
-  if (hasEpilogue) {
-    var /** @const {!Array<string>} */ cn = info.chainNames;
-    for (var /** @type {number} */ fi = 0, /** @const {number} */ cnLen = cn.length; fi < cnLen; ++fi) {
-      if (cn[fi] !== info.outerName) {
-        breakTargetName = cn[fi];
-        break;
-      }
+  var /** @const {!Array<string>} */ switchAliases = [];
+  var /** @const {!Array<string>} */ cn = info.chainNames;
+  for (var /** @type {number} */ fi = 0, /** @const {number} */ cnLen = cn.length; fi < cnLen; ++fi) {
+    if (!hasEpilogue || cn[fi] !== info.outerName) {
+      switchAliases.push(cn[fi]);
     }
   }
-  state.labelStack[state.labelStack.length] = {lbl: breakTargetName, lk: 'block'};
+  state.labelStack[state.labelStack.length] = {lbl: '', lk: 'block', aliases: switchAliases};
 
   // Sub-walk the switch condition.
   var /** @const {string} */ condStr = A.subWalkExpressionString_(state, info.conditionPtr);
@@ -972,7 +966,10 @@ Wasm2Lang.Backend.Php64Codegen.prototype.emitEnter_ = function (state, nodeCtx) 
         if (this.irFusedBlocks_) this.irFusedBlocks_[fName + '\0' + bName] = 'a';
       } else if (this.isBlockRootSwitch_(fName, bName)) {
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};
-      } else if (this.isBlockSwitchDispatch_(fName, bName)) {
+      } else if (
+        this.isBlockSwitchDispatch_(fName, bName) &&
+        this.acceptsFlatSwitchStructure_(binaryen, state.wasmModule, nodeCtx)
+      ) {
         state.labelStack[state.labelStack.length] = {lbl: bName, lk: 'block'};
         ++state.indent;
         return {decisionAction: Wasm2Lang.Wasm.Tree.TraversalKernel.Action.SKIP_SUBTREE};

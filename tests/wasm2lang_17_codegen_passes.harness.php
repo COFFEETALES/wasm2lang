@@ -498,6 +498,11 @@ $runTest = function (string &$buff, callable $out, array $exports, ?array $data 
     foreach ($data['eqz_negate_numeric_comparison_values'] as $v) {
         $exports['exerciseEqzNegateNumericComparison']($v);
     }
+    foreach ($data['switch_shared_suffix_cases'] as $row) {
+        if ($exports['switchSharedSuffix']($row[0], $row[1]) !== $row[2]) {
+            throw new RuntimeException('Internal switch branch skipped its shared suffix');
+        }
+    }
 };
 
 $dumpMemory = true;

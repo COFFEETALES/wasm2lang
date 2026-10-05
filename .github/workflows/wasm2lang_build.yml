@@ -14,7 +14,7 @@ jobs:
       - name: '📦 Install tools'
         run: |
           #apk update
-          apk add --no-cache nodejs openjdk21-jre yarn
+          apk add --no-cache nodejs openjdk21-jre php84-cli yarn
           node --version
           yarn install
           mkdir dist_artifacts
@@ -23,7 +23,7 @@ jobs:
       - name: '🔧 Build project'
         working-directory: dist_artifacts
         run: |
-          yarn run closure-make
+          PHP_CLI=/usr/bin/php84 yarn run closure-make
           NODE_PATH="$(cd "../node_modules" && pwd -P)" node ../wasm2lang.js --help
 
       - name: '🧪 Build tests'

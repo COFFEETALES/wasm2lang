@@ -38,6 +38,10 @@
     System.out.println("extract_u16=" + mod.extract_u16());
     System.out.println("extract_hi_lane=" + mod.extract_hi_lane());
     System.out.println("replace8_narrows=" + mod.replace8_narrows());
+    System.out.println("replace16_cmp_ne=" + mod.replace16_cmp_ne());
+    System.out.println("replace16_cmp_eqz=" + mod.replace16_cmp_eqz());
+    System.out.println("replace8_cmp_lt=" + mod.replace8_cmp_lt());
+    System.out.println("replace32_cmp_gt_u=" + mod.replace32_cmp_gt_u());
     System.out.println("i8x16_shl=" + mod.i8x16_shl());
     System.out.println("i8x16_shl_mod=" + mod.i8x16_shl_mod());
     System.out.println("i8x16_shr_s=" + mod.i8x16_shr_s());

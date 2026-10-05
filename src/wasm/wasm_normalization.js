@@ -218,7 +218,10 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // multi-line ternaries in the codegen).
   // "merge-blocks" merges adjacent blocks, reducing nesting.
   // "optimize-instructions" peepholes algebraic patterns (e.g.
-  // {@code sub(x, -C)} → {@code add(x, C)}) on the stabilized IR.
+  // {@code sub(x, -C)} → {@code add(x, C)}), but can also turn a select with
+  // identical arms into a value block that evaluates/drops its condition
+  // before yielding the common value.  Run it BEFORE the final flatten:
+  // nested value blocks are not expressions in all target languages.
   // "reorder-locals" compacts local indices to a tighter layout.
   // "remove-unused-names" strips unreferenced block/loop labels.
   // "vacuum" removes unreachable code left by earlier passes.
@@ -227,7 +230,7 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
   // temp local); the subsequent simplify-locals-* passes reclaim most of
   // them but can leave thousands behind on very large functions.
   runTimed('phase4a.1', ['flatten', 'simplify-locals-nostructure', 'vacuum', 'merge-blocks']);
-  runTimed('phase4a.2', ['flatten', 'simplify-locals-notee-nostructure']);
+  runTimed('phase4a.2', ['optimize-instructions', 'flatten', 'simplify-locals-notee-nostructure']);
 
   // Phase 4b — coalesce-locals (optional).  The interference graph is O(L²)
   // per function.  Real-world modules produced by i64 lowering + flatten
@@ -245,8 +248,9 @@ Wasm2Lang.Wasm.WasmNormalization.applyBinaryenNormalization_ = function (
     runTimed('phase4b', ['coalesce-locals']);
   }
 
-  // Phase 4c — peephole + final cleanup.
-  runTimed('phase4c', ['optimize-instructions', 'reorder-locals', 'remove-unused-names', 'vacuum']);
+  // Phase 4c — final cleanup.  Do not reintroduce expression blocks after
+  // Phase 4a.2 has established the flat-operand contract for codegen.
+  runTimed('phase4c', ['reorder-locals', 'remove-unused-names', 'vacuum']);
   if (aggressive) {
     // remove-unused-module-elements + DCE at the end ensures all IR nodes
     // have valid types before wasm2lang custom passes.  Run separately
